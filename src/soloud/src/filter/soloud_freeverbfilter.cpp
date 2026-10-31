@@ -129,6 +129,7 @@ namespace SoLoud
 			void	setwidth(float aValue);
 			void	setmode(float aValue);
 			void	update();
+			void	copyFrom(const Revmodel &aOther);
 
 			float	mGain;
 			float	mRoomsize, mRoomsize1;
@@ -458,6 +459,48 @@ namespace SoLoud
 			mMode = aValue;
 			mDirty = 1;
 		}
+
+		void Revmodel::copyFrom(const Revmodel &aOther)
+		{
+			mGain = aOther.mGain;
+			mRoomsize = aOther.mRoomsize;
+			mRoomsize1 = aOther.mRoomsize1;
+			mDamp = aOther.mDamp;
+			mDamp1 = aOther.mDamp1;
+			mWet = aOther.mWet;
+			mWet1 = aOther.mWet1;
+			mWet2 = aOther.mWet2;
+			mDry = aOther.mDry;
+			mWidth = aOther.mWidth;
+			mMode = aOther.mMode;
+			mDirty = aOther.mDirty;
+			for (int i = 0; i < gNumcombs; i++)
+			{
+				mCombL[i].mFeedback = aOther.mCombL[i].mFeedback;
+				mCombL[i].mFilterstore = aOther.mCombL[i].mFilterstore;
+				mCombL[i].mDamp1 = aOther.mCombL[i].mDamp1;
+				mCombL[i].mDamp2 = aOther.mCombL[i].mDamp2;
+				mCombL[i].mBufidx = aOther.mCombL[i].mBufidx;
+				memcpy(mCombL[i].mBuffer, aOther.mCombL[i].mBuffer, sizeof(float) * mCombL[i].mBufsize);
+
+				mCombR[i].mFeedback = aOther.mCombR[i].mFeedback;
+				mCombR[i].mFilterstore = aOther.mCombR[i].mFilterstore;
+				mCombR[i].mDamp1 = aOther.mCombR[i].mDamp1;
+				mCombR[i].mDamp2 = aOther.mCombR[i].mDamp2;
+				mCombR[i].mBufidx = aOther.mCombR[i].mBufidx;
+				memcpy(mCombR[i].mBuffer, aOther.mCombR[i].mBuffer, sizeof(float) * mCombR[i].mBufsize);
+			}
+			for (int i = 0; i < gNumallpasses; i++)
+			{
+				mAllpassL[i].mFeedback = aOther.mAllpassL[i].mFeedback;
+				mAllpassL[i].mBufidx = aOther.mAllpassL[i].mBufidx;
+				memcpy(mAllpassL[i].mBuffer, aOther.mAllpassL[i].mBuffer, sizeof(float) * mAllpassL[i].mBufsize);
+
+				mAllpassR[i].mFeedback = aOther.mAllpassR[i].mFeedback;
+				mAllpassR[i].mBufidx = aOther.mAllpassR[i].mBufidx;
+				memcpy(mAllpassR[i].mBuffer, aOther.mAllpassR[i].mBuffer, sizeof(float) * mAllpassR[i].mBufsize);
+			}
+		}
 	}
 
 	FreeverbFilterInstance::FreeverbFilterInstance(FreeverbFilter *aParent)
@@ -490,6 +533,41 @@ namespace SoLoud
 			mParamChanged = 0;
 		}
 		mModel->process(aBuffer, aSamples, aBufferSize);
+	}
+
+	struct FreeverbFilterSnapshot : public FilterStateSnapshot
+	{
+		FreeverbImpl::Revmodel mModel;
+		uint64_t mParamChanged;
+		float mParam[5];
+		Fader mParamFader[5];
+	};
+
+	FilterStateSnapshot *FreeverbFilterInstance::captureState()
+	{
+		FreeverbFilterSnapshot *s = new FreeverbFilterSnapshot();
+		if (mModel)
+			s->mModel.copyFrom(*mModel);
+		s->mParamChanged = mParamChanged;
+		for (int i = 0; i < 5; i++)
+		{
+			s->mParam[i] = mParam[i];
+			s->mParamFader[i] = mParamFader[i];
+		}
+		return s;
+	}
+
+	void FreeverbFilterInstance::restoreState(FilterStateSnapshot *aSnapshot)
+	{
+		FreeverbFilterSnapshot *s = static_cast<FreeverbFilterSnapshot *>(aSnapshot);
+		if (mModel)
+			mModel->copyFrom(s->mModel);
+		mParamChanged = s->mParamChanged;
+		for (int i = 0; i < 5; i++)
+		{
+			mParam[i] = s->mParam[i];
+			mParamFader[i] = s->mParamFader[i];
+		}
 	}
 
 	FreeverbFilterInstance::~FreeverbFilterInstance()

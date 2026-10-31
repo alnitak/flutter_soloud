@@ -163,6 +163,8 @@ namespace SoLoud
 
 	result AudioSourceInstance::seek(double aSeconds, float *mScratch, unsigned int mScratchSize)
 	{
+		(void)mScratch;
+		(void)mScratchSize;
 		double offset = aSeconds - mStreamPosition;
 		if (offset <= 0)
 		{
@@ -173,15 +175,22 @@ namespace SoLoud
 			}
 			offset = aSeconds;
 		}
-		long samples_to_discard = (long)floor(mSamplerate * offset);
+		long samples_to_discard = (long)floor(mSamplerate * offset + 0.5);
 
-		while (samples_to_discard)
+		// Use a dedicated local buffer rather than Soloud::mScratch so seeking
+		// from inside readSourceSamples_internal (e.g. on a loop wrap) never
+		// overwrites the resampled output already staged in aScratch during
+		// mixBus_internal.
+		float discardBuf[SAMPLE_GRANULARITY * MAX_CHANNELS];
+		while (samples_to_discard > 0)
 		{
-			long samples = mScratchSize / mChannels;
+			long samples = SAMPLE_GRANULARITY;
 			if (samples > samples_to_discard)
 				samples = samples_to_discard;
-			getAudio(mScratch, samples, samples);
-			samples_to_discard -= samples;
+			unsigned int read = getAudio(discardBuf, (unsigned int)samples, (unsigned int)samples);
+			if (read == 0)
+				break;
+			samples_to_discard -= (long)read;
 		}
 		mStreamPosition = aSeconds;
 		return SO_NO_ERROR;

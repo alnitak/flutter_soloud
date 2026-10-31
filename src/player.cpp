@@ -3,6 +3,7 @@
 #include "device_lifecycle_test_hooks.h"
 #include "audiobuffer/circular_float_buffer.h"
 #include "audiobuffer/pull_buffer_stream.h"
+#include "audiobuffer/realtime_stream.h"
 #include "filters/filters.h"
 #include "soloud.h"
 #include "soloud/include/soloud.h"
@@ -10,6 +11,7 @@
 // #include "soloud_thread.h"
 #include "soloud_wavstream.h"
 #include "synth/basic_wave.h"
+#include "synth/custom_source.h"
 #include "soloud/src/backend/miniaudio/miniaudio.h"
 #include "native_audio_decoder.h"
 
@@ -721,6 +723,8 @@ const std::string Player::getErrorString(PlayerErrors errorCode) const
         return "error: the output audio device could not be started!";
     case failedToStartPlayback:
         return "error: failed to start the playback, no valid voice handle!";
+    case hashIsNotARealtimeStream:
+        return "error: hash is not a realtime stream!";
     }
     return "Other error";
 }
@@ -1228,6 +1232,170 @@ PlayerErrors Player::getPullBufferTimeRange(
     pullStream->getBufferTimeRange(start, end);
     if (startTime != nullptr) *startTime = start;
     if (endTime != nullptr) *endTime = end;
+    return PlayerErrors::noError;
+}
+
+PlayerErrors Player::setRealtimeStream(
+    unsigned int &hash,
+    unsigned int sampleRate,
+    unsigned int channels,
+    BufferType format,
+    unsigned int bufferCapacityFrames)
+{
+    if (!mInited.load(std::memory_order_acquire))
+        return backendNotInited;
+
+    hash = 0;
+
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::uniform_int_distribution<unsigned int> dist(1, INT32_MAX);
+    do
+    {
+        hash = dist(g);
+    } while (findByHash(hash) != nullptr);
+
+    auto newSound = std::make_unique<ActiveSound>();
+    newSound->completeFileName = "";
+    newSound->soundHash = hash;
+    newSound->sound = std::make_unique<SoLoud::RealtimeStream>();
+    newSound->soundType = SoundType::TYPE_REALTIME_STREAM;
+
+    auto *realtimeStream = static_cast<SoLoud::RealtimeStream *>(newSound->sound.get());
+    PlayerErrors e = realtimeStream->init(
+        this, newSound.get(), sampleRate, channels, format, bufferCapacityFrames);
+    if (e != PlayerErrors::noError)
+    {
+        hash = 0;
+        return e;
+    }
+
+    newSound->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sounds.push_back(std::move(newSound));
+    }
+
+    return PlayerErrors::noError;
+}
+
+PlayerErrors Player::resetRealtimeStream(unsigned int hash)
+{
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto const s = findByHashUnlocked(hash);
+
+    if (s == nullptr)
+        return PlayerErrors::soundHashNotFound;
+
+    if (s->soundType != SoundType::TYPE_REALTIME_STREAM)
+        return PlayerErrors::hashIsNotARealtimeStream;
+
+    static_cast<SoLoud::RealtimeStream *>(s->sound.get())->resetBuffer();
+    return PlayerErrors::noError;
+}
+
+unsigned int Player::pushRealtimeFloat32(
+    unsigned int hash,
+    const float *data,
+    unsigned int numFrames)
+{
+    auto *rs = getRealtimeStreamLocked(hash);
+    return rs != nullptr ? rs->pushDataFloat32(data, numFrames) : 0;
+}
+
+unsigned int Player::pushRealtimeInt16(
+    unsigned int hash,
+    const int16_t *data,
+    unsigned int numFrames)
+{
+    auto *rs = getRealtimeStreamLocked(hash);
+    return rs != nullptr ? rs->pushDataInt16(data, numFrames) : 0;
+}
+
+unsigned int Player::pushRealtimeClockedFloat32(
+    unsigned int hash,
+    double soundTime,
+    const float *data,
+    unsigned int numFrames)
+{
+    auto *rs = getRealtimeStreamLocked(hash);
+    return rs != nullptr ? rs->pushDataClockedFloat32(soundTime, data, numFrames) : 0;
+}
+
+unsigned int Player::pushRealtimeScheduledFloat32(
+    unsigned int hash,
+    double engineTime,
+    const float *data,
+    unsigned int numFrames)
+{
+    auto *rs = getRealtimeStreamLocked(hash);
+    return rs != nullptr ? rs->pushDataScheduledFloat32(engineTime, data, numFrames) : 0;
+}
+
+unsigned int Player::getRealtimeAvailableToRead(unsigned int hash)
+{
+    auto *rs = getRealtimeStreamLocked(hash);
+    return rs != nullptr ? rs->getAvailableToRead() : 0;
+}
+
+unsigned int Player::getRealtimeAvailableToWrite(unsigned int hash)
+{
+    auto *rs = getRealtimeStreamLocked(hash);
+    return rs != nullptr ? rs->getAvailableToWrite() : 0;
+}
+
+unsigned int Player::getRealtimeUnderrunCount(unsigned int hash)
+{
+    auto *rs = getRealtimeStreamLocked(hash);
+    return rs != nullptr ? rs->getUnderrunCount() : 0;
+}
+
+PlayerErrors Player::createCustomAudioSource(
+    unsigned int &hash,
+    unsigned int sampleRate,
+    unsigned int channels,
+    SoLoudSourceDspCallback_t callback,
+    void *userData,
+    SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
+    bool singleInstance,
+    const char *webJsCallbackName)
+{
+    if (!mInited.load(std::memory_order_acquire))
+        return backendNotInited;
+
+    hash = 0;
+
+    if (sampleRate == 0 || channels == 0 || channels > MAX_CHANNELS)
+        return invalidParameter;
+
+    if (callback == nullptr && (webJsCallbackName == nullptr || webJsCallbackName[0] == '\0'))
+        return invalidParameter;
+
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::uniform_int_distribution<unsigned int> dist(1, INT32_MAX);
+    do
+    {
+        hash = dist(g);
+    } while (findByHash(hash) != nullptr);
+
+    auto newSound = std::make_unique<ActiveSound>();
+    newSound->completeFileName = "";
+    newSound->soundHash = hash;
+
+    auto customSource = std::make_unique<SoLoud::CustomAudioSource>(
+        sampleRate, channels, callback, userData, lifecycleCallback,
+        singleInstance, webJsCallbackName);
+
+    newSound->sound = std::move(customSource);
+    newSound->soundType = SoundType::TYPE_CUSTOM_SOURCE;
+    newSound->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sounds.push_back(std::move(newSound));
+    }
+
     return PlayerErrors::noError;
 }
 
@@ -3067,7 +3235,7 @@ int Player::countAudioSource(unsigned int soundHash)
 {
     auto const &s = findByHash(soundHash);
 
-    if (s == nullptr)
+    if (s == nullptr || s->sound == nullptr)
         return 0;
 
     SoLoud::AudioSource *as;
@@ -3076,11 +3244,13 @@ int Player::countAudioSource(unsigned int soundHash)
     case TYPE_SYNTH:
         return 0;
     case TYPE_WAV:
-        as = static_cast<SoLoud::Wav *>(s->sound.get());
     case TYPE_WAVSTREAM:
-        as = static_cast<SoLoud::WavStream *>(s->sound.get());
     case TYPE_BUFFER_STREAM:
-        as = static_cast<SoLoud::BufferStream *>(s->sound.get());
+    case TYPE_PULL_BUFFER_STREAM:
+    case TYPE_REALTIME_STREAM:
+    case TYPE_CUSTOM_SOURCE:
+        as = s->sound.get();
+        break;
     default:
         return 0;
     }
@@ -3138,9 +3308,8 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
     return nullptr;
 }
 
-ActiveSound *Player::findByHash(unsigned int soundHash)
+ActiveSound *Player::findByHashUnlocked(unsigned int soundHash)
 {
-    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
                                  { return f->soundHash == soundHash; });
@@ -3148,6 +3317,21 @@ ActiveSound *Player::findByHash(unsigned int soundHash)
         return nullptr;
 
     return s->get();
+}
+
+ActiveSound *Player::findByHash(unsigned int soundHash)
+{
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    return findByHashUnlocked(soundHash);
+}
+
+SoLoud::RealtimeStream *Player::getRealtimeStreamLocked(unsigned int hash)
+{
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto const s = findByHashUnlocked(hash);
+    if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
+        return nullptr;
+    return static_cast<SoLoud::RealtimeStream *>(s->sound.get());
 }
 
 /////////////////////////////////////////

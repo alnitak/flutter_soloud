@@ -160,7 +160,10 @@ namespace SoLoud
 			lockAudioMutex_internal();
 			if (mFilterInstance[aFilterId])
 			{
-				mFilterInstance[aFilterId]->fadeFilterParameter(aAttributeId, aTo, aTime, mStreamTime);
+				time t = (isRenderAheadEnabled() && mRenderRing.isInited())
+					? playheadTimeLocked_internal()
+					: mStreamTime;
+				mFilterInstance[aFilterId]->fadeFilterParameter(aAttributeId, aTo, aTime, t);
 			}
 			unlockAudioMutex_internal();
 			return;
@@ -185,7 +188,10 @@ namespace SoLoud
 			lockAudioMutex_internal();
 			if (mFilterInstance[aFilterId])
 			{
-				mFilterInstance[aFilterId]->oscillateFilterParameter(aAttributeId, aFrom, aTo, aTime, mStreamTime);
+				time t = (isRenderAheadEnabled() && mRenderRing.isInited())
+					? playheadTimeLocked_internal()
+					: mStreamTime;
+				mFilterInstance[aFilterId]->oscillateFilterParameter(aAttributeId, aFrom, aTo, aTime, t);
 			}
 			unlockAudioMutex_internal();
 			return;

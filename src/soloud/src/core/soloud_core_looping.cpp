@@ -30,7 +30,7 @@ namespace SoLoud
 		if (aPosition <= 0 || aSamplerate <= 0)
 			return 0;
 		double frame = aPosition * aSamplerate;
-		return (uint64_t)(aRoundUp ? ceil(frame) : floor(frame));
+		return (uint64_t)(aRoundUp ? ceil(frame - 1e-6) : floor(frame + 1e-6));
 	}
 
 	unsigned int Soloud::readSourceSamples_internal(AudioSourceInstance *aVoice,

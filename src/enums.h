@@ -83,6 +83,8 @@ typedef enum PlayerErrors {
   audioDeviceFailedToStart = 34,
   /// SoLoud didn't return a valid voice handle when starting the playback.
   failedToStartPlayback = 35,
+  /// Given hash doesn't belong to a real-time PCM stream.
+  hashIsNotARealtimeStream = 36,
 } PlayerErrors_t;
 
 /// Possible read sample errors
@@ -149,7 +151,11 @@ typedef enum SoundType {
   // this sound is a text to speech
   TYPE_TEXT_TO_SPEECH,
   // this sound is a pull-based streaming buffer
-  TYPE_PULL_BUFFER_STREAM
+  TYPE_PULL_BUFFER_STREAM,
+  // this sound is a lock-free real-time PCM stream
+  TYPE_REALTIME_STREAM,
+  // this sound is a custom DSP audio source callback
+  TYPE_CUSTOM_SOURCE
 } SoundType_t;
 
 /// WARNING: Keep these in sync with `FilterType` in
@@ -168,7 +174,8 @@ typedef enum FilterType {
   LimiterFilter,
   CompressorFilter,
   ParametricEQFilter,
-  AmplitudeModulatorFilter
+  AmplitudeModulatorFilter,
+  CustomFilter
 } FilterType_t;
 
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
@@ -178,6 +185,7 @@ typedef enum BufferType {
   PCM_S16LE = 2,
   PCM_S32LE = 3,
   AUTO = 4,
+  PCM_F32LE_PLANAR = 5,
 } BufferType_t;
 
 /// WARNING: Keep these in sync with `lib/src/enums.dart`.
@@ -214,6 +222,38 @@ typedef void (*dartOnAudioDurationCallback_t)(double duration);
 // it in the exports that take one.
 typedef void (*dartMixerOutputDataCallback_t)(unsigned char *data,
                                               uint64_t length);
+
+/// Synchronous audio-thread callback for a custom DSP AudioSource.
+typedef unsigned int (*SoLoudSourceDspCallback_t)(
+    float *aBuffer,
+    unsigned int aSamplesToRead,
+    unsigned int aBufferSize,
+    unsigned int aChannels,
+    float aSamplerate,
+    double aStreamTime,
+    double aStreamPosition,
+    uint32_t *aOutHasEnded,
+    void *aUserData);
+
+/// Optional lifecycle callback invoked when a CustomAudioSource voice instance
+/// is created (`aIsCreated == 1`) or destroyed (`aIsCreated == 0`).
+typedef void (*SoLoudSourceInstanceLifecycleCallback_t)(
+    uint32_t aIsCreated,
+    unsigned int aPlayIndex,
+    void *aUserData);
+
+/// Synchronous audio-thread callback for a custom DSP Filter.
+typedef void (*SoLoudFilterDspCallback_t)(
+    float *aBuffer,
+    unsigned int aSamples,
+    unsigned int aBufferSize,
+    unsigned int aChannels,
+    float aSamplerate,
+    double aTime,
+    const float *aParams,
+    uint64_t aParamChangedMask,
+    unsigned int aParamCount,
+    void *aUserData);
 
 /// The kind of visualization data to acquire.
 ///
@@ -257,5 +297,18 @@ typedef enum LinuxAudioBackend {
   /// JACK Audio Connection Kit
   linuxBackendJack = 3,
 } LinuxAudioBackend_t;
+
+/// Callback invoked when the user turns a knob inside the native VST3 GUI
+/// editor window (`IComponentHandler::performEdit`).
+typedef void (*dartVst3ParameterEditCallback_t)(
+    int pluginHandle,
+    unsigned int paramId,
+    double normalizedValue);
+
+/// Callback invoked when a VST3 plugin calls `IComponentHandler::restartComponent`
+/// to notify the host that parameters, titles, latency, or buses have changed.
+typedef void (*dartVst3RestartComponentCallback_t)(
+    int pluginHandle,
+    int flags);
 
 #endif // ENUMS_H

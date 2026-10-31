@@ -70,6 +70,10 @@ extern "C"
   /// Invoked as a Dart NativeFinalizer when an isolate is destroyed/restarted.
   FFI_PLUGIN_EXPORT void retireDartCallbacksFinalizer(void *token);
 
+  /// Synchronously unloads all hosted VST3 plugins and releases cached modules
+  /// before process termination or engine teardown.
+  FFI_PLUGIN_EXPORT void soloud_vst3HostUnloadAll(void);
+
 #ifdef __cplusplus
 }
 #endif

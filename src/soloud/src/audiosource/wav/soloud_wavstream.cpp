@@ -318,7 +318,7 @@ namespace SoLoud
 	{
 		if (mCodec.mOgg)
 		{
-			int pos = (int)floor(mBaseSamplerate * aSeconds);
+			int pos = (int)floor(mBaseSamplerate * aSeconds + 0.5);
 			double newPosition;
 
 			switch (mParent->mFiletype)

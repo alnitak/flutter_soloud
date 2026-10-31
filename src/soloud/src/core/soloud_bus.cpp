@@ -146,6 +146,29 @@ namespace SoLoud
 		}
 	}
 
+	// ###### flutter_soloud local patch (mix checkpoints) ######
+	SourceStateSnapshot *BusInstance::captureSourceState()
+	{
+		BusSnapshot *s = new BusSnapshot();
+		int i;
+		for (i = 0; i < MAX_CHANNELS; i++)
+			s->mVisualizationChannelVolume[i] = mVisualizationChannelVolume[i];
+		for (i = 0; i < 256; i++)
+			s->mVisualizationWaveData[i] = mVisualizationWaveData[i];
+		return s;
+	}
+
+	void BusInstance::restoreSourceState(SourceStateSnapshot *aSnapshot)
+	{
+		const BusSnapshot *s = static_cast<const BusSnapshot *>(aSnapshot);
+		if (!s) return;
+		int i;
+		for (i = 0; i < MAX_CHANNELS; i++)
+			mVisualizationChannelVolume[i] = s->mVisualizationChannelVolume[i];
+		for (i = 0; i < 256; i++)
+			mVisualizationWaveData[i] = s->mVisualizationWaveData[i];
+	}
+
 	Bus::Bus()
 	{
 		mChannelHandle = 0;

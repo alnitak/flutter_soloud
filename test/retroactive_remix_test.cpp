@@ -269,9 +269,9 @@ void testChordJournalReplay()
     EXPECT(sumA > 1.0, "A lost after B's rollback (sumA %f)", sumA);
 }
 
-// playScheduled inside the window lands at the exact frame; a time at/behind
-// the playhead falls back to legacy ASAP placement (the next quantum at the
-// write head).
+// playScheduled inside the window lands at the exact frame; a time behind the
+// playhead clamps to the playhead (so playScheduled(0) plays immediately at
+// the playhead); a time at/beyond the write head lands in the next quantum.
 void testScheduledInWindow()
 {
     Rig rig;
@@ -285,8 +285,8 @@ void testScheduledInWindow()
     const SoLoud::time playhead = rig.engine.getPlayheadTime();
     rig.engine.playScheduled(playhead + 1000.0 / kSampleRate, a);
 
-    // Behind the playhead: legacy placement at the write head.
-    rig.engine.playScheduled(playhead - 1.0, b);
+    // At the write head: ordinary future scheduling in the next quantum.
+    rig.engine.playScheduled(rig.engine.getEngineTime(), b);
 
     std::vector<float> buf = rig.readAll();
     const long long onsetA = firstAudibleFrame(buf, 0.02f);
@@ -294,19 +294,18 @@ void testScheduledInWindow()
            "scheduled onset at %lld, expected ~1000", onsetA);
 
     // After A's pulse ends (~1072) the window is silent: B was scheduled
-    // behind the playhead and got legacy placement, so it is not in the
-    // already-mixed window at all.
+    // at the write head, so it is not in the already-mixed window at all.
     bool midSilent = true;
     for (unsigned int i = 1072; i * 2 < buf.size(); ++i)
         midSilent = midSilent && std::fabs(buf[i * 2]) <= 0.02f;
-    EXPECT(midSilent, "legacy-scheduled voice leaked into the window");
+    EXPECT(midSilent, "write-head-scheduled voice leaked into the window");
 
     // B starts with the next mixed quantum (the old write head).
     rig.topUp();
     std::vector<float> buf2 = rig.readAll();
     const long long onsetB = firstAudibleFrame(buf2, 0.02f);
     EXPECT(onsetB >= 0 && onsetB <= 4,
-           "legacy-scheduled onset at %lld, expected ~0 of the next quantum",
+           "write-head-scheduled onset at %lld, expected ~0 of the next quantum",
            onsetB);
 }
 
@@ -637,6 +636,137 @@ void testScheduledFadeInWindow()
     EXPECT(allSilent(buf, 2100, 0.02f), "fade not finished in window");
 }
 
+// Regression test for Bug 1 (Moonlight.mid Channel 2 release fade erasure):
+// scheduleFadeAt(..., thenStop: true) at mStreamTime (rel >= 0) followed by
+// a retroactive play/playScheduled must NOT lose the volume fade while keeping
+// mStopSamplesLeft.
+void testWriteHeadScheduledFadeSurvivesRetroactivePlay()
+{
+    Rig rig;
+    PulseSource bassOld(32768, 0.8f);
+    PulseSource bassNew(32768, 0.1f);
+
+    const SoLoud::handle hOld = rig.engine.play(bassOld);
+    rig.topUp();
+    rig.discard(2048);
+
+    // Schedule NoteOff release fade at engineTime (rel == 0, non-retroactive
+    // branch of scheduleFadeAt) over 4 quanta, with thenStop = true.
+    const SoLoud::time now = rig.engine.getEngineTime();
+    const SoLoud::time fadeDur = (4.0 * kQuantum) / kSampleRate;
+    rig.engine.scheduleFadeAt(hOld, now, 0.0f, fadeDur, true);
+
+    // Immediately trigger a retroactive play inside the render-ahead window
+    // (simulating the next NoteOn or chord voice).
+    rig.engine.play(bassNew, 0.0f);
+
+    // Mix forward through the 4-quantum fade.
+    std::vector<float> allSamples;
+    for (int i = 0; i < 6; ++i) {
+        rig.topUp();
+        std::vector<float> chunk = rig.readAll();
+        allSamples.insert(allSamples.end(), chunk.begin(), chunk.end());
+    }
+
+    // Verify that the volume faded down smoothly before stopping (no hard step
+    // from full volume ~0.8 to 0.0).
+    float maxStep = 0.0f;
+    const size_t totalFrames = allSamples.size() / 2;
+    for (size_t f = 1; f < totalFrames; ++f) {
+        const float step = std::fabs(allSamples[f * 2] - allSamples[(f - 1) * 2]);
+        if (step > maxStep)
+            maxStep = step;
+    }
+    EXPECT(maxStep < 0.05f,
+           "hard cutoff click after retroactive rollback: maxStep = %f", maxStep);
+}
+
+// Regression test for Bug 2 (resampler 512-sample block boundary phase-jump
+// on pitch-shifted notes like Celesta_minimal.sf3 Channel 2 bass keys 37..30):
+void testPitchShiftedResamplerBlockBoundaryContinuity()
+{
+    SoLoud::Soloud engine;
+    const SoLoud::result initRes =
+        engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER,
+                    48000, kQuantum, 2);
+    EXPECT(initRes == SoLoud::SO_NO_ERROR, "init failed: %d", initRes);
+
+    // Pure 220 Hz sine wave at 48 kHz
+    const unsigned int N = 16384;
+    std::vector<float> sine(N);
+    for (unsigned int i = 0; i < N; ++i) {
+        sine[i] = 0.5f * std::sin(2.0 * M_PI * 220.0 * i / 48000.0);
+    }
+    SoLoud::Wav wav;
+    wav.loadRawWave(sine.data(), N, 48000.0f, 1, true, false);
+
+    // Pitch-down ratios matching Moonlight.mid Channel 2 bass notes on
+    // Celesta_minimal.sf3 (rootKey 43 -> keys 37, 35, 33, 32, 30).
+    const float scales[] = {0.70710678f, 0.62996052f, 0.56123102f, 0.52973155f, 0.47193716f};
+    for (float scale : scales) {
+        const SoLoud::handle h = engine.play(wav, 1.0f, 0.0f, false, 0);
+        engine.setRelativePlaySpeed(h, scale);
+
+        std::vector<float> out(kQuantum * 8 * 2, 0.0f);
+        for (int q = 0; q < 8; ++q) {
+            engine.mix(out.data() + q * kQuantum * 2, kQuantum);
+        }
+        engine.stop(h);
+
+        float maxD2 = 0.0f;
+        const unsigned int totalFrames = kQuantum * 8;
+        for (unsigned int f = 10; f + 10 < totalFrames; ++f) {
+            const float y0 = out[(f - 1) * 2];
+            const float y1 = out[f * 2];
+            const float y2 = out[(f + 1) * 2];
+            const float d2 = std::fabs(y2 - 2.0f * y1 + y0);
+            if (d2 > maxD2)
+                maxD2 = d2;
+        }
+        // Ideal second derivative of 0.5*sin(2*pi*220*scale*t) is < 0.0005.
+        // Before the fix, every 512 source samples had a phase jump of ~0.009.
+        EXPECT(maxD2 < 0.0015f,
+               "resampler 512-sample boundary phase-jump at scale=%f: maxD2=%f",
+               scale, maxD2);
+    }
+
+    engine.deinit();
+}
+
+// Regression test for Bug 4 (sub-sample microsecond rounding of getEngineTime()
+// at 48 kHz must not trigger a spurious rollback).
+void testSubSampleMicrosecondRoundingNoSpuriousRollback()
+{
+    SoLoud::Soloud engine;
+    engine.setRenderAheadConfig(kDevicePeriod, kRenderAhead);
+    const SoLoud::result initRes =
+        engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER,
+                    48000, kQuantum, 2);
+    EXPECT(initRes == SoLoud::SO_NO_ERROR, "init failed: %d", initRes);
+
+    PulseSource a(16384, 0.5f);
+    const SoLoud::handle h = engine.play(a);
+    engine.renderRingTopUp_internal();
+
+    // At 48 kHz, 4 * 1024 / 48000 = 0.085333333333... s.
+    // Rounding down to integer microseconds gives 0.085333 s (0.333 us behind
+    // mStreamTime, which is 0.016 samples).
+    const SoLoud::time engineTime = engine.getEngineTime();
+    const long long truncatedUs = (long long)std::floor(engineTime * 1e6);
+    const SoLoud::time roundedTime = (SoLoud::time)truncatedUs / 1e6;
+
+    // Must be treated as at the write head (no spurious rollback).
+    engine.lockAudioMutex_internal();
+    const int ci = engine.retroactiveBegin_internal(roundedTime);
+    engine.unlockAudioMutex_internal();
+    EXPECT(ci == -1,
+           "sub-sample microsecond rounding triggered rollback to checkpoint %d",
+           ci);
+
+    engine.stop(h);
+    engine.deinit();
+}
+
 } // namespace
 
 int main()
@@ -655,6 +785,9 @@ int main()
     testRetroactivePause();
     testScheduledStopInWindow();
     testScheduledFadeInWindow();
+    testWriteHeadScheduledFadeSurvivesRetroactivePlay();
+    testPitchShiftedResamplerBlockBoundaryContinuity();
+    testSubSampleMicrosecondRoundingNoSpuriousRollback();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);

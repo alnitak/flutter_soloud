@@ -284,7 +284,7 @@ result BufferStreamInstance::seek(double aSeconds, float *mScratch,
   // frame: getAudio() consumes data in units of `mChannels` floats, so an
   // unaligned offset would leave an unplayable sub-frame remainder at the
   // end of the buffer and the voice could never reach its end.
-  const int pos = static_cast<int>(floor(mBaseSamplerate * mChannels * aSeconds));
+  const int pos = static_cast<int>(floor(mBaseSamplerate * mChannels * aSeconds + 0.5));
   mOffset = mChannels > 0 ? pos - (pos % static_cast<int>(mChannels)) : pos;
   mStreamPosition = static_cast<float>(mOffset) / (mBaseSamplerate * mChannels);
   return SO_NO_ERROR;

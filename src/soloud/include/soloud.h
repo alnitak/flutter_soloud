@@ -640,6 +640,11 @@ namespace SoLoud
 		// render-ahead depth is reached (or the ring is full). Called from the
 		// backend device callback when the ring is enabled.
 		void renderRingTopUp_internal();
+		// Apply global filters (mFilterInstance) to interleaved frames freshly
+		// read from mRenderRing at the device playhead, so stateful global
+		// filters (PitchShift, Freeverb, Echo, VST3, etc.) see a strictly
+		// continuous stream unaffected by retroactive re-mix rollbacks.
+		void postProcessRenderRing_internal(float *aBuffer, unsigned int aSamples);
 
 		// ###### flutter_soloud local patch (mix checkpoints) ######
 		// Snapshot all mix-relevant state at the current quantum boundary
@@ -825,6 +830,13 @@ namespace SoLoud
 		// renderRingTopUp_internal(). Allocated in postinit_internal when the
 		// ring is enabled.
 		AlignedFloatBuffer mRenderRingStaging;
+		// Scratch buffer for de-interleaving frames read from mRenderRing
+		// when applying global filters post-ring at the playhead.
+		AlignedFloatBuffer mPostRingScratch;
+		// True while renderRingTopUp_internal() is mixing into mRenderRing so
+		// mixVoicesLocked_internal() defers global filters to
+		// postProcessRenderRing_internal().
+		bool mMixingToRenderRing;
 		// ###### flutter_soloud local patch (mix checkpoints) ######
 		// Circular pool of mix-quantum-boundary snapshots for retroactive
 		// re-mixing. Allocated in postinit_internal when the render-ahead

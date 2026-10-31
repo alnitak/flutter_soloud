@@ -641,11 +641,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   void deinit() {
+    _freeRealtimeScratch();
     return native.dispose();
   }
 
   @override
   Future<void> deinitAsync() async {
+    _freeRealtimeScratch();
     await Isolate.run(native.dispose);
   }
 
@@ -2228,5 +2230,470 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   int busGetActiveVoiceCount(int busId) {
     return native.busGetActiveVoiceCount(busId);
+  }
+
+  // ///////////////////////////////////////
+  // Realtime Stream & Custom DSP
+  // ///////////////////////////////////////
+
+  ffi.Pointer<ffi.Uint8> _realtimeScratchPtr = ffi.nullptr;
+  int _realtimeScratchCapacityBytes = 0;
+
+  ffi.Pointer<ffi.Uint8> _ensureRealtimeScratch(int bytes) {
+    if (bytes <= _realtimeScratchCapacityBytes &&
+        _realtimeScratchPtr != ffi.nullptr) {
+      return _realtimeScratchPtr;
+    }
+    if (_realtimeScratchPtr != ffi.nullptr) {
+      calloc.free(_realtimeScratchPtr);
+    }
+    final newCap = bytes < 16384 ? 16384 : bytes;
+    _realtimeScratchPtr = calloc<ffi.Uint8>(newCap);
+    _realtimeScratchCapacityBytes = newCap;
+    return _realtimeScratchPtr;
+  }
+
+  void _freeRealtimeScratch() {
+    if (_realtimeScratchPtr != ffi.nullptr) {
+      calloc.free(_realtimeScratchPtr);
+      _realtimeScratchPtr = ffi.nullptr;
+      _realtimeScratchCapacityBytes = 0;
+    }
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) setRealtimeStream(
+    int sampleRate,
+    int channels,
+    int format,
+    int bufferFrames,
+    int historyFrames,
+  ) {
+    final ffi.Pointer<ffi.UnsignedInt> hash = calloc();
+    final e = native.setRealtimeStream(
+      hash,
+      sampleRate,
+      channels,
+      format,
+      bufferFrames,
+    );
+    final soundHash = SoundHash.fromValue(hash.value);
+    final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
+    calloc.free(hash);
+    return ret;
+  }
+
+  @override
+  PlayerErrors resetRealtimeStream(SoundHash soundHash) {
+    final e = native.resetRealtimeStream(soundHash.hash);
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  int pushRealtimeFloat32(
+    int hash,
+    int handle,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
+    ptr.asTypedList(samples.length).setAll(0, samples);
+    return native.pushRealtimeFloat32(hash, ptr, frameCount);
+  }
+
+  @override
+  int pushRealtimeFloat32Address(
+    int hash,
+    int handle,
+    int samplesAddress,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return native.pushRealtimeFloat32(
+      hash,
+      ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
+      frameCount,
+    );
+  }
+
+  @override
+  int pushRealtimeInt16(
+    int hash,
+    int handle,
+    Int16List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Int16>();
+    ptr.asTypedList(samples.length).setAll(0, samples);
+    return native.pushRealtimeInt16(hash, ptr, frameCount);
+  }
+
+  @override
+  int pushRealtimeInt16Address(
+    int hash,
+    int handle,
+    int samplesAddress,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return native.pushRealtimeInt16(
+      hash,
+      ffi.Pointer<ffi.Int16>.fromAddress(samplesAddress),
+      frameCount,
+    );
+  }
+
+  @override
+  int pushRealtimeClockedFloat32(
+    int hash,
+    int handle,
+    double soundTime,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
+    ptr.asTypedList(samples.length).setAll(0, samples);
+    return native.pushRealtimeClockedFloat32(hash, soundTime, ptr, frameCount);
+  }
+
+  @override
+  int pushRealtimeClockedFloat32Address(
+    int hash,
+    int handle,
+    double soundTime,
+    int samplesAddress,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return native.pushRealtimeClockedFloat32(
+      hash,
+      soundTime,
+      ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
+      frameCount,
+    );
+  }
+
+  @override
+  int pushRealtimeScheduledFloat32(
+    int hash,
+    int handle,
+    double atTime,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
+    ptr.asTypedList(samples.length).setAll(0, samples);
+    return native.pushRealtimeScheduledFloat32(hash, atTime, ptr, frameCount);
+  }
+
+  @override
+  int pushRealtimeScheduledFloat32Address(
+    int hash,
+    int handle,
+    double atTime,
+    int samplesAddress,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return native.pushRealtimeScheduledFloat32(
+      hash,
+      atTime,
+      ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
+      frameCount,
+    );
+  }
+
+  @override
+  int getRealtimeAvailableToRead(int hash) {
+    return native.getRealtimeAvailableToRead(hash);
+  }
+
+  @override
+  int getRealtimeAvailableToWrite(int hash) {
+    return native.getRealtimeAvailableToWrite(hash);
+  }
+
+  @override
+  int getRealtimeUnderrunCount(int hash) {
+    return native.getRealtimeUnderrunCount(hash);
+  }
+
+  @override
+  int allocateRealtimeNativeBuffer(int byteLength) {
+    if (byteLength <= 0) return 0;
+    return calloc<ffi.Uint8>(byteLength).address;
+  }
+
+  @override
+  void freeRealtimeNativeBuffer(int address) {
+    if (address == 0) return;
+    calloc.free(ffi.Pointer<ffi.Uint8>.fromAddress(address));
+  }
+
+  @override
+  Float32List viewRealtimeFloat32Buffer(int address, int floatLength) {
+    if (address == 0 || floatLength <= 0) return Float32List(0);
+    return ffi.Pointer<ffi.Float>.fromAddress(address).asTypedList(floatLength);
+  }
+
+  @override
+  Int16List viewRealtimeInt16Buffer(int address, int int16Length) {
+    if (address == 0 || int16Length <= 0) return Int16List(0);
+    return ffi.Pointer<ffi.Int16>.fromAddress(address).asTypedList(int16Length);
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) createCustomAudioSource({
+    required int sampleRate,
+    required int channels,
+    required bool mustTickWhenInaudible,
+    required bool killWhenInaudible,
+    int dspCallbackAddress = 0,
+    int onInstanceCreatedAddress = 0,
+    int onInstanceDestroyedAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> hash = calloc();
+    final cWebName = webJsFunctionName != null && webJsFunctionName.isNotEmpty
+        ? webJsFunctionName.toNativeUtf8()
+        : ffi.nullptr;
+    final lifecycleAddress = onInstanceCreatedAddress != 0
+        ? onInstanceCreatedAddress
+        : onInstanceDestroyedAddress;
+    final e = native.createCustomAudioSource(
+      hash,
+      sampleRate,
+      channels,
+      dspCallbackAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<
+              ffi.NativeFunction<native.SoLoudSourceDspCallback_tFunction>
+            >.fromAddress(dspCallbackAddress),
+      userdataAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<ffi.Void>.fromAddress(userdataAddress),
+      lifecycleAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<
+              ffi.NativeFunction<
+                native.SoLoudSourceInstanceLifecycleCallback_tFunction
+              >
+            >.fromAddress(lifecycleAddress),
+      false,
+      cWebName == ffi.nullptr ? ffi.nullptr : cWebName.cast<ffi.Char>(),
+    );
+    if (cWebName != ffi.nullptr) {
+      calloc.free(cWebName);
+    }
+    final soundHash = SoundHash.fromValue(hash.value);
+    final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
+    calloc.free(hash);
+    return ret;
+  }
+
+  @override
+  PlayerErrors addCustomFilter(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final e = native.addCustomFilter(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+    );
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  PlayerErrors removeCustomFilter(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final e = native.removeCustomFilter(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+    );
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  ({PlayerErrors error, int index}) isCustomFilterActive(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final ffi.Pointer<ffi.Int> id = calloc();
+    final e = native.isCustomFilterActive(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      id,
+    );
+    final ret = (error: PlayerErrors.values[e.value], index: id.value);
+    calloc.free(id);
+    return ret;
+  }
+
+  @override
+  PlayerErrors setCustomFilterCallback(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+    int callbackAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+  }) {
+    final cWebName = webJsFunctionName != null && webJsFunctionName.isNotEmpty
+        ? webJsFunctionName.toNativeUtf8()
+        : ffi.nullptr;
+    final e = native.setCustomFilterCallback(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      callbackAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<
+              ffi.NativeFunction<native.SoLoudFilterDspCallback_tFunction>
+            >.fromAddress(callbackAddress),
+      userdataAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<ffi.Void>.fromAddress(userdataAddress),
+      16,
+      cWebName == ffi.nullptr ? ffi.nullptr : cWebName.cast<ffi.Char>(),
+    );
+    if (cWebName != ffi.nullptr) {
+      calloc.free(cWebName);
+    }
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  PlayerErrors setCustomFilterParamDefinition(
+    int customFilterId,
+    int paramIndex,
+    String name,
+    double minVal,
+    double maxVal,
+    double defaultVal, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final cName = name.toNativeUtf8();
+    final e = native.setCustomFilterParamDefinition(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      paramIndex,
+      cName.cast<ffi.Char>(),
+      minVal,
+      maxVal,
+      defaultVal,
+    );
+    calloc.free(cName);
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  PlayerErrors setCustomFilterParams(
+    int customFilterId,
+    int attributeId,
+    double value, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = native.setCustomFilterParams(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      value,
+    );
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  ({PlayerErrors error, double value}) getCustomFilterParams(
+    int customFilterId,
+    int attributeId, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final ffi.Pointer<ffi.Float> paramValue = calloc();
+    final e = native.getCustomFilterParams(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      paramValue,
+    );
+    final ret = paramValue.value;
+    calloc.free(paramValue);
+    return (error: PlayerErrors.values[e.value], value: ret);
+  }
+
+  @override
+  PlayerErrors fadeCustomFilterParameter(
+    int customFilterId,
+    int attributeId,
+    double to,
+    double time, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = native.fadeCustomFilterParameter(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      to,
+      time,
+    );
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  PlayerErrors oscillateCustomFilterParameter(
+    int customFilterId,
+    int attributeId,
+    double from,
+    double to,
+    double time, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = native.oscillateCustomFilterParameter(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      from,
+      to,
+      time,
+    );
+    return PlayerErrors.values[e.value];
   }
 }

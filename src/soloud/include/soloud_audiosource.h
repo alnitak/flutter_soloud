@@ -134,7 +134,9 @@ namespace SoLoud
 			// If inaudible, should still be ticked (default = pause)
 			INAUDIBLE_TICK = 128,
 			// Don't auto-stop sound
-			DISABLE_AUTOSTOP = 256
+			DISABLE_AUTOSTOP = 256,
+			// Render exact output period directly into scratch when sample rates match 1:1
+			REALTIME_DIRECT = 512
 		};
 		// Ctor
 		AudioSourceInstance();

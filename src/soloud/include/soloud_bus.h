@@ -31,6 +31,14 @@ namespace SoLoud
 {
 	class Bus;
 
+	// ###### flutter_soloud local patch (mix checkpoints) ######
+	class BusSnapshot : public SourceStateSnapshot
+	{
+	public:
+		float mVisualizationChannelVolume[MAX_CHANNELS];
+		float mVisualizationWaveData[256];
+	};
+
 	// ###### flutter_soloud local patch (per-bus visualization) ######
 	// Receives the audio a bus has just mixed from its voices: before the bus
 	// voice's own filters, volume and pan, which are applied when the parent
@@ -65,6 +73,10 @@ namespace SoLoud
 		void tapAudio_internal(float *aBuffer, unsigned int aSamples, unsigned int aBufferSize);
 		virtual bool hasEnded();
 		virtual ~BusInstance();
+
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		virtual SourceStateSnapshot *captureSourceState();
+		virtual void restoreSourceState(SourceStateSnapshot *aSnapshot);
 	};
 
 	class Bus : public AudioSource

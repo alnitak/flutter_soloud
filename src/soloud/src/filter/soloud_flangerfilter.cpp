@@ -79,6 +79,66 @@ namespace SoLoud
 		mOffset %= mBufferLength;
 	}
 
+	struct FlangerFilterSnapshot : public FilterStateSnapshot
+	{
+		float *mBuffer;
+		unsigned int mBufferLength;
+		unsigned int mOffset;
+		double mIndex;
+		uint64_t mParamChanged;
+		float mParam[3];
+		Fader mParamFader[3];
+		FlangerFilterSnapshot() : mBuffer(0), mBufferLength(0), mOffset(0), mIndex(0), mParamChanged(0) {}
+		virtual ~FlangerFilterSnapshot() { delete[] mBuffer; }
+	};
+
+	FilterStateSnapshot *FlangerFilterInstance::captureState()
+	{
+		FlangerFilterSnapshot *s = new FlangerFilterSnapshot();
+		s->mBufferLength = mBufferLength;
+		s->mOffset = mOffset;
+		s->mIndex = mIndex;
+		s->mParamChanged = mParamChanged;
+		for (int i = 0; i < 3; i++)
+		{
+			s->mParam[i] = mParam[i];
+			s->mParamFader[i] = mParamFader[i];
+		}
+		if (mBuffer && mBufferLength > 0)
+		{
+			s->mBuffer = new float[mBufferLength * 2];
+			memcpy(s->mBuffer, mBuffer, sizeof(float) * mBufferLength * 2);
+		}
+		return s;
+	}
+
+	void FlangerFilterInstance::restoreState(FilterStateSnapshot *aSnapshot)
+	{
+		FlangerFilterSnapshot *s = static_cast<FlangerFilterSnapshot *>(aSnapshot);
+		mOffset = s->mOffset;
+		mIndex = s->mIndex;
+		mParamChanged = s->mParamChanged;
+		for (int i = 0; i < 3; i++)
+		{
+			mParam[i] = s->mParam[i];
+			mParamFader[i] = s->mParamFader[i];
+		}
+		if (s->mBuffer && s->mBufferLength > 0)
+		{
+			if (mBufferLength < s->mBufferLength || mBuffer == 0)
+			{
+				delete[] mBuffer;
+				mBufferLength = s->mBufferLength;
+				mBuffer = new float[mBufferLength * 2];
+			}
+			else
+			{
+				mBufferLength = s->mBufferLength;
+			}
+			memcpy(mBuffer, s->mBuffer, sizeof(float) * mBufferLength * 2);
+		}
+	}
+
 	FlangerFilterInstance::~FlangerFilterInstance()
 	{
 		delete[] mBuffer;

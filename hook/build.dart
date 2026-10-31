@@ -115,6 +115,16 @@ void main(List<String> args) async {
       xiph = await XiphLink.forPrebuild(input);
     }
 
+    final isDesktop = os == OS.macOS || os == OS.windows || os == OS.linux;
+    final enableVst3 =
+        isDesktop &&
+        (parseBool(input.userDefines['enable_vst3']) ??
+            parseBool(Platform.environment['SOLOUD_ENABLE_VST3']) ??
+            false);
+    final vst3 = enableVst3
+        ? await Vst3Link.forPrebuild(input)
+        : Vst3Link.empty();
+
     final platformDisplayName = switch (os) {
       OS.macOS => 'macOS',
       OS.iOS => 'iOS',
@@ -127,7 +137,7 @@ void main(List<String> args) async {
 
     print(
       '[flutter_soloud] Building on $platformDisplayName ($arch) with Xiph '
-      'libs [$xiphMode]',
+      'libs [$xiphMode]${enableVst3 ? ', VST3 [prebuilt]' : ''}',
     );
 
     final defines = <String, String?>{
@@ -142,6 +152,7 @@ void main(List<String> args) async {
         '_CRT_SECURE_NO_WARNINGS': null,
       },
       if (noXiph) 'NO_XIPH_LIBS': null,
+      if (enableVst3) 'SOLOUD_ENABLE_VST3': null,
     };
 
     final flags = <String>[
@@ -189,6 +200,7 @@ void main(List<String> args) async {
       'src/pffft',
       'src/native_decoder',
       ...xiph.includeDirs,
+      ...vst3.includeDirs,
     ];
 
     // iOS 26.4+/Xcode 16+ duplicate-symbol workaround for miniaudio's
@@ -210,10 +222,11 @@ void main(List<String> args) async {
         language: Language.objectiveC,
         std: 'c++17',
         linkModePreference: LinkModePreference.static,
-        sources: const [
+        sources: [
           'src/soloud_miniaudio_objc.mm',
           'src/native_decoder/os_decoder_apple.mm',
           'src/audiobuffer/aac_stream_decoder_apple.mm',
+          if (enableVst3 && os == OS.macOS) 'src/vst3/vst3_editor_macos.mm',
         ],
         includes: includes,
         forcedIncludes: forcedIncludes,
@@ -228,7 +241,7 @@ void main(List<String> args) async {
       assetName: _assetName,
       language: Language.cpp,
       std: 'c++17',
-      sources: collectSources(input.packageRoot, os),
+      sources: collectSources(input.packageRoot, os, enableVst3: enableVst3),
       includes: includes,
       forcedIncludes: forcedIncludes,
       defines: defines,
@@ -238,10 +251,17 @@ void main(List<String> args) async {
       // into the APK now that the CMake/AGP wiring is gone.
       cppLinkStdLib: os == OS.android ? 'c++_static' : null,
       frameworks: isApple
-          ? const ['Foundation', 'AudioToolbox', 'AVFAudio', 'CoreAudio']
+          ? [
+              'Foundation',
+              'AudioToolbox',
+              'AVFAudio',
+              'CoreAudio',
+              if (enableVst3 && os == OS.macOS) ...['AppKit', 'QuartzCore'],
+            ]
           : const [],
       libraries: [
         ...xiph.libraries,
+        ...vst3.libraries,
         if (isApple) 'flutter_soloud_miniaudio_objc',
         if (os == OS.android) ...['log', 'android', 'mediandk'],
         if (os == OS.windows) ...[
@@ -250,12 +270,17 @@ void main(List<String> args) async {
           'mfuuid',
           'shlwapi',
           'ole32',
+          if (enableVst3) ...['user32', 'gdi32'],
         ],
-        if (os == OS.linux) ...['dl'],
+        if (os == OS.linux) ...['dl', if (enableVst3) 'pthread'],
       ],
       // '.' is the hook output directory, where the miniaudio ObjC++ static
       // library was just built.
-      libraryDirectories: [if (isApple) '.', ...xiph.libraryDirectories],
+      libraryDirectories: [
+        if (isApple) '.',
+        ...xiph.libraryDirectories,
+        ...vst3.libraryDirectories,
+      ],
     );
     await builder.run(input: input, output: output);
 
@@ -267,6 +292,9 @@ void main(List<String> args) async {
     for (final dependency in xiph.dependencies) {
       output.dependencies.add(dependency);
     }
+    for (final dependency in vst3.dependencies) {
+      output.dependencies.add(dependency);
+    }
   });
 }
 
@@ -276,7 +304,11 @@ void main(List<String> args) async {
 
 /// Collects the plugin sources (paths relative to [packageRoot]) for
 /// [targetOS].
-List<String> collectSources(Uri packageRoot, OS targetOS) {
+List<String> collectSources(
+  Uri packageRoot,
+  OS targetOS, {
+  bool enableVst3 = false,
+}) {
   final rootPath = packageRoot.toFilePath().replaceAll(r'\', '/');
   final isApple = targetOS == OS.macOS || targetOS == OS.iOS;
   final sources = <String>[];
@@ -326,6 +358,21 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
   addDir('filters/');
   addDir('mixeroutput/');
   addDir('synth/');
+  if (enableVst3) {
+    addDir(
+      'vst3/',
+      exclude: (p) {
+        if (p.endsWith('.mm')) return true; // Built by objcBuilder on macOS
+        if (p.endsWith('vst3_editor_windows.cpp') && targetOS != OS.windows) {
+          return true;
+        }
+        if (p.endsWith('vst3_editor_linux.cpp') && targetOS != OS.linux) {
+          return true;
+        }
+        return false;
+      },
+    );
+  }
   addDir('waveform/');
   addDir(
     'native_decoder/',
@@ -1709,4 +1756,221 @@ Future<XiphLink> _linkFromInstall(
     bundledAssets: bundledAssets,
     dependencies: dependencies,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Prebuilt Steinberg VST3 Hosting SDK library wiring
+// ---------------------------------------------------------------------------
+
+final class Vst3Link {
+  Vst3Link._({
+    required this.libraries,
+    required this.libraryDirectories,
+    required this.includeDirs,
+    required this.dependencies,
+  });
+
+  factory Vst3Link.empty() => Vst3Link._(
+    libraries: const [],
+    libraryDirectories: const [],
+    includeDirs: const [],
+    dependencies: const [],
+  );
+
+  final List<String> libraries;
+  final List<String> libraryDirectories;
+  final List<String> includeDirs;
+  final List<Uri> dependencies;
+
+  static const String _prebuildRepo = 'alnitak/flutter_soloud_prebuilds';
+  static const String _defaultPrebuildTag = 'latest';
+  static const String _prebuildVersionFileName =
+      'flutter_soloud_prebuild_version.txt';
+
+  static String _baseUrlForTag(String tag) => tag == 'latest'
+      ? 'https://github.com/$_prebuildRepo/releases/latest/download'
+      : 'https://github.com/$_prebuildRepo/releases/download/$tag';
+
+  static Future<Vst3Link> forPrebuild(BuildInput input) async {
+    final code = input.config.code;
+    final os = code.targetOS;
+    final arch = code.targetArchitecture;
+    final packageRoot = input.packageRoot;
+
+    final tag =
+        (input.userDefines['prebuild_tag'] as String?)?.trim() ??
+        _defaultPrebuildTag;
+
+    final includeDir = await _ensureVst3Include(packageRoot, tag);
+
+    switch (os) {
+      case OS.macOS:
+        final dir = await _ensureVst3Platform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'macos',
+          archiveName: 'vst3-macos.tar.gz',
+          isZip: false,
+          tag: tag,
+          validator: (Directory d) =>
+              File('${d.path}/libvst3_hosting.a').existsSync(),
+        );
+        return Vst3Link._(
+          libraries: const ['vst3_hosting'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
+          dependencies: [File('${dir.path}/libvst3_hosting.a').uri],
+        );
+
+      case OS.linux:
+        if (arch != Architecture.x64 && arch != Architecture.arm64) {
+          throw UnsupportedError(
+            '[flutter_soloud] Prebuilt VST3 Linux libraries only support '
+            'x64 and arm64 (got ${arch.name}).',
+          );
+        }
+        final archStr = arch == Architecture.arm64 ? 'arm64' : 'x64';
+        final dir = await _ensureVst3Platform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'linux/$archStr',
+          archiveName: 'vst3-linux-$archStr.tar.gz',
+          isZip: false,
+          tag: tag,
+          validator: (Directory d) =>
+              File('${d.path}/libvst3_hosting.a').existsSync(),
+        );
+        return Vst3Link._(
+          libraries: const ['vst3_hosting'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
+          dependencies: [File('${dir.path}/libvst3_hosting.a').uri],
+        );
+
+      case OS.windows:
+        if (arch != Architecture.x64 && arch != Architecture.arm64) {
+          throw UnsupportedError(
+            '[flutter_soloud] Prebuilt VST3 Windows libraries only support '
+            'x64 and arm64 (got ${arch.name}).',
+          );
+        }
+        final archStr = arch == Architecture.arm64 ? 'arm64' : 'x64';
+        final dir = await _ensureVst3Platform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'windows/$archStr',
+          archiveName: 'vst3-windows-$archStr.zip',
+          isZip: true,
+          tag: tag,
+          validator: (Directory d) =>
+              File('${d.path}/vst3_hosting.lib').existsSync(),
+        );
+        return Vst3Link._(
+          libraries: const ['vst3_hosting'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
+          dependencies: [File('${dir.path}/vst3_hosting.lib').uri],
+        );
+
+      default:
+        return Vst3Link.empty();
+    }
+  }
+
+  static bool _hasHeaders(Directory dir, [String targetTag = 'latest']) {
+    if (!dir.existsSync()) return false;
+    if (targetTag != 'latest') {
+      final versionFile = File('${dir.path}/$_prebuildVersionFileName');
+      if (versionFile.existsSync()) {
+        final v = versionFile.readAsStringSync().trim();
+        if (v != targetTag && 'v$v' != targetTag) return false;
+      }
+    }
+    return File(
+          '${dir.path}/pluginterfaces/vst/ivstaudioprocessor.h',
+        ).existsSync() &&
+        File('${dir.path}/public.sdk/source/vst/hosting/module.h').existsSync();
+  }
+
+  static Future<Directory> _ensureVst3Include(
+    Uri packageRoot, [
+    String tag = _defaultPrebuildTag,
+  ]) async {
+    final cacheDir = Directory.fromUri(
+      packageRoot.resolve('.dart_tool/flutter_soloud/vst3/prebuild/include'),
+    );
+    if (_hasHeaders(cacheDir, tag)) return cacheDir;
+
+    print(
+      '[flutter_soloud] Downloading VST3 headers ($tag) from '
+      '$_prebuildRepo...',
+    );
+    if (cacheDir.existsSync()) {
+      cacheDir.deleteSync(recursive: true);
+    }
+    final resolvedTag = await XiphLink._downloadAndExtract(
+      '${_baseUrlForTag(tag)}/vst3-include.tar.gz',
+      cacheDir,
+      isZip: false,
+    );
+    final tagToWrite = resolvedTag ?? tag;
+    File(
+      '${cacheDir.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$tagToWrite\n');
+    return cacheDir;
+  }
+
+  static Future<Directory> _ensureVst3Platform({
+    required Uri packageRoot,
+    required OS os,
+    required Architecture arch,
+    required String subDir,
+    required String archiveName,
+    required bool isZip,
+    required bool Function(Directory dir) validator,
+    String tag = _defaultPrebuildTag,
+  }) async {
+    final cacheDir = Directory.fromUri(
+      packageRoot.resolve('.dart_tool/flutter_soloud/vst3/prebuild/$subDir'),
+    );
+    final versionFile = File('${cacheDir.path}/$_prebuildVersionFileName');
+    if (tag != 'latest' && versionFile.existsSync()) {
+      final v = versionFile.readAsStringSync().trim();
+      if (v != tag && 'v$v' != tag) {
+        if (cacheDir.existsSync()) {
+          cacheDir.deleteSync(recursive: true);
+        }
+      }
+    }
+    if (validator(cacheDir)) return cacheDir;
+
+    print(
+      '[flutter_soloud] Downloading prebuilt VST3 library ($tag) '
+      'for $os ($arch)...',
+    );
+    if (cacheDir.existsSync()) {
+      cacheDir.deleteSync(recursive: true);
+    }
+    final resolvedTag = await XiphLink._downloadAndExtract(
+      '${_baseUrlForTag(tag)}/$archiveName',
+      cacheDir,
+      isZip: isZip,
+    );
+    final tagToWrite = resolvedTag ?? tag;
+    File(
+      '${cacheDir.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$tagToWrite\n');
+
+    if (!validator(cacheDir)) {
+      throw StateError(
+        'Downloaded prebuilt VST3 library for $os ($arch) from '
+        '${_baseUrlForTag(tag)}/$archiveName, but validation failed in '
+        '${cacheDir.path}.',
+      );
+    }
+    return cacheDir;
+  }
 }

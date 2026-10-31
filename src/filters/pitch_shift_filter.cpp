@@ -8,6 +8,7 @@ PitchShiftInstance::PitchShiftInstance(PitchShift *aParent) {
   initParams(3);
   mParam[PitchShift::SHIFT] = aParent->mShift;
   mParam[PitchShift::SEMITONES] = aParent->mSemitones;
+  mOutputBuffer.resize(SAMPLE_GRANULARITY * MAX_CHANNELS, 0.0f);
 }
 
 void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
@@ -16,41 +17,45 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
                                 SoLoud::time aTime) {
   updateParams(aTime);
 
+  const float wetRatio = mParam[PitchShift::WET];
+  if (wetRatio <= 0.0f || aChannels == 0 || aSamples == 0) {
+    return;
+  }
+
+  const unsigned int channels =
+      aChannels > MAX_CHANNELS ? MAX_CHANNELS : aChannels;
+
   // Reconfigure the stretcher if sample rate or channel count changes
-  if (mChannelCount != aChannels || mSampleRate != aSamplerate) {
-    mChannelCount = aChannels;
+  if (mChannelCount != channels || mSampleRate != aSamplerate) {
+    mChannelCount = channels;
     mSampleRate = aSamplerate;
-    mStretch.presetDefault(static_cast<int>(aChannels), aSamplerate);
+    mStretch.presetDefault(static_cast<int>(channels), aSamplerate);
   }
 
   // Set the pitch shift factor
   mStretch.setTransposeFactor(mParam[PitchShift::SHIFT]);
 
-  const float dryRatio = 1.0f - mParam[PitchShift::WET];
-  const float wetRatio = mParam[PitchShift::WET];
+  const float dryRatio = 1.0f - wetRatio;
 
-  // SignalSmith expects channel-separated buffers (float**)
-  // SoLoud provides data where each channel's samples are contiguous.
-  // I'd prefer using this way instead of using per channel stretcher
-  // with SoLoud::FilterInstance::filterChannels because SignalSmith
-  // is optimized for multichannels.
-  std::vector<float *> inputChannels(aChannels);
-  std::vector<float *> outputChannels(aChannels);
-  std::vector<float> outputBuffer(aSamples * aChannels);
+  const size_t needed = static_cast<size_t>(aSamples) * channels;
+  if (mOutputBuffer.size() < needed) {
+    mOutputBuffer.resize(needed);
+  }
 
-  for (unsigned int ch = 0; ch < aChannels; ch++) {
-    inputChannels[ch] = aBuffer + ch * aSamples;
-    outputChannels[ch] = outputBuffer.data() + ch * aSamples;
+  for (unsigned int ch = 0; ch < channels; ch++) {
+    mInputChannels[ch] = aBuffer + static_cast<size_t>(ch) * aBufferSize;
+    mOutputChannels[ch] =
+        mOutputBuffer.data() + static_cast<size_t>(ch) * aSamples;
   }
 
   // Process all channels together
-  mStretch.process(inputChannels.data(), static_cast<int>(aSamples),
-                   outputChannels.data(), static_cast<int>(aSamples));
+  mStretch.process(mInputChannels, static_cast<int>(aSamples),
+                   mOutputChannels, static_cast<int>(aSamples));
 
   // Apply wet/dry mix and copy back to buffer
-  for (unsigned int ch = 0; ch < aChannels; ch++) {
-    float *channelIn = aBuffer + ch * aSamples;
-    float *channelOut = outputChannels[ch];
+  for (unsigned int ch = 0; ch < channels; ch++) {
+    float *channelIn = aBuffer + static_cast<size_t>(ch) * aBufferSize;
+    float *channelOut = mOutputChannels[ch];
 
     if (wetRatio < 1.0f) {
       for (unsigned int j = 0; j < aSamples; j++) {
@@ -91,7 +96,7 @@ void PitchShiftInstance::setFilterParameter(unsigned int aAttributeId,
     break;
   }
 
-  mParamChanged |= 1 << aAttributeId;
+  mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
 }
 
 SoLoud::result PitchShift::setParam(unsigned int aParamIndex, float aValue) {

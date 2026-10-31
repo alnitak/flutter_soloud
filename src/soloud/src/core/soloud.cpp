@@ -128,6 +128,7 @@ namespace SoLoud
 		mRenderAheadFrames = 0;
 		mCheckpointWriteIndex = 0;
 		mCheckpointCounter = 0;
+		mMixingToRenderRing = false;
 		mRemixing = false;
 		mRemixSuppressEndedCount = 0;
 		mClockedAnchorTime = 0;
@@ -771,6 +772,7 @@ namespace SoLoud
 				mRenderAheadFrames + aBufferSize + 4 * mDevicePeriodFrames;
 			mRenderRing.init(capacity, aChannels);
 			mRenderRingStaging.init(aBufferSize * aChannels);
+			mPostRingScratch.init(mScratchSize * MAX_CHANNELS);
 			// ###### flutter_soloud local patch (mix checkpoints) ######
 			// Circular pool of quantum-boundary snapshots covering the whole
 			// render-ahead window plus margin. All storage is pre-sized here;
@@ -842,9 +844,100 @@ namespace SoLoud
 		while (mRenderRing.availableToRead() < mRenderAheadFrames &&
 			mRenderRing.availableToWrite() >= mBufferSize)
 		{
-			mix(mRenderRingStaging.mData, mBufferSize);
+			unsigned int stride = (mBufferSize + 15) & ~0xf;
+			float buffertime = mBufferSize / (float)mSamplerate;
+			float globalVolume[2];
+
+			lockAudioMutex_internal();
+			mMixingToRenderRing = true;
+			mStreamTime += buffertime;
+
+			globalVolume[0] = mGlobalVolume;
+			if (mGlobalVolumeFader.mActive)
+			{
+				mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
+			}
+			globalVolume[1] = mGlobalVolume;
+
+			mixVoicesLocked_internal(mBufferSize, stride);
+
+			const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
+			mVoiceInactiveCallbackPending = false;
+
+			clip_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+			interlace_samples_float(mScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
 			mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
+			mMixingToRenderRing = false;
+			unlockAudioMutex_internal();
+
+			auto voiceInactiveCallback =
+				_voiceInactiveCallback.load(std::memory_order_acquire);
+			if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
+				voiceInactiveCallback();
 		}
+	}
+
+	void Soloud::postProcessRenderRing_internal(float *aBuffer, unsigned int aSamples)
+	{
+		if (aSamples == 0 || mChannels == 0 || mScratchSize == 0 || mPostRingScratch.mData == NULL)
+			return;
+		lockAudioMutex_internal();
+		bool anyFilter = false;
+		unsigned int i;
+		for (i = 0; i < FILTERS_PER_STREAM; i++)
+		{
+			if (mFilterInstance[i] != NULL)
+			{
+				anyFilter = true;
+				break;
+			}
+		}
+		if (!anyFilter)
+		{
+			unlockAudioMutex_internal();
+			return;
+		}
+		time t = playheadTimeLocked_internal();
+		unsigned int offset = 0;
+		unsigned int maxChunk = mScratchSize & ~0xfu;
+		if (maxChunk == 0)
+			maxChunk = mScratchSize;
+		while (offset < aSamples)
+		{
+			unsigned int chunk = aSamples - offset;
+			if (chunk > maxChunk)
+				chunk = maxChunk;
+			unsigned int stride = (chunk + 15) & ~0xfu;
+			if (stride > mScratchSize)
+				stride = mScratchSize;
+			float *planar = mPostRingScratch.mData;
+			const float *src = aBuffer + (size_t)offset * mChannels;
+			unsigned int c, j;
+			for (c = 0; c < mChannels; c++)
+			{
+				float *dstCh = planar + (size_t)c * stride;
+				for (j = 0; j < chunk; j++)
+				{
+					dstCh[j] = src[j * mChannels + c];
+				}
+				for (; j < stride; j++)
+				{
+					dstCh[j] = 0.0f;
+				}
+			}
+			for (i = 0; i < FILTERS_PER_STREAM; i++)
+			{
+				if (mFilterInstance[i] != NULL)
+				{
+					mFilterInstance[i]->filter(planar, chunk, stride, mChannels, (float)mSamplerate, t);
+				}
+			}
+			interlace_samples_float(planar, aBuffer + (size_t)offset * mChannels, chunk, mChannels, stride);
+			if (mSamplerate > 0)
+				t += (time)chunk / (time)mSamplerate;
+			offset += chunk;
+		}
+		unlockAudioMutex_internal();
 	}
 
 	const char * Soloud::getErrorString(result aErrorCode) const
@@ -1809,11 +1902,54 @@ namespace SoLoud
 					{
 						samplesToProduce = (unsigned int)voice->mStopSamplesLeft;
 						stopAfterProduce = true;
+						if (voice->mVolumeFader.mActive > 0 &&
+							voice->mVolumeFader.mTo <= 1e-5f)
+						{
+							voice->mOverallVolume = 0.0f;
+						}
 					}
 					else
 					{
 						voice->mStopSamplesLeft -= aSamplesToRead;
 					}
+				}
+
+				if ((voice->mFlags & AudioSourceInstance::REALTIME_DIRECT) &&
+					step_fixed == FIXPOINT_FRAC_MUL &&
+					voice->mLeftoverSamples == 0 &&
+					voice->mSrcOffset == 0 &&
+					outofs < samplesToProduce)
+				{
+					unsigned int directSamples = samplesToProduce - outofs;
+					unsigned int readcount = 0;
+					if (!voice->hasEnded() || (voice->mFlags & AudioSourceInstance::LOOPING))
+					{
+						readcount = readSourceSamples_internal(
+							voice, aScratch + outofs, directSamples, aBufferSize);
+					}
+					if (readcount < directSamples)
+					{
+						unsigned int k;
+						for (k = 0; k < voice->mChannels; k++)
+						{
+							memset(aScratch + outofs + readcount + aBufferSize * k,
+								0, sizeof(float) * (directSamples - readcount));
+						}
+					}
+					for (j = 0; j < FILTERS_PER_STREAM; j++)
+					{
+						if (voice->mFilter[j])
+						{
+							voice->mFilter[j]->filter(
+								aScratch + outofs,
+								directSamples,
+								aBufferSize,
+								voice->mChannels,
+								voice->mSamplerate,
+								mStreamTime);
+						}
+					}
+					outofs = samplesToProduce;
 				}
 
 				while (step_fixed != 0 && outofs < samplesToProduce)
@@ -1891,7 +2027,8 @@ namespace SoLoud
 						writesamples = ((SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL) - voice->mSrcOffset) / step_fixed + 1;
 
 						// avoid reading past the current buffer..
-						if (((writesamples * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
+						if (writesamples > 0 &&
+							(((writesamples - 1) * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
 							writesamples--;
 					}
 
@@ -1952,6 +2089,19 @@ namespace SoLoud
 					voice->mSrcOffset += writesamples * step_fixed;
 				}
 				
+				// If the resampler loop exited early (e.g. no resample buffer),
+				// zero the unwritten region of aScratch so panAndExpand never
+				// mixes stale scratch memory.
+				if (outofs < samplesToProduce)
+				{
+					unsigned int k;
+					for (k = 0; k < voice->mChannels; k++)
+					{
+						memset(aScratch + k * aBufferSize + outofs, 0,
+							sizeof(float) * (samplesToProduce - outofs));
+					}
+				}
+
 				// Handle panning and channel expansion (and/or shrinking)
 				panAndExpand(voice, aBuffer, samplesToProduce, aBufferSize, aScratch, aChannels);
 
@@ -2059,7 +2209,8 @@ namespace SoLoud
 						writesamples = ((SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL) - voice->mSrcOffset) / step_fixed + 1;
 
 						// avoid reading past the current buffer..
-						if (((writesamples * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
+						if (writesamples > 0 &&
+							(((writesamples - 1) * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
 							writesamples--;
 					}
 
@@ -2097,9 +2248,13 @@ namespace SoLoud
 		unsigned int i, j;
 		for (i = 0; i < mMaxActiveVoices; i++)
 		{
-			for (j = 0; j < mMaxActiveVoices; j++)
+			if (!mResampleDataOwner[i])
+				continue;
+			for (j = 0; j < mActiveVoiceCount; j++)
 			{
-				if (mResampleDataOwner[i] && mResampleDataOwner[i] == mVoice[mActiveVoice[j]])
+				if (mResampleDataOwner[i] == mVoice[mActiveVoice[j]] &&
+					mResampleDataOwner[i]->mResampleData[0] != NULL &&
+					mResampleDataOwner[i]->mResampleData[1] != NULL)
 				{
 					live[i] |= 1; // Live channel
 					live[j] |= 2; // Live voice
@@ -2312,7 +2467,41 @@ namespace SoLoud
 					if (mVoice[i]->mStopScheduler.mActive == -1)
 					{
 						mVoice[i]->mStopScheduler.mActive = 0;
-						stopVoice_internal(i);
+						// If the voice was fading to 0 on the same quantum tick,
+						// mVolumeFader just set mSetVolume = 0 above, but
+						// mCurrentChannelVolume still holds the previous quantum's
+						// end volume until mixBus_internal runs panAndExpand.
+						// Stopping before mixBus_internal would drop the final
+						// quantum ramp and leave a step discontinuity. Instead,
+						// let audible voices with non-zero channel volume ramp to
+						// 0 across this quantum and stop at the end of it.
+						bool hasResidualVolume = false;
+						if (!(mVoice[i]->mFlags & AudioSourceInstance::INAUDIBLE))
+						{
+							unsigned int ch;
+							for (ch = 0; ch < mChannels; ch++)
+							{
+								if (mVoice[i]->mCurrentChannelVolume[ch] > 1e-5f)
+								{
+									hasResidualVolume = true;
+									break;
+								}
+							}
+						}
+						if (hasResidualVolume)
+						{
+							mVoice[i]->mVolumeFader.mActive = 0;
+							setVoiceVolume_internal(i, 0.0f);
+							if (mVoice[i]->mStopSamplesLeft < 0 ||
+								mVoice[i]->mStopSamplesLeft > (long long)aSamples)
+							{
+								mVoice[i]->mStopSamplesLeft = aSamples;
+							}
+						}
+						else
+						{
+							stopVoice_internal(i);
+						}
 					}
 				}
 
@@ -2340,11 +2529,18 @@ namespace SoLoud
 
 		mixBus_internal(mOutputScratch.mData, aSamples, aStride, mScratch.mData, 0, (float)mSamplerate, mChannels, mResampler);
 
-		for (i = 0; i < FILTERS_PER_STREAM; i++)
+		// When mixing into mRenderRing (or re-mixing a rolled-back window),
+		// global filters are applied post-ring at the device playhead in
+		// postProcessRenderRing_internal() so stateful DSP (PitchShift,
+		// Freeverb, Echo, VST3, etc.) never processes rolled-back audio twice.
+		if (!mMixingToRenderRing && !mRemixing)
 		{
-			if (mFilterInstance[i])
+			for (i = 0; i < FILTERS_PER_STREAM; i++)
 			{
-				mFilterInstance[i]->filter(mOutputScratch.mData, aSamples, aStride, mChannels, (float)mSamplerate, mStreamTime);
+				if (mFilterInstance[i])
+				{
+					mFilterInstance[i]->filter(mOutputScratch.mData, aSamples, aStride, mChannels, (float)mSamplerate, mStreamTime);
+				}
 			}
 		}
 

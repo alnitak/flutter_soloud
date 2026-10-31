@@ -96,7 +96,7 @@ void ParametricEqInstance::initFFTBuffers() {
   }
 
   // Free and reallocate channel buffers for all possible channels (up to
-  // MAX_CHANNELS)
+  // MAX_CHANNELS) outside the real-time audio path
   for (int i = 0; i < MAX_CHANNELS; i++) {
     if (mInputBuffer[i] != nullptr) {
       delete[] mInputBuffer[i];
@@ -106,11 +106,24 @@ void ParametricEqInstance::initFFTBuffers() {
       delete[] mMixBuffer[i];
       mMixBuffer[i] = nullptr;
     }
+    mInputBuffer[i] = new float[mParent->mSTFT_WINDOW_TWICE]();
+    mMixBuffer[i] = new float[mParent->mSTFT_WINDOW_TWICE]();
     // Reset offsets
     mInputOffset[i] = mParent->mSTFT_WINDOW_SIZE;
     mMixOffset[i] = mParent->mSTFT_WINDOW_HALF;
     mReadOffset[i] = 0;
   }
+
+  // Precompute scaled Hann window table once per window-size change
+  const int winSize = mParent->mSTFT_WINDOW_SIZE;
+  mHannWindow.resize(winSize);
+  const float scale = mParent->mFFT_SCALE;
+  for (int i = 0; i < winSize; i++) {
+    mHannWindow[i] =
+        0.5f * (1.0f - cosf((2.0f * (float)M_PI * i) / (float)winSize)) * scale;
+  }
+  mBinGainTable.assign(winSize, 1.0f);
+  mGainTableDirty = true;
 
   // Initialize FFT setup for complex transforms
   mFFTSetup = pffft_new_setup(mParent->mSTFT_WINDOW_SIZE, PFFFT_COMPLEX);
@@ -222,122 +235,27 @@ void ParametricEqInstance::setFilterParameter(unsigned int aAttributeId,
     }
     break;
   }
+
+  mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
+  mGainTableDirty = true;
 }
 
-void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
-                                         float aSamplerate, SoLoud::time aTime,
-                                         unsigned int aChannel,
-                                         unsigned int aChannels) {
-  if (mParent == nullptr) {
-    return;
+void ParametricEqInstance::updateBinGainTable(unsigned int aSamples,
+                                              float aSamplerate) {
+  mCachedSampleRate = aSamplerate;
+  mGainTableDirty = false;
+  mParamChanged = 0;
+
+  if (mBinGainTable.size() != aSamples) {
+    mBinGainTable.assign(aSamples, 1.0f);
   }
 
-  if (aChannel >= MAX_CHANNELS) {
-    return;
-  }
-
-  if (mParent->mSTFT_WINDOW_TWICE <= 0 ||
-      mParent->mSTFT_WINDOW_TWICE > 131072) {
-    return;
-  }
-
-  // Advance parameter fades/oscillations once per audio callback
-  if (aChannel == 0) {
-    updateParams(aTime);
-  }
-
-  // Lazy initialization of buffers for this channel
-  if (mInputBuffer[aChannel] == nullptr) {
-    mInputBuffer[aChannel] =
-        new float[mParent->mSTFT_WINDOW_TWICE](); // () initializes to zero
-    mMixBuffer[aChannel] = new float[mParent->mSTFT_WINDOW_TWICE]();
-  }
-
-  unsigned int ofs = 0;
-  unsigned int chofs = 0;
-  unsigned int inputofs = mInputOffset[aChannel];
-  unsigned int mixofs = mMixOffset[aChannel];
-  unsigned int readofs = mReadOffset[aChannel];
-
-  while (ofs < aSamples) {
-    int samples = mParent->mSTFT_WINDOW_HALF -
-                  (inputofs & (mParent->mSTFT_WINDOW_HALF - 1));
-    if (ofs + samples > aSamples)
-      samples = aSamples - ofs;
-    for (int i = 0; i < samples; i++) {
-      mInputBuffer[aChannel][chofs + ((inputofs + mParent->mSTFT_WINDOW_HALF) &
-                                      (mParent->mSTFT_WINDOW_TWICE - 1))] =
-          aBuffer[ofs + i];
-      mMixBuffer[aChannel][chofs + ((inputofs + mParent->mSTFT_WINDOW_HALF) &
-                                    (mParent->mSTFT_WINDOW_TWICE - 1))] = 0;
-      inputofs++;
-    }
-
-    if ((inputofs & (mParent->mSTFT_WINDOW_HALF - 1)) == 0) {
-      // Copy input to FFT buffer (interleaved real/imag format)
-      for (int i = 0; i < mParent->mSTFT_WINDOW_SIZE; i++) {
-        float sample =
-            mInputBuffer[aChannel]
-                        [chofs + ((inputofs + mParent->mSTFT_WINDOW_TWICE -
-                                   mParent->mSTFT_WINDOW_HALF + i) &
-                                  (mParent->mSTFT_WINDOW_TWICE - 1))];
-        mFFTBuffer[i * 2] = sample;   // Real part
-        mFFTBuffer[i * 2 + 1] = 0.0f; // Imaginary part
-      }
-
-      // Forward FFT (ordered output: interleaved complex numbers)
-      pffft_transform_ordered(mFFTSetup, mFFTBuffer, mTemp, mFFTWork,
-                              PFFFT_FORWARD);
-
-      // Apply EQ on the transformed complex bins (process all N complex bins)
-      fftFilterChannel(mTemp, mParent->mSTFT_WINDOW_SIZE, aSamplerate, aTime,
-                       aChannel, aChannels);
-
-      // Inverse FFT (ordered output)
-      pffft_transform_ordered(mFFTSetup, mTemp, mFFTBuffer, mFFTWork,
-                              PFFFT_BACKWARD);
-
-      // Apply scaling and Hann window for overlap-add
-      for (int i = 0; i < mParent->mSTFT_WINDOW_SIZE; i++) {
-        float window =
-            0.5f *
-            (1.0f - cosf((2.0f * M_PI * i) / mParent->mSTFT_WINDOW_SIZE));
-        float sample = mFFTBuffer[i * 2] * mParent->mFFT_SCALE *
-                       window; // Only use real part
-        mMixBuffer[aChannel]
-                  [chofs + (mixofs & (mParent->mSTFT_WINDOW_TWICE - 1))] +=
-            sample;
-        mixofs++;
-      }
-      mixofs -= mParent->mSTFT_WINDOW_HALF;
-    }
-
-    for (int i = 0; i < samples; i++) {
-      aBuffer[ofs + i] =
-          mMixBuffer[aChannel]
-                    [chofs + (readofs & (mParent->mSTFT_WINDOW_TWICE - 1))];
-      readofs++;
-    }
-
-    ofs += samples;
-  }
-  mInputOffset[aChannel] = inputofs;
-  mReadOffset[aChannel] = readofs;
-  mMixOffset[aChannel] = mixofs;
-}
-
-void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
-                                            unsigned int aSamples,
-                                            float aSamplerate,
-                                            SoLoud::time /*aTime*/,
-                                            unsigned int /*aChannel*/,
-                                            unsigned int /*aChannels*/) {
   float wet = mParam[0];
   if (wet <= 0.0f) {
+    mHasActiveBands = false;
     return;
   }
 
-  // Pre-filter and collect active bands (skipping flat bands where gain == 1.0)
   struct ActiveBand {
     float gain;
     float log_fc;
@@ -366,11 +284,6 @@ void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
     if (q > 20.0f)
       q = 20.0f;
 
-    // Bell curve (Gaussian) on logarithmic frequency scale:
-    // weight(f) = exp( - 0.5 * (ln(f / f_c) / sigma)^2 )
-    // where sigma = ln(2) / (2 * Q)
-    // 2 * sigma^2 = (ln(2))^2 / (2 * Q^2)
-    // inv_two_sigma_sq = 2 * Q^2 / (ln(2))^2 ~= 4.16277f * Q^2
     float inv_two_sigma_sq = 4.16277f * q * q;
 
     activeBands[numActiveBands].gain = gain;
@@ -379,32 +292,27 @@ void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
     numActiveBands++;
   }
 
-  // If no bands are modified, pass through untouched
   if (numActiveBands == 0) {
+    mHasActiveBands = false;
     return;
   }
 
+  mHasActiveBands = true;
   float bin_hz = aSamplerate / (float)aSamples;
   unsigned int halfSamples = aSamples / 2;
 
-  // Process positive and negative FFT bins (bin 0 is DC, untouched)
-  for (unsigned int i = 1; i < aSamples; i++) {
-    unsigned int freqBin = (i <= halfSamples) ? i : (aSamples - i);
-    float current_freq = (float)freqBin * bin_hz;
+  mBinGainTable[0] = 1.0f;
+  for (unsigned int i = 1; i <= halfSamples; i++) {
+    float current_freq = (float)i * bin_hz;
     float log_f = logf(current_freq);
-
     float total_gain = 1.0f;
 
     for (int b = 0; b < numActiveBands; b++) {
       float d = log_f - activeBands[b].log_fc;
-      float d2 = d * d;
-      float exponent = d2 * activeBands[b].inv_two_sigma_sq;
-
-      // Truncate bell curve when weight is negligible (< ~0.0001, beyond 3 standard deviations)
+      float exponent = d * d * activeBands[b].inv_two_sigma_sq;
       if (exponent > 9.0f) {
         continue;
       }
-
       float weight = expf(-exponent);
       float band_factor = 1.0f + (activeBands[b].gain - 1.0f) * weight;
       if (band_factor < 0.0f)
@@ -413,8 +321,131 @@ void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
     }
 
     float final_scale = total_gain * wet + (1.0f - wet);
-    aFFTBuffer[i * 2] *= final_scale;
-    aFFTBuffer[i * 2 + 1] *= final_scale;
+    mBinGainTable[i] = final_scale;
+    if (i < halfSamples) {
+      mBinGainTable[aSamples - i] = final_scale;
+    }
+  }
+}
+
+void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
+                                         float aSamplerate, SoLoud::time aTime,
+                                         unsigned int aChannel,
+                                         unsigned int aChannels) {
+  if (mParent == nullptr) {
+    return;
+  }
+
+  if (aChannel >= MAX_CHANNELS) {
+    return;
+  }
+
+  if (mParent->mSTFT_WINDOW_TWICE <= 0 ||
+      mParent->mSTFT_WINDOW_TWICE > 131072) {
+    return;
+  }
+
+  // Advance parameter fades/oscillations once per audio callback
+  if (aChannel == 0) {
+    updateParams(aTime);
+    if (mParamChanged != 0) {
+      mGainTableDirty = true;
+    }
+  }
+
+  if (mInputBuffer[aChannel] == nullptr) {
+    mInputBuffer[aChannel] = new float[mParent->mSTFT_WINDOW_TWICE]();
+    mMixBuffer[aChannel] = new float[mParent->mSTFT_WINDOW_TWICE]();
+  }
+
+  const int winSize = mParent->mSTFT_WINDOW_SIZE;
+  const int winHalf = mParent->mSTFT_WINDOW_HALF;
+  const int winTwiceMask = mParent->mSTFT_WINDOW_TWICE - 1;
+  const float *hannWindow = mHannWindow.data();
+
+  unsigned int ofs = 0;
+  unsigned int chofs = 0;
+  unsigned int inputofs = mInputOffset[aChannel];
+  unsigned int mixofs = mMixOffset[aChannel];
+  unsigned int readofs = mReadOffset[aChannel];
+
+  while (ofs < aSamples) {
+    int samples = winHalf - (inputofs & (winHalf - 1));
+    if (ofs + samples > aSamples)
+      samples = aSamples - ofs;
+    for (int i = 0; i < samples; i++) {
+      const unsigned int idx = chofs + ((inputofs + winHalf) & winTwiceMask);
+      mInputBuffer[aChannel][idx] = aBuffer[ofs + i];
+      mMixBuffer[aChannel][idx] = 0;
+      inputofs++;
+    }
+
+    if ((inputofs & (winHalf - 1)) == 0) {
+      // Copy input to FFT buffer (interleaved real/imag format)
+      const unsigned int baseIdx =
+          inputofs + mParent->mSTFT_WINDOW_TWICE - winHalf;
+      for (int i = 0; i < winSize; i++) {
+        float sample = mInputBuffer[aChannel][chofs + ((baseIdx + i) & winTwiceMask)];
+        mFFTBuffer[i * 2] = sample;   // Real part
+        mFFTBuffer[i * 2 + 1] = 0.0f; // Imaginary part
+      }
+
+      // Forward FFT (ordered output: interleaved complex numbers)
+      pffft_transform_ordered(mFFTSetup, mFFTBuffer, mTemp, mFFTWork,
+                              PFFFT_FORWARD);
+
+      // Apply EQ on the transformed complex bins (process all N complex bins)
+      fftFilterChannel(mTemp, winSize, aSamplerate, aTime, aChannel, aChannels);
+
+      // Inverse FFT (ordered output)
+      pffft_transform_ordered(mFFTSetup, mTemp, mFFTBuffer, mFFTWork,
+                              PFFFT_BACKWARD);
+
+      // Apply precomputed scaled Hann window for overlap-add
+      for (int i = 0; i < winSize; i++) {
+        float sample = mFFTBuffer[i * 2] * hannWindow[i];
+        mMixBuffer[aChannel][chofs + (mixofs & winTwiceMask)] += sample;
+        mixofs++;
+      }
+      mixofs -= winHalf;
+    }
+
+    for (int i = 0; i < samples; i++) {
+      aBuffer[ofs + i] = mMixBuffer[aChannel][chofs + (readofs & winTwiceMask)];
+      readofs++;
+    }
+
+    ofs += samples;
+  }
+  mInputOffset[aChannel] = inputofs;
+  mReadOffset[aChannel] = readofs;
+  mMixOffset[aChannel] = mixofs;
+}
+
+void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
+                                            unsigned int aSamples,
+                                            float aSamplerate,
+                                            SoLoud::time /*aTime*/,
+                                            unsigned int /*aChannel*/,
+                                            unsigned int /*aChannels*/) {
+  if (mParam[0] <= 0.0f) {
+    return;
+  }
+
+  if (mGainTableDirty || mCachedSampleRate != aSamplerate ||
+      mBinGainTable.size() != aSamples) {
+    updateBinGainTable(aSamples, aSamplerate);
+  }
+
+  if (!mHasActiveBands) {
+    return;
+  }
+
+  const float *scale = mBinGainTable.data();
+  for (unsigned int i = 1; i < aSamples; i++) {
+    const float s = scale[i];
+    aFFTBuffer[i * 2] *= s;
+    aFFTBuffer[i * 2 + 1] *= s;
   }
 }
 

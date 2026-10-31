@@ -1,7 +1,7 @@
 ---
 name: flutter-soloud-filters
-version: 1
-description: Teaches correct use of flutter_soloud's 13 DSP filters (echo, freeverb, biquad, bassboost, flanger, waveShaper, lofi, robotize, pitchShift, limiter, compressor, parametricEq, amplitudeModulator) at global, per-sound, and per-bus scope, including activation ordering, FilterParam value/fade/oscillate, and per-platform limits. Use when the user asks to add audio effects, reverb, an equalizer/EQ, pitch shifting or time stretching, dynamic-range compression, ring modulation, or anti-clipping/limiting to playback.
+version: 3
+description: Teaches correct use of flutter_soloud's 14 DSP filters (echo, freeverb, biquad, bassboost, flanger, waveShaper, lofi, robotize, pitchShift, limiter, compressor, parametricEq, amplitudeModulator, and multi-instance customFilter) at global, per-sound, and per-bus scope, including activation ordering, FilterParam value/fade/oscillate, and per-platform limits. Use when the user asks to add audio effects, reverb, an equalizer/EQ, pitch shifting or time stretching, dynamic-range compression, ring modulation, anti-clipping/limiting, or custom DSP filter slots to playback.
 ---
 
 flutter_soloud exposes the SoLoud engine's filter graph as typed Dart objects. Filters live at three scopes — global output (`SoLoud.instance.filters`), a single loaded sound (`audioSource.filters`), and a mixing bus (`bus.filters`). Every filter is activated with `activate()` and tuned through `FilterParam` objects (`param.value`, `fadeFilterParameter`, `oscillateFilterParameter`). There is no "node graph" to wire like the Web Audio API and no per-player effect config like just_audio — you activate a filter, then mutate its parameters live.
@@ -30,8 +30,8 @@ Future<void> main() async {
 
 ## The API shape
 
-- `SoLoud.instance.filters` → `FiltersGlobal`. Getters: `biquadResonantFilter`, `echoFilter`, `lofiFilter`, `flangerFilter`, `bassBoostFilter`, `waveShaperFilter`, `robotizeFilter`, `freeverbFilter`, `pitchShiftFilter`, `limiterFilter`, `compressorFilter`, `parametricEqFilter`, `amplitudeModulatorFilter`. Params are getters: `filters.echoFilter.delay.value = 0.2`.
-- `audioSource.filters` → `FiltersSingle`. Same filters, except the biquad getter is named **`biquadFilter`** (global scope calls it `biquadResonantFilter`). Params are **methods** taking the playing voice's handle: `sound.filters.echoFilter.delay(soundHandle: handle).value = 0.2`.
+- `SoLoud.instance.filters` → `FiltersGlobal`. Getters: `biquadResonantFilter`, `echoFilter`, `lofiFilter`, `flangerFilter`, `bassBoostFilter`, `waveShaperFilter`, `robotizeFilter`, `freeverbFilter`, `pitchShiftFilter`, `limiterFilter`, `compressorFilter`, `parametricEqFilter`, `amplitudeModulatorFilter`, plus method `customFilter(int id)` (`0 <= id < 8`). Params are getters: `filters.echoFilter.delay.value = 0.2`.
+- `audioSource.filters` → `FiltersSingle`. Same filters, except the biquad getter is named **`biquadFilter`** (global scope calls it `biquadResonantFilter`), plus `customFilter(int id)`. Params are **methods** taking the playing voice's handle: `sound.filters.echoFilter.delay(soundHandle: handle).value = 0.2`.
 - `bus.filters` → `FiltersSingle(busId: ...)` on a `Bus` from `SoLoud.instance.createMixingBus()`. Params apply bus-wide; no `soundHandle` needed.
 - `FilterBase`: `activate()`, `deactivate()`, `isActive` (bool), `index` (filter slot, `-1` when inactive), `filterType`.
 - `FilterParam`: `double get value` / `set value(double)`, `fadeFilterParameter({required double to, required Duration time})`, `oscillateFilterParameter({required double from, required double to, required Duration time})`.
@@ -54,6 +54,7 @@ Which params matter for the common use (full table in `references/filter-paramet
 | compressor | `threshold` −80–0 dB (−6), `ratio` 1–10 (3), `makeupGain` −40–40 dB (0), `attackTime` 0–100 ms (10), `releaseTime` 0–1000 ms (100), `kneeWidth` 0–40 dB (2) |
 | parametricEq | `numBands` 1–64 (3), `stftWindowSize` 32–4096 power of two (1024), `bandGain(i)` 0–4 (1), `bandFreq(i)` 10–24000 Hz, `bandQ(i)` 0.1–20 (~1.0) |
 | amplitudeModulator | `frequency` 0.1–20000 Hz (440); sine ring modulation, clamped below Nyquist at runtime |
+| customFilter(id) | `wet` 0–1 (1), `param(1)`..`param(7)` user-defined via `configureParameters(specs)`, up to 8 independent slots (`id` in `0..7`) per scope (see **flutter-soloud-custom-dsp** and **flutter-soloud-realtime-dsp**) |
 
 Every filter also has `wet` (0–1, default 1): 1 = fully processed, 0 = dry passthrough.
 
@@ -92,19 +93,20 @@ final hz = eq.bandFrequency(0); // reads current center frequency (45 Hz)
 ## Traps
 
 - **Per-sound filters must be activated before `play()`.** Only voices started after `activate()` carry the filter; already-playing handles are unaffected. To change the filter set, `stop` the handle and play again.
-- **Max 8 filters per stream/sound** (`FILTERS_PER_STREAM` in SoLoud). The 13 types each occupy one slot per scope.
+- **Max 8 filters per stream/sound** (`FILTERS_PER_STREAM` in SoLoud). The 13 built-in filter types allow one instance per scope, whereas `customFilter(id)` allows up to 8 distinct instances (`id: 0..7`) on the same scope (sharing the 8 total slots per scope).
 - **Out-of-range `param.value` sets are silently ignored** — the setter logs a warning and returns without throwing. Check bounds with the `queryXxx.min/max` getters.
 - **Naming inconsistencies vs. intuition:** the single/bus-scope biquad getter is `biquadFilter` (global: `biquadResonantFilter`); freeverb's damping param is `damp` (not `damping`); lofi's params are `samplerate`/`bitdepth` (all lowercase). The online docs get some of these wrong — trust the code in `lib/src/filters/`.
 - **freeverb is 2-channel only.** As a global filter, init the engine with the default 2 channels (don't pass `channels:` to `SoLoud.instance.init`); as a per-sound filter the sound itself must be stereo.
-- **parametricEq `stftWindowSize` must be a power of two in 32..4096**, otherwise the set is ignored with a warning. Larger window = more frequency accuracy, more latency and CPU.
+- **parametricEq `stftWindowSize` must be a power of two in 32..4096**, otherwise the set is ignored with a log warning. Larger window = more frequency accuracy, more latency and CPU.
 - **`fadeFilterParameter`/`oscillateFilterParameter` throw `SoLoudNotInitializedException`** if the engine isn't initialized; `FilterParam.value` can throw `SoLoudCppException` on native errors. Engine re-init (`deinit()` + `init()`) drops all active filters — reactivate afterwards.
 - **Filter order matters:** activation order is the processing order. Put gain-reducing filters (compressor, limiter) last — activate them after everything else (tip from `example/lib/filters/limiter.dart`).
 - On Android, the default low-latency output profile leaves little CPU headroom for heavy filters (FFT pitch shift, large-EQ windows); pass `lowLatency: false` to `SoLoud.instance.init` if you hear underruns.
 
 ## More depth
 
-- `references/filter-parameters.md` — every parameter of all 13 filters with min/max/default and the matching `queryXxx` getter.
-- Interactive demos in the plugin repo: `example/lib/filters/` (`compressor.dart`, `limiter.dart`, `parametric_eq.dart`, `pitchshift.dart`) and the automated examples under `example/tests/tests/` (`global_filters.dart`, `sound_filters.dart`, `equalizer_filter.dart`, `compressor_filter.dart`, `limiter_filter.dart`, `pitch_shifter_filter.dart`).
+- `references/filter-parameters.md` — every parameter of all 14 filters with min/max/default and the matching `queryXxx` getter.
+- Custom synchronous DSP filters (`customFilter(id)`) are covered in depth by **flutter-soloud-custom-dsp** (`skills/flutter-soloud-custom-dsp/SKILL.md`) and **flutter-soloud-realtime-dsp** (`skills/flutter-soloud-realtime-dsp/SKILL.md`).
+- Interactive demos in the plugin repo: `example/lib/filters/` (`compressor.dart`, `limiter.dart`, `parametric_eq.dart`, `pitchshift.dart`), `example/lib/realtime_audio/custom_dsp/`, and the automated examples under `example/tests/tests/` (`global_filters.dart`, `sound_filters.dart`, `equalizer_filter.dart`, `compressor_filter.dart`, `limiter_filter.dart`, `pitch_shifter_filter.dart`).
 
 ## Keeping this skill current
 

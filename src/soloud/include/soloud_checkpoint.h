@@ -194,7 +194,8 @@ namespace SoLoud
 			PARAM_VOLUME = 0,
 			PARAM_PAN = 1,
 			PARAM_SPEED = 2,
-			PARAM_PAUSE = 3
+			PARAM_PAUSE = 3,
+			PARAM_STOP = 4
 		};
 		int mType;
 		// Engine time of the event: for births the first sounding sample,
@@ -213,8 +214,9 @@ namespace SoLoud
 		// voices are always restorable: their source state does not advance
 		// while paused.
 		bool mRestorable;
-		// PARAM only: which parameter (enum Param) and its new value.
+		// PARAM only: which parameter (enum Param), its starting value, and its new value.
 		int mParam;
+		float mFrom;
 		float mValue;
 		// PARAM only: fade duration in seconds (0 = step change; replay uses
 		// the zero-duration RETRO_FADE_TIME step for it).

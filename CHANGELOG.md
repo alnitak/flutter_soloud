@@ -1,3 +1,11 @@
+##### 5.3.0 (XX Xxx 2026)
+- feat: real-time low-latency PCM audio streaming (`setRealtimeStream`) with background Isolate and Web feeding support
+- feat: procedural custom audio sources (`createCustomAudioSource`) with native and Web audio generation callbacks
+- feat: custom DSP filters (`customFilter`) supporting up to 8 programmable filter slots per scope (global, bus, single sound)
+- feat: desktop VST3 plugin hosting (`SoLoudVst3Host` on macOS, Windows, and Linux) for VST3 audio effects, virtual instruments, and native plugin GUI editors
+- feat: added `renderAheadFrames` option to `init()` for low-latency retroactive voice mixing
+- example: added real-time PCM synth, isolate drum sequencer, custom DSP workbench, and VST3 plugin host examples
+
 ##### 5.2.2 (28 Oct 2026)
 - perf: block-copy pull buffer stream chunks into native memory. Thanks to @riderous #594
 - feat: per-bus audio visualization via `Bus.setVisualizationEnabled`, `Bus.getVisualizationEnabled`, and the `Bus.audioVisualizationEvents` stream (#590). Also fixes `Bus.getChannelVolume` and `SoLoud.getApproximateVolume` to accurately return peak volume levels. Thanks to @Colton127 #592

@@ -6,7 +6,10 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/mixer_output_stream_manager.dart';
+import 'package:flutter_soloud/src/realtime_stream.dart';
 import 'package:flutter_soloud/src/soloud.dart';
+import 'package:flutter_soloud/src/sound_handle.dart';
+import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
 import 'package:meta/meta.dart';
 
@@ -25,8 +28,12 @@ import 'package:meta/meta.dart';
 /// `voiceEnded`/`fileLoaded`/`stateChanged` event streams. Those must remain on
 /// the isolate that initialized the engine.
 ///
-/// The primary use case is running the mixer output capture stream in a worker
-/// isolate so the main isolate stays free for UI and other tasks.
+/// The primary use cases are:
+/// 1. Feeding a real-time PCM stream ([RealtimeStreamHandle] /
+///    [RealtimeNativeBuffer]) from a dedicated synthesis/DSP worker isolate
+///    with zero main-thread UI jitter and zero GC pressure.
+/// 2. Running the mixer output capture stream in a worker isolate so the main
+///    isolate stays free for UI and other tasks.
 ///
 /// Example:
 /// ```dart
@@ -165,4 +172,90 @@ class SoLoudIsolate {
 
     return samples;
   }
+
+  ///////////////////////////////////////////////////
+  /// Real-time PCM Stream feeding from Worker Isolate
+  ///////////////////////////////////////////////////
+
+  /// Attaches a worker-isolate [RealtimeStreamHandle] to an existing real-time
+  /// stream created on the main isolate via
+  /// `SoLoud.instance.setRealtimeStream`.
+  ///
+  /// Pass the [soundHash] (and optionally [activeHandle]) sent across an
+  /// `Isolate` port so the worker isolate can push PCM frames directly into
+  /// the lock-free C++ ring buffer without bouncing through the main isolate.
+  @experimental
+  RealtimeStreamHandle attachRealtimeStream({
+    required SoundHash soundHash,
+    int sampleRate = 48000,
+    Channels channels = Channels.stereo,
+    BufferType format = BufferType.f32le,
+    int bufferFrames = 2048,
+    int historyFrames = 4096,
+    SoundHandle? activeHandle,
+  }) => RealtimeStreamHandle.fromHash(
+    soundHash: soundHash,
+    sampleRate: sampleRate,
+    channels: channels,
+    format: format,
+    bufferFrames: bufferFrames,
+    historyFrames: historyFrames,
+    activeHandle: activeHandle,
+  );
+
+  /// Allocates a persistent [RealtimeNativeBuffer] in native/WASM memory for
+  /// zero-GC real-time stream pushes inside a worker isolate.
+  @experimental
+  RealtimeNativeBuffer allocateRealtimeNativeBuffer({
+    required int maxFrames,
+    Channels channels = Channels.stereo,
+  }) => RealtimeNativeBuffer(maxFrames: maxFrames, channels: channels);
+
+  /// Pushes Float32 PCM samples directly into the real-time stream identified
+  /// by [soundHash] from a worker isolate.
+  @experimental
+  int pushRealtimeFloat32(
+    SoundHash soundHash,
+    Float32List samples,
+    int frameCount, {
+    SoundHandle? voiceHandle,
+  }) => bindings.pushRealtimeFloat32(
+    soundHash.hash,
+    voiceHandle?.id ?? 0,
+    samples,
+    frameCount,
+  );
+
+  /// Pushes Int16 PCM samples directly into the real-time stream identified
+  /// by [soundHash] from a worker isolate.
+  @experimental
+  int pushRealtimeInt16(
+    SoundHash soundHash,
+    Int16List samples,
+    int frameCount, {
+    SoundHandle? voiceHandle,
+  }) => bindings.pushRealtimeInt16(
+    soundHash.hash,
+    voiceHandle?.id ?? 0,
+    samples,
+    frameCount,
+  );
+
+  /// Returns the number of unread frames currently queued in the real-time
+  /// stream identified by [soundHash].
+  @experimental
+  int getRealtimeAvailableToRead(SoundHash soundHash) =>
+      bindings.getRealtimeAvailableToRead(soundHash.hash);
+
+  /// Returns the number of free frames currently available to write in the
+  /// real-time stream identified by [soundHash].
+  @experimental
+  int getRealtimeAvailableToWrite(SoundHash soundHash) =>
+      bindings.getRealtimeAvailableToWrite(soundHash.hash);
+
+  /// Returns the underrun count of the real-time stream identified by
+  /// [soundHash].
+  @experimental
+  int getRealtimeUnderrunCount(SoundHash soundHash) =>
+      bindings.getRealtimeUnderrunCount(soundHash.hash);
 }
