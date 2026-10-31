@@ -5,6 +5,7 @@
 - feat: desktop VST3 plugin hosting (`SoLoudVst3Host` on macOS, Windows, and Linux) for VST3 audio effects, virtual instruments, and native plugin GUI editors
 - feat: added `renderAheadFrames` option to `init()` for low-latency retroactive voice mixing
 - example: added real-time PCM synth, isolate drum sequencer, custom DSP workbench, and VST3 plugin host examples
+- fix iOS: resume audio playback after returning from background on iOS 16+ where `wasSuspended` interruption reason is no longer sent #573
 
 ##### 5.2.2 (28 Oct 2026)
 - perf: block-copy pull buffer stream chunks into native memory. Thanks to @riderous #594
