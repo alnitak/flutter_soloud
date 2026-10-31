@@ -767,6 +767,48 @@ void testSubSampleMicrosecondRoundingNoSpuriousRollback()
     engine.deinit();
 }
 
+// Regression test: when a voice born via playScheduled inside the render-ahead
+// window is also captured into an intermediate checkpoint during a rollback,
+// and subsequently has scheduleFadeAt(..., thenStop: true) scheduled while
+// further retroactive plays occur, rollbackSamples must be added at most once
+// per rollback so mStopSamplesLeft does not drift past the fade end.
+void testRepeatedRollbacksDoNotDoubleExtendStopSamplesLeft()
+{
+    Rig rig;
+    PulseSource a(32768, 0.6f);
+    PulseSource b(32768, 0.1f);
+    PulseSource c(32768, 0.1f);
+
+    rig.topUp();
+    rig.discard(1024); // playhead at 1024
+
+    // Schedule voice A slightly ahead of the next quantum boundary (2048),
+    // and trigger a rollback from playhead 1024 so checkpoint at 2048 is
+    // re-captured with voice A present in cp.mVoices while A's BIRTH is at 2200.
+    const SoLoud::time birthA = 2200.0 / kSampleRate;
+    const SoLoud::handle hA = rig.engine.playScheduled(birthA, a);
+    rig.engine.play(b, 0.0f); // rolls back to 1024 and re-captures 2048 with A in cp.mVoices
+
+    // Advance playhead to 2048 (so next rollback restores checkpoint at 2048,
+    // where A is in cp.mVoices AND A's BIRTH at 2200 is >= 2048).
+    rig.discard(1024);
+    const SoLoud::time fadeStart = rig.engine.getEngineTime();
+    const SoLoud::time fadeDur = (2.0 * kQuantum) / kSampleRate; // 2048 samples
+    rig.engine.scheduleFadeAt(hA, fadeStart, 0.0f, fadeDur, true);
+
+    // Trigger another rollback to checkpoint 2048.
+    rig.engine.play(c, 0.0f);
+
+    // At this point, A's remaining stop countdown from writeHead (4096) should
+    // be 2048 samples (2 quanta), NOT 4096 samples (4 quanta).
+    for (int i = 0; i < 3; ++i) {
+        rig.topUp();
+        rig.discard(rig.available());
+    }
+    EXPECT(!rig.engine.isValidVoiceHandle(hA),
+           "voice A should have stopped after its 2-quantum fade, not been extended by double rollbackSamples");
+}
+
 } // namespace
 
 int main()
@@ -788,6 +830,7 @@ int main()
     testWriteHeadScheduledFadeSurvivesRetroactivePlay();
     testPitchShiftedResamplerBlockBoundaryContinuity();
     testSubSampleMicrosecondRoundingNoSpuriousRollback();
+    testRepeatedRollbacksDoNotDoubleExtendStopSamplesLeft();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);

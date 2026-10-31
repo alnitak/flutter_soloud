@@ -295,6 +295,9 @@ void main(List<String> args) async {
     for (final dependency in vst3.dependencies) {
       output.dependencies.add(dependency);
     }
+    for (final src in collectSources(input.packageRoot, os, enableVst3: enableVst3)) {
+      output.dependencies.add(input.packageRoot.resolve(src));
+    }
   });
 }
 

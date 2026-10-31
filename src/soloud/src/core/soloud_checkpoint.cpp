@@ -533,6 +533,13 @@ namespace SoLoud
 			(oldStreamTime > cp.mTime && mSamplerate > 0)
 				? (long long)floor((oldStreamTime - cp.mTime) * (time)mSamplerate + 0.5)
 				: 0;
+		for (i = 0; i < mHighestVoice; i++)
+		{
+			if (mVoice[i] != NULL && mVoice[i]->mStopSamplesLeft >= 0)
+			{
+				mVoice[i]->mStopSamplesLeft += rollbackSamples;
+			}
+		}
 		mStreamTime = cp.mTime;
 		mGlobalVolume = cp.mGlobalVolume;
 		mGlobalVolumeFader = cp.mGlobalVolumeFader;
@@ -585,11 +592,11 @@ namespace SoLoud
 			slotRestored[cv.mSlot] = 1;
 
 			voice->mPlayIndex = cv.mPlayIndex;
-			const long long liveStopSamplesLeft = voice->mStopSamplesLeft;
+			const long long stopSamplesLeft = voice->mStopSamplesLeft;
 			applyCheckpointVoice(cv, voice);
-			if (liveStopSamplesLeft >= 0)
+			if (stopSamplesLeft >= 0)
 			{
-				voice->mStopSamplesLeft = liveStopSamplesLeft + rollbackSamples;
+				voice->mStopSamplesLeft = stopSamplesLeft;
 			}
 			// Resample pointers are rebuilt from block indices below, after
 			// the pool contents are restored.
@@ -817,10 +824,6 @@ namespace SoLoud
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
 		mRemixSuppressEndedCount = 0;
-		const long long rollbackSamples =
-			(mRemixOldStreamTime > aFromTime && mSamplerate > 0)
-				? (long long)floor((mRemixOldStreamTime - aFromTime) * (time)mSamplerate + 0.5)
-				: 0;
 		size_t i;
 		unsigned int k;
 		for (i = 0; i < mRetroJournal.size(); i++)
@@ -844,13 +847,13 @@ namespace SoLoud
 
 			if (e.mType == RetroJournalEntry::BIRTH)
 			{
-				const long long liveStopSamplesLeft = v->mStopSamplesLeft;
+				const long long stopSamplesLeft = v->mStopSamplesLeft;
 				// Reset the live instance to its birth state, with the start
 				// delay recomputed relative to the restore point.
 				applyCheckpointVoice(e.mBirth, v);
-				if (liveStopSamplesLeft >= 0)
+				if (stopSamplesLeft >= 0)
 				{
-					v->mStopSamplesLeft = liveStopSamplesLeft + rollbackSamples;
+					v->mStopSamplesLeft = stopSamplesLeft;
 				}
 				// The re-mix ticks the voice from the checkpoint time on,
 				// earlier than its real insertion; shift the voice's stream
@@ -1062,11 +1065,11 @@ namespace SoLoud
 		// belong to the device and are never touched, so the first quantum
 		// may be a partial rewrite. The ring heads do not move.
 		const unsigned long long writePos = mRemixWritePos;
-		const unsigned long long readPos = mRenderRing.getReadPosition();
 		unsigned long long pos = mRemixStartPos;
 		while (pos < writePos)
 		{
 			remixQuantum_internal(mRenderRingStaging.mData, mBufferSize);
+			const unsigned long long readPos = mRenderRing.getReadPosition();
 			unsigned long long from = pos < readPos ? readPos : pos;
 			if (from < pos + mBufferSize)
 			{

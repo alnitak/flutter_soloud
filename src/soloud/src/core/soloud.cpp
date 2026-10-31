@@ -1300,6 +1300,15 @@ namespace SoLoud
 		SOLOUD_ASSERT(((size_t)aScratch & 0xf) == 0);
 		SOLOUD_ASSERT(((size_t)aBufferSize & 0xf) == 0);
 #endif
+		if (aSamplesToRead == 0)
+		{
+			unsigned int k;
+			for (k = 0; k < aChannels; k++)
+			{
+				aVoice->mCurrentChannelVolume[k] = aVoice->mChannelVolume[k] * aVoice->mOverallVolume;
+			}
+			return;
+		}
 		float pan[MAX_CHANNELS]; // current speaker volume
 		float pand[MAX_CHANNELS]; // destination speaker volume
 		float pani[MAX_CHANNELS]; // speaker volume increment per sample
@@ -1377,6 +1386,8 @@ namespace SoLoud
 #if defined(SOLOUD_SSE_INTRINSICS)
 				{
 					int c = 0;
+					const float step0 = pani[0];
+					const float step1 = pani[1];
 					//if ((aBufferSize & 3) == 0)
 					{
 						unsigned int samplequads = aSamplesToRead / 4; // rounded down
@@ -1416,6 +1427,10 @@ namespace SoLoud
 					}
 					
 					// If buffer size or samples to read are not divisible by 4, handle leftovers
+					pan[0] += step0 * c;
+					pan[1] += step1 * c;
+					pani[0] = step0;
+					pani[1] = step1;
 					for (j = c; j < aSamplesToRead; j++)
 					{
 						pan[0] += pani[0];
@@ -1442,6 +1457,8 @@ namespace SoLoud
 #if defined(SOLOUD_SSE_INTRINSICS)
 				{
 					int c = 0;
+					const float step0 = pani[0];
+					const float step1 = pani[1];
 					//if ((aBufferSize & 3) == 0)
 					{
 						unsigned int samplequads = aSamplesToRead / 4; // rounded down
@@ -1479,6 +1496,10 @@ namespace SoLoud
 						}
 					}
 					// If buffer size or samples to read are not divisible by 4, handle leftovers
+					pan[0] += step0 * c;
+					pan[1] += step1 * c;
+					pani[0] = step0;
+					pani[1] = step1;
 					for (j = c; j < aSamplesToRead; j++)
 					{
 						pan[0] += pani[0];
@@ -1902,10 +1923,24 @@ namespace SoLoud
 					{
 						samplesToProduce = (unsigned int)voice->mStopSamplesLeft;
 						stopAfterProduce = true;
-						if (voice->mVolumeFader.mActive > 0 &&
+						if (voice->mVolumeFader.mActive != 0 &&
 							voice->mVolumeFader.mTo <= 1e-5f)
 						{
 							voice->mOverallVolume = 0.0f;
+							bool hasResidual = false;
+							unsigned int ch;
+							for (ch = 0; ch < aChannels; ch++)
+							{
+								if (voice->mCurrentChannelVolume[ch] > 1e-5f)
+								{
+									hasResidual = true;
+									break;
+								}
+							}
+							if (hasResidual && samplesToProduce < 64)
+							{
+								samplesToProduce = aSamplesToRead < 64 ? aSamplesToRead : 64;
+							}
 						}
 					}
 					else

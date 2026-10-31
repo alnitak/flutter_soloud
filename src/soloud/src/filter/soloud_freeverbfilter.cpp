@@ -119,7 +119,10 @@ namespace SoLoud
 		class Revmodel
 		{
 		public:
+			struct UninitializedTag {};
 			Revmodel();
+			explicit Revmodel(UninitializedTag);
+			void	bindBuffers();
 			void	mute();
 			void	process(float* aSampleData, long aNumSamples, long aStride);
 			void	setroomsize(float aValue);
@@ -213,8 +216,8 @@ namespace SoLoud
 
 		void Allpass::mute()
 		{
-			for (int i = 0; i < mBufsize; i++)
-				mBuffer[i] = 0;
+			if (mBuffer && mBufsize > 0)
+				memset(mBuffer, 0, sizeof(float) * mBufsize);
 		}
 
 		void Allpass::setfeedback(float aVal)
@@ -256,8 +259,8 @@ namespace SoLoud
 
 		void Comb::mute()
 		{
-			for (int i = 0; i < mBufsize; i++)
-				mBuffer[i] = 0;
+			if (mBuffer && mBufsize > 0)
+				memset(mBuffer, 0, sizeof(float) * mBufsize);
 		}
 
 		void Comb::setdamp(float aVal)
@@ -271,22 +274,8 @@ namespace SoLoud
 			mFeedback = aVal;
 		}
 	
-		Revmodel::Revmodel()
+		void Revmodel::bindBuffers()
 		{
-			mGain = 0;
-			mRoomsize = 0;
-			mRoomsize1 = 0;
-			mDamp = 0;
-			mDamp1 = 0;
-			mWet = 0;
-			mWet1 = 0;
-			mWet2 = 0;
-			mDry = 0;
-			mWidth = 0;
-			mMode = 0;
-
-			mDirty = 1;
-
 			// Tie the components to their buffers
 			mCombL[0].setbuffer(mBufcombL1, gCombtuningL1);
 			mCombR[0].setbuffer(mBufcombR1, gCombtuningR1);
@@ -312,6 +301,42 @@ namespace SoLoud
 			mAllpassR[2].setbuffer(mBufallpassR3, gAllpasstuningR3);
 			mAllpassL[3].setbuffer(mBufallpassL4, gAllpasstuningL4);
 			mAllpassR[3].setbuffer(mBufallpassR4, gAllpasstuningR4);
+		}
+
+		Revmodel::Revmodel(UninitializedTag)
+		{
+			mGain = 0;
+			mRoomsize = 0;
+			mRoomsize1 = 0;
+			mDamp = 0;
+			mDamp1 = 0;
+			mWet = 0;
+			mWet1 = 0;
+			mWet2 = 0;
+			mDry = 0;
+			mWidth = 0;
+			mMode = 0;
+			mDirty = 1;
+			bindBuffers();
+		}
+
+		Revmodel::Revmodel()
+		{
+			mGain = 0;
+			mRoomsize = 0;
+			mRoomsize1 = 0;
+			mDamp = 0;
+			mDamp1 = 0;
+			mWet = 0;
+			mWet1 = 0;
+			mWet2 = 0;
+			mDry = 0;
+			mWidth = 0;
+			mMode = 0;
+
+			mDirty = 1;
+
+			bindBuffers();
 
 			// Set default values
 			mAllpassL[0].setfeedback(0.5f);
@@ -541,6 +566,7 @@ namespace SoLoud
 		uint64_t mParamChanged;
 		float mParam[5];
 		Fader mParamFader[5];
+		FreeverbFilterSnapshot() : mModel(FreeverbImpl::Revmodel::UninitializedTag()), mParamChanged(0) {}
 	};
 
 	FilterStateSnapshot *FreeverbFilterInstance::captureState()
