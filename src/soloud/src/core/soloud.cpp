@@ -37,9 +37,13 @@ freely, subject to the following restrictions:
 
 #ifdef SOLOUD_SSE_INTRINSICS
 #include <xmmintrin.h>
-#ifdef _M_IX86
 #include <emmintrin.h>
 #endif
+#ifdef SOLOUD_NEON_INTRINSICS
+#include <arm_neon.h>
+#endif
+#ifdef SOLOUD_WASM_SIMD_INTRINSICS
+#include <wasm_simd128.h>
 #endif
 
 //#define FLOATING_POINT_DEBUG
@@ -70,7 +74,7 @@ namespace SoLoud
 		mBasePtr = 0;
 		mData = 0;
 		mFloats = aFloats;
-#ifndef SOLOUD_SSE_INTRINSICS
+#if !defined(SOLOUD_SSE_INTRINSICS) && !defined(SOLOUD_NEON_INTRINSICS) && !defined(SOLOUD_WASM_SIMD_INTRINSICS)
 		mBasePtr = new unsigned char[aFloats * sizeof(float)];
 		if (mBasePtr == NULL)
 			return OUT_OF_MEMORY;
@@ -913,16 +917,65 @@ namespace SoLoud
 			float *planar = mPostRingScratch.mData;
 			const float *src = aBuffer + (size_t)offset * mChannels;
 			unsigned int c, j;
-			for (c = 0; c < mChannels; c++)
+			if (mChannels == 1)
 			{
-				float *dstCh = planar + (size_t)c * stride;
-				for (j = 0; j < chunk; j++)
+				memcpy(planar, src, sizeof(float) * chunk);
+				if (stride > chunk)
+					memset(planar + chunk, 0, sizeof(float) * (stride - chunk));
+			}
+			else if (mChannels == 2)
+			{
+				float *dstL = planar;
+				float *dstR = planar + stride;
+				j = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+				for (; j + 4 <= chunk; j += 4)
 				{
-					dstCh[j] = src[j * mChannels + c];
+					__m128 v0 = _mm_loadu_ps(src + j * 2);
+					__m128 v1 = _mm_loadu_ps(src + j * 2 + 4);
+					_mm_storeu_ps(dstL + j, _mm_shuffle_ps(v0, v1, _MM_SHUFFLE(2, 0, 2, 0)));
+					_mm_storeu_ps(dstR + j, _mm_shuffle_ps(v0, v1, _MM_SHUFFLE(3, 1, 3, 1)));
 				}
-				for (; j < stride; j++)
+#elif defined(SOLOUD_NEON_INTRINSICS)
+				for (; j + 4 <= chunk; j += 4)
 				{
-					dstCh[j] = 0.0f;
+					float32x4x2_t lr = vld2q_f32(src + j * 2);
+					vst1q_f32(dstL + j, lr.val[0]);
+					vst1q_f32(dstR + j, lr.val[1]);
+				}
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+				for (; j + 4 <= chunk; j += 4)
+				{
+					v128_t v0 = wasm_v128_load(src + j * 2);
+					v128_t v1 = wasm_v128_load(src + j * 2 + 4);
+					wasm_v128_store(dstL + j, wasm_i32x4_shuffle(v0, v1, 0, 2, 4, 6));
+					wasm_v128_store(dstR + j, wasm_i32x4_shuffle(v0, v1, 1, 3, 5, 7));
+				}
+#endif
+				for (; j < chunk; j++)
+				{
+					dstL[j] = src[j * 2];
+					dstR[j] = src[j * 2 + 1];
+				}
+				if (stride > chunk)
+				{
+					memset(dstL + chunk, 0, sizeof(float) * (stride - chunk));
+					memset(dstR + chunk, 0, sizeof(float) * (stride - chunk));
+				}
+			}
+			else
+			{
+				for (c = 0; c < mChannels; c++)
+				{
+					float *dstCh = planar + (size_t)c * stride;
+					for (j = 0; j < chunk; j++)
+					{
+						dstCh[j] = src[j * mChannels + c];
+					}
+					for (; j < stride; j++)
+					{
+						dstCh[j] = 0.0f;
+					}
 				}
 			}
 			for (i = 0; i < FILTERS_PER_STREAM; i++)
@@ -1108,6 +1161,88 @@ namespace SoLoud
 					//aDestBuffer.mData[d] = f1 * mPostClipScaler; d++;
 					f = _mm_mul_ps(f, postscale);
 					_mm_store_ps(&aDestBuffer.mData[d], f);
+					d += 4;
+				}
+			}
+		}
+	}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+	void Soloud::clip_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1)
+	{
+		float vd = (aVolume1 - aVolume0) / aSamples;
+		float v = aVolume0;
+		unsigned int i, j, c, d;
+		unsigned int samplequads = (aSamples + 3) / 4; // rounded up
+		float postClipScaler = mPostClipScaler.load(std::memory_order_acquire);
+		float32x4_t postscale = vdupq_n_f32(postClipScaler);
+		TinyAlignedFloatBuffer volumes;
+		volumes.mData[0] = v;
+		volumes.mData[1] = v + vd;
+		volumes.mData[2] = v + vd + vd;
+		volumes.mData[3] = v + vd + vd + vd;
+		vd *= 4;
+		float32x4_t vdelta = vdupq_n_f32(vd);
+
+		// Clip
+		if (mFlags & CLIP_ROUNDOFF)
+		{
+			float32x4_t negbound = vdupq_n_f32(-1.65f);
+			float32x4_t posbound = vdupq_n_f32(1.65f);
+			float32x4_t linearscale = vdupq_n_f32(0.87f);
+			float32x4_t cubicscale = vdupq_n_f32(-0.1f);
+			float32x4_t negwall = vdupq_n_f32(-0.9862875f);
+			float32x4_t poswall = vdupq_n_f32(0.9862875f);
+			c = 0;
+			d = 0;
+			for (j = 0; j < mChannels; j++)
+			{
+				float32x4_t vol = vld1q_f32(volumes.mData);
+				for (i = 0; i < samplequads; i++)
+				{
+					float32x4_t f = vld1q_f32(&aBuffer.mData[c]);
+					c += 4;
+					f = vmulq_f32(f, vol);
+					vol = vaddq_f32(vol, vdelta);
+
+					uint32x4_t u = vcgtq_f32(f, negbound);
+					uint32x4_t o = vcltq_f32(f, posbound);
+
+					float32x4_t lin = vmulq_f32(f, linearscale);
+					float32x4_t cubic = vmulq_f32(f, f);
+					cubic = vmulq_f32(cubic, f);
+					cubic = vmulq_f32(cubic, cubicscale);
+					f = vaddq_f32(cubic, lin);
+
+					f = vbslq_f32(u, f, negwall);
+					f = vbslq_f32(o, f, poswall);
+
+					f = vmulq_f32(f, postscale);
+					vst1q_f32(&aDestBuffer.mData[d], f);
+					d += 4;
+				}
+			}
+		}
+		else
+		{
+			float32x4_t negbound = vdupq_n_f32(-1.0f);
+			float32x4_t posbound = vdupq_n_f32(1.0f);
+			c = 0;
+			d = 0;
+			for (j = 0; j < mChannels; j++)
+			{
+				float32x4_t vol = vld1q_f32(volumes.mData);
+				for (i = 0; i < samplequads; i++)
+				{
+					float32x4_t f = vld1q_f32(&aBuffer.mData[c]);
+					c += 4;
+					f = vmulq_f32(f, vol);
+					vol = vaddq_f32(vol, vdelta);
+
+					f = vmaxq_f32(f, negbound);
+					f = vminq_f32(f, posbound);
+
+					f = vmulq_f32(f, postscale);
+					vst1q_f32(&aDestBuffer.mData[d], f);
 					d += 4;
 				}
 			}
@@ -1441,6 +1576,63 @@ namespace SoLoud
 						aBuffer[j + aBufferSize] += s2 * pan[1];
 					}
 				}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+				{
+					int c = 0;
+					const float step0 = pani[0];
+					const float step1 = pani[1];
+					{
+						unsigned int samplequads = aSamplesToRead / 4; // rounded down
+						TinyAlignedFloatBuffer pan0;
+						pan0.mData[0] = pan[0] + pani[0];
+						pan0.mData[1] = pan[0] + pani[0] * 2;
+						pan0.mData[2] = pan[0] + pani[0] * 3;
+						pan0.mData[3] = pan[0] + pani[0] * 4;
+						TinyAlignedFloatBuffer pan1;
+						pan1.mData[0] = pan[1] + pani[1];
+						pan1.mData[1] = pan[1] + pani[1] * 2;
+						pan1.mData[2] = pan[1] + pani[1] * 3;
+						pan1.mData[3] = pan[1] + pani[1] * 4;
+						pani[0] *= 4;
+						pani[1] *= 4;
+						float32x4_t pan0delta = vdupq_n_f32(pani[0]);
+						float32x4_t pan1delta = vdupq_n_f32(pani[1]);
+						float32x4_t p0 = vld1q_f32(pan0.mData);
+						float32x4_t p1 = vld1q_f32(pan1.mData);
+
+						for (j = 0; j < samplequads; j++)
+						{
+							float32x4_t f0 = vld1q_f32(aScratch + c);
+							float32x4_t c0 = vmulq_f32(f0, p0);
+							float32x4_t f1 = vld1q_f32(aScratch + c + aBufferSize);
+							float32x4_t c1 = vmulq_f32(f1, p1);
+							float32x4_t o0 = vld1q_f32(aBuffer + c);
+							float32x4_t o1 = vld1q_f32(aBuffer + c + aBufferSize);
+							c0 = vaddq_f32(c0, o0);
+							c1 = vaddq_f32(c1, o1);
+							vst1q_f32(aBuffer + c, c0);
+							vst1q_f32(aBuffer + c + aBufferSize, c1);
+							p0 = vaddq_f32(p0, pan0delta);
+							p1 = vaddq_f32(p1, pan1delta);
+							c += 4;
+						}
+					}
+
+					// If buffer size or samples to read are not divisible by 4, handle leftovers
+					pan[0] += step0 * c;
+					pan[1] += step1 * c;
+					pani[0] = step0;
+					pani[1] = step1;
+					for (j = c; j < aSamplesToRead; j++)
+					{
+						pan[0] += pani[0];
+						pan[1] += pani[1];
+						float s1 = aScratch[j];
+						float s2 = aScratch[aBufferSize + j];
+						aBuffer[j + 0] += s1 * pan[0];
+						aBuffer[j + aBufferSize] += s2 * pan[1];
+					}
+				}
 #else // fallback
 				for (j = 0; j < aSamplesToRead; j++)
 				{
@@ -1492,6 +1684,60 @@ namespace SoLoud
 							_mm_store_ps(aBuffer + c + aBufferSize, c1);
 							p0 = _mm_add_ps(p0, pan0delta);
 							p1 = _mm_add_ps(p1, pan1delta);
+							c += 4;
+						}
+					}
+					// If buffer size or samples to read are not divisible by 4, handle leftovers
+					pan[0] += step0 * c;
+					pan[1] += step1 * c;
+					pani[0] = step0;
+					pani[1] = step1;
+					for (j = c; j < aSamplesToRead; j++)
+					{
+						pan[0] += pani[0];
+						pan[1] += pani[1];
+						float s = aScratch[j];
+						aBuffer[j + 0] += s * pan[0];
+						aBuffer[j + aBufferSize] += s * pan[1];
+					}
+				}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+				{
+					int c = 0;
+					const float step0 = pani[0];
+					const float step1 = pani[1];
+					{
+						unsigned int samplequads = aSamplesToRead / 4; // rounded down
+						TinyAlignedFloatBuffer pan0;
+						pan0.mData[0] = pan[0] + pani[0];
+						pan0.mData[1] = pan[0] + pani[0] * 2;
+						pan0.mData[2] = pan[0] + pani[0] * 3;
+						pan0.mData[3] = pan[0] + pani[0] * 4;
+						TinyAlignedFloatBuffer pan1;
+						pan1.mData[0] = pan[1] + pani[1];
+						pan1.mData[1] = pan[1] + pani[1] * 2;
+						pan1.mData[2] = pan[1] + pani[1] * 3;
+						pan1.mData[3] = pan[1] + pani[1] * 4;
+						pani[0] *= 4;
+						pani[1] *= 4;
+						float32x4_t pan0delta = vdupq_n_f32(pani[0]);
+						float32x4_t pan1delta = vdupq_n_f32(pani[1]);
+						float32x4_t p0 = vld1q_f32(pan0.mData);
+						float32x4_t p1 = vld1q_f32(pan1.mData);
+
+						for (j = 0; j < samplequads; j++)
+						{
+							float32x4_t f = vld1q_f32(aScratch + c);
+							float32x4_t c0 = vmulq_f32(f, p0);
+							float32x4_t c1 = vmulq_f32(f, p1);
+							float32x4_t o0 = vld1q_f32(aBuffer + c);
+							float32x4_t o1 = vld1q_f32(aBuffer + c + aBufferSize);
+							c0 = vaddq_f32(c0, o0);
+							c1 = vaddq_f32(c1, o1);
+							vst1q_f32(aBuffer + c, c0);
+							vst1q_f32(aBuffer + c + aBufferSize, c1);
+							p0 = vaddq_f32(p0, pan0delta);
+							p1 = vaddq_f32(p1, pan1delta);
 							c += 4;
 						}
 					}
@@ -1867,12 +2113,9 @@ namespace SoLoud
 	{
 		unsigned int i, j;
 		// Clear accumulation buffer
-		for (i = 0; i < aSamplesToRead; i++)
+		for (j = 0; j < aChannels; j++)
 		{
-			for (j = 0; j < aChannels; j++)
-			{
-				aBuffer[i + j * aBufferSize] = 0;
-			}
+			memset(aBuffer + j * aBufferSize, 0, sizeof(float) * aSamplesToRead);
 		}
 
 		// Accumulate sound sources		
@@ -2775,6 +3018,48 @@ namespace SoLoud
 	{
 		// 111222 -> 121212
 		unsigned int i, j, c;
+		if (aChannels == 1)
+		{
+			memcpy(aDestBuffer, aSourceBuffer, sizeof(float) * aSamples);
+			return;
+		}
+		if (aChannels == 2)
+		{
+			const float *srcL = aSourceBuffer;
+			const float *srcR = aSourceBuffer + aStride;
+			i = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				__m128 l = _mm_loadu_ps(srcL + i);
+				__m128 r = _mm_loadu_ps(srcR + i);
+				_mm_storeu_ps(aDestBuffer + i * 2, _mm_unpacklo_ps(l, r));
+				_mm_storeu_ps(aDestBuffer + i * 2 + 4, _mm_unpackhi_ps(l, r));
+			}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				float32x4x2_t lr;
+				lr.val[0] = vld1q_f32(srcL + i);
+				lr.val[1] = vld1q_f32(srcR + i);
+				vst2q_f32(aDestBuffer + i * 2, lr);
+			}
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				v128_t l = wasm_v128_load(srcL + i);
+				v128_t r = wasm_v128_load(srcR + i);
+				wasm_v128_store(aDestBuffer + i * 2, wasm_i32x4_shuffle(l, r, 0, 4, 1, 5));
+				wasm_v128_store(aDestBuffer + i * 2 + 4, wasm_i32x4_shuffle(l, r, 2, 6, 3, 7));
+			}
+#endif
+			for (; i < aSamples; i++)
+			{
+				aDestBuffer[i * 2] = srcL[i];
+				aDestBuffer[i * 2 + 1] = srcR[i];
+			}
+			return;
+		}
 		c = 0;
 		for (j = 0; j < aChannels; j++)
 		{

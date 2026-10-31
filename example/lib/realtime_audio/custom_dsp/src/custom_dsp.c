@@ -1,6 +1,26 @@
 #include "custom_dsp.h"
 #include <math.h>
 
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#include <emmintrin.h>
+#define CUSTOM_DSP_SIMD_SSE2 1
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64)
+#include <arm_neon.h>
+#define CUSTOM_DSP_SIMD_NEON 1
+#elif defined(__wasm_simd128__)
+#include <wasm_simd128.h>
+#define CUSTOM_DSP_SIMD_WASM 1
+#endif
+
+static inline float fastTanhApprox(float z) {
+  if (z > 3.0f)
+    return 1.0f;
+  if (z < -3.0f)
+    return -1.0f;
+  const float z2 = z * z;
+  return z * (27.0f + z2) / (27.0f + 9.0f * z2);
+}
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -196,17 +216,91 @@ myCustomFilterDspCallback(float *aBuffer, unsigned int aSamples,
 
   // Soft-clipping normalization factor: keeps perceived volume stable as drive
   // increases
-  const float dcOffset = tanhf(asym);
-  const float norm = 1.0f / (drive > 0.35f ? tanhf(drive) : 0.35f);
+  const float dcOffset = fastTanhApprox(asym);
+  const float norm = 1.0f / (drive > 0.35f ? fastTanhApprox(drive) : 0.35f);
 
   // In-place saturation waveshaping:
   // Tanh creates smooth tube-style odd-harmonic saturation. As Drive increases,
   // it softly rounds the peaks into a warm, pleasant analog overdrive.
   for (unsigned int ch = 0; ch < aChannels; ++ch) {
     float *dst = aBuffer + (size_t)ch * aBufferSize;
-    for (unsigned int i = 0; i < aSamples; ++i) {
+    unsigned int i = 0;
+#if defined(CUSTOM_DSP_SIMD_SSE2)
+    const __m128 vDrive = _mm_set1_ps(drive);
+    const __m128 vAsym = _mm_set1_ps(asym);
+    const __m128 vDc = _mm_set1_ps(dcOffset);
+    const __m128 vNorm = _mm_set1_ps(norm);
+    const __m128 vMinZ = _mm_set1_ps(-3.0f);
+    const __m128 vMaxZ = _mm_set1_ps(3.0f);
+    const __m128 v27 = _mm_set1_ps(27.0f);
+    const __m128 v9 = _mm_set1_ps(9.0f);
+    const __m128 vMinOut = _mm_set1_ps(-1.0f);
+    const __m128 vMaxOut = _mm_set1_ps(1.0f);
+    for (; i + 4 <= aSamples; i += 4) {
+      const __m128 x = _mm_loadu_ps(dst + i);
+      __m128 z = _mm_add_ps(_mm_mul_ps(x, vDrive), vAsym);
+      z = _mm_max_ps(vMinZ, _mm_min_ps(vMaxZ, z));
+      const __m128 z2 = _mm_mul_ps(z, z);
+      const __m128 num = _mm_mul_ps(z, _mm_add_ps(v27, z2));
+      const __m128 den = _mm_add_ps(v27, _mm_mul_ps(v9, z2));
+      const __m128 t = _mm_div_ps(num, den);
+      __m128 y = _mm_mul_ps(_mm_sub_ps(t, vDc), vNorm);
+      y = _mm_max_ps(vMinOut, _mm_min_ps(vMaxOut, y));
+      _mm_storeu_ps(dst + i, y);
+    }
+#elif defined(CUSTOM_DSP_SIMD_NEON)
+    const float32x4_t vAsym = vdupq_n_f32(asym);
+    const float32x4_t vDc = vdupq_n_f32(dcOffset);
+    const float32x4_t vMinZ = vdupq_n_f32(-3.0f);
+    const float32x4_t vMaxZ = vdupq_n_f32(3.0f);
+    const float32x4_t v27 = vdupq_n_f32(27.0f);
+    const float32x4_t vMinOut = vdupq_n_f32(-1.0f);
+    const float32x4_t vMaxOut = vdupq_n_f32(1.0f);
+    for (; i + 4 <= aSamples; i += 4) {
+      const float32x4_t x = vld1q_f32(dst + i);
+      float32x4_t z = vmlaq_n_f32(vAsym, x, drive);
+      z = vmaxq_f32(vMinZ, vminq_f32(vMaxZ, z));
+      const float32x4_t z2 = vmulq_f32(z, z);
+      const float32x4_t num = vmulq_f32(z, vaddq_f32(v27, z2));
+      const float32x4_t den = vmlaq_n_f32(v27, z2, 9.0f);
+#if defined(__aarch64__) || defined(_M_ARM64)
+      const float32x4_t t = vdivq_f32(num, den);
+#else
+      float32x4_t recip = vrecpeq_f32(den);
+      recip = vmulq_f32(vrecpsq_f32(den, recip), recip);
+      const float32x4_t t = vmulq_f32(num, recip);
+#endif
+      float32x4_t y = vmulq_n_f32(vsubq_f32(t, vDc), norm);
+      y = vmaxq_f32(vMinOut, vminq_f32(vMaxOut, y));
+      vst1q_f32(dst + i, y);
+    }
+#elif defined(CUSTOM_DSP_SIMD_WASM)
+    const v128_t vDrive = wasm_f32x4_splat(drive);
+    const v128_t vAsym = wasm_f32x4_splat(asym);
+    const v128_t vDc = wasm_f32x4_splat(dcOffset);
+    const v128_t vNorm = wasm_f32x4_splat(norm);
+    const v128_t vMinZ = wasm_f32x4_splat(-3.0f);
+    const v128_t vMaxZ = wasm_f32x4_splat(3.0f);
+    const v128_t v27 = wasm_f32x4_splat(27.0f);
+    const v128_t v9 = wasm_f32x4_splat(9.0f);
+    const v128_t vMinOut = wasm_f32x4_splat(-1.0f);
+    const v128_t vMaxOut = wasm_f32x4_splat(1.0f);
+    for (; i + 4 <= aSamples; i += 4) {
+      const v128_t x = wasm_v128_load(dst + i);
+      v128_t z = wasm_f32x4_add(wasm_f32x4_mul(x, vDrive), vAsym);
+      z = wasm_f32x4_max(vMinZ, wasm_f32x4_min(vMaxZ, z));
+      const v128_t z2 = wasm_f32x4_mul(z, z);
+      const v128_t num = wasm_f32x4_mul(z, wasm_f32x4_add(v27, z2));
+      const v128_t den = wasm_f32x4_add(v27, wasm_f32x4_mul(v9, z2));
+      const v128_t t = wasm_f32x4_div(num, den);
+      v128_t y = wasm_f32x4_mul(wasm_f32x4_sub(t, vDc), vNorm);
+      y = wasm_f32x4_max(vMinOut, wasm_f32x4_min(vMaxOut, y));
+      wasm_v128_store(dst + i, y);
+    }
+#endif
+    for (; i < aSamples; ++i) {
       const float x = dst[i];
-      float y = (tanhf(x * drive + asym) - dcOffset) * norm;
+      float y = (fastTanhApprox(x * drive + asym) - dcOffset) * norm;
 
       // Hard safety limiter (-1.0 to +1.0) to prevent DAC clipping
       if (y > 1.0f)

@@ -72,6 +72,10 @@ freely, subject to the following restrictions:
 #if !defined(DISABLE_SIMD)
 #if defined(__x86_64__) || defined( _M_X64 ) || defined( __i386 ) || defined( _M_IX86 )
 #define SOLOUD_SSE_INTRINSICS
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64)
+#define SOLOUD_NEON_INTRINSICS
+#elif defined(__wasm_simd128__)
+#define SOLOUD_WASM_SIMD_INTRINSICS
 #endif
 #endif
 

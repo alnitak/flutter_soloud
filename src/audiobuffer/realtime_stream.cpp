@@ -12,6 +12,26 @@
 
 namespace SoLoud {
 
+namespace {
+
+constexpr size_t kRampFrames = 64;
+
+struct CosineDecayTable {
+  alignas(16) float values[kRampFrames];
+  CosineDecayTable() noexcept {
+    for (size_t i = 0; i < kRampFrames; ++i) {
+      values[i] =
+          0.5f * (1.0f + std::cos(static_cast<float>(M_PI) *
+                                  static_cast<float>(i + 1) /
+                                  static_cast<float>(kRampFrames)));
+    }
+  }
+};
+
+const CosineDecayTable kCosineDecay64{};
+
+} // namespace
+
 RealtimeStreamInstance::RealtimeStreamInstance(RealtimeStream *aParent)
     : mParent(aParent) {
   mFlags |= AudioSourceInstance::REALTIME_DIRECT;
@@ -89,8 +109,6 @@ unsigned int RealtimeStreamInstance::getAudio(float *aBuffer,
   const size_t readFrames = mParent->mRingBuffer.popPlanar(
       aBuffer + delayThisCall, remainingToRead, aBufferSize);
 
-  constexpr size_t kRampFrames = 64;
-
   if (readFrames > 0) {
     // If recovering from a non-zero DC level at underrun, smoothly decay the
     // residual offset over the first 64 frames so there is no step click while
@@ -101,12 +119,41 @@ unsigned int RealtimeStreamInstance::getAudio(float *aBuffer,
         const float last = mLastSample[ch];
         if (std::fabs(last) > 1e-6f) {
           float *dst = aBuffer + ch * aBufferSize + delayThisCall;
-          for (size_t i = 0; i < rampLen; ++i) {
-            const float decay =
-                0.5f * (1.0f + std::cos(static_cast<float>(M_PI) *
-                                        static_cast<float>(i + 1) /
-                                        static_cast<float>(rampLen)));
-            dst[i] += last * decay;
+          if (rampLen == kRampFrames) {
+            size_t i = 0;
+#if defined(SOLOUD_RT_SIMD_SSE2)
+            const __m128 vLast = _mm_set1_ps(last);
+            for (; i + 4 <= kRampFrames; i += 4) {
+              const __m128 d = _mm_load_ps(kCosineDecay64.values + i);
+              const __m128 cur = _mm_loadu_ps(dst + i);
+              _mm_storeu_ps(dst + i, _mm_add_ps(cur, _mm_mul_ps(vLast, d)));
+            }
+#elif defined(SOLOUD_RT_SIMD_NEON)
+            for (; i + 4 <= kRampFrames; i += 4) {
+              const float32x4_t d = vld1q_f32(kCosineDecay64.values + i);
+              const float32x4_t cur = vld1q_f32(dst + i);
+              vst1q_f32(dst + i, vmlaq_n_f32(cur, d, last));
+            }
+#elif defined(SOLOUD_RT_SIMD_WASM)
+            const v128_t vLast = wasm_f32x4_splat(last);
+            for (; i + 4 <= kRampFrames; i += 4) {
+              const v128_t d = wasm_v128_load(kCosineDecay64.values + i);
+              const v128_t cur = wasm_v128_load(dst + i);
+              wasm_v128_store(dst + i,
+                              wasm_f32x4_add(cur, wasm_f32x4_mul(vLast, d)));
+            }
+#endif
+            for (; i < kRampFrames; ++i) {
+              dst[i] += last * kCosineDecay64.values[i];
+            }
+          } else {
+            for (size_t i = 0; i < rampLen; ++i) {
+              const float decay =
+                  0.5f * (1.0f + std::cos(static_cast<float>(M_PI) *
+                                          static_cast<float>(i + 1) /
+                                          static_cast<float>(rampLen)));
+              dst[i] += last * decay;
+            }
           }
           mLastSample[ch] = 0.0f;
         }
@@ -138,12 +185,37 @@ unsigned int RealtimeStreamInstance::getAudio(float *aBuffer,
       float *dst = aBuffer + ch * aBufferSize + tailStart;
       const float last = mLastSample[ch];
       if (std::fabs(last) > 1e-6f && rampLen > 0) {
-        for (size_t i = 0; i < rampLen; ++i) {
-          const float decay =
-              0.5f * (1.0f + std::cos(static_cast<float>(M_PI) *
-                                      static_cast<float>(i + 1) /
-                                      static_cast<float>(rampLen)));
-          dst[i] = last * decay;
+        if (rampLen == kRampFrames) {
+          size_t i = 0;
+#if defined(SOLOUD_RT_SIMD_SSE2)
+          const __m128 vLast = _mm_set1_ps(last);
+          for (; i + 4 <= kRampFrames; i += 4) {
+            const __m128 d = _mm_load_ps(kCosineDecay64.values + i);
+            _mm_storeu_ps(dst + i, _mm_mul_ps(vLast, d));
+          }
+#elif defined(SOLOUD_RT_SIMD_NEON)
+          for (; i + 4 <= kRampFrames; i += 4) {
+            const float32x4_t d = vld1q_f32(kCosineDecay64.values + i);
+            vst1q_f32(dst + i, vmulq_n_f32(d, last));
+          }
+#elif defined(SOLOUD_RT_SIMD_WASM)
+          const v128_t vLast = wasm_f32x4_splat(last);
+          for (; i + 4 <= kRampFrames; i += 4) {
+            const v128_t d = wasm_v128_load(kCosineDecay64.values + i);
+            wasm_v128_store(dst + i, wasm_f32x4_mul(vLast, d));
+          }
+#endif
+          for (; i < kRampFrames; ++i) {
+            dst[i] = last * kCosineDecay64.values[i];
+          }
+        } else {
+          for (size_t i = 0; i < rampLen; ++i) {
+            const float decay =
+                0.5f * (1.0f + std::cos(static_cast<float>(M_PI) *
+                                        static_cast<float>(i + 1) /
+                                        static_cast<float>(rampLen)));
+            dst[i] = last * decay;
+          }
         }
         if (tailSilence > rampLen) {
           std::memset(dst + rampLen, 0,

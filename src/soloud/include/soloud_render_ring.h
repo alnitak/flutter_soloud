@@ -21,6 +21,14 @@
 #include <cstring>
 #include <vector>
 
+#if defined(SOLOUD_SSE_INTRINSICS)
+#include <emmintrin.h>
+#elif defined(SOLOUD_NEON_INTRINSICS)
+#include <arm_neon.h>
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+#include <wasm_simd128.h>
+#endif
+
 namespace SoLoud
 {
 	class RenderRing
@@ -149,9 +157,48 @@ namespace SoLoud
 			if (aFrames == 0 || mCapacityFrames == 0 || mChannels == 0)
 				return;
 			unsigned int xfade = aCrossfadeFrames < aFrames ? aCrossfadeFrames : aFrames;
-			for (unsigned int f = 0; f < xfade; f++)
+			const float invDenom = 1.0f / (float)(xfade + 1);
+			unsigned int f = 0;
+#if defined(SOLOUD_SSE_INTRINSICS) || defined(SOLOUD_NEON_INTRINSICS) || defined(SOLOUD_WASM_SIMD_INTRINSICS)
+			if (mChannels == 2)
 			{
-				const float alpha = (float)(f + 1) / (float)(xfade + 1);
+				while (f + 2 <= xfade)
+				{
+					const unsigned int ringFrame0 = (unsigned int)((aPos + f) % mCapacityFrames);
+					if (ringFrame0 + 2 > mCapacityFrames)
+						break;
+					const float a0 = (float)(f + 1) * invDenom;
+					const float a1 = (float)(f + 2) * invDenom;
+					float *dst = mBuffer.data() + (size_t)ringFrame0 * 2;
+					const float *src = aSrc + (size_t)f * 2;
+#if defined(SOLOUD_SSE_INTRINSICS)
+					const __m128 alpha = _mm_set_ps(a1, a1, a0, a0);
+					const __m128 invAlpha = _mm_sub_ps(_mm_set1_ps(1.0f), alpha);
+					const __m128 oldV = _mm_loadu_ps(dst);
+					const __m128 newV = _mm_loadu_ps(src);
+					_mm_storeu_ps(dst, _mm_add_ps(_mm_mul_ps(oldV, invAlpha), _mm_mul_ps(newV, alpha)));
+#elif defined(SOLOUD_NEON_INTRINSICS)
+					const float alphaArr[4] = { a0, a0, a1, a1 };
+					const float invAlphaArr[4] = { 1.0f - a0, 1.0f - a0, 1.0f - a1, 1.0f - a1 };
+					const float32x4_t alpha = vld1q_f32(alphaArr);
+					const float32x4_t invAlpha = vld1q_f32(invAlphaArr);
+					const float32x4_t oldV = vld1q_f32(dst);
+					const float32x4_t newV = vld1q_f32(src);
+					vst1q_f32(dst, vmlaq_f32(vmulq_f32(oldV, invAlpha), newV, alpha));
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+					const v128_t alpha = wasm_f32x4_make(a0, a0, a1, a1);
+					const v128_t invAlpha = wasm_f32x4_sub(wasm_f32x4_splat(1.0f), alpha);
+					const v128_t oldV = wasm_v128_load(dst);
+					const v128_t newV = wasm_v128_load(src);
+					wasm_v128_store(dst, wasm_f32x4_add(wasm_f32x4_mul(oldV, invAlpha), wasm_f32x4_mul(newV, alpha)));
+#endif
+					f += 2;
+				}
+			}
+#endif
+			for (; f < xfade; f++)
+			{
+				const float alpha = (float)(f + 1) * invDenom;
 				const float invAlpha = 1.0f - alpha;
 				const size_t ringIdx = (size_t)((aPos + f) % mCapacityFrames) * mChannels;
 				const size_t srcIdx = (size_t)f * mChannels;

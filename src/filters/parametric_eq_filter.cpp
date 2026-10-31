@@ -2,8 +2,17 @@
 #include "soloud.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <string.h>
 #include <string>
+
+#if defined(SOLOUD_SSE_INTRINSICS)
+#include <emmintrin.h>
+#elif defined(SOLOUD_NEON_INTRINSICS)
+#include <arm_neon.h>
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+#include <wasm_simd128.h>
+#endif
 
 // MSVC fix: Undefine min/max macros that may be defined by Windows.h
 #ifdef min
@@ -384,8 +393,65 @@ void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
       // Copy input to FFT buffer (interleaved real/imag format)
       const unsigned int baseIdx =
           inputofs + mParent->mSTFT_WINDOW_TWICE - winHalf;
-      for (int i = 0; i < winSize; i++) {
-        float sample = mInputBuffer[aChannel][chofs + ((baseIdx + i) & winTwiceMask)];
+      const unsigned int winTwice =
+          static_cast<unsigned int>(mParent->mSTFT_WINDOW_TWICE);
+      int i = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+      const __m128 zero = _mm_setzero_ps();
+      for (; i + 4 <= winSize;) {
+        const unsigned int ringIdx = (baseIdx + static_cast<unsigned int>(i)) &
+                                     static_cast<unsigned int>(winTwiceMask);
+        if (ringIdx + 4 > winTwice) {
+          mFFTBuffer[i * 2] = mInputBuffer[aChannel][chofs + ringIdx];
+          mFFTBuffer[i * 2 + 1] = 0.0f;
+          ++i;
+          continue;
+        }
+        const __m128 r = _mm_loadu_ps(&mInputBuffer[aChannel][chofs + ringIdx]);
+        _mm_storeu_ps(&mFFTBuffer[i * 2], _mm_unpacklo_ps(r, zero));
+        _mm_storeu_ps(&mFFTBuffer[i * 2 + 4], _mm_unpackhi_ps(r, zero));
+        i += 4;
+      }
+#elif defined(SOLOUD_NEON_INTRINSICS)
+      const float32x4_t zero = vdupq_n_f32(0.0f);
+      for (; i + 4 <= winSize;) {
+        const unsigned int ringIdx = (baseIdx + static_cast<unsigned int>(i)) &
+                                     static_cast<unsigned int>(winTwiceMask);
+        if (ringIdx + 4 > winTwice) {
+          mFFTBuffer[i * 2] = mInputBuffer[aChannel][chofs + ringIdx];
+          mFFTBuffer[i * 2 + 1] = 0.0f;
+          ++i;
+          continue;
+        }
+        float32x4x2_t ri;
+        ri.val[0] = vld1q_f32(&mInputBuffer[aChannel][chofs + ringIdx]);
+        ri.val[1] = zero;
+        vst2q_f32(&mFFTBuffer[i * 2], ri);
+        i += 4;
+      }
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+      const v128_t zero = wasm_f32x4_splat(0.0f);
+      for (; i + 4 <= winSize;) {
+        const unsigned int ringIdx = (baseIdx + static_cast<unsigned int>(i)) &
+                                     static_cast<unsigned int>(winTwiceMask);
+        if (ringIdx + 4 > winTwice) {
+          mFFTBuffer[i * 2] = mInputBuffer[aChannel][chofs + ringIdx];
+          mFFTBuffer[i * 2 + 1] = 0.0f;
+          ++i;
+          continue;
+        }
+        const v128_t r =
+            wasm_v128_load(&mInputBuffer[aChannel][chofs + ringIdx]);
+        wasm_v128_store(&mFFTBuffer[i * 2],
+                        wasm_i32x4_shuffle(r, zero, 0, 4, 1, 5));
+        wasm_v128_store(&mFFTBuffer[i * 2 + 4],
+                        wasm_i32x4_shuffle(r, zero, 2, 6, 3, 7));
+        i += 4;
+      }
+#endif
+      for (; i < winSize; i++) {
+        float sample =
+            mInputBuffer[aChannel][chofs + ((baseIdx + i) & winTwiceMask)];
         mFFTBuffer[i * 2] = sample;   // Real part
         mFFTBuffer[i * 2 + 1] = 0.0f; // Imaginary part
       }
@@ -402,7 +468,70 @@ void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
                               PFFFT_BACKWARD);
 
       // Apply precomputed scaled Hann window for overlap-add
-      for (int i = 0; i < winSize; i++) {
+      i = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+      for (; i + 4 <= winSize;) {
+        const unsigned int ringIdx =
+            mixofs & static_cast<unsigned int>(winTwiceMask);
+        if (ringIdx + 4 > winTwice) {
+          mMixBuffer[aChannel][chofs + ringIdx] +=
+              mFFTBuffer[i * 2] * hannWindow[i];
+          ++i;
+          ++mixofs;
+          continue;
+        }
+        const __m128 c0 = _mm_loadu_ps(&mFFTBuffer[i * 2]);
+        const __m128 c1 = _mm_loadu_ps(&mFFTBuffer[i * 2 + 4]);
+        const __m128 re = _mm_shuffle_ps(c0, c1, _MM_SHUFFLE(2, 0, 2, 0));
+        const __m128 w = _mm_loadu_ps(&hannWindow[i]);
+        float *dst = &mMixBuffer[aChannel][chofs + ringIdx];
+        const __m128 cur = _mm_loadu_ps(dst);
+        _mm_storeu_ps(dst, _mm_add_ps(cur, _mm_mul_ps(re, w)));
+        i += 4;
+        mixofs += 4;
+      }
+#elif defined(SOLOUD_NEON_INTRINSICS)
+      for (; i + 4 <= winSize;) {
+        const unsigned int ringIdx =
+            mixofs & static_cast<unsigned int>(winTwiceMask);
+        if (ringIdx + 4 > winTwice) {
+          mMixBuffer[aChannel][chofs + ringIdx] +=
+              mFFTBuffer[i * 2] * hannWindow[i];
+          ++i;
+          ++mixofs;
+          continue;
+        }
+        const float32x4x2_t ri = vld2q_f32(&mFFTBuffer[i * 2]);
+        const float32x4_t w = vld1q_f32(&hannWindow[i]);
+        float *dst = &mMixBuffer[aChannel][chofs + ringIdx];
+        const float32x4_t cur = vld1q_f32(dst);
+        vst1q_f32(dst, vmlaq_f32(cur, ri.val[0], w));
+        i += 4;
+        mixofs += 4;
+      }
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+      for (; i + 4 <= winSize;) {
+        const unsigned int ringIdx =
+            mixofs & static_cast<unsigned int>(winTwiceMask);
+        if (ringIdx + 4 > winTwice) {
+          mMixBuffer[aChannel][chofs + ringIdx] +=
+              mFFTBuffer[i * 2] * hannWindow[i];
+          ++i;
+          ++mixofs;
+          continue;
+        }
+        const v128_t c0 = wasm_v128_load(&mFFTBuffer[i * 2]);
+        const v128_t c1 = wasm_v128_load(&mFFTBuffer[i * 2 + 4]);
+        const v128_t re = wasm_i32x4_shuffle(c0, c1, 0, 2, 4, 6);
+        const v128_t w = wasm_v128_load(&hannWindow[i]);
+        float *dst = &mMixBuffer[aChannel][chofs + ringIdx];
+        const v128_t cur = wasm_v128_load(dst);
+        wasm_v128_store(dst, wasm_f32x4_add(cur, wasm_f32x4_mul(re, w)));
+        i += 4;
+        mixofs += 4;
+      }
+#endif
+      for (; i < winSize; i++) {
         float sample = mFFTBuffer[i * 2] * hannWindow[i];
         mMixBuffer[aChannel][chofs + (mixofs & winTwiceMask)] += sample;
         mixofs++;
@@ -442,7 +571,41 @@ void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
   }
 
   const float *scale = mBinGainTable.data();
-  for (unsigned int i = 1; i < aSamples; i++) {
+  unsigned int i = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+  for (; i + 4 <= aSamples; i += 4) {
+    const __m128 s = _mm_loadu_ps(scale + i);
+    const __m128 sLo = _mm_unpacklo_ps(s, s);
+    const __m128 sHi = _mm_unpackhi_ps(s, s);
+    const __m128 c0 = _mm_loadu_ps(aFFTBuffer + i * 2);
+    const __m128 c1 = _mm_loadu_ps(aFFTBuffer + i * 2 + 4);
+    _mm_storeu_ps(aFFTBuffer + i * 2, _mm_mul_ps(c0, sLo));
+    _mm_storeu_ps(aFFTBuffer + i * 2 + 4, _mm_mul_ps(c1, sHi));
+  }
+#elif defined(SOLOUD_NEON_INTRINSICS)
+  for (; i + 4 <= aSamples; i += 4) {
+    const float32x4_t s = vld1q_f32(scale + i);
+    const float32x4x2_t sDup = vzipq_f32(s, s);
+    const float32x4_t c0 = vld1q_f32(aFFTBuffer + i * 2);
+    const float32x4_t c1 = vld1q_f32(aFFTBuffer + i * 2 + 4);
+    vst1q_f32(aFFTBuffer + i * 2, vmulq_f32(c0, sDup.val[0]));
+    vst1q_f32(aFFTBuffer + i * 2 + 4, vmulq_f32(c1, sDup.val[1]));
+  }
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+  for (; i + 4 <= aSamples; i += 4) {
+    const v128_t s = wasm_v128_load(scale + i);
+    const v128_t sLo = wasm_i32x4_shuffle(s, s, 0, 0, 1, 1);
+    const v128_t sHi = wasm_i32x4_shuffle(s, s, 2, 2, 3, 3);
+    const v128_t c0 = wasm_v128_load(aFFTBuffer + i * 2);
+    const v128_t c1 = wasm_v128_load(aFFTBuffer + i * 2 + 4);
+    wasm_v128_store(aFFTBuffer + i * 2, wasm_f32x4_mul(c0, sLo));
+    wasm_v128_store(aFFTBuffer + i * 2 + 4, wasm_f32x4_mul(c1, sHi));
+  }
+#endif
+  if (i == 0) {
+    i = 1;
+  }
+  for (; i < aSamples; i++) {
     const float s = scale[i];
     aFFTBuffer[i * 2] *= s;
     aFFTBuffer[i * 2 + 1] *= s;

@@ -1,5 +1,13 @@
 #include "amplitude_modulator_filter.h"
 
+#if defined(SOLOUD_SSE_INTRINSICS)
+#include <emmintrin.h>
+#elif defined(SOLOUD_NEON_INTRINSICS)
+#include <arm_neon.h>
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+#include <wasm_simd128.h>
+#endif
+
 #include <cmath>
 
 namespace {
@@ -105,7 +113,25 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
     }
     for (unsigned int ch = 0; ch < aChannels; ++ch) {
       float *chBuf = aBuffer + (size_t)ch * stride;
-      for (unsigned int i = 0; i < aSamples; ++i) {
+      unsigned int i = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+      for (; i + 4 <= aSamples; i += 4) {
+        _mm_storeu_ps(chBuf + i,
+                      _mm_mul_ps(_mm_loadu_ps(chBuf + i), _mm_loadu_ps(gains + i)));
+      }
+#elif defined(SOLOUD_NEON_INTRINSICS)
+      for (; i + 4 <= aSamples; i += 4) {
+        vst1q_f32(chBuf + i,
+                  vmulq_f32(vld1q_f32(chBuf + i), vld1q_f32(gains + i)));
+      }
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+      for (; i + 4 <= aSamples; i += 4) {
+        wasm_v128_store(
+            chBuf + i,
+            wasm_f32x4_mul(wasm_v128_load(chBuf + i), wasm_v128_load(gains + i)));
+      }
+#endif
+      for (; i < aSamples; ++i) {
         chBuf[i] *= gains[i];
       }
     }

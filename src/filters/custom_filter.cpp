@@ -4,6 +4,14 @@
 #include <cmath>
 #include <cstring>
 
+#if defined(SOLOUD_SSE_INTRINSICS)
+#include <emmintrin.h>
+#elif defined(SOLOUD_NEON_INTRINSICS)
+#include <arm_neon.h>
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+#include <wasm_simd128.h>
+#endif
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -138,7 +146,32 @@ void CustomFilterInstance::filter(float *aBuffer, unsigned int aSamples,
   for (unsigned int ch = 0; ch < aChannels; ++ch) {
     const float *dry = mDryScratch.data() + static_cast<size_t>(ch) * aSamples;
     float *out = aBuffer + static_cast<size_t>(ch) * aBufferSize;
-    for (unsigned int i = 0; i < aSamples; ++i) {
+    unsigned int i = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+    const __m128 vWet = _mm_set1_ps(wet);
+    for (; i + 4 <= aSamples; i += 4) {
+      const __m128 vDry = _mm_loadu_ps(dry + i);
+      const __m128 vOut = _mm_loadu_ps(out + i);
+      _mm_storeu_ps(out + i,
+                    _mm_add_ps(vDry, _mm_mul_ps(_mm_sub_ps(vOut, vDry), vWet)));
+    }
+#elif defined(SOLOUD_NEON_INTRINSICS)
+    for (; i + 4 <= aSamples; i += 4) {
+      const float32x4_t vDry = vld1q_f32(dry + i);
+      const float32x4_t vOut = vld1q_f32(out + i);
+      vst1q_f32(out + i, vmlaq_n_f32(vDry, vsubq_f32(vOut, vDry), wet));
+    }
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+    const v128_t vWet = wasm_f32x4_splat(wet);
+    for (; i + 4 <= aSamples; i += 4) {
+      const v128_t vDry = wasm_v128_load(dry + i);
+      const v128_t vOut = wasm_v128_load(out + i);
+      wasm_v128_store(
+          out + i,
+          wasm_f32x4_add(vDry, wasm_f32x4_mul(wasm_f32x4_sub(vOut, vDry), vWet)));
+    }
+#endif
+    for (; i < aSamples; ++i) {
       out[i] = dry[i] + (out[i] - dry[i]) * wet;
     }
   }

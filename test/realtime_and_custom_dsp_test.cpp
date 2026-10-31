@@ -106,6 +106,30 @@ static void testRealtimeRingBuffer() {
         }
     }
     EXPECT(int16Match, "int16 wrap conversion mismatch");
+
+    // Test SIMD + scalar tail for interleaveStereoFloats, deinterleaveStereoInt16ToFloats, and convertInt16ToFloats (19 frames)
+    constexpr size_t kOddFrames = 19;
+    std::vector<int16_t> oddInt16(kOddFrames * 2);
+    for (size_t i = 0; i < kOddFrames; ++i) {
+        oddInt16[i * 2]     = static_cast<int16_t>((int)i * 500 - 4000);
+        oddInt16[i * 2 + 1] = static_cast<int16_t>(-(int)i * 700 + 3000);
+    }
+    std::vector<float> oddL(kOddFrames, 0.0f), oddR(kOddFrames, 0.0f);
+    SoLoud::deinterleaveStereoInt16ToFloats(oddInt16.data(), oddL.data(), oddR.data(), kOddFrames);
+    std::vector<float> reInterleaved(kOddFrames * 2, 0.0f);
+    SoLoud::interleaveStereoFloats(oddL.data(), oddR.data(), reInterleaved.data(), kOddFrames);
+    std::vector<float> monoConverted(kOddFrames * 2, 0.0f);
+    SoLoud::convertInt16ToFloats(oddInt16.data(), monoConverted.data(), kOddFrames * 2);
+
+    bool simdTailMatch = true;
+    for (size_t i = 0; i < kOddFrames * 2; ++i) {
+        const float expected = static_cast<float>(oddInt16[i]) * (1.0f / 32768.0f);
+        if (std::fabs(reInterleaved[i] - expected) > 1e-6f ||
+            std::fabs(monoConverted[i] - expected) > 1e-6f) {
+            simdTailMatch = false;
+        }
+    }
+    EXPECT(simdTailMatch, "SIMD + scalar tail mismatch for int16/stereo helpers");
 }
 
 // 2. Test RealtimeStream & RealtimeStreamInstance (underrun, capture/restore state, cosine anti-click ramp)
