@@ -78,7 +78,7 @@ void main() {
       native.FilterType.fromValue(type.index),
       native.FilterType.AmplitudeModulatorFilter,
     );
-    expect(type.numParameters, 2);
+    expect(type.numParameters, 3);
     expect(type.toString(), 'Amplitude Modulator');
   });
 
@@ -112,7 +112,7 @@ void main() {
   );
 
   test('amplitude modulator parameters', () {
-    expect(AmplitudeModulatorEnum.values.length, 2);
+    expect(AmplitudeModulatorEnum.values.length, 3);
 
     expect(AmplitudeModulatorEnum.wet.index, 0);
     expect(AmplitudeModulatorEnum.wet.toString(), 'Wet');
@@ -126,10 +126,17 @@ void main() {
     expect(AmplitudeModulatorEnum.frequency.max, 20000);
     expect(AmplitudeModulatorEnum.frequency.def, 440);
 
+    expect(AmplitudeModulatorEnum.waveform.index, 2);
+    expect(AmplitudeModulatorEnum.waveform.toString(), 'Waveform');
+    expect(AmplitudeModulatorEnum.waveform.min, 0);
+    expect(AmplitudeModulatorEnum.waveform.max, 3);
+    expect(AmplitudeModulatorEnum.waveform.def, 0);
+
     const global = AmplitudeModulatorGlobal();
     expect(global.filterType, FilterType.amplitudeModulatorFilter);
     expect(global.queryWet, AmplitudeModulatorEnum.wet);
     expect(global.queryFrequency, AmplitudeModulatorEnum.frequency);
+    expect(global.queryWaveform, AmplitudeModulatorEnum.waveform);
   });
 
   test('amplitude modulator ranges match the native filter', () {
@@ -154,6 +161,14 @@ void main() {
     expect(
       nativeBound('getParamMax', 'FREQUENCY'),
       AmplitudeModulatorEnum.frequency.max,
+    );
+    expect(
+      nativeBound('getParamMin', 'WAVEFORM'),
+      AmplitudeModulatorEnum.waveform.min,
+    );
+    expect(
+      nativeBound('getParamMax', 'WAVEFORM'),
+      AmplitudeModulatorEnum.waveform.max,
     );
   });
 }

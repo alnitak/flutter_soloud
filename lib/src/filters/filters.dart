@@ -625,7 +625,7 @@ enum FilterType {
     FilterType.limiterFilter => 6,
     FilterType.compressorFilter => 7,
     FilterType.parametricEq => 195,
-    FilterType.amplitudeModulatorFilter => 2,
+    FilterType.amplitudeModulatorFilter => 3,
     FilterType.customFilter => 8,
   };
 

@@ -6,12 +6,18 @@
 
 class AmplitudeModulator;
 
-// Bipolar amplitude modulator / ring modulator with a sine carrier.
+// Bipolar amplitude modulator / ring modulator with selectable carrier waveform.
 //
 // At 100% wet:
 //
-//   output(t) = input(t) * sin(phase(t))
+//   output(t) = input(t) * carrier(phase(t))
 //   phaseIncrement = 2 * pi * frequency / sampleRate
+//
+// Waveforms supported:
+//   - Sine (0, default): sin(phase)
+//   - Triangle (1): 1 - 4 * |phase / (2*pi) - 0.5|
+//   - Square (2): phase < pi ? 1 : -1
+//   - Saw (3): 1 - 2 * (phase / (2*pi))  (saw down: 1 to -1)
 //
 // This is suppressed-carrier (ring) modulation, not tremolo: the carrier has
 // no DC bias, so a sine input at f1 modulated by a carrier at f2 yields
@@ -44,7 +50,8 @@ public:
 class AmplitudeModulator : public SoLoud::Filter {
 
 public:
-  enum FILTERATTRIBUTE { WET = 0, FREQUENCY = 1 };
+  enum FILTERATTRIBUTE { WET = 0, FREQUENCY = 1, WAVEFORM = 2 };
+  enum WAVEFORMTYPE { WAVE_SINE = 0, WAVE_TRIANGLE = 1, WAVE_SQUARE = 2, WAVE_SAW = 3 };
 
   // Highest carrier frequency actually processed, as a fraction of the active
   // sample rate. Requests above this (the public range goes up to 20 kHz,
@@ -54,6 +61,7 @@ public:
 
   float mWet;       // wet/dry mix, 1.0 = fully modulated, 0.0 = bypass
   float mFrequency; // carrier frequency in Hz
+  int mWaveform;    // carrier waveform type (0 = Sine, 1 = Triangle, 2 = Square, 3 = Saw)
 
   virtual int getParamCount();
   virtual const char *getParamName(unsigned int aParamIndex);

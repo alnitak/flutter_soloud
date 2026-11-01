@@ -53,7 +53,7 @@ Which params matter for the common use (full table in `references/filter-paramet
 | limiter | `threshold` −60–0 dB (−3), `outputCeiling` −60–0 dB (−1), `attackTime` 0.1–200 ms (1), `releaseTime` 1–1000 ms (100), `kneeWidth` 0–30 dB (2) |
 | compressor | `threshold` −80–0 dB (−6), `ratio` 1–10 (3), `makeupGain` −40–40 dB (0), `attackTime` 0–100 ms (10), `releaseTime` 0–1000 ms (100), `kneeWidth` 0–40 dB (2) |
 | parametricEq | `numBands` 1–64 (3), `stftWindowSize` 32–4096 power of two (1024), `bandGain(i)` 0–4 (1), `bandFreq(i)` 10–24000 Hz, `bandQ(i)` 0.1–20 (~1.0) |
-| amplitudeModulator | `frequency` 0.1–20000 Hz (440); sine ring modulation, clamped below Nyquist at runtime |
+| amplitudeModulator | `frequency` 0.1–20000 Hz (440), `waveform` 0–3 (0 = Sine, 1 = Triangle, 2 = Square, 3 = Saw); bipolar amplitude modulation, clamped below Nyquist at runtime |
 | customFilter(id) | `wet` 0–1 (1), `param(1)`..`param(7)` user-defined via `configureParameters(specs)`, up to 8 independent slots (`id` in `0..7`) per scope (see **flutter-soloud-custom-dsp** and **flutter-soloud-realtime-dsp**) |
 
 Every filter also has `wet` (0–1, default 1): 1 = fully processed, 0 = dry passthrough.

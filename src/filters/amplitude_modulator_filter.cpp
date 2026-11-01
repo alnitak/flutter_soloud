@@ -12,14 +12,74 @@
 
 namespace {
 constexpr double TWO_PI = 6.283185307179586476925286766559;
+constexpr double INV_TWO_PI = 0.1591549430918953357688837633725;
+constexpr double PI = 3.1415926535897932384626433832795;
+
+inline float evaluateCarrier(int waveform, double phase, double delta) {
+  switch (waveform) {
+  case AmplitudeModulator::WAVE_TRIANGLE: {
+    // phase in [0, 2*pi), normalized to [0, 1)
+    // Starts at 0, ramps to +1 at phase=pi/2 (p=0.25), 0 at phase=pi (p=0.5), -1 at phase=3*pi/2 (p=0.75)
+    double p = phase * INV_TWO_PI;
+    return (float)(p < 0.25 ? 4.0 * p : (p < 0.75 ? 2.0 - 4.0 * p : 4.0 * p - 4.0));
+  }
+  case AmplitudeModulator::WAVE_SQUARE: {
+    // Smooth transition between +1 and -1 around phase = 0/2*pi and phase = pi.
+    // Transition width w is the larger of 3 samples (3 * delta) or ~0.5 ms in radians.
+    // Capped at 0.1 * pi to preserve square shape even at high frequencies.
+    double w = delta * 3.0;
+    if (w < 0.0005 * TWO_PI * 40.0) // small lower bound for low freqs
+      w = 0.0005 * TWO_PI * 40.0;
+    if (w > 0.1 * PI)
+      w = 0.1 * PI;
+
+    // Transition 1: around phase = pi (from +1 to -1)
+    if (phase > PI - w && phase < PI + w) {
+      double t = (phase - (PI - w)) / (2.0 * w); // 0 to 1
+      return (float)std::cos(t * PI);             // +1 smoothly to -1
+    }
+    // Transition 2: around phase = 0 / 2*pi (from -1 to +1)
+    if (phase < w) {
+      double t = (phase + w) / (2.0 * w);        // 0.5 to 1
+      return (float)-std::cos(t * PI);            // 0 smoothly to +1
+    }
+    if (phase > TWO_PI - w) {
+      double t = (phase - (TWO_PI - w)) / (2.0 * w); // 0 to 0.5
+      return (float)-std::cos(t * PI);            // -1 smoothly to 0
+    }
+    return phase < PI ? 1.0f : -1.0f;
+  }
+  case AmplitudeModulator::WAVE_SAW: {
+    // Saw down: starts at +1 (phase = 0), ramps linearly down to -1 (phase -> 2*pi)
+    // Smooth the wrap-around edge around phase = 0/2*pi from -1 back to +1
+    double w = delta * 3.0;
+    if (w > 0.05 * PI)
+      w = 0.05 * PI;
+    if (phase > TWO_PI - w) {
+      double t = (phase - (TWO_PI - w)) / (2.0 * w); // 0 to 0.5
+      return (float)-std::cos(t * PI);
+    }
+    if (phase < w) {
+      double t = (phase + w) / (2.0 * w); // 0.5 to 1
+      return (float)-std::cos(t * PI);
+    }
+    double normPhase = phase * INV_TWO_PI;
+    return (float)(1.0 - 2.0 * normPhase);
+  }
+  case AmplitudeModulator::WAVE_SINE:
+  default:
+    return (float)std::sin(phase);
+  }
+}
 } // namespace
 
 AmplitudeModulatorInstance::AmplitudeModulatorInstance(
     AmplitudeModulator *aParent) {
   mParent = aParent;
-  initParams(2);
+  initParams(3);
   mParam[AmplitudeModulator::WET] = aParent->mWet;
   mParam[AmplitudeModulator::FREQUENCY] = aParent->mFrequency;
+  mParam[AmplitudeModulator::WAVEFORM] = (float)aParent->mWaveform;
 
   mPhase = 0.0;
   // The sample rate is only known in filter(), which computes the increment
@@ -90,9 +150,11 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
 
   // dry * (1 - wet) + dry * carrier * wet == dry * ((1 - wet) + wet * carrier)
   const float dryGain = 1.0f - wet;
+  const int waveform = (int)mParam[AmplitudeModulator::WAVEFORM];
   if (aChannels <= 1) {
     for (unsigned int i = 0; i < aSamples; ++i) {
-      const float gain = dryGain + wet * (float)std::sin(phase);
+      const float carrier = evaluateCarrier(waveform, phase, increment);
+      const float gain = dryGain + wet * carrier;
       if (aChannels == 1) {
         aBuffer[i] *= gain;
       }
@@ -106,7 +168,8 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
     }
     float *gains = mGainScratch.data();
     for (unsigned int i = 0; i < aSamples; ++i) {
-      gains[i] = dryGain + wet * (float)std::sin(phase);
+      const float carrier = evaluateCarrier(waveform, phase, increment);
+      gains[i] = dryGain + wet * carrier;
       phase += increment;
       if (phase >= TWO_PI)
         phase -= TWO_PI;
@@ -167,13 +230,16 @@ SoLoud::result AmplitudeModulator::setParam(unsigned int aParamIndex,
   case FREQUENCY:
     mFrequency = aValue;
     break;
+  case WAVEFORM:
+    mWaveform = (int)aValue;
+    break;
   default:
     return SoLoud::INVALID_PARAMETER;
   }
   return SoLoud::SO_NO_ERROR;
 }
 
-int AmplitudeModulator::getParamCount() { return 2; }
+int AmplitudeModulator::getParamCount() { return 3; }
 
 const char *AmplitudeModulator::getParamName(unsigned int aParamIndex) {
   switch (aParamIndex) {
@@ -181,11 +247,15 @@ const char *AmplitudeModulator::getParamName(unsigned int aParamIndex) {
     return "Wet";
   case FREQUENCY:
     return "Frequency";
+  case WAVEFORM:
+    return "Waveform";
   }
   return "Wet";
 }
 
-unsigned int AmplitudeModulator::getParamType(unsigned int /*aParamIndex*/) {
+unsigned int AmplitudeModulator::getParamType(unsigned int aParamIndex) {
+  if (aParamIndex == WAVEFORM)
+    return INT_PARAM;
   return FLOAT_PARAM;
 }
 
@@ -195,6 +265,8 @@ float AmplitudeModulator::getParamMax(unsigned int aParamIndex) {
     return 1.0f;
   case FREQUENCY:
     return 20000.0f;
+  case WAVEFORM:
+    return 3.0f;
   }
   return 1;
 }
@@ -205,6 +277,8 @@ float AmplitudeModulator::getParamMin(unsigned int aParamIndex) {
     return 0.0f;
   case FREQUENCY:
     return 0.1f;
+  case WAVEFORM:
+    return 0.0f;
   }
   return 0;
 }
@@ -212,6 +286,7 @@ float AmplitudeModulator::getParamMin(unsigned int aParamIndex) {
 AmplitudeModulator::AmplitudeModulator() {
   mWet = 1.0f;
   mFrequency = 440.0f;
+  mWaveform = WAVE_SINE;
 }
 
 SoLoud::FilterInstance *AmplitudeModulator::createInstance() {
