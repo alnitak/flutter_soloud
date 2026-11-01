@@ -358,7 +358,15 @@ namespace SoLoud
 		cp.mVoices.clear();
 		cp.mSerial = mCheckpointCounter;
 		cp.mTime = mStreamTime;
-		if (mSamplerate > 0)
+		if (mMixingToRenderRing)
+		{
+			cp.mRingWritePosition = mRenderRing.getWritePosition() + mBufferSize;
+		}
+		else if (mRemixing)
+		{
+			cp.mRingWritePosition = mRemixStartPos;
+		}
+		else if (mSamplerate > 0)
 		{
 			long long framesMixed = (long long)floor(mStreamTime * (time)mSamplerate + 0.5);
 			cp.mRingWritePosition = (unsigned long long)(framesMixed >= 0 ? framesMixed : 0);
@@ -1068,13 +1076,16 @@ namespace SoLoud
 		unsigned long long pos = mRemixStartPos;
 		while (pos < writePos)
 		{
+			mRemixStartPos = pos + mBufferSize;
 			remixQuantum_internal(mRenderRingStaging.mData, mBufferSize);
 			const unsigned long long readPos = mRenderRing.getReadPosition();
 			unsigned long long from = pos < readPos ? readPos : pos;
-			if (from < pos + mBufferSize)
+			const unsigned long long quantumEnd =
+				(pos + mBufferSize <= writePos) ? (pos + mBufferSize) : writePos;
+			if (from < quantumEnd)
 			{
 				const float *src = mRenderRingStaging.mData + (size_t)(from - pos) * mChannels;
-				const unsigned int frames = (unsigned int)(pos + mBufferSize - from);
+				const unsigned int frames = (unsigned int)(quantumEnd - from);
 				if (from > pos)
 				{
 					mRenderRing.rewriteCrossfade(from, src, frames, 32);

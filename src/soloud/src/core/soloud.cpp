@@ -849,7 +849,7 @@ namespace SoLoud
 			mRenderRing.availableToWrite() >= mBufferSize)
 		{
 			unsigned int stride = (mBufferSize + 15) & ~0xf;
-			float buffertime = mBufferSize / (float)mSamplerate;
+			time buffertime = (time)mBufferSize / (time)mSamplerate;
 			float globalVolume[2];
 
 			lockAudioMutex_internal();
@@ -2684,7 +2684,7 @@ namespace SoLoud
 	void Soloud::mixVoicesLocked_internal(unsigned int aSamples, unsigned int aStride)
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
-		float buffertime = aSamples / (float)mSamplerate;
+		time buffertime = (time)aSamples / (time)mSamplerate;
 
 		// Process faders. May change scratch size.
 		int i;
@@ -2881,7 +2881,7 @@ namespace SoLoud
 		}
 #endif
 
-		float buffertime = aSamples / (float)mSamplerate;
+		time buffertime = (time)aSamples / (time)mSamplerate;
 		float globalVolume[2];
 
 		// Advance the mix clock under the same lock as the mix itself.
@@ -2992,7 +2992,7 @@ namespace SoLoud
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
 		SOLOUD_ASSERT(mRemixing);
 		unsigned int stride = (aSamples + 15) & ~0xf;
-		float buffertime = aSamples / (float)mSamplerate;
+		time buffertime = (time)aSamples / (time)mSamplerate;
 		float globalVolume[2];
 		mStreamTime += buffertime;
 

@@ -809,6 +809,40 @@ void testRepeatedRollbacksDoNotDoubleExtendStopSamplesLeft()
            "voice A should have stopped after its 2-quantum fade, not been extended by double rollbackSamples");
 }
 
+// Regression test: after >27,000 idle quanta (~10.5 minutes at 44.1 kHz),
+// mStreamTime and cp.mRingWritePosition must remain aligned with mRenderRing
+// so retroactive play does not run an extra remixQuantum_internal pass.
+void testLongIdleNoStreamTimeOrRingDrift()
+{
+    Rig rig;
+    rig.topUp();
+    for (int i = 0; i < 30000; ++i) {
+        rig.discard(kQuantum);
+        rig.topUp();
+    }
+
+    const unsigned long long expectedWritePos =
+        rig.engine.mRenderRing.getWritePosition();
+    const double expectedTime =
+        (double)expectedWritePos / (double)kSampleRate;
+    EXPECT(std::fabs(rig.engine.getEngineTime() - expectedTime) < 1e-6,
+           "engine time drifted after 30000 quanta: got %.9f, expected %.9f",
+           rig.engine.getEngineTime(), expectedTime);
+
+    PulseSource s(2048, 0.5f, true);
+    rig.engine.play(s, 0.5f);
+
+    EXPECT(std::fabs(rig.engine.getEngineTime() - expectedTime) < 1e-6,
+           "retroactive play after long idle shifted engine time: got %.9f, expected %.9f",
+           rig.engine.getEngineTime(), expectedTime);
+
+    const std::vector<float> out = rig.readAll();
+    const long long first = firstAudibleFrame(out, 1e-4f);
+    EXPECT(first >= 0 && first < 64,
+           "retroactive play after long idle must still be audible at playhead, got %lld",
+           first);
+}
+
 } // namespace
 
 int main()
@@ -831,6 +865,7 @@ int main()
     testPitchShiftedResamplerBlockBoundaryContinuity();
     testSubSampleMicrosecondRoundingNoSpuriousRollback();
     testRepeatedRollbacksDoNotDoubleExtendStopSamplesLeft();
+    testLongIdleNoStreamTimeOrRingDrift();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);
