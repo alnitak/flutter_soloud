@@ -186,7 +186,12 @@ public:
                           unsigned int sampleRate, unsigned int maxBlockSize,
                           unsigned int channels, int *outPluginHandle);
 
-  PlayerErrors unloadPlugin(int pluginHandle);
+  /// Unload one plugin. [audioThreadBarrier] has the same contract as for
+  /// unloadAll(): it runs after the plugin left the audio-thread lookup table
+  /// and before it is shut down.
+  PlayerErrors unloadPlugin(int pluginHandle,
+                            void (*audioThreadBarrier)(void *) = nullptr,
+                            void *barrierUserData = nullptr);
 
   /// Unload every plugin and cached module.
   ///
@@ -202,6 +207,8 @@ public:
   std::shared_ptr<Vst3PluginInstance> getPlugin(int pluginHandle);
 
   /// Lock-free lookup for the real-time audio thread (no mutex, no refcounting).
+  /// Returns nullptr for a handle whose plugin was unloaded, even if its table
+  /// slot now holds a newer plugin.
   Vst3PluginInstance *getPluginAudioThread(int pluginHandle) noexcept;
 
   VST3::Hosting::Module::Ptr getOrLoadModule(const std::string &bundlePath,
@@ -214,7 +221,18 @@ public:
   void setRestartComponentCallback(
       dartVst3RestartComponentCallback_t callback);
 
-  static constexpr size_t kMaxFastPlugins = 1024;
+  /// A handle is `(generation << kSlotBits) | slot`. The slot indexes the
+  /// lookup table and is reused; the generation is not (until it wraps after
+  /// ~2 million loads), so a stale handle still held by a filter slot or a
+  /// custom source never resolves to a plugin loaded later into its slot.
+  static constexpr unsigned int kSlotBits = 10;
+  static constexpr size_t kMaxFastPlugins = size_t{1} << kSlotBits;
+  static constexpr uint32_t kMaxGeneration = (1u << (31 - kSlotBits)) - 1;
+  static size_t slotOf(int pluginHandle) noexcept {
+    return pluginHandle > 0
+               ? static_cast<size_t>(pluginHandle) & (kMaxFastPlugins - 1)
+               : 0;
+  }
 
 private:
   Vst3HostManager();
@@ -222,7 +240,7 @@ private:
 
   mutable std::mutex mMutex;
   Steinberg::Vst::HostApplication mHostApp;
-  int mNextHandle = 1;
+  uint32_t mNextGeneration = 1;
   std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> mPlugins;
   std::array<std::atomic<Vst3PluginInstance *>, kMaxFastPlugins> mPluginTable{};
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> mLoadedModules;

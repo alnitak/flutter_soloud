@@ -965,16 +965,22 @@ PlayerErrors Vst3HostManager::loadPlugin(
   }
 
   std::lock_guard<std::mutex> lock(mMutex);
-  int handle = 0;
+  size_t slot = 0;
   for (size_t i = 1; i < kMaxFastPlugins; ++i) {
-    if (mPlugins.find(static_cast<int>(i)) == mPlugins.end()) {
-      handle = static_cast<int>(i);
+    if (mPluginTable[i].load(std::memory_order_relaxed) == nullptr) {
+      slot = i;
       break;
     }
   }
-  if (handle == 0) {
+  if (slot == 0) {
     return outOfMemory;
   }
+  // Tag the reused slot with a fresh generation (see kSlotBits).
+  if (mNextGeneration > kMaxGeneration) {
+    mNextGeneration = 1;
+  }
+  const int handle =
+      static_cast<int>((mNextGeneration++ << kSlotBits) | slot);
 
   auto instance =
       std::make_shared<Vst3PluginInstance>(handle, module, selectedClass);
@@ -1000,12 +1006,14 @@ PlayerErrors Vst3HostManager::loadPlugin(
   }
 
   *outPluginHandle = handle;
-  mPluginTable[handle].store(instance.get(), std::memory_order_release);
+  mPluginTable[slot].store(instance.get(), std::memory_order_release);
   mPlugins.emplace(handle, instance);
   return noError;
 }
 
-PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle) {
+PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle,
+                                           void (*audioThreadBarrier)(void *),
+                                           void *barrierUserData) {
   std::shared_ptr<Vst3PluginInstance> removed;
   {
     std::lock_guard<std::mutex> lock(mMutex);
@@ -1013,11 +1021,17 @@ PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle) {
     if (it == mPlugins.end()) {
       return invalidParameter;
     }
-    if (pluginHandle > 0 && static_cast<size_t>(pluginHandle) < kMaxFastPlugins) {
-      mPluginTable[pluginHandle].store(nullptr, std::memory_order_release);
+    const size_t slot = slotOf(pluginHandle);
+    if (slot != 0 &&
+        mPluginTable[slot].load(std::memory_order_relaxed) == it->second.get()) {
+      mPluginTable[slot].store(nullptr, std::memory_order_release);
     }
     removed = it->second;
     mPlugins.erase(it);
+  }
+  // As in unloadAll(): let any mix that loaded the pointer finish first.
+  if (audioThreadBarrier != nullptr) {
+    audioThreadBarrier(barrierUserData);
   }
   if (removed) {
     removed->shutdown();
@@ -1065,10 +1079,16 @@ std::shared_ptr<Vst3PluginInstance> Vst3HostManager::getPlugin(int pluginHandle)
 }
 
 Vst3PluginInstance *Vst3HostManager::getPluginAudioThread(int pluginHandle) noexcept {
-  if (pluginHandle > 0 && static_cast<size_t>(pluginHandle) < kMaxFastPlugins) {
-    return mPluginTable[pluginHandle].load(std::memory_order_acquire);
+  const size_t slot = slotOf(pluginHandle);
+  if (slot == 0) {
+    return nullptr;
   }
-  return nullptr;
+  // The pointer stays valid while the audio thread uses it (unloading waits
+  // on the audio mutex before destroying), so its handle can be compared.
+  Vst3PluginInstance *plugin =
+      mPluginTable[slot].load(std::memory_order_acquire);
+  return (plugin != nullptr && plugin->handle() == pluginHandle) ? plugin
+                                                                  : nullptr;
 }
 
 void Vst3HostManager::setParameterEditCallback(

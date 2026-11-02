@@ -172,6 +172,11 @@ class Vst3Host {
   ///
   /// Useful during teardown or before application exit to ensure clean release
   /// of all native plugin libraries and resources.
+  ///
+  /// Plugin objects returned earlier become inert: an effect's
+  /// [CustomFilterSlot] passes audio through unchanged and an instrument's
+  /// source ends. Their handles never resolve to plugins loaded afterwards.
+  /// Call `dispose()` on them to also release their filter slots.
   @experimental
   void unloadAll() {
     if (!isSupported) return;
