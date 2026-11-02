@@ -188,7 +188,16 @@ public:
 
   PlayerErrors unloadPlugin(int pluginHandle);
 
-  void unloadAll();
+  /// Unload every plugin and cached module.
+  ///
+  /// [audioThreadBarrier], when set, is invoked after every plugin has been
+  /// removed from the audio-thread lookup table and before any instance is
+  /// shut down or released. It must return only once no audio callback that
+  /// may have loaded a plugin pointer from the table is still running (for
+  /// SoLoud: acquire and release the audio mutex, which every mix holds).
+  /// Without it, callers must guarantee that no audio is being processed.
+  void unloadAll(void (*audioThreadBarrier)(void *) = nullptr,
+                 void *barrierUserData = nullptr);
 
   std::shared_ptr<Vst3PluginInstance> getPlugin(int pluginHandle);
 

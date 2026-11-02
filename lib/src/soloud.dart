@@ -531,6 +531,12 @@ interface class SoLoud {
   /// [bufferSize]. This is the prerequisite for low-latency reactive playback
   /// with large mix buffers. When null or 0 (the default) the engine mixes
   /// directly into the device callback as before. Ignored on web.
+  /// With the ring enabled, global filters run at the device playhead on the
+  /// frames read from the ring, and the output is clipped after them, as
+  /// without the ring. The one difference is that the global volume is
+  /// applied when mixing into the ring, so it comes before the global filters
+  /// rather than after them (only noticeable with non-linear filters such as
+  /// a limiter or compressor).
   Future<void> init({
     PlaybackDevice? device,
     bool automaticCleanup = false,
@@ -5143,9 +5149,11 @@ interface class SoLoud {
   ///   [BufferType.f32lePlanar] (contiguous channel-planar 32-bit float).
   /// - [bufferFrames]: Forward ring buffer capacity in frames (rounded up to a
   ///   power of two in native code, default `2048`).
-  /// - [historyFrames]: Historical rewind window in frames retained so the
-  ///   mixer can retroactively re-mix the currently playing window when new
-  ///   samples arrive (default `4096`).
+  /// - [historyFrames]: Minimum historical rewind window in frames retained
+  ///   so the mixer can retroactively re-mix the currently playing window when
+  ///   new samples arrive (default `4096`). Native code raises it as needed to
+  ///   cover the `renderAheadFrames` window given to [init] (plus two
+  ///   resampler blocks), so a smaller value cannot break re-mixing.
   /// - [autoDispose]: Whether to automatically dispose the source when all
   ///   playing handles finish (default `false`).
   @experimental

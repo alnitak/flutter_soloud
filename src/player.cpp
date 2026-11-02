@@ -1257,7 +1257,8 @@ PlayerErrors Player::setRealtimeStream(
     unsigned int sampleRate,
     unsigned int channels,
     BufferType format,
-    unsigned int bufferCapacityFrames)
+    unsigned int bufferCapacityFrames,
+    unsigned int historyFrames)
 {
     if (!mInited.load(std::memory_order_acquire))
         return backendNotInited;
@@ -1280,7 +1281,8 @@ PlayerErrors Player::setRealtimeStream(
 
     auto *realtimeStream = static_cast<SoLoud::RealtimeStream *>(newSound->sound.get());
     PlayerErrors e = realtimeStream->init(
-        this, newSound.get(), sampleRate, channels, format, bufferCapacityFrames);
+        &soloud, sampleRate, channels, format, bufferCapacityFrames,
+        historyFrames);
     if (e != PlayerErrors::noError)
     {
         hash = 0;
@@ -1311,12 +1313,20 @@ PlayerErrors Player::resetRealtimeStream(unsigned int hash)
     return PlayerErrors::noError;
 }
 
+// Every RealtimeStream operation below holds sounds_mutex for its whole
+// duration, not just for the lookup: disposeSound()/disposeAllSound() remove
+// and destroy the ActiveSound only after acquiring it, so this keeps the
+// stream (and its ActiveSound::handle list, which injectIntoPlayingWindow()
+// reads) alive while a producer thread or isolate is using it. Lock order is
+// sounds_mutex -> SoLoud audio mutex, the same as disposeSound() and
+// addAudioDataStream().
 unsigned int Player::pushRealtimeFloat32(
     unsigned int hash,
     const float *data,
     unsigned int numFrames)
 {
-    auto *rs = getRealtimeStreamLocked(hash);
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto *rs = findRealtimeStreamUnlocked(hash);
     return rs != nullptr ? rs->pushDataFloat32(data, numFrames) : 0;
 }
 
@@ -1325,7 +1335,8 @@ unsigned int Player::pushRealtimeInt16(
     const int16_t *data,
     unsigned int numFrames)
 {
-    auto *rs = getRealtimeStreamLocked(hash);
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto *rs = findRealtimeStreamUnlocked(hash);
     return rs != nullptr ? rs->pushDataInt16(data, numFrames) : 0;
 }
 
@@ -1335,7 +1346,8 @@ unsigned int Player::pushRealtimeClockedFloat32(
     const float *data,
     unsigned int numFrames)
 {
-    auto *rs = getRealtimeStreamLocked(hash);
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto *rs = findRealtimeStreamUnlocked(hash);
     return rs != nullptr ? rs->pushDataClockedFloat32(soundTime, data, numFrames) : 0;
 }
 
@@ -1345,25 +1357,29 @@ unsigned int Player::pushRealtimeScheduledFloat32(
     const float *data,
     unsigned int numFrames)
 {
-    auto *rs = getRealtimeStreamLocked(hash);
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto *rs = findRealtimeStreamUnlocked(hash);
     return rs != nullptr ? rs->pushDataScheduledFloat32(engineTime, data, numFrames) : 0;
 }
 
 unsigned int Player::getRealtimeAvailableToRead(unsigned int hash)
 {
-    auto *rs = getRealtimeStreamLocked(hash);
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto *rs = findRealtimeStreamUnlocked(hash);
     return rs != nullptr ? rs->getAvailableToRead() : 0;
 }
 
 unsigned int Player::getRealtimeAvailableToWrite(unsigned int hash)
 {
-    auto *rs = getRealtimeStreamLocked(hash);
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto *rs = findRealtimeStreamUnlocked(hash);
     return rs != nullptr ? rs->getAvailableToWrite() : 0;
 }
 
 unsigned int Player::getRealtimeUnderrunCount(unsigned int hash)
 {
-    auto *rs = getRealtimeStreamLocked(hash);
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto *rs = findRealtimeStreamUnlocked(hash);
     return rs != nullptr ? rs->getUnderrunCount() : 0;
 }
 
@@ -3346,9 +3362,8 @@ ActiveSound *Player::findByHash(unsigned int soundHash)
     return findByHashUnlocked(soundHash);
 }
 
-SoLoud::RealtimeStream *Player::getRealtimeStreamLocked(unsigned int hash)
+SoLoud::RealtimeStream *Player::findRealtimeStreamUnlocked(unsigned int hash)
 {
-    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const s = findByHashUnlocked(hash);
     if (s == nullptr || s->soundType != SoundType::TYPE_REALTIME_STREAM)
         return nullptr;

@@ -880,6 +880,7 @@ external int wasmSetRealtimeStream(
   int channels,
   int format,
   int bufferFrames,
+  int historyFrames,
 );
 
 @JS('Module_soloud._resetRealtimeStream')

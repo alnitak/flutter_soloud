@@ -644,10 +644,14 @@ namespace SoLoud
 		// render-ahead depth is reached (or the ring is full). Called from the
 		// backend device callback when the ring is enabled.
 		void renderRingTopUp_internal();
-		// Apply global filters (mFilterInstance) to interleaved frames freshly
-		// read from mRenderRing at the device playhead, so stateful global
-		// filters (PitchShift, Freeverb, Echo, VST3, etc.) see a strictly
-		// continuous stream unaffected by retroactive re-mix rollbacks.
+		// Final output stage for interleaved frames freshly read from
+		// mRenderRing at the device playhead: apply the global filters
+		// (mFilterInstance), so stateful global filters (PitchShift, Freeverb,
+		// Echo, VST3, etc.) see a strictly continuous stream unaffected by
+		// retroactive re-mix rollbacks, then clip. The ring holds the mix with
+		// global volume applied but *unclipped*, so the chain matches the
+		// direct path (mix -> global filters -> clip) except that global
+		// volume is applied before the global filters instead of after them.
 		void postProcessRenderRing_internal(float *aBuffer, unsigned int aSamples);
 
 		// ###### flutter_soloud local patch (mix checkpoints) ######
@@ -775,6 +779,11 @@ namespace SoLoud
 		void update3dVoices_internal(unsigned int *aVoiceList, unsigned int aVoiceCount);
 		// Clip the samples in the buffer
 		void clip_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1);
+		// ###### flutter_soloud local patch (render-ahead ring) ######
+		// The volume ramp of clip_internal() without the clipping, for the
+		// render-ahead ring path, which clips after the global filters in
+		// postProcessRenderRing_internal().
+		void applyGlobalVolume_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1);
 		// Remove all non-active voices from group
 		void trimVoiceGroup_internal(handle aVoiceGroupHandle);
 		// Get pointer to the zero-terminated array of voice handles in a voice group
@@ -835,7 +844,7 @@ namespace SoLoud
 		// ring is enabled.
 		AlignedFloatBuffer mRenderRingStaging;
 		// Scratch buffer for de-interleaving frames read from mRenderRing
-		// when applying global filters post-ring at the playhead.
+		// when applying global filters and clipping post-ring at the playhead.
 		AlignedFloatBuffer mPostRingScratch;
 		// True while renderRingTopUp_internal() is mixing into mRenderRing so
 		// mixVoicesLocked_internal() defers global filters to

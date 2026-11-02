@@ -1025,7 +1025,8 @@ PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle) {
   return noError;
 }
 
-void Vst3HostManager::unloadAll() {
+void Vst3HostManager::unloadAll(void (*audioThreadBarrier)(void *),
+                                void *barrierUserData) {
   std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> toUnload;
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> modulesToUnload;
   {
@@ -1035,6 +1036,13 @@ void Vst3HostManager::unloadAll() {
     }
     toUnload.swap(mPlugins);
     modulesToUnload.swap(mLoadedModules);
+  }
+  // The audio thread reads raw pointers from mPluginTable without a lock.
+  // Clearing the table stops new lookups, but a mix already in progress may
+  // still hold a pointer it loaded before the clear. Wait for it to finish
+  // before any instance is shut down or destroyed below.
+  if (audioThreadBarrier != nullptr) {
+    audioThreadBarrier(barrierUserData);
   }
   // 1. Shutdown all active plugin instances: close editors, stop processing,
   //    deactivate, and terminate components/controllers before modules unload.

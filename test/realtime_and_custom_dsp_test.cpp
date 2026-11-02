@@ -1,4 +1,5 @@
-// Standalone C++ unit tests for RealtimeRingBuffer, RealtimeStream,
+// Standalone C++ unit tests for RealtimeRingBuffer, RealtimeStream (alone and
+// driven by a null-backend engine with the render-ahead ring),
 // CustomAudioSource, CustomFilter, and uint64_t FilterInstance::mParamChanged.
 //
 // Build & run from the flutter_soloud repo root:
@@ -10,6 +11,7 @@
 #include "../src/filters/custom_filter.h"
 #include "../src/synth/custom_source.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -137,7 +139,7 @@ static void testRealtimeStream() {
     std::printf("Test: RealtimeStream (zero-wait pull, state capture/restore, cosine anti-click)\n");
 
     SoLoud::RealtimeStream stream;
-    PlayerErrors err = stream.init(nullptr, nullptr, 48000, 2,
+    PlayerErrors err = stream.init(nullptr, 48000, 2,
                                    BufferType::PCM_F32LE_PLANAR, 1024);
     EXPECT(err == PlayerErrors::noError, "RealtimeStream::init failed (%d)", (int)err);
 
@@ -319,6 +321,32 @@ static void testCustomFilter() {
     EXPECT(std::fabs(inst->getFilterParameter(1) - 3.0f) < 1e-6f,
            "restoreState did not restore param 1 (%.3f != 3.0)", inst->getFilterParameter(1));
 
+    // Branch 3 with a block larger than the pre-allocated dry scratch (e.g. a
+    // global filter on a large engine quantum): blended in scratch-sized
+    // chunks instead of allocating on the audio thread. Every frame of both
+    // channels must still be blended, and only the first chunk reports the
+    // parameter change.
+    {
+        const unsigned int frames = 1500;
+        std::vector<float> big(2 * frames, 1.0f);
+        const int callsBefore = g_filterState.callbackCalls;
+        inst->setFilterParameter(1, 3.0f);
+        inst->filter(big.data(), frames, frames, 2, 48000.0f, 0.0);
+        const int calls = g_filterState.callbackCalls - callsBefore;
+        EXPECT(calls == 3, "large block should be blended in 3 chunks (%d)", calls);
+        bool allBlended = true;
+        for (float v : big) {
+            if (std::fabs(v - 1.5f) > 1e-6f) {
+                allBlended = false;
+                break;
+            }
+        }
+        EXPECT(allBlended, "chunked dry/wet blend mismatch");
+        EXPECT(g_filterState.lastParamChangedMask == 0,
+               "only the first chunk should report changed params (0x%llx)",
+               (unsigned long long)g_filterState.lastParamChangedMask);
+    }
+
     delete inst;
 
     SoLoud::CustomAudioSource namedSynth(48000, 2, nullptr, nullptr, nullptr,
@@ -331,11 +359,370 @@ static void testCustomFilter() {
     delete namedSynthInst;
 }
 
+
+// 5. RealtimeStream against a real engine (null backend): timed pushes,
+// reset, and retroactive re-mixing of the render-ahead window.
+
+namespace rt_engine {
+
+constexpr unsigned int kSampleRate = 44100;
+constexpr unsigned int kQuantum = 1024;
+constexpr unsigned int kRenderAhead = 4096;
+constexpr unsigned int kDevicePeriod = 512;
+constexpr float kLevel = 0.4f;
+constexpr float kThreshold = 0.02f;
+
+// Left channel of an interleaved stereo buffer.
+static float left(const std::vector<float> &buf, unsigned int frame) {
+    return buf[frame * 2];
+}
+
+static long long firstAudible(const std::vector<float> &buf, unsigned int from) {
+    const unsigned int frames = static_cast<unsigned int>(buf.size() / 2);
+    for (unsigned int i = from; i < frames; ++i) {
+        if (std::fabs(left(buf, i)) > kThreshold) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool silent(const std::vector<float> &buf, unsigned int from, unsigned int to) {
+    to = std::min<unsigned int>(to, static_cast<unsigned int>(buf.size() / 2));
+    for (unsigned int i = from; i < to; ++i) {
+        if (std::fabs(left(buf, i)) > kThreshold) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool audible(const std::vector<float> &buf, unsigned int from, unsigned int to) {
+    to = std::min<unsigned int>(to, static_cast<unsigned int>(buf.size() / 2));
+    for (unsigned int i = from; i < to; ++i) {
+        if (std::fabs(left(buf, i)) <= kThreshold) {
+            return false;
+        }
+    }
+    return from < to;
+}
+
+static double frameTime(unsigned int frames) {
+    return static_cast<double>(frames) / kSampleRate;
+}
+
+struct RingRig {
+    RingRig() {
+        engine.setRenderAheadConfig(kDevicePeriod, kRenderAhead);
+        const SoLoud::result r = engine.init(SoLoud::Soloud::CLIP_ROUNDOFF,
+                                             SoLoud::Soloud::NULLDRIVER,
+                                             kSampleRate, kQuantum, 2);
+        EXPECT(r == SoLoud::SO_NO_ERROR, "engine init failed (%d)", r);
+    }
+    ~RingRig() { engine.deinit(); }
+
+    void topUp() { engine.renderRingTopUp_internal(); }
+    void discard(unsigned int frames) {
+        std::vector<float> tmp(frames * 2);
+        engine.mRenderRing.read(tmp.data(), frames);
+    }
+    std::vector<float> readAll() {
+        const unsigned int n = engine.mRenderRing.availableToRead();
+        std::vector<float> buf(n * 2, 0.0f);
+        engine.mRenderRing.read(buf.data(), n);
+        return buf;
+    }
+    double playhead() { return engine.getPlayheadTime(); }
+
+    SoLoud::Soloud engine;
+};
+
+// A chunk scheduled after the end of audio that is still queued must wait for
+// its time, not play right after the queued audio.
+static void testScheduledAfterQueuedAudio() {
+    std::printf("Test: RealtimeStream scheduled push after queued audio keeps its time\n");
+
+    SoLoud::Soloud engine;
+    const SoLoud::result r = engine.init(SoLoud::Soloud::CLIP_ROUNDOFF,
+                                         SoLoud::Soloud::NULLDRIVER,
+                                         kSampleRate, kQuantum, 2);
+    EXPECT(r == SoLoud::SO_NO_ERROR, "engine init failed (%d)", r);
+
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(&engine, kSampleRate, 1, BufferType::PCM_F32LE, 8192) ==
+               PlayerErrors::noError,
+           "init failed");
+    EXPECT(engine.play(stream) != 0, "play failed");
+
+    std::vector<float> chunk(100, kLevel);
+    const double t0 = engine.getEngineTime();
+    EXPECT(stream.pushDataFloat32(chunk.data(), 100) == 100, "push A failed");
+    EXPECT(stream.pushDataScheduledFloat32(t0 + frameTime(1000), chunk.data(),
+                                           100) == 100,
+           "push B failed");
+
+    std::vector<float> out(2 * kQuantum * 2, 0.0f);
+    engine.mix(out.data(), kQuantum);
+    engine.mix(out.data() + kQuantum * 2, kQuantum);
+
+    EXPECT(audible(out, 4, 96), "A should play at once");
+    EXPECT(silent(out, 100 + 70, 996), "gap before B should be silent");
+    const long long onsetB = firstAudible(out, 170);
+    EXPECT(onsetB >= 996 && onsetB <= 1004, "B onset at %lld, want 1000", onsetB);
+    EXPECT(audible(out, 1004, 1096), "B should play for its length");
+
+    engine.deinit();
+}
+
+// A chunk scheduled inside the render-ahead window, after audio that ends
+// inside the same window, must not erase that earlier audio when the window
+// is re-mixed.
+static void testScheduledInWindowKeepsEarlierAudio() {
+    std::printf("Test: RealtimeStream scheduled pushes inside the render-ahead window\n");
+
+    RingRig rig;
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                       16384) == PlayerErrors::noError,
+           "init failed");
+    EXPECT(rig.engine.play(stream) != 0, "play failed");
+
+    rig.topUp();          // the starving voice fills the window with silence
+    rig.discard(1024);    // playhead at ring frame 1024
+    const double playhead = rig.playhead();
+
+    std::vector<float> chunk(300, kLevel);
+    EXPECT(stream.pushDataScheduledFloat32(playhead + frameTime(500),
+                                           chunk.data(), 300) == 300,
+           "push A failed");
+    EXPECT(stream.pushDataScheduledFloat32(playhead + frameTime(1000),
+                                           chunk.data(), 300) == 300,
+           "push B failed");
+
+    const std::vector<float> buf = rig.readAll();  // starts at the playhead
+    const long long onsetA = firstAudible(buf, 0);
+    EXPECT(onsetA >= 496 && onsetA <= 504, "A onset at %lld, want 500", onsetA);
+    EXPECT(audible(buf, 504, 796), "A missing from the re-mixed window");
+    EXPECT(silent(buf, 800 + 70, 996), "gap between A and B should be silent");
+    const long long onsetB = firstAudible(buf, 870);
+    EXPECT(onsetB >= 996 && onsetB <= 1004, "B onset at %lld, want 1000", onsetB);
+    EXPECT(audible(buf, 1004, 1296), "B missing from the re-mixed window");
+    EXPECT(silent(buf, 1300 + 70, static_cast<unsigned int>(buf.size() / 2)),
+           "nothing should play after B");
+}
+
+// An immediate push to a starving voice is spliced in at the playhead.
+static void testImmediatePushResumesAtPlayhead() {
+    std::printf("Test: RealtimeStream immediate push to a starving voice\n");
+
+    RingRig rig;
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                       16384) == PlayerErrors::noError,
+           "init failed");
+    EXPECT(rig.engine.play(stream) != 0, "play failed");
+
+    rig.topUp();
+    rig.discard(1024);
+
+    std::vector<float> chunk(2000, kLevel);
+    EXPECT(stream.pushDataFloat32(chunk.data(), 2000) == 2000, "push failed");
+
+    const std::vector<float> buf = rig.readAll();
+    const long long onset = firstAudible(buf, 0);
+    EXPECT(onset >= 0 && onset <= 4, "onset at %lld, want the playhead", onset);
+    EXPECT(audible(buf, 4, 1996), "pushed audio should play contiguously");
+    EXPECT(silent(buf, 2000 + 70, static_cast<unsigned int>(buf.size() / 2)),
+           "nothing should play after the pushed audio");
+}
+
+// Re-mix the render-ahead window from the checkpoint at or before `when`, as
+// any retroactive event would. Returns false if no re-mix was possible.
+static bool remixFrom(RingRig &rig, double when) {
+    rig.engine.lockAudioMutex_internal();
+    const int ci = rig.engine.retroactiveBegin_internal(when);
+    if (ci >= 0) {
+        rig.engine.retroactiveEnd_internal(ci);
+    }
+    rig.engine.unlockAudioMutex_internal();
+    return ci >= 0;
+}
+
+// Frames discarded by reset() must not come back when a later event re-mixes
+// the window.
+static void testResetSurvivesRemix() {
+    std::printf("Test: RealtimeStream reset is not undone by a re-mix\n");
+
+    RingRig rig;
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                       16384) == PlayerErrors::noError,
+           "init failed");
+    EXPECT(rig.engine.play(stream) != 0, "play failed");
+
+    std::vector<float> chunk(8000, kLevel);
+    EXPECT(stream.pushDataFloat32(chunk.data(), 8000) == 8000, "push failed");
+    rig.topUp();          // mixes stream frames [0, 4096)
+    rig.discard(2048);    // playhead at 2048
+    const double resetTime = rig.engine.getEngineTime();  // ring frame 4096
+
+    stream.resetBuffer(); // discards stream frames [4096, 8000)
+    EXPECT(stream.getAvailableToRead() == 0, "reset left %u frames",
+           stream.getAvailableToRead());
+    rig.topUp();          // mixes [4096, 6144): the stream is dry
+
+    // The discarded frames freed their ring space, so a re-mix from before
+    // the reset could replay overwritten history: it must be refused.
+    EXPECT(!remixFrom(rig, rig.engine.getPlayheadTime()),
+           "re-mix from before the reset should be refused");
+    // A re-mix from the reset point is fine and must not replay them.
+    EXPECT(remixFrom(rig, resetTime), "re-mix from the reset point failed");
+
+    const std::vector<float> buf = rig.readAll();  // starts at ring frame 2048
+    EXPECT(audible(buf, 0, 2040), "audio mixed before the reset should remain");
+    EXPECT(silent(buf, 2048 + 70, static_cast<unsigned int>(buf.size() / 2)),
+           "discarded frames replayed by the re-mix");
+}
+
+// A reset while the voice waits out a scheduled gap cancels the gap; a
+// re-mix from a checkpoint taken during the gap must cancel it too.
+static void testResetDuringScheduledGap() {
+    std::printf("Test: RealtimeStream reset during a scheduled gap\n");
+
+    RingRig rig;
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                       16384) == PlayerErrors::noError,
+           "init failed");
+    EXPECT(rig.engine.play(stream) != 0, "play failed");
+
+    rig.topUp();                // the starving voice mixes [0, 4096)
+    rig.discard(1024);
+    std::vector<float> chunk(300, kLevel);
+    // Scheduled well past the mix head: the voice is still in the gap when
+    // the next quantum [4096, 5120) is mixed.
+    EXPECT(stream.pushDataScheduledFloat32(0.0 + frameTime(6000), chunk.data(),
+                                           300) == 300,
+           "scheduled push failed");
+    rig.topUp();                // mixes [4096, 5120) inside the gap
+    const double resetTime = rig.engine.getEngineTime();  // ring frame 5120
+
+    stream.resetBuffer();       // drops the scheduled chunk and its gap
+    std::vector<float> next(2000, kLevel);
+    EXPECT(stream.pushDataFloat32(next.data(), 2000) == 2000, "push failed");
+    rig.discard(2048);          // playhead at 3072
+    rig.topUp();                // mixes [5120, 7168): the new frames
+
+    EXPECT(remixFrom(rig, resetTime), "re-mix from the reset point failed");
+
+    const std::vector<float> buf = rig.readAll();  // starts at ring frame 3072
+    // Ring frame 5120 is window frame 2048.
+    EXPECT(silent(buf, 0, 2044), "nothing should play before the reset point");
+    const long long onset = firstAudible(buf, 0);
+    EXPECT(onset >= 2048 && onset <= 2052,
+           "new frames start at window frame %lld, want 2048", onset);
+}
+
+struct PeakProbe {
+    float inputPeak = 0.0f;
+};
+
+// Global filter that records the peak it receives, then boosts by 4x.
+static void probeThenBoost(float *buffer, unsigned int samples,
+                           unsigned int bufferSize, unsigned int channels,
+                           float, double, const float *, uint64_t,
+                           unsigned int, void *userData) {
+    auto *probe = static_cast<PeakProbe *>(userData);
+    for (unsigned int ch = 0; ch < channels; ++ch) {
+        float *dst = buffer + ch * bufferSize;
+        for (unsigned int i = 0; i < samples; ++i) {
+            probe->inputPeak = std::max(probe->inputPeak, std::fabs(dst[i]));
+            dst[i] *= 4.0f;
+        }
+    }
+}
+
+// With the render-ahead ring, global filters run post-ring at the playhead.
+// They must still see the unclipped mix, and their output must still be
+// clipped, as on the direct mix path.
+static void testRenderAheadGlobalFilterThenClip() {
+    std::printf("Test: render-ahead ring clips after the global filters\n");
+
+    RingRig rig;
+    PeakProbe probe;
+    SoLoud::CustomFilter filter;
+    filter.setCallback(probeThenBoost, &probe, 1);
+    rig.engine.setGlobalFilter(0, &filter);
+
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                       16384) == PlayerErrors::noError,
+           "init failed");
+    std::vector<float> loud(8192, 3.0f);  // well past the clipper's knee
+    EXPECT(stream.pushDataFloat32(loud.data(), 8192) == 8192, "push failed");
+    EXPECT(rig.engine.play(stream) != 0, "play failed");
+
+    rig.topUp();
+    rig.discard(1024);  // skip the voice's start-up quantum
+    std::vector<float> out(1024 * 2, 0.0f);
+    EXPECT(rig.engine.mRenderRing.read(out.data(), 1024) == 1024, "ring read failed");
+    rig.engine.postProcessRenderRing_internal(out.data(), 1024);
+
+    float outPeak = 0.0f;
+    for (float v : out) {
+        outPeak = std::max(outPeak, std::fabs(v));
+    }
+    EXPECT(probe.inputPeak > 1.2f,
+           "global filter saw an already clipped mix (peak %.3f)", probe.inputPeak);
+    EXPECT(outPeak <= 1.0f, "output not clipped after the global filter (peak %.3f)",
+           outPeak);
+    EXPECT(outPeak > 0.9f, "output unexpectedly quiet (peak %.3f)", outPeak);
+
+    rig.engine.setGlobalFilter(0, nullptr);
+    rig.engine.stopAll();
+}
+
+} // namespace rt_engine
+
+// 6. reset() clears the underrun statistics.
+static void testRealtimeResetClearsUnderrunCount() {
+    std::printf("Test: RealtimeStream reset clears unread frames and underrun count\n");
+
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(nullptr, 48000, 1, BufferType::PCM_F32LE, 1024) ==
+               PlayerErrors::noError,
+           "init failed");
+    SoLoud::AudioSourceInstance *inst = stream.createInstance();
+
+    std::vector<float> in(100, 0.5f);
+    std::vector<float> out(128, 0.0f);
+    stream.pushDataFloat32(in.data(), 100);
+    inst->getAudio(out.data(), 128, 128);  // 100 frames, then an underrun
+    EXPECT(stream.getUnderrunCount() == 1, "underrunCount != 1 (%u)",
+           stream.getUnderrunCount());
+
+    stream.pushDataFloat32(in.data(), 100);
+    stream.resetBuffer();
+    EXPECT(stream.getUnderrunCount() == 0, "reset did not clear underrunCount (%u)",
+           stream.getUnderrunCount());
+    EXPECT(stream.getAvailableToRead() == 0, "reset left %u unread frames",
+           stream.getAvailableToRead());
+
+    delete inst;
+}
+
 int main() {
     testRealtimeRingBuffer();
     testRealtimeStream();
     testCustomAudioSource();
     testCustomFilter();
+    rt_engine::testScheduledAfterQueuedAudio();
+    rt_engine::testScheduledInWindowKeepsEarlierAudio();
+    rt_engine::testImmediatePushResumesAtPlayhead();
+    rt_engine::testResetSurvivesRemix();
+    rt_engine::testResetDuringScheduledGap();
+    rt_engine::testRenderAheadGlobalFilterThenClip();
+    testRealtimeResetClearsUnderrunCount();
 
     std::printf("\n%d assertions, %d failures\n", g_assertions, g_failures);
     return g_failures == 0 ? 0 : 1;

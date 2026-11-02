@@ -1217,10 +1217,13 @@ extern "C"
   /// Real-time PCM streaming & Custom DSP
   /////////////////////////////////////////
 
+  /// [historyFrames] is the minimum rewind window in frames (0 = default);
+  /// native code raises it as needed to cover the render-ahead window.
   FFI_PLUGIN_EXPORT enum PlayerErrors
   setRealtimeStream(unsigned int *hash, unsigned int sampleRate,
                     unsigned int channels, int format,
-                    unsigned int bufferCapacityFrames);
+                    unsigned int bufferCapacityFrames,
+                    unsigned int historyFrames);
 
   FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash);
 

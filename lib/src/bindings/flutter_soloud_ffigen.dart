@@ -1968,12 +1968,15 @@ PlayerErrors oscillateFilterParameter(
 /// //////////////////////////////////////
 /// Real-time PCM streaming & Custom DSP
 /// //////////////////////////////////////
+/// [historyFrames] is the minimum rewind window in frames (0 = default);
+/// native code raises it as needed to cover the render-ahead window.
 @ffi.Native<
   ffi.UnsignedInt Function(
     ffi.Pointer<ffi.UnsignedInt>,
     ffi.UnsignedInt,
     ffi.UnsignedInt,
     ffi.Int,
+    ffi.UnsignedInt,
     ffi.UnsignedInt,
   )
 >(symbol: 'setRealtimeStream')
@@ -1983,16 +1986,27 @@ external int _setRealtimeStream(
   int channels,
   int format,
   int bufferCapacityFrames,
+  int historyFrames,
 );
 
+/// [historyFrames] is the minimum rewind window in frames (0 = default);
+/// native code raises it as needed to cover the render-ahead window.
 PlayerErrors setRealtimeStream(
   ffi.Pointer<ffi.UnsignedInt> hash,
   int sampleRate,
   int channels,
   int format,
   int bufferCapacityFrames,
+  int historyFrames,
 ) => PlayerErrors.fromValue(
-  _setRealtimeStream(hash, sampleRate, channels, format, bufferCapacityFrames),
+  _setRealtimeStream(
+    hash,
+    sampleRate,
+    channels,
+    format,
+    bufferCapacityFrames,
+    historyFrames,
+  ),
 );
 
 @ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>(

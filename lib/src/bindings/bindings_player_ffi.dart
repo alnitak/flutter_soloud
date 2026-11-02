@@ -2276,6 +2276,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       channels,
       format,
       bufferFrames,
+      historyFrames,
     );
     final soundHash = SoundHash.fromValue(hash.value);
     final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);

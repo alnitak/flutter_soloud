@@ -259,8 +259,9 @@ final class RealtimeStreamHandle {
   /// native code).
   final int bufferFrames;
 
-  /// Historical rewind window in frames retained for retroactive mixer
-  /// re-mixing.
+  /// Minimum historical rewind window in frames retained for retroactive
+  /// mixer re-mixing, as requested at creation. Native code raises it as
+  /// needed to cover the render-ahead window.
   final int historyFrames;
 
   /// The currently bound active voice handle used for instantaneous
@@ -464,9 +465,10 @@ final class RealtimeStreamHandle {
   ///    instantaneously into the currently playing mixer window.
   ///
   /// ### Interpreting [underrunCount]
-  /// - **At startup (`1`)**: Calling `SoLoud.instance.play(stream.source)`
-  ///   before pushing initial audio frames causes the first mixer callback to
-  ///   observe an empty buffer (`underrunCount == 1`), which is normal.
+  /// - **At startup (`0`)**: Calling `SoLoud.instance.play(stream.source)`
+  ///   before pushing initial audio frames makes the first mixer callbacks
+  ///   observe an empty buffer. That is not counted: only running dry after
+  ///   audio has been playing is.
   /// - **When stopping a generator (`+1`)**: Intentionally stopping sample
   ///   production (e.g. pausing a sequencer or finishing a one-shot note) lets
   ///   the remaining buffered frames play out to `0`, incrementing
@@ -478,7 +480,12 @@ final class RealtimeStreamHandle {
   int get underrunCount =>
       SoLoudController().soLoudFFI.getRealtimeUnderrunCount(soundHash.hash);
 
-  /// Clears all unread frames in the ring buffer and resets the underrun count.
+  /// Clears all unread frames in the ring buffer, drops any pending scheduled
+  /// gaps, and resets [underrunCount] to `0`.
+  ///
+  /// Frames the mixer has already rendered into the render-ahead window (when
+  /// `renderAheadFrames > 0`) still play; the discarded frames are never
+  /// played, even if the window is later re-mixed.
   void reset() {
     final error = SoLoudController().soLoudFFI.resetRealtimeStream(soundHash);
     if (error != PlayerErrors.noError) {
@@ -544,6 +551,10 @@ final class RealtimeStreamHandle {
   /// their sub-buffer timing offsets and are spliced into the currently playing
   /// mixer window when `renderAheadFrames > 0` is enabled.
   ///
+  /// Chunks of one stream never overlap: if audio pushed earlier is still
+  /// queued past the requested time, these samples start right after it;
+  /// if it ends earlier, the stream is silent until the requested time.
+  ///
   /// Returns the number of frames actually written (`0..frameCount`).
   int pushClockedFloat32(
     Duration soundTime,
@@ -570,7 +581,14 @@ final class RealtimeStreamHandle {
   /// If [atTime] falls inside the currently playing render-ahead window, the
   /// mixer rewinds to [atTime] and splices the samples with sample accuracy.
   ///
-  /// Returns the number of frames actually written (`0..frameCount`).
+  /// Chunks of one stream never overlap: if audio pushed earlier is still
+  /// queued past [atTime], these samples start right after it; if it ends
+  /// earlier, the stream is silent until [atTime]. Several future chunks can
+  /// be scheduled back to back this way.
+  ///
+  /// Returns the number of frames actually written (`0..frameCount`). `0`
+  /// is also returned when 256 silent gaps between scheduled chunks are
+  /// already pending; push again once some of them have played.
   int pushScheduledFloat32(
     Duration atTime,
     Float32List samples, {

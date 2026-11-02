@@ -868,7 +868,10 @@ namespace SoLoud
 			const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
 			mVoiceInactiveCallbackPending = false;
 
-			clip_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+			// Global volume only: the ring holds the unclipped mix, and
+			// postProcessRenderRing_internal() clips after the global
+			// filters, as the direct mix path does.
+			applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
 			interlace_samples_float(mScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
 			mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
 			mMixingToRenderRing = false;
@@ -885,6 +888,9 @@ namespace SoLoud
 	{
 		if (aSamples == 0 || mChannels == 0 || mScratchSize == 0 || mPostRingScratch.mData == NULL)
 			return;
+		// The global filters need the audio mutex; the clip below does not
+		// (clip_internal() runs unlocked on the direct mix path too), so the
+		// mutex is only held when there is a filter to run.
 		lockAudioMutex_internal();
 		bool anyFilter = false;
 		unsigned int i;
@@ -896,12 +902,11 @@ namespace SoLoud
 				break;
 			}
 		}
-		if (!anyFilter)
-		{
+		time t = 0;
+		if (anyFilter)
+			t = playheadTimeLocked_internal();
+		else
 			unlockAudioMutex_internal();
-			return;
-		}
-		time t = playheadTimeLocked_internal();
 		unsigned int offset = 0;
 		unsigned int maxChunk = mScratchSize & ~0xfu;
 		if (maxChunk == 0)
@@ -978,19 +983,26 @@ namespace SoLoud
 					}
 				}
 			}
-			for (i = 0; i < FILTERS_PER_STREAM; i++)
+			if (anyFilter)
 			{
-				if (mFilterInstance[i] != NULL)
+				for (i = 0; i < FILTERS_PER_STREAM; i++)
 				{
-					mFilterInstance[i]->filter(planar, chunk, stride, mChannels, (float)mSamplerate, t);
+					if (mFilterInstance[i] != NULL)
+					{
+						mFilterInstance[i]->filter(planar, chunk, stride, mChannels, (float)mSamplerate, t);
+					}
 				}
 			}
+			// Final clip (global volume was applied when mixing into the
+			// ring). Covers the global filters' output too.
+			clip_internal(mPostRingScratch, mPostRingScratch, stride, 1.0f, 1.0f);
 			interlace_samples_float(planar, aBuffer + (size_t)offset * mChannels, chunk, mChannels, stride);
 			if (mSamplerate > 0)
 				t += (time)chunk / (time)mSamplerate;
 			offset += chunk;
 		}
-		unlockAudioMutex_internal();
+		if (anyFilter)
+			unlockAudioMutex_internal();
 	}
 
 	const char * Soloud::getErrorString(result aErrorCode) const
@@ -1056,6 +1068,30 @@ namespace SoLoud
 		}
 
 		return mFFTData;
+	}
+
+	// ###### flutter_soloud local patch (render-ahead ring) ######
+	void Soloud::applyGlobalVolume_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1)
+	{
+		// Same per-channel ramp and the same buffer extent (whole quads of
+		// aSamples per channel) as clip_internal().
+		const unsigned int samples = ((aSamples + 3) / 4) * 4;
+		const float vd = (aVolume1 - aVolume0) / aSamples;
+		unsigned int c = 0;
+		unsigned int i, j;
+		if (aVolume0 == 1.0f && aVolume1 == 1.0f)
+		{
+			if (&aBuffer != &aDestBuffer)
+				memcpy(aDestBuffer.mData, aBuffer.mData, sizeof(float) * samples * mChannels);
+			return;
+		}
+		for (j = 0; j < mChannels; j++)
+		{
+			for (i = 0; i < samples; i++, c++)
+			{
+				aDestBuffer.mData[c] = aBuffer.mData[c] * (aVolume0 + vd * (float)i);
+			}
+		}
 	}
 
 #if defined(SOLOUD_SSE_INTRINSICS)
@@ -3005,9 +3041,9 @@ namespace SoLoud
 
 		mixVoicesLocked_internal(aSamples, stride);
 
-		// Note: clipping channels*aStride, not channels*aSamples, same as
-		// mix_internal().
-		clip_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+		// Global volume only, same as renderRingTopUp_internal(): the ring
+		// holds the unclipped mix and postProcessRenderRing_internal() clips.
+		applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
 		interlace_samples_float(mScratch.mData, aBuffer, aSamples, mChannels, stride);
 
 		// Re-capture the checkpoint for this boundary (see the comment above).

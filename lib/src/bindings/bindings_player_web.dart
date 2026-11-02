@@ -2314,6 +2314,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       channels,
       format,
       bufferFrames,
+      historyFrames,
     );
     final hash = wasmGetI32Value(hashPtr, 'i32');
     wasmFree(hashPtr);

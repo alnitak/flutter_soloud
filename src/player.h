@@ -292,9 +292,12 @@ public:
 
   /// @brief Set up a lock-free real-time PCM stream with instantaneous
   /// playing-window injection.
+  /// @param historyFrames minimum rewind window in frames (0 = default). It
+  /// is raised as needed to cover the render-ahead window.
   PlayerErrors setRealtimeStream(unsigned int &hash, unsigned int sampleRate,
                                  unsigned int channels, BufferType format,
-                                 unsigned int bufferCapacityFrames);
+                                 unsigned int bufferCapacityFrames,
+                                 unsigned int historyFrames = 0);
 
   /// @brief Reset the real-time PCM stream ring buffer.
   PlayerErrors resetRealtimeStream(unsigned int hash);
@@ -861,9 +864,11 @@ public:
   /// Caller MUST hold sounds_mutex.
   ActiveSound *findByHashUnlocked(unsigned int hash);
 
-  /// @brief Look up a RealtimeStream by hash, acquiring sounds_mutex.
+  /// @brief Look up a RealtimeStream by hash without acquiring sounds_mutex.
+  /// Caller MUST hold sounds_mutex for as long as it uses the returned
+  /// pointer: disposeSound() can otherwise destroy the stream underneath it.
   /// Returns nullptr if not found or not a realtime stream.
-  SoLoud::RealtimeStream *getRealtimeStreamLocked(unsigned int hash);
+  SoLoud::RealtimeStream *findRealtimeStreamUnlocked(unsigned int hash);
 
   /////////////////////////////////////////
   /// voice groups

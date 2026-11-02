@@ -3694,7 +3694,8 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors
   setRealtimeStream(unsigned int *hash, unsigned int sampleRate,
                     unsigned int channels, int format,
-                    unsigned int bufferCapacityFrames)
+                    unsigned int bufferCapacityFrames,
+                    unsigned int historyFrames)
   {
     if (hash != nullptr)
       *hash = 0;
@@ -3704,7 +3705,7 @@ extern "C"
       return nullPointer;
     return player.get()->setRealtimeStream(
         *hash, sampleRate, channels, static_cast<BufferType>(format),
-        bufferCapacityFrames);
+        bufferCapacityFrames, historyFrames);
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash)
@@ -4960,7 +4961,28 @@ extern "C"
   {
     SoLoud::Vst3HostManager::instance().setParameterEditCallback(nullptr);
     SoLoud::Vst3HostManager::instance().setRestartComponentCallback(nullptr);
-    SoLoud::Vst3HostManager::instance().unloadAll();
+    // Vst3HostUnloadAll() can be called from Dart while audio is playing.
+    // soloud_vst3UnloadPlugin() holds the audio mutex for the same reason:
+    // the mixer calls into plugins through raw pointers loaded from the
+    // lock-free lookup table. Here the mutex is only taken as a barrier,
+    // after the table is cleared, so plugin shutdown and module unloading do
+    // not run while the audio thread is blocked.
+    Player *p = player.get();
+    if (p != nullptr && p->isInited())
+    {
+      SoLoud::Vst3HostManager::instance().unloadAll(
+          [](void *userData)
+          {
+            auto *engine = static_cast<SoLoud::Soloud *>(userData);
+            engine->lockAudioMutex_internal();
+            engine->unlockAudioMutex_internal();
+          },
+          &p->soloud);
+    }
+    else
+    {
+      SoLoud::Vst3HostManager::instance().unloadAll();
+    }
   }
 
 #else // !SOLOUD_ENABLE_VST3
