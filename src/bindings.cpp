@@ -4823,13 +4823,21 @@ extern "C"
 
   /// Audio-thread barrier for VST3 unloading: returns once no mix that may
   /// have loaded a plugin pointer from the lookup table is still running.
-  /// Pins the Player only for the barrier itself, never across plugin
-  /// shutdown (which can close editor windows). If the engine is not running,
-  /// nothing is mixing and there is nothing to wait for.
+  /// Holds the lifetime lock only for the barrier itself, never across plugin
+  /// shutdown (which can close editor windows).
+  ///
+  /// Deliberately not a PlayerLease: a lease gives up while a teardown is
+  /// pending, and a barrier must never give up -- the device may still be
+  /// mixing until the teardown actually stops it. Taking the shared lock
+  /// unconditionally guarantees one of two outcomes: either this runs before
+  /// the teardown and synchronizes with the live mixer, or it waits for the
+  /// teardown to finish, by which point the device is stopped and the new
+  /// Player is not initialized, so nothing is mixing.
   static void vst3AudioThreadBarrier(void * /*userData*/)
   {
-    PlayerLease p;
-    if (p)
+    std::shared_lock<std::shared_mutex> lifetime(player_lifetime_mutex);
+    Player *p = player.get();
+    if (p != nullptr && p->isInited())
     {
       p->soloud.lockAudioMutex_internal();
       p->soloud.unlockAudioMutex_internal();
