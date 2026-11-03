@@ -14,6 +14,7 @@
 #include "synth/custom_source.h"
 #include "soloud/src/backend/miniaudio/miniaudio.h"
 #include "native_audio_decoder.h"
+#include "native_stream/native_stream_source.h"
 
 #include <algorithm>
 #include <chrono>
@@ -800,7 +801,23 @@ Player::PendingSound Player::decodeFile(
             }
             else if (!loadIntoMem && NativeAudioDecoder::isSupportedNativeFormat(header.data(), header.size()))
             {
-                // Native formats (M4A/MP4, AAC, AC-3, E-AC-3) have no streaming
+#if NATIVE_STREAM_SUPPORTED
+                // M4A/MP4 streams from disk: only the container metadata and a
+                // short head are decoded here, each voice decodes the rest.
+                if (NativeAudioDecoder::isM4aOrMp4(header.data(), header.size()))
+                {
+                    auto stream = std::make_unique<SoLoud::NativeStream>();
+                    if (stream->load(completeFileName.c_str()) == SoLoud::SO_NO_ERROR)
+                    {
+                        newSound->sound = std::move(stream);
+                        newSound->soundType = TYPE_NATIVE_STREAM;
+                        pending.error = noError;
+                        return pending;
+                    }
+                }
+#endif
+                // Other native formats (AAC, AC-3, E-AC-3 elementary streams,
+                // and M4A/MP4 without a streaming backend) have no streaming
                 // decoder for LoadMode.disk: decode the whole file to PCM instead.
                 newSound->sound = std::make_unique<SoLoud::Wav>();
                 newSound->soundType = TYPE_WAV;
@@ -3156,6 +3173,10 @@ double Player::getLength(unsigned int soundHash)
         return static_cast<SoLoud::BufferStream *>(s->sound.get())->getLength();
     if (s->soundType == TYPE_WAVSTREAM)
         return static_cast<SoLoud::WavStream *>(s->sound.get())->getLength();
+#if NATIVE_STREAM_SUPPORTED
+    if (s->soundType == TYPE_NATIVE_STREAM)
+        return static_cast<SoLoud::NativeStream *>(s->sound.get())->getLength();
+#endif
     return 0.0;
 }
 

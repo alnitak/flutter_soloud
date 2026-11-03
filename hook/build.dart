@@ -380,6 +380,8 @@ List<String> collectSources(
       },
     );
   }
+  // Each file compiles to nothing on platforms it doesn't serve.
+  addDir('native_stream/');
   addDir('waveform/');
   addDir(
     'native_decoder/',

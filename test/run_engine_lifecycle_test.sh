@@ -65,10 +65,11 @@ c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     src/bindings.cpp \
     src/player.cpp \
     src/analyzer.cpp \
-    src/synth/basic_wave.cpp \
+    src/synth/*.cpp \
     src/waveform/waveform.cpp \
     src/waveform/miniaudio_libvorbis.cpp \
     src/audiobuffer/*.cpp \
+    src/native_stream/*.cpp \
     src/native_decoder/native_audio_decoder.cpp \
     "${PLATFORM_SOURCES[@]}" \
     src/filters/*.cpp \

@@ -36,7 +36,9 @@
 //   * duplicate destroy/detach notifications tear down exactly once;
 //   * loadFile() decodes without the lifecycle locks, so disposing sounds or
 //     the engine never waits for a decode, and a sound decoded for an engine
-//     that was torn down meanwhile is dropped.
+//     that was torn down meanwhile is dropped;
+//   * an M4A loaded with LoadMode.disk streams (one decoder worker per voice)
+//     and disposing it, or the engine, never waits for those workers.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -45,8 +47,10 @@
 #include "audiobuffer/metadata_ffi.h"
 #include "device_lifecycle_test_hooks.h"
 #include "enums.h"
+#include "native_stream/native_stream_source.h"
 
 #include <atomic>
+#include <cmath>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -117,6 +121,12 @@ extern "C"
                               int length, int loadIntoMem, unsigned int *hash);
     void disposeSound(unsigned int soundHash);
     void disposeAllSound();
+    enum PlayerErrors play(unsigned int soundHash, unsigned int busId,
+                           float volume, float pan, bool paused, bool looping,
+                           double loopingStartAt, double loopingEndAt,
+                           int loopingStartOffsetAt, int loopingEndOffsetAt,
+                           float scale, unsigned int *handle);
+    double getLength(unsigned int soundHash);
 
     // Test-only hooks (SOLOUD_LIFECYCLE_TEST_HOOKS).
     void soloudTestLockInitDeinit();
@@ -1611,6 +1621,76 @@ void testTeardownDuringDecodeDropsTheSound()
     resetGlobalState();
 }
 
+/// LoadMode.disk M4A goes through NativeStream on platforms with a streaming
+/// backend: loading decodes only a short head, each voice decodes on its own
+/// worker, and disposing the sound or the engine stops the voices without
+/// waiting for those workers, which then exit by themselves.
+void testDiskStreamedM4aNeverBlocksLifecycle()
+{
+#if NATIVE_STREAM_SUPPORTED
+    std::printf("an M4A loaded from disk streams, and disposal never waits on "
+                "its decoders\n");
+    resetGlobalState();
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::string path = "example/assets/audio/sample-AAC.m4a";
+    loadFile(&path[0], false, 1);
+    const unsigned int hash = gLastFileLoadedHash.load();
+    EXPECT(gFileLoadedCalls.load() == 1 && gLastFileLoadedError.load() == noError &&
+               hash != 0,
+           "loading the M4A should succeed (error %d)",
+           gLastFileLoadedError.load());
+    EXPECT(std::fabs(getLength(hash) - 15.0) < 1e-6,
+           "length should come from the container: %f", getLength(hash));
+
+    for (int i = 0; i < 3; i++)
+    {
+        unsigned int handle = 0;
+        EXPECT(play(hash, 0, 1.0f, 0.0f, false, i == 0, 0, 0, -1, -1, 1.0f,
+                    &handle) == noError,
+               "play should succeed");
+    }
+    EXPECT(SoLoud::NativeStream::liveWorkerCount() == 3,
+           "each voice should stream on its own worker, found %d",
+           SoLoud::NativeStream::liveWorkerCount());
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    auto start = std::chrono::steady_clock::now();
+    disposeSound(hash);
+    long long elapsed = millisSince(start);
+    EXPECT(elapsed < kPlatformThreadBudgetMs,
+           "disposeSound took %lldms with streaming voices", elapsed);
+    EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; },
+                     2000),
+           "the disposed sound's workers should exit, %d left",
+           SoLoud::NativeStream::liveWorkerCount());
+
+    // Engine disposal with voices still streaming.
+    loadFile(&path[0], false, 2);
+    unsigned int handle = 0;
+    play(gLastFileLoadedHash.load(), 0, 1.0f, 0.0f, false, true, 0, 0, -1, -1,
+         1.0f, &handle);
+    play(gLastFileLoadedHash.load(), 0, 1.0f, 0.0f, false, false, 0, 0, -1, -1,
+         1.0f, &handle);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    start = std::chrono::steady_clock::now();
+    dispose();
+    elapsed = millisSince(start);
+    EXPECT(elapsed < 2000, "dispose took %lldms with streaming voices", elapsed);
+    EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; },
+                     2000),
+           "workers should exit after dispose, %d left",
+           SoLoud::NativeStream::liveWorkerCount());
+
+    resetGlobalState();
+#endif
+}
+
 } // namespace
 
 int main()
@@ -1661,6 +1741,7 @@ int main()
     testRetirementNeverWaitsForNativeWork();
     testLoadDecodeDoesNotBlockLifecycleCalls();
     testTeardownDuringDecodeDropsTheSound();
+    testDiskStreamedM4aNeverBlocksLifecycle();
 
     {
         std::lock_guard<std::mutex> lock(gDartLoopMutex);

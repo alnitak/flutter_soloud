@@ -155,7 +155,9 @@ typedef enum SoundType {
   // this sound is a lock-free real-time PCM stream
   TYPE_REALTIME_STREAM,
   // this sound is a custom DSP audio source callback
-  TYPE_CUSTOM_SOURCE
+  TYPE_CUSTOM_SOURCE,
+  // an M4A/MP4 file streamed from disk (NativeStream)
+  TYPE_NATIVE_STREAM
 } SoundType_t;
 
 /// WARNING: Keep these in sync with `FilterType` in
