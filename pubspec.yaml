@@ -40,13 +40,13 @@ dependencies:
   path: ^1.9.0
   path_provider: ^2.1.5
   plugin_platform_interface: ^2.1.8
-  web: ^1.1.0
+  web: ^1.1.2
 
 dev_dependencies:
-  ffigen: ^19.1.0
+  ffigen: ^23.0.0
   flutter_test:
     sdk: flutter
-  test: ^1.24.9
+  test: ^1.33.0
   very_good_analysis: ^6.0.0
 
 flutter:
