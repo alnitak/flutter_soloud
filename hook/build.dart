@@ -140,6 +140,55 @@ void main(List<String> args) async {
       'libs [$xiphMode]${enableVst3 ? ', VST3 [prebuilt]' : ''}',
     );
 
+    String? vst3HelperPath;
+    if (enableVst3 && os == OS.macOS && vst3.libraryDirectories.isNotEmpty) {
+      vst3HelperPath =
+          '${vst3.libraryDirectories.first}/soloud_vst3_editor_helper';
+      final archFlag = arch == Architecture.arm64 ? 'arm64' : 'x86_64';
+      final res = await Process.run('xcrun', [
+        'clang++',
+        '-std=c++17',
+        '-arch',
+        archFlag,
+        '-O3',
+        '-fobjc-arc',
+        '-DSOLOUD_ENABLE_VST3=1',
+        '-DSOLOUD_VST3_HELPER_MAIN=1',
+        '-DNDEBUG=1',
+        '-Wno-unnecessary-virtual-specifier',
+        '-I${input.packageRoot.resolve('src').toFilePath()}',
+        '-I${input.packageRoot.resolve('src/vst3').toFilePath()}',
+        for (final inc in vst3.includeDirs) ...['-isystem', inc],
+        input.packageRoot
+            .resolve('src/vst3/vst3_editor_helper_macos.mm')
+            .toFilePath(),
+        input.packageRoot
+            .resolve('src/vst3/vst3_editor_macos.mm')
+            .toFilePath(),
+        '${vst3.libraryDirectories.first}/libvst3_hosting.a',
+        '-framework',
+        'Cocoa',
+        '-framework',
+        'QuartzCore',
+        '-framework',
+        'CoreFoundation',
+        '-Wl,-dead_strip',
+        '-o',
+        vst3HelperPath,
+      ]);
+      if (res.exitCode != 0) {
+        throw StateError(
+          '[flutter_soloud] Failed to build soloud_vst3_editor_helper:\n'
+          '${res.stderr}',
+        );
+      }
+      output.dependencies.addAll([
+        input.packageRoot.resolve('src/vst3/vst3_editor_helper_macos.mm'),
+        input.packageRoot.resolve('src/vst3/vst3_editor_macos.mm'),
+        input.packageRoot.resolve('src/vst3/vst3_editor_shm.h'),
+      ]);
+    }
+
     final defines = <String, String?>{
       'FLUTTER_PLUGIN_IMPL': null,
       'SIGNALSMITH_USE_PFFFT': null,
@@ -153,6 +202,8 @@ void main(List<String> args) async {
       },
       if (noXiph) 'NO_XIPH_LIBS': null,
       if (enableVst3) 'SOLOUD_ENABLE_VST3': null,
+      if (vst3HelperPath != null)
+        'SOLOUD_VST3_HELPER_PATH': '"$vst3HelperPath"',
     };
 
     final flags = <String>[

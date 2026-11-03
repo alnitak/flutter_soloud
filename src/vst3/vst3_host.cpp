@@ -103,14 +103,14 @@ bool Vst3PluginInstance::initialize(
       mController->setComponentState(&stream);
     }
 
+    mOnGuiEditCallback = onGuiEdit;
     mComponentHandler = Steinberg::owned(
         new Vst3ComponentHandler(
-            [this, onGuiEdit = std::move(onGuiEdit)](
-                Steinberg::Vst::ParamID id,
-                Steinberg::Vst::ParamValue val) {
+            [this](Steinberg::Vst::ParamID id,
+                   Steinberg::Vst::ParamValue val) {
               enqueueGuiParamChange(id, val);
-              if (onGuiEdit) {
-                onGuiEdit(id, val);
+              if (mOnGuiEditCallback) {
+                mOnGuiEditCallback(id, val);
               }
             },
             [this, onRestart = std::move(onRestart)](Steinberg::int32 flags) {
@@ -406,6 +406,17 @@ void Vst3PluginInstance::prepareAndProcessBlock(
       mProcessor->process(mProcessData);
     } else {
       if (mProcessor->process(mProcessData) == Steinberg::kResultOk) {
+        if (mEditorWindow) {
+          mEditorWindow->writeAudioTelemetry(
+              numCh > 0 ? mInChannelPtrs[0] : nullptr,
+              numCh > 1 ? mInChannelPtrs[1]
+                        : (numCh > 0 ? mInChannelPtrs[0] : nullptr),
+              numCh > 0 ? mOutChannelPtrs[0] : nullptr,
+              numCh > 1 ? mOutChannelPtrs[1]
+                        : (numCh > 0 ? mOutChannelPtrs[0] : nullptr),
+              static_cast<int32_t>(chunkSamples),
+              static_cast<double>(aSamplerate));
+        }
         for (unsigned int ch = 0; ch < numCh; ++ch) {
           std::memcpy(
               aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset,
@@ -550,6 +561,9 @@ bool Vst3PluginInstance::setParameterNormalized(uint32_t paramId,
                                                 double normalizedValue) {
   const double clamped = std::clamp<double>(normalizedValue, 0.0, 1.0);
   mPendingParamQueue.push(Vst3ParamChangeEvent{paramId, clamped, 0});
+  if (mEditorWindow) {
+    mEditorWindow->notifyParameterChanged(paramId, clamped);
+  }
   if (mController) {
 #if defined(__APPLE__)
     void (^setBlock)(void) = ^{
@@ -782,6 +796,36 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
           ? windowTitle
           : mClassInfo.name().c_str();
 
+  if (!mEditorWindow) {
+    mEditorWindow = Vst3EditorWindow::create();
+  }
+  if (!mEditorWindow) {
+    return false;
+  }
+
+  if (mModule && mEditorWindow->supportsRemoteEditor(mModule->getPath())) {
+    Vst3RemoteEditorContext ctx;
+    ctx.bundlePath = mModule->getPath();
+    ctx.classUid = mClassInfo.ID().toString();
+    ctx.title = title;
+    ctx.component = mComponent.get();
+    ctx.controller = mController.get();
+    ctx.onGuiParamEdit = [this](Steinberg::Vst::ParamID id,
+                                Steinberg::Vst::ParamValue val) {
+      enqueueGuiParamChange(id, val);
+      if (mController) {
+        mController->setParamNormalized(id, val);
+      }
+      if (mOnGuiEditCallback) {
+        mOnGuiEditCallback(id, val);
+      }
+    };
+    if (mEditorWindow->openRemote(ctx)) {
+      mHasEditorCached.store(1, std::memory_order_release);
+      return true;
+    }
+  }
+
 #if defined(__APPLE__)
   __block Steinberg::IPtr<Steinberg::IPlugView> view;
   void (^createBlock)(void) = ^{
@@ -802,13 +846,6 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
     return false;
   }
   mHasEditorCached.store(1, std::memory_order_release);
-
-  if (!mEditorWindow) {
-    mEditorWindow = Vst3EditorWindow::create();
-  }
-  if (!mEditorWindow) {
-    return false;
-  }
 
   return mEditorWindow->open(view.get(), title);
 }

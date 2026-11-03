@@ -131,6 +131,7 @@ private:
   Steinberg::IPtr<Steinberg::Vst::IEditController> mController;
   Steinberg::FUnknownPtr<Steinberg::Vst::IAudioProcessor> mProcessor;
   Steinberg::IPtr<Vst3ComponentHandler> mComponentHandler;
+  Vst3ComponentHandler::PerformEditCallback mOnGuiEditCallback;
   std::unique_ptr<Vst3EditorWindow> mEditorWindow;
 
   unsigned int mSampleRate = 48000;

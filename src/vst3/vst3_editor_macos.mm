@@ -9,10 +9,20 @@
 #import <objc/runtime.h>
 #include "pluginterfaces/base/smartpointer.h"
 #include "pluginterfaces/gui/iplugview.h"
+#include "public.sdk/source/common/memorystream.h"
+#include "vst3_editor_shm.h"
 #include "vst3_editor_window.h"
 #include "vst3_host.h"
 #include <atomic>
+#include <chrono>
+#include <cstring>
+#include <fcntl.h>
+#include <signal.h>
 #include <string>
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace SoLoud {
@@ -367,6 +377,232 @@ public:
   Vst3EditorWindowMacOS() = default;
   ~Vst3EditorWindowMacOS() override { close(); }
 
+  bool supportsRemoteEditor(const std::string &bundlePath) const override {
+#if defined(SOLOUD_VST3_HELPER_MAIN) || !defined(SOLOUD_VST3_HELPER_PATH)
+    (void)bundlePath;
+    return false;
+#else
+    if (bundlePath.empty()) {
+      return false;
+    }
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *helperPath =
+        [NSString stringWithUTF8String:SOLOUD_VST3_HELPER_PATH];
+    if (helperPath == nil || ![fm isExecutableFileAtPath:helperPath]) {
+      return false;
+    }
+    NSString *nsBundle = [NSString stringWithUTF8String:bundlePath.c_str()];
+    if (nsBundle == nil) {
+      return false;
+    }
+    NSString *appFw = [nsBundle
+        stringByAppendingPathComponent:@"Contents/Frameworks/App.framework"];
+    NSString *flFw = [nsBundle stringByAppendingPathComponent:
+                                   @"Contents/Frameworks/FlutterMacOS.framework"];
+    return [fm fileExistsAtPath:appFw] || [fm fileExistsAtPath:flFw];
+#endif
+  }
+
+  bool openRemote(const Vst3RemoteEditorContext &ctx) override {
+#if defined(SOLOUD_VST3_HELPER_MAIN) || !defined(SOLOUD_VST3_HELPER_PATH)
+    (void)ctx;
+    return false;
+#else
+    close();
+    if (!supportsRemoteEditor(ctx.bundlePath)) {
+      return false;
+    }
+
+    static std::atomic<uint32_t> sShmCounter{0};
+    NSString *shmFile = [NSTemporaryDirectory()
+        stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"soloud_vst3_shm_%d_%u.bin", getpid(),
+                                       ++sShmCounter]];
+    const char *shmPath = [shmFile fileSystemRepresentation];
+    const int fd = ::open(shmPath, O_CREAT | O_TRUNC | O_RDWR, 0600);
+    if (fd < 0) {
+      return false;
+    }
+    if (ftruncate(fd, sizeof(SoLoudVst3EditorShm)) != 0) {
+      ::close(fd);
+      unlink(shmPath);
+      return false;
+    }
+    void *mapped =
+        mmap(nullptr, sizeof(SoLoudVst3EditorShm), PROT_READ | PROT_WRITE,
+             MAP_SHARED, fd, 0);
+    ::close(fd);
+    if (mapped == MAP_FAILED || mapped == nullptr) {
+      unlink(shmPath);
+      return false;
+    }
+
+    mShm = static_cast<SoLoudVst3EditorShm *>(mapped);
+    std::memset(mShm, 0, sizeof(SoLoudVst3EditorShm));
+    *reinterpret_cast<uint32_t *>(mShm->vst3Telemetry +
+                                  kVst3TelemetryOffsetMagic) =
+        kVst3TelemetryMagic;
+    *reinterpret_cast<uint32_t *>(mShm->vst3Telemetry +
+                                  kVst3TelemetryOffsetVersion) =
+        kVst3TelemetryVersion;
+    *reinterpret_cast<double *>(mShm->vst3Telemetry +
+                                kVst3TelemetryOffsetSampleRate) = 48000.0;
+    *reinterpret_cast<uint32_t *>(mShm->vst3Telemetry +
+                                  kVst3TelemetryOffsetMaxBlockSize) =
+        kVst3TelemetryMaxSamples;
+
+    if (ctx.component != nullptr) {
+      Steinberg::MemoryStream stream;
+      if (ctx.component->getState(&stream) == Steinberg::kResultTrue &&
+          stream.getSize() > 0 &&
+          static_cast<size_t>(stream.getSize()) <= kVst3EditorMaxStateBytes &&
+          stream.getData() != nullptr) {
+        mShm->initialStateSize = static_cast<uint32_t>(stream.getSize());
+        std::memcpy(mShm->initialState, stream.getData(),
+                    mShm->initialStateSize);
+      }
+    }
+
+    if (ctx.controller != nullptr) {
+      const int32_t count = ctx.controller->getParameterCount();
+      uint32_t written = 0;
+      for (int32_t i = 0;
+           i < count && written < kVst3EditorMaxInitialParams; ++i) {
+        Steinberg::Vst::ParameterInfo info{};
+        if (ctx.controller->getParameterInfo(i, info) == Steinberg::kResultOk) {
+          mShm->initialParams[written].paramId = info.id;
+          mShm->initialParams[written].reserved = 0;
+          mShm->initialParams[written].value =
+              ctx.controller->getParamNormalized(info.id);
+          ++written;
+        }
+      }
+      mShm->initialParamCount = written;
+    }
+
+    mOnGuiParamEdit = ctx.onGuiParamEdit;
+
+    const std::string parentPidStr = std::to_string(getpid());
+    const std::string titleStr =
+        ctx.title.empty() ? std::string("VST3 Plugin") : ctx.title;
+    const std::string shmPathStr(shmPath);
+
+    const pid_t pid = fork();
+    if (pid < 0) {
+      unlink(shmPath);
+      munmap(mShm, sizeof(SoLoudVst3EditorShm));
+      mShm = nullptr;
+      return false;
+    }
+    if (pid == 0) {
+      const int maxFd = getdtablesize();
+      for (int d = 3; d < maxFd; ++d) {
+        ::close(d);
+      }
+      execl(SOLOUD_VST3_HELPER_PATH, SOLOUD_VST3_HELPER_PATH,
+            ctx.bundlePath.c_str(), ctx.classUid.c_str(), titleStr.c_str(),
+            shmPathStr.c_str(), parentPidStr.c_str(),
+            static_cast<char *>(nullptr));
+      _exit(127);
+    }
+
+    mHelperPid = pid;
+
+    // Wait up to 3 seconds for the helper window to finish mounting.
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(3000);
+    uint32_t ready = 0;
+    while (std::chrono::steady_clock::now() < deadline) {
+      ready = mShm->helperReady.load(std::memory_order_acquire);
+      if (ready != 0) {
+        break;
+      }
+      int status = 0;
+      if (waitpid(mHelperPid, &status, WNOHANG) != 0) {
+        mHelperPid = 0;
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    if (ready != 1) {
+      close();
+      return false;
+    }
+
+    mIsOpen.store(true, std::memory_order_release);
+
+    void (^startTimerBlock)(void) = ^{
+      NSTimer *timer = [NSTimer
+          timerWithTimeInterval:0.008
+                        repeats:YES
+                          block:^(NSTimer *t) {
+                            (void)t;
+                            pollRemoteHelper();
+                          }];
+      [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+#if !__has_feature(objc_arc)
+      [timer retain];
+#endif
+      mPollTimer = timer;
+    };
+    if ([NSThread isMainThread]) {
+      startTimerBlock();
+    } else {
+      dispatch_sync(dispatch_get_main_queue(), startTimerBlock);
+    }
+
+    return true;
+#endif
+  }
+
+  void notifyParameterChanged(uint32_t paramId,
+                              double normalizedValue) override {
+    if (mShm == nullptr || !mIsOpen.load(std::memory_order_acquire)) {
+      return;
+    }
+    uint32_t w = mShm->hostToGuiWrite.load(std::memory_order_relaxed);
+    const uint32_t r = mShm->hostToGuiRead.load(std::memory_order_acquire);
+    if (w - r < kVst3EditorParamQueueSize) {
+      auto &slot = mShm->hostToGuiQueue[w % kVst3EditorParamQueueSize];
+      slot.paramId = paramId;
+      slot.reserved = 0;
+      slot.value = normalizedValue;
+      mShm->hostToGuiWrite.store(w + 1, std::memory_order_release);
+    }
+  }
+
+  void writeAudioTelemetry(const float *inL, const float *inR,
+                           const float *outL, const float *outR,
+                           int32_t numSamples,
+                           double sampleRate) noexcept override {
+    SoLoudVst3EditorShm *shm = mShm;
+    if (shm == nullptr || !mIsOpen.load(std::memory_order_acquire) ||
+        numSamples <= 0) {
+      return;
+    }
+    const int32_t n = std::min<int32_t>(numSamples, kVst3TelemetryMaxSamples);
+    const size_t bytes = static_cast<size_t>(n) * sizeof(float);
+    uint8_t *base = shm->vst3Telemetry;
+    *reinterpret_cast<double *>(base + kVst3TelemetryOffsetSampleRate) =
+        sampleRate;
+    if (inL != nullptr) {
+      std::memcpy(base + kVst3TelemetryOffsetInputL, inL, bytes);
+    }
+    if (inR != nullptr) {
+      std::memcpy(base + kVst3TelemetryOffsetInputR, inR, bytes);
+    }
+    if (outL != nullptr) {
+      std::memcpy(base + kVst3TelemetryOffsetOutputL, outL, bytes);
+    }
+    if (outR != nullptr) {
+      std::memcpy(base + kVst3TelemetryOffsetOutputR, outR, bytes);
+    }
+    *reinterpret_cast<int32_t *>(base + kVst3TelemetryOffsetNumSamples) = n;
+    *reinterpret_cast<uint32_t *>(base + kVst3TelemetryOffsetMagic) =
+        kVst3TelemetryMagic;
+  }
+
   bool open(Steinberg::IPlugView *plugView, const char *title) override {
     if (plugView == nullptr) {
       return false;
@@ -579,12 +815,45 @@ public:
 
   void close() override {
     if (!mIsOpen.load(std::memory_order_acquire) && mWindow == nil &&
-        mPlugView == nullptr) {
+        mPlugView == nullptr && mHelperPid == 0 && mShm == nullptr) {
       return;
     }
 
     void (^closeBlock)(void) = ^{
       mIsOpen.store(false, std::memory_order_release);
+      if (mPollTimer != nil) {
+        [mPollTimer invalidate];
+#if !__has_feature(objc_arc)
+        [mPollTimer release];
+#endif
+        mPollTimer = nil;
+      }
+      if (mShm != nullptr) {
+        mShm->hostClosed.store(1, std::memory_order_release);
+      }
+      if (mHelperPid > 0) {
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+        int status = 0;
+        bool exited = false;
+        while (std::chrono::steady_clock::now() < deadline) {
+          if (waitpid(mHelperPid, &status, WNOHANG) != 0) {
+            exited = true;
+            break;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+        if (!exited) {
+          kill(mHelperPid, SIGKILL);
+          waitpid(mHelperPid, &status, 0);
+        }
+        mHelperPid = 0;
+      }
+      if (mShm != nullptr) {
+        munmap(mShm, sizeof(SoLoudVst3EditorShm));
+        mShm = nullptr;
+      }
+      mOnGuiParamEdit = nullptr;
       if (mDelegate != nil) {
         [[NSNotificationCenter defaultCenter] removeObserver:mDelegate];
         [mDelegate clearOwner];
@@ -820,9 +1089,43 @@ public:
   }
 
 private:
+  void pollRemoteHelper() {
+    if (mShm == nullptr) {
+      return;
+    }
+    uint32_t r = mShm->guiToHostRead.load(std::memory_order_relaxed);
+    const uint32_t w = mShm->guiToHostWrite.load(std::memory_order_acquire);
+    while (r != w) {
+      const auto msg = mShm->guiToHostQueue[r % kVst3EditorParamQueueSize];
+      if (mOnGuiParamEdit) {
+        mOnGuiParamEdit(msg.paramId, msg.value);
+      }
+      ++r;
+    }
+    mShm->guiToHostRead.store(r, std::memory_order_release);
+
+    bool helperExited =
+        (mShm->helperClosed.load(std::memory_order_acquire) != 0);
+    if (!helperExited && mHelperPid > 0) {
+      int status = 0;
+      if (waitpid(mHelperPid, &status, WNOHANG) != 0) {
+        mHelperPid = 0;
+        helperExited = true;
+      }
+    }
+    if (helperExited) {
+      close();
+    }
+  }
+
   Steinberg::IPtr<Steinberg::IPlugView> mPlugView;
   SoLoudVst3Window *mWindow = nil;
   SoLoudVst3WindowDelegate *mDelegate = nil;
+  SoLoudVst3EditorShm *mShm = nullptr;
+  pid_t mHelperPid = 0;
+  NSTimer *mPollTimer = nil;
+  std::function<void(Steinberg::Vst::ParamID, Steinberg::Vst::ParamValue)>
+      mOnGuiParamEdit;
   int32_t mBaseWidth = 800;
   int32_t mBaseHeight = 600;
   bool mNativeResize = false;
