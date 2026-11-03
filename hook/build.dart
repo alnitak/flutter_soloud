@@ -141,52 +141,104 @@ void main(List<String> args) async {
     );
 
     String? vst3HelperPath;
-    if (enableVst3 && os == OS.macOS && vst3.libraryDirectories.isNotEmpty) {
-      vst3HelperPath =
-          '${vst3.libraryDirectories.first}/soloud_vst3_editor_helper';
-      final archFlag = arch == Architecture.arm64 ? 'arm64' : 'x86_64';
-      final res = await Process.run('xcrun', [
-        'clang++',
-        '-std=c++17',
-        '-arch',
-        archFlag,
-        '-O3',
-        '-fobjc-arc',
-        '-DSOLOUD_ENABLE_VST3=1',
-        '-DSOLOUD_VST3_HELPER_MAIN=1',
-        '-DNDEBUG=1',
-        '-Wno-unnecessary-virtual-specifier',
-        '-I${input.packageRoot.resolve('src').toFilePath()}',
-        '-I${input.packageRoot.resolve('src/vst3').toFilePath()}',
-        for (final inc in vst3.includeDirs) ...['-isystem', inc],
-        input.packageRoot
-            .resolve('src/vst3/vst3_editor_helper_macos.mm')
-            .toFilePath(),
-        input.packageRoot
-            .resolve('src/vst3/vst3_editor_macos.mm')
-            .toFilePath(),
-        '${vst3.libraryDirectories.first}/libvst3_hosting.a',
-        '-framework',
-        'Cocoa',
-        '-framework',
-        'QuartzCore',
-        '-framework',
-        'CoreFoundation',
-        '-Wl,-dead_strip',
-        '-o',
-        vst3HelperPath,
-      ]);
-      if (res.exitCode != 0) {
-        throw StateError(
-          '[flutter_soloud] Failed to build soloud_vst3_editor_helper:\n'
-          '${res.stderr}',
+    if (enableVst3 && vst3.libraryDirectories.isNotEmpty) {
+      if (os == OS.macOS) {
+        vst3HelperPath =
+            '${vst3.libraryDirectories.first}/soloud_vst3_editor_helper';
+        final archFlag = arch == Architecture.arm64 ? 'arm64' : 'x86_64';
+        final res = await Process.run('xcrun', [
+          'clang++',
+          '-std=c++17',
+          '-arch',
+          archFlag,
+          '-O3',
+          '-fobjc-arc',
+          '-DSOLOUD_ENABLE_VST3=1',
+          '-DSOLOUD_VST3_HELPER_MAIN=1',
+          '-DNDEBUG=1',
+          '-Wno-unnecessary-virtual-specifier',
+          '-I${input.packageRoot.resolve('src').toFilePath()}',
+          '-I${input.packageRoot.resolve('src/vst3').toFilePath()}',
+          for (final inc in vst3.includeDirs) ...['-isystem', inc],
+          input.packageRoot
+              .resolve('src/vst3/vst3_editor_helper_macos.mm')
+              .toFilePath(),
+          input.packageRoot
+              .resolve('src/vst3/vst3_editor_macos.mm')
+              .toFilePath(),
+          '${vst3.libraryDirectories.first}/libvst3_hosting.a',
+          '-framework',
+          'Cocoa',
+          '-framework',
+          'QuartzCore',
+          '-framework',
+          'CoreFoundation',
+          '-Wl,-dead_strip',
+          '-o',
+          vst3HelperPath,
+        ]);
+        if (res.exitCode != 0) {
+          throw StateError(
+            '[flutter_soloud] Failed to build soloud_vst3_editor_helper:\n'
+            '${res.stderr}',
+          );
+        }
+        output.dependencies.addAll([
+          input.packageRoot.resolve('src/vst3/vst3_editor_helper_macos.mm'),
+          input.packageRoot.resolve('src/vst3/vst3_editor_macos.mm'),
+          input.packageRoot.resolve('src/vst3/vst3_editor_shm.h'),
+        ]);
+      } else if (os == OS.linux || os == OS.windows) {
+        final exeName = os.executableFileName('soloud_vst3_editor_helper');
+        final helperBuilder = CBuilder.executable(
+          name: 'soloud_vst3_editor_helper',
+          language: Language.cpp,
+          std: 'c++17',
+          sources: [
+            'src/vst3/vst3_editor_helper_desktop.cpp',
+            if (os == OS.linux) 'src/vst3/vst3_editor_linux.cpp',
+            if (os == OS.windows) 'src/vst3/vst3_editor_windows.cpp',
+          ],
+          includes: [
+            'src',
+            'src/vst3',
+            ...vst3.includeDirs,
+          ],
+          defines: {
+            'SOLOUD_ENABLE_VST3': '1',
+            'SOLOUD_VST3_HELPER_MAIN': '1',
+            'NDEBUG': '1',
+            if (os == OS.windows) ...{
+              'NOMINMAX': null,
+              '_CRT_SECURE_NO_WARNINGS': null,
+            },
+          },
+          flags: [
+            if (os == OS.windows) ...['/Ox', '/EHsc'] else ...[
+              '-O3',
+              '-fvisibility=hidden',
+              '-Wno-unused-command-line-argument',
+            ],
+          ],
+          libraries: [
+            ...vst3.libraries,
+            if (os == OS.linux) ...['dl', 'pthread'],
+            if (os == OS.windows) ...['ole32', 'user32', 'gdi32', 'shell32'],
+          ],
+          libraryDirectories: vst3.libraryDirectories,
         );
+        await helperBuilder.run(input: input, output: output);
+        final builtExe = File.fromUri(input.outputDirectory.resolve(exeName));
+        final targetExe = File('${vst3.libraryDirectories.first}/$exeName');
+        if (builtExe.existsSync()) {
+          builtExe.copySync(targetExe.path);
+          vst3HelperPath = targetExe.path.replaceAll(r'\', '/');
+        }
+        output.dependencies.addAll([
+          input.packageRoot.resolve('src/vst3/vst3_editor_helper_desktop.cpp'),
+          input.packageRoot.resolve('src/vst3/vst3_editor_shm.h'),
+        ]);
       }
-      output.dependencies.addAll([
-        input.packageRoot.resolve('src/vst3/vst3_editor_helper_macos.mm'),
-        input.packageRoot.resolve('src/vst3/vst3_editor_macos.mm'),
-        input.packageRoot.resolve('src/vst3/vst3_editor_shm.h'),
-      ]);
     }
 
     final defines = <String, String?>{
@@ -421,6 +473,7 @@ List<String> collectSources(
       'vst3/',
       exclude: (p) {
         if (p.endsWith('.mm')) return true; // Built by objcBuilder on macOS
+        if (p.endsWith('vst3_editor_helper_desktop.cpp')) return true;
         if (p.endsWith('vst3_editor_windows.cpp') && targetOS != OS.windows) {
           return true;
         }

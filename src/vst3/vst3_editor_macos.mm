@@ -438,18 +438,7 @@ public:
     }
 
     mShm = static_cast<SoLoudVst3EditorShm *>(mapped);
-    std::memset(mShm, 0, sizeof(SoLoudVst3EditorShm));
-    *reinterpret_cast<uint32_t *>(mShm->vst3Telemetry +
-                                  kVst3TelemetryOffsetMagic) =
-        kVst3TelemetryMagic;
-    *reinterpret_cast<uint32_t *>(mShm->vst3Telemetry +
-                                  kVst3TelemetryOffsetVersion) =
-        kVst3TelemetryVersion;
-    *reinterpret_cast<double *>(mShm->vst3Telemetry +
-                                kVst3TelemetryOffsetSampleRate) = 48000.0;
-    *reinterpret_cast<uint32_t *>(mShm->vst3Telemetry +
-                                  kVst3TelemetryOffsetMaxBlockSize) =
-        kVst3TelemetryMaxSamples;
+    initVst3EditorShmHeader(mShm);
 
     if (ctx.component != nullptr) {
       Steinberg::MemoryStream stream;
@@ -576,31 +565,11 @@ public:
                            const float *outL, const float *outR,
                            int32_t numSamples,
                            double sampleRate) noexcept override {
-    SoLoudVst3EditorShm *shm = mShm;
-    if (shm == nullptr || !mIsOpen.load(std::memory_order_acquire) ||
-        numSamples <= 0) {
+    if (!mIsOpen.load(std::memory_order_acquire)) {
       return;
     }
-    const int32_t n = std::min<int32_t>(numSamples, kVst3TelemetryMaxSamples);
-    const size_t bytes = static_cast<size_t>(n) * sizeof(float);
-    uint8_t *base = shm->vst3Telemetry;
-    *reinterpret_cast<double *>(base + kVst3TelemetryOffsetSampleRate) =
-        sampleRate;
-    if (inL != nullptr) {
-      std::memcpy(base + kVst3TelemetryOffsetInputL, inL, bytes);
-    }
-    if (inR != nullptr) {
-      std::memcpy(base + kVst3TelemetryOffsetInputR, inR, bytes);
-    }
-    if (outL != nullptr) {
-      std::memcpy(base + kVst3TelemetryOffsetOutputL, outL, bytes);
-    }
-    if (outR != nullptr) {
-      std::memcpy(base + kVst3TelemetryOffsetOutputR, outR, bytes);
-    }
-    *reinterpret_cast<int32_t *>(base + kVst3TelemetryOffsetNumSamples) = n;
-    *reinterpret_cast<uint32_t *>(base + kVst3TelemetryOffsetMagic) =
-        kVst3TelemetryMagic;
+    writeVst3EditorShmTelemetry(mShm, inL, inR, outL, outR, numSamples,
+                                sampleRate);
   }
 
   bool open(Steinberg::IPlugView *plugView, const char *title) override {

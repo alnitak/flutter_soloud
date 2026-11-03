@@ -3,9 +3,11 @@
 
 #ifdef SOLOUD_ENABLE_VST3
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace SoLoud {
 
@@ -65,6 +67,50 @@ struct SoLoudVst3EditorShm {
 
 static_assert(offsetof(SoLoudVst3EditorShm, vst3Telemetry) == 0,
               "vst3Telemetry must be at offset 0");
+
+inline void initVst3EditorShmHeader(SoLoudVst3EditorShm *shm) noexcept {
+  std::memset(shm, 0, sizeof(SoLoudVst3EditorShm));
+  *reinterpret_cast<uint32_t *>(shm->vst3Telemetry + kVst3TelemetryOffsetMagic) =
+      kVst3TelemetryMagic;
+  *reinterpret_cast<uint32_t *>(shm->vst3Telemetry +
+                                kVst3TelemetryOffsetVersion) =
+      kVst3TelemetryVersion;
+  *reinterpret_cast<double *>(shm->vst3Telemetry +
+                              kVst3TelemetryOffsetSampleRate) = 48000.0;
+  *reinterpret_cast<uint32_t *>(shm->vst3Telemetry +
+                                kVst3TelemetryOffsetMaxBlockSize) =
+      kVst3TelemetryMaxSamples;
+}
+
+inline void writeVst3EditorShmTelemetry(SoLoudVst3EditorShm *shm,
+                                        const float *inL, const float *inR,
+                                        const float *outL, const float *outR,
+                                        int32_t numSamples,
+                                        double sampleRate) noexcept {
+  if (shm == nullptr || numSamples <= 0) {
+    return;
+  }
+  const int32_t n = std::min<int32_t>(numSamples, kVst3TelemetryMaxSamples);
+  const size_t bytes = static_cast<size_t>(n) * sizeof(float);
+  uint8_t *base = shm->vst3Telemetry;
+  *reinterpret_cast<double *>(base + kVst3TelemetryOffsetSampleRate) =
+      sampleRate;
+  if (inL != nullptr) {
+    std::memcpy(base + kVst3TelemetryOffsetInputL, inL, bytes);
+  }
+  if (inR != nullptr) {
+    std::memcpy(base + kVst3TelemetryOffsetInputR, inR, bytes);
+  }
+  if (outL != nullptr) {
+    std::memcpy(base + kVst3TelemetryOffsetOutputL, outL, bytes);
+  }
+  if (outR != nullptr) {
+    std::memcpy(base + kVst3TelemetryOffsetOutputR, outR, bytes);
+  }
+  *reinterpret_cast<int32_t *>(base + kVst3TelemetryOffsetNumSamples) = n;
+  *reinterpret_cast<uint32_t *>(base + kVst3TelemetryOffsetMagic) =
+      kVst3TelemetryMagic;
+}
 
 } // namespace SoLoud
 
