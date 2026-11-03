@@ -133,7 +133,11 @@ public:
     if (view->getSize(&r) != Steinberg::kResultTrue) {
       return Steinberg::kInternalError;
     }
-    if (rectEqual(r, *newSize)) {
+    RECT clientRect{0, 0, 0, 0};
+    GetClientRect(mHwnd, &clientRect);
+    if (rectEqual(r, *newSize) &&
+        (clientRect.right - clientRect.left) == newSize->getWidth() &&
+        (clientRect.bottom - clientRect.top) == newSize->getHeight()) {
       return Steinberg::kResultTrue;
     }
 
@@ -147,12 +151,7 @@ public:
                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     mInResize.store(false, std::memory_order_release);
 
-    if (view->getSize(&r) != Steinberg::kResultTrue) {
-      return Steinberg::kInternalError;
-    }
-    if (!rectEqual(r, *newSize)) {
-      view->onSize(newSize);
-    }
+    view->onSize(newSize);
     InvalidateRect(mHwnd, nullptr, FALSE);
     UpdateWindow(mHwnd);
     return Steinberg::kResultTrue;

@@ -490,14 +490,6 @@ public:
     if (mInResize.load(std::memory_order_acquire)) {
       return Steinberg::kResultFalse;
     }
-    Steinberg::ViewRect r{0, 0, 0, 0};
-    if (view->getSize(&r) != Steinberg::kResultTrue) {
-      return Steinberg::kInternalError;
-    }
-    if (r.left == newSize->left && r.top == newSize->top &&
-        r.right == newSize->right && r.bottom == newSize->bottom) {
-      return Steinberg::kResultTrue;
-    }
     mInResize.store(true, std::memory_order_release);
     const unsigned int w = static_cast<unsigned int>(newSize->getWidth());
     const unsigned int h = static_cast<unsigned int>(newSize->getHeight());
@@ -513,10 +505,7 @@ public:
       hints.max_height = static_cast<int>(h);
       guiSymbols().XSetWMNormalHints(sSharedDisplay, sSharedWindow, &hints);
     }
-    if (r.left != newSize->left || r.top != newSize->top ||
-        r.right != newSize->right || r.bottom != newSize->bottom) {
-      view->onSize(newSize);
-    }
+    view->onSize(newSize);
     guiSymbols().XFlush(sSharedDisplay);
     mInResize.store(false, std::memory_order_release);
     return Steinberg::kResultTrue;
