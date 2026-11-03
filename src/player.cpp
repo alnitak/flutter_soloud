@@ -1320,46 +1320,72 @@ PlayerErrors Player::resetRealtimeStream(unsigned int hash)
 // reads) alive while a producer thread or isolate is using it. Lock order is
 // sounds_mutex -> SoLoud audio mutex, the same as disposeSound() and
 // addAudioDataStream().
+namespace
+{
+    /// Whether [numFrames] frames of [rs] fit in a caller buffer holding
+    /// [numSamples] samples (frames * channels, for both the interleaved and
+    /// the planar layouts).
+    bool realtimeFramesFit(const SoLoud::RealtimeStream *rs,
+                           unsigned int numFrames,
+                           unsigned int numSamples)
+    {
+        return static_cast<uint64_t>(numFrames) * rs->mChannels <=
+               static_cast<uint64_t>(numSamples);
+    }
+} // namespace
+
 unsigned int Player::pushRealtimeFloat32(
     unsigned int hash,
     const float *data,
-    unsigned int numFrames)
+    unsigned int numFrames,
+    unsigned int numSamples)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto *rs = findRealtimeStreamUnlocked(hash);
-    return rs != nullptr ? rs->pushDataFloat32(data, numFrames) : 0;
+    if (rs == nullptr || !realtimeFramesFit(rs, numFrames, numSamples))
+        return 0;
+    return rs->pushDataFloat32(data, numFrames);
 }
 
 unsigned int Player::pushRealtimeInt16(
     unsigned int hash,
     const int16_t *data,
-    unsigned int numFrames)
+    unsigned int numFrames,
+    unsigned int numSamples)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto *rs = findRealtimeStreamUnlocked(hash);
-    return rs != nullptr ? rs->pushDataInt16(data, numFrames) : 0;
+    if (rs == nullptr || !realtimeFramesFit(rs, numFrames, numSamples))
+        return 0;
+    return rs->pushDataInt16(data, numFrames);
 }
 
 unsigned int Player::pushRealtimeClockedFloat32(
     unsigned int hash,
     double soundTime,
     const float *data,
-    unsigned int numFrames)
+    unsigned int numFrames,
+    unsigned int numSamples)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto *rs = findRealtimeStreamUnlocked(hash);
-    return rs != nullptr ? rs->pushDataClockedFloat32(soundTime, data, numFrames) : 0;
+    if (rs == nullptr || !realtimeFramesFit(rs, numFrames, numSamples))
+        return 0;
+    return rs->pushDataClockedFloat32(soundTime, data, numFrames);
 }
 
 unsigned int Player::pushRealtimeScheduledFloat32(
     unsigned int hash,
     double engineTime,
     const float *data,
-    unsigned int numFrames)
+    unsigned int numFrames,
+    unsigned int numSamples)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto *rs = findRealtimeStreamUnlocked(hash);
-    return rs != nullptr ? rs->pushDataScheduledFloat32(engineTime, data, numFrames) : 0;
+    if (rs == nullptr || !realtimeFramesFit(rs, numFrames, numSamples))
+        return 0;
+    return rs->pushDataScheduledFloat32(engineTime, data, numFrames);
 }
 
 unsigned int Player::getRealtimeAvailableToRead(unsigned int hash)
@@ -1391,7 +1417,9 @@ PlayerErrors Player::createCustomAudioSource(
     void *userData,
     SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
     bool singleInstance,
-    const char *webJsCallbackName)
+    const char *webJsCallbackName,
+    bool mustTickWhenInaudible,
+    bool killWhenInaudible)
 {
     if (!mInited.load(std::memory_order_acquire))
         return backendNotInited;
@@ -1419,6 +1447,7 @@ PlayerErrors Player::createCustomAudioSource(
     auto customSource = std::make_unique<SoLoud::CustomAudioSource>(
         sampleRate, channels, callback, userData, lifecycleCallback,
         singleInstance, webJsCallbackName);
+    customSource->setInaudibleBehavior(mustTickWhenInaudible, killWhenInaudible);
 
     newSound->sound = std::move(customSource);
     newSound->soundType = SoundType::TYPE_CUSTOM_SOURCE;

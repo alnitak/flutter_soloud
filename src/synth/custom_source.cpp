@@ -42,6 +42,12 @@ SourceStateSnapshot *CustomAudioSourceInstance::captureSourceState() {
   auto *snap = new CustomAudioSourceSnapshot();
   snap->mHasEnded = mHasEnded;
   snap->mNotifiedCreated = mNotifiedCreated;
+  // The DSP callback's own state (oscillator phase, envelopes, a VST3
+  // instrument's voices) is not captured, so a re-mix could not reproduce
+  // the voice's output.
+  snap->mComplete = mParent == nullptr ||
+                    (mParent->getCallback() == nullptr &&
+                     mParent->getWebJsCallbackName().empty());
   return snap;
 }
 
@@ -52,7 +58,10 @@ void CustomAudioSourceInstance::restoreSourceState(
     return;
   }
   mHasEnded = snap->mHasEnded;
-  mNotifiedCreated = snap->mNotifiedCreated;
+  // The "created" lifecycle event is a side effect that already happened:
+  // never re-arm it, or a re-mix replaying from before the first getAudio()
+  // would report the same instance as created twice.
+  mNotifiedCreated = mNotifiedCreated || snap->mNotifiedCreated;
 }
 
 unsigned int CustomAudioSourceInstance::getAudio(float *aBuffer,

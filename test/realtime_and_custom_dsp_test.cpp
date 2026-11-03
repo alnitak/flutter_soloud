@@ -10,11 +10,14 @@
 #include "../src/audiobuffer/realtime_stream.h"
 #include "../src/filters/custom_filter.h"
 #include "../src/synth/custom_source.h"
+#include "../src/soloud/include/soloud_biquadresonantfilter.h"
+#include "../src/soloud/include/soloud_echofilter.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 static int g_failures = 0;
@@ -236,6 +239,22 @@ static void testCustomAudioSource() {
 
     delete inst;
     EXPECT(g_synthState.destroyedEvents == 1, "lifecycle destroyed event not fired");
+
+    // A re-mix restores a snapshot taken before the instance's first
+    // getAudio(); that must not report the instance as created again.
+    g_synthState = SynthState{};
+    SoLoud::AudioSourceInstance *again = src.createInstance();
+    SoLoud::SourceStateSnapshot *birth = again->captureSourceState();
+    EXPECT(birth != nullptr && !birth->mComplete,
+           "a callback-driven source snapshot must be marked incomplete");
+    again->getAudio(buf.data(), 64, 64);
+    again->restoreSourceState(birth);
+    again->getAudio(buf.data(), 64, 64);
+    delete birth;
+    EXPECT(g_synthState.createdEvents == 1,
+           "created event fired %d times across a state restore",
+           g_synthState.createdEvents);
+    delete again;
 }
 
 // 4. Test CustomFilter (3-branch wet behavior, zero-copy at wet=1, dry/wet blend, param definitions, uint64_t mParamChanged)
@@ -625,14 +644,18 @@ static void testResetDuringScheduledGap() {
 
 struct PeakProbe {
     float inputPeak = 0.0f;
+    double firstTime = -1.0;
 };
 
 // Global filter that records the peak it receives, then boosts by 4x.
 static void probeThenBoost(float *buffer, unsigned int samples,
                            unsigned int bufferSize, unsigned int channels,
-                           float, double, const float *, uint64_t,
+                           float, double time, const float *, uint64_t,
                            unsigned int, void *userData) {
     auto *probe = static_cast<PeakProbe *>(userData);
+    if (probe->firstTime < 0.0) {
+        probe->firstTime = time;
+    }
     for (unsigned int ch = 0; ch < channels; ++ch) {
         float *dst = buffer + ch * bufferSize;
         for (unsigned int i = 0; i < samples; ++i) {
@@ -664,9 +687,13 @@ static void testRenderAheadGlobalFilterThenClip() {
 
     rig.topUp();
     rig.discard(1024);  // skip the voice's start-up quantum
+    const double chunkStart = rig.engine.getPlayheadTime();
     std::vector<float> out(1024 * 2, 0.0f);
     EXPECT(rig.engine.mRenderRing.read(out.data(), 1024) == 1024, "ring read failed");
     rig.engine.postProcessRenderRing_internal(out.data(), 1024);
+    EXPECT(std::fabs(probe.firstTime - chunkStart) < 1e-6,
+           "global filter time %.6f, want the chunk start %.6f",
+           probe.firstTime, chunkStart);
 
     float outPeak = 0.0f;
     for (float v : out) {
@@ -680,6 +707,141 @@ static void testRenderAheadGlobalFilterThenClip() {
 
     rig.engine.setGlobalFilter(0, nullptr);
     rig.engine.stopAll();
+}
+
+// A per-voice custom filter with a user callback keeps state SoLoud cannot
+// snapshot, so a re-mix would run it twice over the window: checkpoints
+// covering such a voice must not be restorable. The same voice with the
+// filter bypassed (no callback) stays restorable.
+static void testRemixRefusedWithStatefulCustomDsp() {
+    std::printf("Test: re-mix refused while stateful custom DSP plays\n");
+
+    for (int withCallback = 0; withCallback < 2; ++withCallback) {
+        RingRig rig;
+        PeakProbe probe;
+        SoLoud::CustomFilter filter;
+        if (withCallback) {
+            filter.setCallback(probeThenBoost, &probe, 1);
+        }
+        SoLoud::RealtimeStream stream;
+        EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                           16384) == PlayerErrors::noError,
+               "init failed");
+        stream.setFilter(0, &filter);
+        std::vector<float> chunk(8000, 0.1f);
+        stream.pushDataFloat32(chunk.data(), 8000);
+        EXPECT(rig.engine.play(stream) != 0, "play failed");
+        rig.topUp();
+        rig.discard(1024);
+
+        const bool remixed = remixFrom(rig, rig.engine.getPlayheadTime());
+        if (withCallback) {
+            EXPECT(!remixed, "re-mix must be refused with a stateful custom filter");
+        } else {
+            EXPECT(remixed, "re-mix should work with a bypassed custom filter");
+        }
+        rig.engine.stopAll();
+        stream.setFilter(0, nullptr);
+    }
+}
+
+// Shrinking the voice pool reallocates the resampler blocks that
+// checkpoints refer to by index: none of the older checkpoints may be
+// restored afterwards.
+static void testMaxActiveVoiceShrinkRetiresCheckpoints() {
+    std::printf("Test: shrinking max active voices retires checkpoints\n");
+
+    RingRig rig;
+    // Half the engine rate, so every voice resamples and owns pool blocks.
+    constexpr unsigned int kVoices = 6;
+    std::vector<std::unique_ptr<SoLoud::RealtimeStream>> streams;
+    std::vector<float> chunk(8000, 0.05f);
+    for (unsigned int i = 0; i < kVoices; ++i) {
+        streams.emplace_back(new SoLoud::RealtimeStream());
+        EXPECT(streams.back()->init(&rig.engine, kSampleRate / 2, 1,
+                                    BufferType::PCM_F32LE, 16384) ==
+                   PlayerErrors::noError,
+               "init failed");
+        streams.back()->pushDataFloat32(chunk.data(), 8000);
+        EXPECT(rig.engine.play(*streams.back()) != 0, "play failed");
+    }
+    rig.topUp();
+    rig.discard(1024);
+    EXPECT(remixFrom(rig, rig.engine.getPlayheadTime()),
+           "re-mix should work before the resize");
+
+    EXPECT(rig.engine.setMaxActiveVoiceCount(2) == SoLoud::SO_NO_ERROR,
+           "setMaxActiveVoiceCount failed");
+    EXPECT(!remixFrom(rig, rig.engine.getPlayheadTime()),
+           "a checkpoint from before the resize was restored");
+
+    rig.engine.stopAll();
+}
+
+// Echo snapshots are refilled in place at each checkpoint instead of being
+// reallocated; a refilled snapshot must restore exactly like a fresh one, and
+// a snapshot of another type or size must be refused.
+static void testEchoSnapshotRecycling() {
+    std::printf("Test: echo snapshots are refilled in place\n");
+
+    SoLoud::EchoFilter echo;
+    echo.setParams(0.05f, 0.5f, 0.0f);
+    SoLoud::FilterInstance *inst = echo.createInstance();
+    std::vector<float> buf(2 * 512);
+    auto feed = [&](float level) {
+        std::fill(buf.begin(), buf.end(), level);
+        inst->filter(buf.data(), 512, 512, 2, (float)kSampleRate, 0.0);
+    };
+
+    feed(0.3f);
+    SoLoud::FilterStateSnapshot *snap = inst->captureState();
+    EXPECT(snap != nullptr && snap->mKind != nullptr, "echo snapshot has no kind");
+    feed(0.7f);
+    EXPECT(inst->captureStateInto(snap), "echo refused its own snapshot");
+
+    // Diverge, restore the refilled snapshot, and compare with a reference
+    // instance that never diverged.
+    std::vector<float> expected(2 * 512);
+    {
+        SoLoud::FilterInstance *ref = echo.createInstance();
+        std::fill(buf.begin(), buf.end(), 0.3f);
+        ref->filter(buf.data(), 512, 512, 2, (float)kSampleRate, 0.0);
+        std::fill(buf.begin(), buf.end(), 0.7f);
+        ref->filter(buf.data(), 512, 512, 2, (float)kSampleRate, 0.0);
+        std::fill(expected.begin(), expected.end(), 0.1f);
+        ref->filter(expected.data(), 512, 512, 2, (float)kSampleRate, 0.0);
+        delete ref;
+    }
+    feed(-0.9f);
+    inst->restoreState(snap);
+    std::fill(buf.begin(), buf.end(), 0.1f);
+    inst->filter(buf.data(), 512, 512, 2, (float)kSampleRate, 0.0);
+    bool same = true;
+    for (size_t i = 0; i < buf.size(); ++i) {
+        if (std::fabs(buf[i] - expected[i]) > 1e-6f) {
+            same = false;
+            break;
+        }
+    }
+    EXPECT(same, "restoring a refilled echo snapshot did not reproduce the output");
+
+    SoLoud::BiquadResonantFilter biquad;
+    SoLoud::FilterInstance *bq = biquad.createInstance();
+    SoLoud::FilterStateSnapshot *foreign = bq->captureState();
+    EXPECT(!inst->captureStateInto(foreign), "echo accepted a biquad snapshot");
+    delete foreign;
+    delete bq;
+
+    SoLoud::EchoFilter longEcho;
+    longEcho.setParams(0.5f, 0.5f, 0.0f);
+    SoLoud::FilterInstance *other = longEcho.createInstance();
+    std::fill(buf.begin(), buf.end(), 0.2f);
+    other->filter(buf.data(), 512, 512, 2, (float)kSampleRate, 0.0);
+    EXPECT(!other->captureStateInto(snap), "echo accepted a snapshot of another size");
+    delete other;
+
+    delete snap;
+    delete inst;
 }
 
 } // namespace rt_engine
@@ -722,6 +884,9 @@ int main() {
     rt_engine::testResetSurvivesRemix();
     rt_engine::testResetDuringScheduledGap();
     rt_engine::testRenderAheadGlobalFilterThenClip();
+    rt_engine::testRemixRefusedWithStatefulCustomDsp();
+    rt_engine::testMaxActiveVoiceShrinkRetiresCheckpoints();
+    rt_engine::testEchoSnapshotRecycling();
     testRealtimeResetClearsUnderrunCount();
 
     std::printf("\n%d assertions, %d failures\n", g_assertions, g_failures);

@@ -45,61 +45,69 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
 
   const float dryRatio = 1.0f - wetRatio;
 
-  const size_t needed = static_cast<size_t>(aSamples) * channels;
-  if (mOutputBuffer.size() < needed) {
-    mOutputBuffer.resize(needed);
-  }
+  // The output buffer is sized once in the constructor
+  // (SAMPLE_GRANULARITY frames per channel). Larger blocks (global or bus
+  // filters on a large quantum, the post-ring path) are fed to the
+  // stretcher in chunks rather than growing the buffer on the audio thread;
+  // the stretcher is a streaming processor, so this does not change the
+  // result.
+  const unsigned int chunkMax = SAMPLE_GRANULARITY;
+  for (unsigned int base = 0; base < aSamples; base += chunkMax) {
+    const unsigned int count =
+        aSamples - base < chunkMax ? aSamples - base : chunkMax;
 
-  for (unsigned int ch = 0; ch < channels; ch++) {
-    mInputChannels[ch] = aBuffer + static_cast<size_t>(ch) * aBufferSize;
-    mOutputChannels[ch] =
-        mOutputBuffer.data() + static_cast<size_t>(ch) * aSamples;
-  }
+    for (unsigned int ch = 0; ch < channels; ch++) {
+      mInputChannels[ch] =
+          aBuffer + static_cast<size_t>(ch) * aBufferSize + base;
+      mOutputChannels[ch] =
+          mOutputBuffer.data() + static_cast<size_t>(ch) * chunkMax;
+    }
 
-  // Process all channels together
-  mStretch.process(mInputChannels, static_cast<int>(aSamples),
-                   mOutputChannels, static_cast<int>(aSamples));
+    // Process all channels together
+    mStretch.process(mInputChannels, static_cast<int>(count),
+                     mOutputChannels, static_cast<int>(count));
 
-  // Apply wet/dry mix and copy back to buffer
-  for (unsigned int ch = 0; ch < channels; ch++) {
-    float *channelIn = aBuffer + static_cast<size_t>(ch) * aBufferSize;
-    float *channelOut = mOutputChannels[ch];
+    // Apply wet/dry mix and copy back to buffer
+    for (unsigned int ch = 0; ch < channels; ch++) {
+      float *channelIn = mInputChannels[ch];
+      float *channelOut = mOutputChannels[ch];
 
-    if (wetRatio < 1.0f) {
-      unsigned int j = 0;
+      if (wetRatio < 1.0f) {
+        unsigned int j = 0;
 #if defined(SOLOUD_SSE_INTRINSICS)
-      const __m128 vDry = _mm_set1_ps(dryRatio);
-      const __m128 vWet = _mm_set1_ps(wetRatio);
-      for (; j + 4 <= aSamples; j += 4) {
-        const __m128 inV = _mm_loadu_ps(channelIn + j);
-        const __m128 outV = _mm_loadu_ps(channelOut + j);
-        _mm_storeu_ps(
-            channelIn + j,
-            _mm_add_ps(_mm_mul_ps(inV, vDry), _mm_mul_ps(outV, vWet)));
-      }
+        const __m128 vDry = _mm_set1_ps(dryRatio);
+        const __m128 vWet = _mm_set1_ps(wetRatio);
+        for (; j + 4 <= count; j += 4) {
+          const __m128 inV = _mm_loadu_ps(channelIn + j);
+          const __m128 outV = _mm_loadu_ps(channelOut + j);
+          _mm_storeu_ps(
+              channelIn + j,
+              _mm_add_ps(_mm_mul_ps(inV, vDry), _mm_mul_ps(outV, vWet)));
+        }
 #elif defined(SOLOUD_NEON_INTRINSICS)
-      for (; j + 4 <= aSamples; j += 4) {
-        const float32x4_t inV = vld1q_f32(channelIn + j);
-        const float32x4_t outV = vld1q_f32(channelOut + j);
-        vst1q_f32(channelIn + j,
-                  vmlaq_n_f32(vmulq_n_f32(inV, dryRatio), outV, wetRatio));
-      }
+        for (; j + 4 <= count; j += 4) {
+          const float32x4_t inV = vld1q_f32(channelIn + j);
+          const float32x4_t outV = vld1q_f32(channelOut + j);
+          vst1q_f32(channelIn + j,
+                    vmlaq_n_f32(vmulq_n_f32(inV, dryRatio), outV, wetRatio));
+        }
 #elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-      const v128_t vDry = wasm_f32x4_splat(dryRatio);
-      const v128_t vWet = wasm_f32x4_splat(wetRatio);
-      for (; j + 4 <= aSamples; j += 4) {
-        const v128_t inV = wasm_v128_load(channelIn + j);
-        const v128_t outV = wasm_v128_load(channelOut + j);
-        wasm_v128_store(channelIn + j,
-                        wasm_f32x4_add(wasm_f32x4_mul(inV, vDry),
-                                       wasm_f32x4_mul(outV, vWet)));
-      }
+        const v128_t vDry = wasm_f32x4_splat(dryRatio);
+        const v128_t vWet = wasm_f32x4_splat(wetRatio);
+        for (; j + 4 <= count; j += 4) {
+          const v128_t inV = wasm_v128_load(channelIn + j);
+          const v128_t outV = wasm_v128_load(channelOut + j);
+          wasm_v128_store(channelIn + j,
+                          wasm_f32x4_add(wasm_f32x4_mul(inV, vDry),
+                                         wasm_f32x4_mul(outV, vWet)));
+        }
 #endif
-      for (; j < aSamples; j++) {
-        channelIn[j] = channelIn[j] * dryRatio + channelOut[j] * wetRatio;
+        for (; j < count; j++) {
+          channelIn[j] = channelIn[j] * dryRatio + channelOut[j] * wetRatio;
+        }
+      } else {
+        std::memcpy(channelIn, channelOut, count * sizeof(float));
       }
-    } else {
-      std::memcpy(channelIn, channelOut, aSamples * sizeof(float));
     }
   }
 }

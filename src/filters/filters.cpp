@@ -305,9 +305,18 @@ bool Filters::removeFilter(FilterType filterType, int customFilterId) {
 
   if (filterType == CustomFilter && customFilterId >= 0 &&
       customFilterId < FILTERS_PER_STREAM) {
-    mPendingCustomFilters[customFilterId].reset(
-        static_cast<SoLoud::CustomFilter *>(
-            filters[index].get()->filter.release()));
+    // Keep the slot's parameter definitions for a later re-activation, but
+    // not its callback: the app may free the callback's userData once the
+    // slot is deactivated, and re-activating would otherwise run the old
+    // callback on that freed pointer until setNativeCallback() is called
+    // again. No live instance refers to the filter any more (they were
+    // detached above), so it can be changed without the audio mutex.
+    auto *parked = static_cast<SoLoud::CustomFilter *>(
+        filters[index].get()->filter.release());
+    parked->setCallback(nullptr, nullptr,
+                        static_cast<unsigned int>(parked->getParamCount()));
+    parked->setWebJsCallbackName(nullptr);
+    mPendingCustomFilters[customFilterId].reset(parked);
   } else {
     filters[index].get()->filter.reset();
   }

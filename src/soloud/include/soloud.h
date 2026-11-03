@@ -858,6 +858,12 @@ namespace SoLoud
 		// performs no allocation (filter/source heap snapshots are the
 		// documented exception; the Phase 2 built-ins return nullptr).
 		std::vector<MixCheckpoint> mCheckpointPool;
+		// Scratch for captureMixCheckpoint_internal(): the previous voices of
+		// the pool slot being overwritten, whose filter snapshots are offered
+		// back to the same voice's filters (captureStateInto) instead of being
+		// freed and reallocated every quantum. Reserved like each slot's
+		// mVoices, which it is swapped with.
+		std::vector<CheckpointVoice> mCheckpointRecycle;
 		// Next pool slot to write (circular).
 		unsigned int mCheckpointWriteIndex;
 		// Monotonic capture counter; together with MixCheckpoint::mSerial it

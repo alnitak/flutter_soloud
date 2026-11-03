@@ -493,6 +493,20 @@ final class RealtimeStreamHandle {
     }
   }
 
+  /// Throws if [frames] frames of this stream's [channels] do not fit in
+  /// [sampleCount] samples, instead of letting native code read past the
+  /// caller's list.
+  void _checkFramesFit(int frames, int sampleCount) {
+    if (frames * channels.count > sampleCount) {
+      throw ArgumentError.value(
+        frames,
+        'frameCount',
+        'needs ${frames * channels.count} samples for ${channels.count} '
+            'channel(s), but only $sampleCount were given',
+      );
+    }
+  }
+
   /// Allocates a persistent [RealtimeNativeBuffer] sized for [maxFrames] and
   /// this stream's [channels].
   RealtimeNativeBuffer allocateNativeBuffer({int maxFrames = 1024}) =>
@@ -514,6 +528,7 @@ final class RealtimeStreamHandle {
   }) {
     final frames = frameCount ?? (samples.length ~/ channels.count);
     if (frames <= 0) return 0;
+    _checkFramesFit(frames, samples.length);
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeFloat32(
       soundHash.hash,
@@ -535,6 +550,7 @@ final class RealtimeStreamHandle {
   }) {
     final frames = frameCount ?? (samples.length ~/ channels.count);
     if (frames <= 0) return 0;
+    _checkFramesFit(frames, samples.length);
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeInt16(
       soundHash.hash,
@@ -564,6 +580,7 @@ final class RealtimeStreamHandle {
   }) {
     final frames = frameCount ?? (samples.length ~/ channels.count);
     if (frames <= 0) return 0;
+    _checkFramesFit(frames, samples.length);
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeClockedFloat32(
       soundHash.hash,
@@ -597,6 +614,7 @@ final class RealtimeStreamHandle {
   }) {
     final frames = frameCount ?? (samples.length ~/ channels.count);
     if (frames <= 0) return 0;
+    _checkFramesFit(frames, samples.length);
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeScheduledFloat32(
       soundHash.hash,
@@ -627,6 +645,7 @@ final class RealtimeStreamHandle {
       handleId,
       buffer.address,
       clampedFrames,
+      buffer._totalSamples,
     );
   }
 
@@ -650,6 +669,7 @@ final class RealtimeStreamHandle {
       handleId,
       buffer.address,
       clampedFrames,
+      buffer._totalSamples,
     );
   }
 
@@ -675,6 +695,7 @@ final class RealtimeStreamHandle {
       soundTime.toDouble(),
       buffer.address,
       clampedFrames,
+      buffer._totalSamples,
     );
   }
 
@@ -700,6 +721,7 @@ final class RealtimeStreamHandle {
       atTime.toDouble(),
       buffer.address,
       clampedFrames,
+      buffer._totalSamples,
     );
   }
 }

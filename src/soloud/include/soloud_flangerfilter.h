@@ -35,6 +35,9 @@ namespace SoLoud
 	{
 		float *mBuffer;
 		unsigned int mBufferLength;
+		// Channels mBuffer was allocated for: it holds
+		// mBufferLength * mBufferChannels floats.
+		unsigned int mBufferChannels;
 		FlangerFilter *mParent;
 		unsigned int mOffset;
 		double mIndex;
@@ -42,6 +45,7 @@ namespace SoLoud
 	public:
 		virtual FilterStateSnapshot *captureState();
 		virtual void restoreState(FilterStateSnapshot *aSnapshot);
+		virtual bool captureStateInto(FilterStateSnapshot *aState);
 		virtual void filter(float *aBuffer, unsigned int aSamples, unsigned int aBufferSize, unsigned int aChannels, float aSamplerate, time aTime);
 		virtual ~FlangerFilterInstance();
 		FlangerFilterInstance(FlangerFilter *aParent);

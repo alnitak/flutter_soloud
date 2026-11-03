@@ -18,6 +18,8 @@ c++ -std=c++17 -O2 -Wall -pthread \
     src/audiobuffer/realtime_stream.cpp \
     src/filters/custom_filter.cpp \
     src/synth/custom_source.cpp \
+    src/soloud/src/filter/soloud_echofilter.cpp \
+    src/soloud/src/filter/soloud_biquadresonantfilter.cpp \
     src/soloud/src/core/*.cpp \
     src/soloud/src/backend/null/soloud_null.cpp
 

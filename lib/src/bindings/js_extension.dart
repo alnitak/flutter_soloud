@@ -886,11 +886,23 @@ external int wasmSetRealtimeStream(
 @JS('Module_soloud._resetRealtimeStream')
 external int wasmResetRealtimeStream(int hash);
 
+// [sampleCount] is the number of samples readable at [samplesPtr]; native
+// code rejects a push whose frameCount * channels exceeds it.
 @JS('Module_soloud._pushRealtimeFloat32')
-external int wasmPushRealtimeFloat32(int hash, int samplesPtr, int frameCount);
+external int wasmPushRealtimeFloat32(
+  int hash,
+  int samplesPtr,
+  int frameCount,
+  int sampleCount,
+);
 
 @JS('Module_soloud._pushRealtimeInt16')
-external int wasmPushRealtimeInt16(int hash, int samplesPtr, int frameCount);
+external int wasmPushRealtimeInt16(
+  int hash,
+  int samplesPtr,
+  int frameCount,
+  int sampleCount,
+);
 
 @JS('Module_soloud._pushRealtimeClockedFloat32')
 external int wasmPushRealtimeClockedFloat32(
@@ -898,6 +910,7 @@ external int wasmPushRealtimeClockedFloat32(
   double soundTime,
   int samplesPtr,
   int frameCount,
+  int sampleCount,
 );
 
 @JS('Module_soloud._pushRealtimeScheduledFloat32')
@@ -906,6 +919,7 @@ external int wasmPushRealtimeScheduledFloat32(
   double atTime,
   int samplesPtr,
   int frameCount,
+  int sampleCount,
 );
 
 @JS('Module_soloud._getRealtimeAvailableToRead')
@@ -927,6 +941,8 @@ external int wasmCreateCustomAudioSource(
   int lifecycleCallbackPtr,
   int singleInstance,
   int webJsCallbackNamePtr,
+  int mustTickWhenInaudible,
+  int killWhenInaudible,
 );
 
 @JS('Module_soloud._addCustomFilter')

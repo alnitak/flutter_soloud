@@ -22,6 +22,13 @@
 #undef max
 #endif
 
+void ParametricEqInstance::setWindowSize(int aWindowSize) {
+  mWinSize = aWindowSize;
+  mWinHalf = aWindowSize >> 1;
+  mWinTwice = aWindowSize << 1;
+  mFFTScale = aWindowSize > 0 ? 1.0f / (float)aWindowSize : 0.0f;
+}
+
 ParametricEqInstance::ParametricEqInstance(ParametricEq *aParent) {
   mParent = aParent;
 
@@ -37,6 +44,9 @@ ParametricEqInstance::ParametricEqInstance(ParametricEq *aParent) {
 
   initParams(ParametricEq::NUM_PARAMS);
 
+  // Each instance owns its window size (see setFilterParameter).
+  setWindowSize(mParent->mSTFT_WINDOW_SIZE);
+
   // Initialize FFT setup and allocate buffers
   initFFTBuffers();
 
@@ -44,7 +54,7 @@ ParametricEqInstance::ParametricEqInstance(ParametricEq *aParent) {
   initBandParameters();
 
   mParam[0] = mParent->mWet;              // wet param (index 0)
-  mParam[1] = mParent->mSTFT_WINDOW_SIZE; // window size param (index 1)
+  mParam[1] = mWinSize; // window size param (index 1)
   mParam[2] = mParent->mBands;            // band count param (index 2)
 }
 
@@ -82,7 +92,7 @@ void ParametricEqInstance::initBandParameters() {
 void ParametricEqInstance::initFFTBuffers() {
   // Safety check: ensure window size is valid
   // PFFFT requires power-of-2 sizes, minimum 16
-  if (mParent->mSTFT_WINDOW_SIZE < 16 || mParent->mSTFT_WINDOW_SIZE > 65536) {
+  if (mWinSize < 16 || mWinSize > 65536) {
     return; // Invalid window size, don't reallocate
   }
 
@@ -115,18 +125,18 @@ void ParametricEqInstance::initFFTBuffers() {
       delete[] mMixBuffer[i];
       mMixBuffer[i] = nullptr;
     }
-    mInputBuffer[i] = new float[mParent->mSTFT_WINDOW_TWICE]();
-    mMixBuffer[i] = new float[mParent->mSTFT_WINDOW_TWICE]();
+    mInputBuffer[i] = new float[mWinTwice]();
+    mMixBuffer[i] = new float[mWinTwice]();
     // Reset offsets
-    mInputOffset[i] = mParent->mSTFT_WINDOW_SIZE;
-    mMixOffset[i] = mParent->mSTFT_WINDOW_HALF;
+    mInputOffset[i] = mWinSize;
+    mMixOffset[i] = mWinHalf;
     mReadOffset[i] = 0;
   }
 
   // Precompute scaled Hann window table once per window-size change
-  const int winSize = mParent->mSTFT_WINDOW_SIZE;
+  const int winSize = mWinSize;
   mHannWindow.resize(winSize);
-  const float scale = mParent->mFFT_SCALE;
+  const float scale = mFFTScale;
   for (int i = 0; i < winSize; i++) {
     mHannWindow[i] =
         0.5f * (1.0f - cosf((2.0f * (float)M_PI * i) / (float)winSize)) * scale;
@@ -135,17 +145,17 @@ void ParametricEqInstance::initFFTBuffers() {
   mGainTableDirty = true;
 
   // Initialize FFT setup for complex transforms
-  mFFTSetup = pffft_new_setup(mParent->mSTFT_WINDOW_SIZE, PFFFT_COMPLEX);
+  mFFTSetup = pffft_new_setup(mWinSize, PFFFT_COMPLEX);
 
   // Allocate aligned buffers for FFT
-  mFFTBuffer = (float *)pffft_aligned_malloc(mParent->mSTFT_WINDOW_TWICE *
+  mFFTBuffer = (float *)pffft_aligned_malloc(mWinTwice *
                                              sizeof(float));
-  mFFTWork = (float *)pffft_aligned_malloc(mParent->mSTFT_WINDOW_TWICE *
+  mFFTWork = (float *)pffft_aligned_malloc(mWinTwice *
                                            sizeof(float));
-  mTemp = (float *)pffft_aligned_malloc(mParent->mSTFT_WINDOW_TWICE *
+  mTemp = (float *)pffft_aligned_malloc(mWinTwice *
                                         sizeof(float));
 
-  mParam[1] = mParent->mSTFT_WINDOW_SIZE; // Update window size param (index 1)
+  mParam[1] = mWinSize; // Update window size param (index 1)
 }
 
 ParametricEqInstance::~ParametricEqInstance() {
@@ -197,16 +207,28 @@ void ParametricEqInstance::setFilterParameter(unsigned int aAttributeId,
     mParent->mWet = aValue;
     break;
 
-  case 1: // STFT_WINDOW_SIZE
-    if (mParent->mSTFT_WINDOW_SIZE == (int)aValue)
+  case 1: { // STFT_WINDOW_SIZE
+    const int requested = (int)aValue;
+    if (mWinSize == requested)
       return;
-    mParam[1] = (int)aValue;
-    mParent->mSTFT_WINDOW_SIZE = (int)aValue;
-    mParent->mSTFT_WINDOW_HALF = mParent->mSTFT_WINDOW_SIZE >> 1;
-    mParent->mSTFT_WINDOW_TWICE = mParent->mSTFT_WINDOW_SIZE << 1;
-    mParent->mFFT_SCALE = 1.0f / (float)mParent->mSTFT_WINDOW_SIZE;
+    // PFFFT needs a power of two in [16, 65536]. Reject anything else
+    // before touching the window state, so it always matches the buffers.
+    if (requested < 16 || requested > 65536 ||
+        (requested & (requested - 1)) != 0)
+      return;
+    // Only this instance's buffers are rebuilt, so only this instance takes
+    // the new size. Other instances of the same filter (other voices of the
+    // sound) keep their own, consistent size; the parent's value is just the
+    // default for instances created from now on.
+    setWindowSize(requested);
+    mParam[1] = mWinSize;
+    mParent->mSTFT_WINDOW_SIZE = mWinSize;
+    mParent->mSTFT_WINDOW_HALF = mWinHalf;
+    mParent->mSTFT_WINDOW_TWICE = mWinTwice;
+    mParent->mFFT_SCALE = mFFTScale;
     initFFTBuffers();
     break;
+  }
 
   case 2: // nBands
     if (mParent->mBands == (unsigned int)aValue)
@@ -349,8 +371,8 @@ void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
     return;
   }
 
-  if (mParent->mSTFT_WINDOW_TWICE <= 0 ||
-      mParent->mSTFT_WINDOW_TWICE > 131072) {
+  if (mWinTwice <= 0 ||
+      mWinTwice > 131072) {
     return;
   }
 
@@ -363,13 +385,13 @@ void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
   }
 
   if (mInputBuffer[aChannel] == nullptr) {
-    mInputBuffer[aChannel] = new float[mParent->mSTFT_WINDOW_TWICE]();
-    mMixBuffer[aChannel] = new float[mParent->mSTFT_WINDOW_TWICE]();
+    mInputBuffer[aChannel] = new float[mWinTwice]();
+    mMixBuffer[aChannel] = new float[mWinTwice]();
   }
 
-  const int winSize = mParent->mSTFT_WINDOW_SIZE;
-  const int winHalf = mParent->mSTFT_WINDOW_HALF;
-  const int winTwiceMask = mParent->mSTFT_WINDOW_TWICE - 1;
+  const int winSize = mWinSize;
+  const int winHalf = mWinHalf;
+  const int winTwiceMask = mWinTwice - 1;
   const float *hannWindow = mHannWindow.data();
 
   unsigned int ofs = 0;
@@ -392,9 +414,9 @@ void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
     if ((inputofs & (winHalf - 1)) == 0) {
       // Copy input to FFT buffer (interleaved real/imag format)
       const unsigned int baseIdx =
-          inputofs + mParent->mSTFT_WINDOW_TWICE - winHalf;
+          inputofs + mWinTwice - winHalf;
       const unsigned int winTwice =
-          static_cast<unsigned int>(mParent->mSTFT_WINDOW_TWICE);
+          static_cast<unsigned int>(mWinTwice);
       int i = 0;
 #if defined(SOLOUD_SSE_INTRINSICS)
       const __m128 zero = _mm_setzero_ps();

@@ -156,6 +156,8 @@ namespace SoLoud
 		// API-call threads under the audio mutex and must not grow it.
 		mRetroJournal.reserve(RETRO_JOURNAL_CAPACITY);
 		unsigned int i, j;
+		mCheckpointRecycle.clear();
+		mCheckpointRecycle.reserve(mMaxActiveVoices > 128 ? mMaxActiveVoices : 128);
 		for (i = 0; i < aPoolSize; i++)
 		{
 			MixCheckpoint &cp = mCheckpointPool[i];
@@ -189,10 +191,35 @@ namespace SoLoud
 		mRetroJournal.clear();
 	}
 
+	// Take the filter snapshot the previous capture recorded for the same
+	// voice instance and filter slot out of aRecycle (ownership passes to the
+	// caller), or return NULL.
+	static FilterStateSnapshot *takeRecycledFilterState(std::vector<CheckpointVoice> *aRecycle,
+		unsigned int aSlot, unsigned int aPlayIndex, unsigned int aFilter)
+	{
+		if (aRecycle == NULL)
+			return NULL;
+		size_t v;
+		for (v = 0; v < aRecycle->size(); v++)
+		{
+			CheckpointVoice &old = (*aRecycle)[v];
+			if (old.mSlot == aSlot && old.mPlayIndex == aPlayIndex)
+			{
+				FilterStateSnapshot *s = old.mFilterState[aFilter];
+				old.mFilterState[aFilter] = NULL;
+				return s;
+			}
+		}
+		return NULL;
+	}
+
 	// Fill aVoiceState with the full mix-relevant POD state of the voice at
 	// aSlot, plus owned heap snapshots of its filter instances and source
 	// consumption state. Shared by checkpoint capture and journal births.
-	static void fillCheckpointVoice(Soloud &aSoloud, CheckpointVoice &cv, unsigned int aSlot)
+	// aRecycle (may be NULL) holds snapshots of an earlier capture to refill
+	// in place instead of allocating new ones.
+	static void fillCheckpointVoice(Soloud &aSoloud, CheckpointVoice &cv, unsigned int aSlot,
+		std::vector<CheckpointVoice> *aRecycle = NULL)
 	{
 		AudioSourceInstance *v = aSoloud.mVoice[aSlot];
 		unsigned int i;
@@ -249,24 +276,44 @@ namespace SoLoud
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
 			cv.mFilterLive[i] = v->mFilter[i] != NULL;
-			cv.mFilterState[i] = v->mFilter[i] ? v->mFilter[i]->captureState() : NULL;
+			FilterStateSnapshot *reuse = takeRecycledFilterState(aRecycle, aSlot, v->mPlayIndex, i);
+			if (v->mFilter[i] != NULL && reuse != NULL && v->mFilter[i]->captureStateInto(reuse))
+			{
+				cv.mFilterState[i] = reuse;
+			}
+			else
+			{
+				delete reuse;
+				cv.mFilterState[i] = v->mFilter[i] ? v->mFilter[i]->captureState() : NULL;
+			}
 		}
 		cv.mSourceState = v->captureSourceState();
 	}
 
-	// Whether a voice described by a snapshot can be re-mixed:
-	// its source produced a snapshot.
-	// Paused voices are exempt from the source requirement: their source
-	// state does not advance while paused (the mix never calls getAudio()
-	// for them).
-	// Filters with snapshots (e.g. CustomFilter) are restored bit-exactly;
-	// filters without snapshots (built-ins) continue filtering in best-effort
-	// mode during re-mix without aborting low-latency playback.
+	// Whether a voice described by a snapshot can be re-mixed bit-exactly:
+	// its source and every live filter instance produced a complete snapshot.
+	// A re-mix runs the voice's DSP over the rolled-back window a second time;
+	// without a complete snapshot that DSP would continue from state already
+	// advanced past the window (delay lines, envelopes, oscillator phase, a
+	// user callback's or VST3 plugin's internal state) and the rewritten
+	// audio would not match what was already heard. Such a rollback degrades
+	// to legacy (going-forward) placement instead.
+	// Paused voices are exempt: neither their source nor their filters run
+	// while paused (the mix skips them), so their state does not advance.
 	static bool voiceSnapshotRestorable(const CheckpointVoice &aVoiceState)
 	{
-		if (!(aVoiceState.mFlags & AudioSourceInstance::PAUSED) &&
-			aVoiceState.mSourceState == NULL)
+		if (aVoiceState.mFlags & AudioSourceInstance::PAUSED)
+			return true;
+		if (aVoiceState.mSourceState == NULL || !aVoiceState.mSourceState->mComplete)
 			return false;
+		unsigned int i;
+		for (i = 0; i < FILTERS_PER_STREAM; i++)
+		{
+			if (aVoiceState.mFilterLive[i] &&
+				(aVoiceState.mFilterState[i] == NULL ||
+				 !aVoiceState.mFilterState[i]->mComplete))
+				return false;
+		}
 		return true;
 	}
 
@@ -318,10 +365,11 @@ namespace SoLoud
 
 	// Snapshot one voice into aCheckpoint. Appends to mVoices; the caller
 	// guarantees capacity (no allocation on the audio path).
-	static void captureVoice(Soloud &aSoloud, MixCheckpoint &aCheckpoint, unsigned int aSlot)
+	static void captureVoice(Soloud &aSoloud, MixCheckpoint &aCheckpoint, unsigned int aSlot,
+		std::vector<CheckpointVoice> *aRecycle)
 	{
 		CheckpointVoice cv;
-		fillCheckpointVoice(aSoloud, cv, aSlot);
+		fillCheckpointVoice(aSoloud, cv, aSlot, aRecycle);
 		aCheckpoint.mVoices.push_back(cv);
 	}
 
@@ -354,8 +402,25 @@ namespace SoLoud
 		}
 
 		MixCheckpoint &cp = mCheckpointPool[targetIndex];
-		releaseCheckpointStorage(cp);
-		cp.mVoices.clear();
+		// Set the slot's previous voices aside (swap keeps both vectors'
+		// reserved capacity, so nothing allocates) so their filter snapshots
+		// can be refilled below. Source snapshots are small; free them now.
+		mCheckpointRecycle.clear();
+		std::swap(cp.mVoices, mCheckpointRecycle);
+		{
+			size_t r;
+			for (r = 0; r < mCheckpointRecycle.size(); r++)
+			{
+				delete mCheckpointRecycle[r].mSourceState;
+				mCheckpointRecycle[r].mSourceState = NULL;
+			}
+			unsigned int f;
+			for (f = 0; f < FILTERS_PER_STREAM; f++)
+			{
+				delete cp.mFilterState[f];
+				cp.mFilterState[f] = NULL;
+			}
+		}
 		cp.mSerial = mCheckpointCounter;
 		cp.mTime = mStreamTime;
 		if (mMixingToRenderRing)
@@ -415,7 +480,7 @@ namespace SoLoud
 		{
 			unsigned int slot = mActiveVoice[i];
 			if (slot < mHighestVoice && mVoice[slot] != NULL)
-				captureVoice(*this, cp, slot);
+				captureVoice(*this, cp, slot, &mCheckpointRecycle);
 		}
 		for (i = 0; i < mHighestVoice && cp.mVoices.size() < capacity; i++)
 		{
@@ -432,7 +497,22 @@ namespace SoLoud
 				}
 			}
 			if (!already)
-				captureVoice(*this, cp, i);
+				captureVoice(*this, cp, i, &mCheckpointRecycle);
+		}
+		// Free whatever the previous voices left unclaimed (ended voices,
+		// replaced filters).
+		{
+			size_t r;
+			unsigned int f;
+			for (r = 0; r < mCheckpointRecycle.size(); r++)
+			{
+				for (f = 0; f < FILTERS_PER_STREAM; f++)
+				{
+					delete mCheckpointRecycle[r].mFilterState[f];
+					mCheckpointRecycle[r].mFilterState[f] = NULL;
+				}
+			}
+			mCheckpointRecycle.clear();
 		}
 
 		// Resample pool: snapshot every block that has an owner. Owner entry o
@@ -631,6 +711,8 @@ namespace SoLoud
 			if (b.mOwnerSlot < 0 || b.mOwnerSlot >= (int)mHighestVoice ||
 				!slotRestored[b.mOwnerSlot])
 				continue; // owner voice did not survive the restore
+			if ((unsigned int)b.mBlock >= mMaxActiveVoices * 2)
+				continue; // captured against a larger, since replaced pool
 			// Owner entry o owns the block pair 2o and 2o+1.
 			mResampleDataOwner[b.mBlock / 2] = mVoice[b.mOwnerSlot];
 			unsigned int liveFloats = b.mChannels * SAMPLE_GRANULARITY;
@@ -646,8 +728,10 @@ namespace SoLoud
 			AudioSourceInstance *voice = mVoice[cv.mSlot];
 			for (i = 0; i < 2; i++)
 			{
-				voice->mResampleData[i] = cv.mResampleBlock[i] >= 0 ?
-					mResampleData[cv.mResampleBlock[i]] : NULL;
+				voice->mResampleData[i] =
+					(cv.mResampleBlock[i] >= 0 &&
+					 (unsigned int)cv.mResampleBlock[i] < mMaxActiveVoices * 2)
+					? mResampleData[cv.mResampleBlock[i]] : NULL;
 			}
 		}
 		// Voices the checkpoint does not cover keep their pool blocks;

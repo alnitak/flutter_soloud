@@ -259,6 +259,7 @@ uint32_t Vst3PluginInstance::getLatencySamples() const noexcept {
 void Vst3PluginInstance::enqueueGuiParamChange(
     Steinberg::Vst::ParamID id, Steinberg::Vst::ParamValue value) noexcept {
   const double clamped = std::clamp<double>(value, 0.0, 1.0);
+  std::lock_guard<std::mutex> lock(mParamQueuePushMutex);
   mPendingParamQueue.push(Vst3ParamChangeEvent{id, clamped, 0});
 }
 
@@ -317,8 +318,16 @@ void Vst3PluginInstance::drainPendingParamChanges() noexcept {
 
 void Vst3PluginInstance::drainPendingMidiEvents(
     unsigned int maxSampleOffset) noexcept {
+  // Stage events for this block (offsets relative to the block start).
+  // Stop once the staging array is full: the rest stay queued for the next
+  // block rather than being popped and dropped.
+  mBlockMidiCount = 0;
+  if (maxSampleOffset == 0) {
+    return;
+  }
   Vst3MidiNoteEvent midiEvt;
-  while (mPendingMidiQueue.pop(midiEvt)) {
+  while (mBlockMidiCount < mBlockMidiEvents.size() &&
+         mPendingMidiQueue.pop(midiEvt)) {
     Steinberg::Vst::Event vstEvent{};
     vstEvent.busIndex = 0;
     vstEvent.sampleOffset = std::clamp<int32_t>(
@@ -343,7 +352,7 @@ void Vst3PluginInstance::drainPendingMidiEvents(
       vstEvent.noteOff.noteId = midiEvt.noteId;
       vstEvent.noteOff.tuning = 0.0f;
     }
-    mInputEvents.addEvent(vstEvent);
+    mBlockMidiEvents[mBlockMidiCount++] = vstEvent;
   }
 }
 
@@ -359,7 +368,18 @@ void Vst3PluginInstance::prepareAndProcessBlock(
     if (offset > 0) {
       mInputParamChanges.clear();
       mOutputParamChanges.clear();
-      mInputEvents.clear();
+    }
+    // Hand this chunk the staged MIDI events that fall inside it, with
+    // offsets relative to the chunk (VST3 requires 0 <= offset < numSamples).
+    mInputEvents.clear();
+    for (size_t e = 0; e < mBlockMidiCount; ++e) {
+      const int32_t blockOffset = mBlockMidiEvents[e].sampleOffset;
+      if (blockOffset >= static_cast<int32_t>(offset) &&
+          blockOffset < static_cast<int32_t>(offset + chunkSamples)) {
+        Steinberg::Vst::Event chunkEvent = mBlockMidiEvents[e];
+        chunkEvent.sampleOffset = blockOffset - static_cast<int32_t>(offset);
+        mInputEvents.addEvent(chunkEvent);
+      }
     }
 
     for (unsigned int ch = 0; ch < numCh; ++ch) {
@@ -443,6 +463,7 @@ void Vst3PluginInstance::processAudioEffectBlock(
   mInputParamChanges.clear();
   mOutputParamChanges.clear();
   mInputEvents.clear();
+  mBlockMidiCount = 0;
 
   drainPendingParamChanges();
 
@@ -560,7 +581,10 @@ double Vst3PluginInstance::getParameterNormalized(
 bool Vst3PluginInstance::setParameterNormalized(uint32_t paramId,
                                                 double normalizedValue) {
   const double clamped = std::clamp<double>(normalizedValue, 0.0, 1.0);
-  mPendingParamQueue.push(Vst3ParamChangeEvent{paramId, clamped, 0});
+  {
+    std::lock_guard<std::mutex> lock(mParamQueuePushMutex);
+    mPendingParamQueue.push(Vst3ParamChangeEvent{paramId, clamped, 0});
+  }
   if (mEditorWindow) {
     mEditorWindow->notifyParameterChanged(paramId, clamped);
   }
@@ -612,6 +636,7 @@ bool Vst3PluginInstance::sendMidiNote(bool isNoteOn, int channel, int pitch,
   evt.velocity = std::clamp(velocity, 0.0f, 1.0f);
   evt.noteId = -1;
   evt.sampleOffset = std::max(0, sampleOffset);
+  std::lock_guard<std::mutex> lock(mMidiQueuePushMutex);
   return mPendingMidiQueue.push(evt);
 }
 

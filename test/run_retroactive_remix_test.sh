@@ -14,7 +14,11 @@ EXTRA_SRC=()
 EXTRA_LDFLAGS=()
 if [ "$(uname -s)" = "Darwin" ]; then
     EXTRA_SRC+=("src/native_decoder/os_decoder_apple.mm")
+    EXTRA_SRC+=("src/audiobuffer/aac_stream_decoder_apple.mm")
     EXTRA_LDFLAGS+=("-framework" "AudioToolbox" "-framework" "CoreFoundation" "-framework" "Foundation")
+else
+    EXTRA_SRC+=("src/audiobuffer/aac_stream_decoder_linux.cpp")
+    EXTRA_LDFLAGS+=("-ldl")
 fi
 
 c++ -std=c++17 -O2 -Wall -Wextra -pthread \
@@ -29,6 +33,8 @@ c++ -std=c++17 -O2 -Wall -Wextra -pthread \
     src/soloud/src/core/*.cpp \
     src/soloud/src/audiosource/wav/*.cpp \
     src/audiobuffer/mp3_stream_decoder.cpp \
+    src/audiobuffer/m4a_metadata.cpp \
+    src/audiobuffer/aac_stream_decoder.cpp \
     src/native_decoder/*.cpp \
     "${EXTRA_SRC[@]}" \
     src/soloud/src/backend/null/soloud_null.cpp \

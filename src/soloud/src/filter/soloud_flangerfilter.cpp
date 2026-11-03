@@ -32,6 +32,7 @@ namespace SoLoud
 		mParent = aParent;
 		mBuffer = 0;
 		mBufferLength = 0;
+		mBufferChannels = 0;
 		mOffset = 0;
 		mIndex = 0;
 		initParams(3);
@@ -44,14 +45,17 @@ namespace SoLoud
 	{
 		updateParams(aTime);
 
-		if (mBufferLength < mParam[FlangerFilter::DELAY] * aSamplerate)
+		if (mBufferLength < mParam[FlangerFilter::DELAY] * aSamplerate ||
+			aChannels != mBufferChannels)
 		{
 			delete[] mBuffer;
 			mBufferLength = (int)ceil(mParam[FlangerFilter::DELAY] * aSamplerate);
+			mBufferChannels = aChannels;
 			mBuffer = new float[mBufferLength * aChannels];
 			if (mBuffer == NULL)
 			{
 				mBufferLength = 0;
+				mBufferChannels = 0;
 				return;
 			}
 			memset(mBuffer, 0, sizeof(float) * mBufferLength * aChannels);
@@ -83,33 +87,64 @@ namespace SoLoud
 	{
 		float *mBuffer;
 		unsigned int mBufferLength;
+		unsigned int mBufferChannels;
 		unsigned int mOffset;
 		double mIndex;
 		uint64_t mParamChanged;
 		float mParam[3];
 		Fader mParamFader[3];
-		FlangerFilterSnapshot() : mBuffer(0), mBufferLength(0), mOffset(0), mIndex(0), mParamChanged(0) {}
+		FlangerFilterSnapshot() : mBuffer(0), mBufferLength(0), mBufferChannels(0), mOffset(0), mIndex(0), mParamChanged(0) {}
+		size_t floats() const { return (size_t)mBufferLength * (size_t)mBufferChannels; }
 		virtual ~FlangerFilterSnapshot() { delete[] mBuffer; }
 	};
+
+	static const char kFlangerSnapshotKind = 0;
+
+	// Copies everything but the delay line, which the callers size.
+	static void fillFlangerSnapshot(FlangerFilterSnapshot *s, unsigned int aBufferLength,
+		unsigned int aBufferChannels, unsigned int aOffset, double aIndex,
+		uint64_t aParamChanged, const float *aParam, const Fader *aParamFader)
+	{
+		s->mKind = &kFlangerSnapshotKind;
+		s->mBufferLength = aBufferLength;
+		s->mBufferChannels = aBufferChannels;
+		s->mOffset = aOffset;
+		s->mIndex = aIndex;
+		s->mParamChanged = aParamChanged;
+		for (int i = 0; i < 3; i++)
+		{
+			s->mParam[i] = aParam[i];
+			s->mParamFader[i] = aParamFader[i];
+		}
+	}
 
 	FilterStateSnapshot *FlangerFilterInstance::captureState()
 	{
 		FlangerFilterSnapshot *s = new FlangerFilterSnapshot();
-		s->mBufferLength = mBufferLength;
-		s->mOffset = mOffset;
-		s->mIndex = mIndex;
-		s->mParamChanged = mParamChanged;
-		for (int i = 0; i < 3; i++)
+		fillFlangerSnapshot(s, mBufferLength, mBufferChannels, mOffset, mIndex, mParamChanged, mParam, mParamFader);
+		// The delay line holds every channel (see mBufferChannels).
+		if (mBuffer && s->floats() > 0)
 		{
-			s->mParam[i] = mParam[i];
-			s->mParamFader[i] = mParamFader[i];
-		}
-		if (mBuffer && mBufferLength > 0)
-		{
-			s->mBuffer = new float[mBufferLength * 2];
-			memcpy(s->mBuffer, mBuffer, sizeof(float) * mBufferLength * 2);
+			s->mBuffer = new float[s->floats()];
+			memcpy(s->mBuffer, mBuffer, sizeof(float) * s->floats());
 		}
 		return s;
+	}
+
+	bool FlangerFilterInstance::captureStateInto(FilterStateSnapshot *aState)
+	{
+		if (aState == NULL || aState->mKind != &kFlangerSnapshotKind)
+			return false;
+		FlangerFilterSnapshot *s = static_cast<FlangerFilterSnapshot *>(aState);
+		const size_t floats = (size_t)mBufferLength * (size_t)mBufferChannels;
+		const bool hasBuffer = mBuffer && floats > 0;
+		// The delay line must match in size (or both be absent).
+		if (hasBuffer != (s->mBuffer != 0) || (hasBuffer && s->floats() != floats))
+			return false;
+		fillFlangerSnapshot(s, mBufferLength, mBufferChannels, mOffset, mIndex, mParamChanged, mParam, mParamFader);
+		if (hasBuffer)
+			memcpy(s->mBuffer, mBuffer, sizeof(float) * floats);
+		return true;
 	}
 
 	void FlangerFilterInstance::restoreState(FilterStateSnapshot *aSnapshot)
@@ -123,19 +158,18 @@ namespace SoLoud
 			mParam[i] = s->mParam[i];
 			mParamFader[i] = s->mParamFader[i];
 		}
-		if (s->mBuffer && s->mBufferLength > 0)
+		if (s->mBuffer && s->floats() > 0)
 		{
-			if (mBufferLength < s->mBufferLength || mBuffer == 0)
+			// Same layout as the snapshot: mBufferLength floats per channel.
+			if (mBufferLength != s->mBufferLength ||
+				mBufferChannels != s->mBufferChannels || mBuffer == 0)
 			{
 				delete[] mBuffer;
 				mBufferLength = s->mBufferLength;
-				mBuffer = new float[mBufferLength * 2];
+				mBufferChannels = s->mBufferChannels;
+				mBuffer = new float[s->floats()];
 			}
-			else
-			{
-				mBufferLength = s->mBufferLength;
-			}
-			memcpy(mBuffer, s->mBuffer, sizeof(float) * mBufferLength * 2);
+			memcpy(mBuffer, s->mBuffer, sizeof(float) * s->floats());
 		}
 	}
 

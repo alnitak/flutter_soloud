@@ -21,6 +21,12 @@ class ParametricEqInstance : public SoLoud::FilterInstance {
   unsigned int mReadOffset[MAX_CHANNELS];
 
   int mBands;
+  // This instance's STFT window. Not read from the shared parent: changing
+  // the window size rebuilds only this instance's buffers.
+  int mWinSize = 0;
+  int mWinHalf = 0;
+  int mWinTwice = 0;
+  float mFFTScale = 0.0f;
   std::vector<float> mHannWindow;
   std::vector<float> mBinGainTable;
   float mCachedSampleRate = 0.0f;
@@ -33,6 +39,9 @@ class ParametricEqInstance : public SoLoud::FilterInstance {
 
   // Initialize band parameters (gains, frequencies, Q factors)
   void initBandParameters();
+
+  // Set this instance's window size and the values derived from it.
+  void setWindowSize(int aWindowSize);
 
   // Initialize FFT setup and allocate buffers
   void initFFTBuffers();
@@ -54,11 +63,11 @@ public:
 
 class ParametricEq : public SoLoud::Filter {
 public:
-  static const unsigned int MAX_BANDS = 64;
-  static const unsigned int BAND_GAIN_OFFSET = 3;
-  static const unsigned int BAND_FREQ_OFFSET = 3 + MAX_BANDS;   // 67
-  static const unsigned int BAND_Q_OFFSET = 3 + MAX_BANDS * 2;  // 131
-  static const unsigned int NUM_PARAMS = 3 + MAX_BANDS * 3;     // 195
+  static constexpr unsigned int MAX_BANDS = 64;
+  static constexpr unsigned int BAND_GAIN_OFFSET = 3;
+  static constexpr unsigned int BAND_FREQ_OFFSET = 3 + MAX_BANDS;   // 67
+  static constexpr unsigned int BAND_Q_OFFSET = 3 + MAX_BANDS * 2;  // 131
+  static constexpr unsigned int NUM_PARAMS = 3 + MAX_BANDS * 3;     // 195
 
   unsigned int mBands;      // number of active EQ bands (user configurable)
   float mWet;

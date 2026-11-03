@@ -46,6 +46,12 @@ CustomFilterInstance::CustomFilterInstance(CustomFilter *aParent)
 
 FilterStateSnapshot *CustomFilterInstance::captureState() {
   auto *snap = new CustomFilterSnapshot();
+  // Only the parameters are captured. Whatever state the user callback (or
+  // the VST3 plugin behind it) keeps is out of reach, so a re-mix could not
+  // reproduce its output.
+  snap->mComplete = mParent == nullptr ||
+                    (mParent->getCallback() == nullptr &&
+                     mParent->getWebJsCallbackName().empty());
   snap->mNumParams =
       std::min<unsigned int>(mNumParams, CustomFilter::kMaxParams);
   snap->mParamChanged = mParamChanged;

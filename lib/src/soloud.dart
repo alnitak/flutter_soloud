@@ -5219,16 +5219,22 @@ interface class SoLoud {
   ///   int samplesToRead, unsigned int bufferSize, unsigned int channels, float
   ///   sampleRate, double streamTime, double streamPosition, uint32_t*
   ///   outHasEnded, void* userData)`).
-  /// - [onInstanceCreatedAddress]: Optional native lifecycle callback invoked
-  ///   when a voice instance is created or destroyed.
-  /// - [onInstanceDestroyedAddress]: Optional native lifecycle callback.
+  /// - [onInstanceCreatedAddress]: Optional native lifecycle callback
+  ///   (`void (*)(uint32_t isCreated, unsigned int playIndex, void*
+  ///   userData)`) invoked once when a voice instance is created
+  ///   (`isCreated == 1`) and once when it is destroyed (`isCreated == 0`).
+  /// - [onInstanceDestroyedAddress]: The same lifecycle callback, accepted
+  ///   under this name too. If both are given they must be the same address
+  ///   (an [ArgumentError] is thrown otherwise).
   /// - [userdataAddress]: Optional opaque pointer passed to the callbacks.
   /// - [webJsFunctionName]: On Web, the name of a JavaScript function on
   ///   `globalThis` (e.g. `'myCustomSynthDsp'`) invoked synchronously from
   ///   WASM via `EM_ASM_INT`.
-  /// - [mustTickWhenInaudible]: Whether the voice continues advancing when
-  ///   volume is zero (default `true`).
-  /// - [killWhenInaudible]: Whether the voice is killed if it becomes
+  /// - [mustTickWhenInaudible]: Whether the voices keep advancing (calling
+  ///   the DSP callback) while inaudible, e.g. at zero volume (default
+  ///   `true`). Applies to every voice of this source; see
+  ///   [setInaudibleBehavior] to change it per voice.
+  /// - [killWhenInaudible]: Whether a voice is stopped as soon as it becomes
   ///   inaudible (default `false`).
   /// - [autoDispose]: Whether to dispose the source automatically when all
   ///   voices finish (default `false`).

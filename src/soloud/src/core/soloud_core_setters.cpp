@@ -116,6 +116,7 @@ namespace SoLoud
 		for (i = 0; i < aVoiceCount; i++)
 			mResampleDataOwner[i] = NULL;
 
+		mCheckpointRecycle.reserve(aVoiceCount);
 		for (i = 0; i < mCheckpointPool.size(); i++)
 		{
 			mCheckpointPool[i].mVoices.reserve(aVoiceCount);
@@ -125,6 +126,12 @@ namespace SoLoud
 				mCheckpointPool[i].mResampleBlocks.push_back(CheckpointResampleBlock());
 				mCheckpointPool[i].mResampleBlocks.back().mData.resize(SAMPLE_GRANULARITY * MAX_CHANNELS);
 			}
+			// ###### flutter_soloud local patch (mix checkpoints) ######
+			// Every existing checkpoint refers to the old resample pool by
+			// block index (and the voices' pointers into it were cleared
+			// above). Restoring one would index the new, possibly smaller,
+			// arrays with stale indices, so none of them may be used again.
+			mCheckpointPool[i].mRestorable = false;
 		}
 
 		mActiveVoiceDirty = true;

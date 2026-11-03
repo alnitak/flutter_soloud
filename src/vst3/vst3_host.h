@@ -159,8 +159,22 @@ private:
   PreallocatedParameterChanges mOutputParamChanges;
   PreallocatedEventList mInputEvents;
 
+  // Single-consumer (the audio thread) queues with several producers: the
+  // plugin editor's GUI thread (performEdit) and the Dart thread
+  // (setParameterNormalized, setState, sendMidiNote). Producers serialize on
+  // the push mutexes so the SPSC queues only ever see one writer at a time;
+  // the audio thread pops without locking.
   LockFreeSpscQueue<Vst3ParamChangeEvent, 1024> mPendingParamQueue;
   LockFreeSpscQueue<Vst3MidiNoteEvent, 1024> mPendingMidiQueue;
+  std::mutex mParamQueuePushMutex;
+  std::mutex mMidiQueuePushMutex;
+
+  // MIDI events drained for the block being processed, with sample offsets
+  // relative to the block start. prepareAndProcessBlock() hands each one to
+  // the mMaxBlockSize chunk that contains it.
+  std::array<Steinberg::Vst::Event, PreallocatedEventList::kMaxEvents>
+      mBlockMidiEvents{};
+  size_t mBlockMidiCount = 0;
 
   // Maps SoLoud CustomFilterSlot param index (0..15) -> VST3 ParamID (-1 = unmapped)
   std::array<std::atomic<int64_t>, 16> mMappedSlotParams{};

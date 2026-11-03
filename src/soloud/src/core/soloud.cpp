@@ -904,7 +904,16 @@ namespace SoLoud
 		}
 		time t = 0;
 		if (anyFilter)
+		{
+			// The device callback has already read aBuffer out of the ring,
+			// so the playhead now points just past it: step back to the time
+			// of its first frame.
 			t = playheadTimeLocked_internal();
+			if (mSamplerate > 0)
+				t -= (time)aSamples / (time)mSamplerate;
+			if (t < 0)
+				t = 0;
+		}
 		else
 			unlockAudioMutex_internal();
 		unsigned int offset = 0;

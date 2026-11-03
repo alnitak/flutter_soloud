@@ -213,6 +213,9 @@ class SoLoudIsolate {
 
   /// Pushes Float32 PCM samples directly into the real-time stream identified
   /// by [soundHash] from a worker isolate.
+  ///
+  /// Returns the number of frames written. Nothing is written (`0`) if
+  /// [frameCount] times the stream's channel count exceeds `samples.length`.
   @experimental
   int pushRealtimeFloat32(
     SoundHash soundHash,
@@ -228,6 +231,9 @@ class SoLoudIsolate {
 
   /// Pushes Int16 PCM samples directly into the real-time stream identified
   /// by [soundHash] from a worker isolate.
+  ///
+  /// Returns the number of frames written. Nothing is written (`0`) if
+  /// [frameCount] times the stream's channel count exceeds `samples.length`.
   @experimental
   int pushRealtimeInt16(
     SoundHash soundHash,

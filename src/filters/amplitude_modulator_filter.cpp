@@ -163,39 +163,45 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
         phase -= TWO_PI;
     }
   } else {
-    if (mGainScratch.size() < aSamples) {
-      mGainScratch.resize(aSamples);
-    }
+    // The gain scratch is sized once in the constructor; blocks larger than
+    // it (global or bus filters on a large quantum) are processed in chunks
+    // rather than growing it on the audio thread.
     float *gains = mGainScratch.data();
-    for (unsigned int i = 0; i < aSamples; ++i) {
-      const float carrier = evaluateCarrier(waveform, phase, increment);
-      gains[i] = dryGain + wet * carrier;
-      phase += increment;
-      if (phase >= TWO_PI)
-        phase -= TWO_PI;
-    }
-    for (unsigned int ch = 0; ch < aChannels; ++ch) {
-      float *chBuf = aBuffer + (size_t)ch * stride;
-      unsigned int i = 0;
+    const unsigned int chunkMax =
+        static_cast<unsigned int>(mGainScratch.size());
+    for (unsigned int base = 0; base < aSamples; base += chunkMax) {
+      const unsigned int count =
+          aSamples - base < chunkMax ? aSamples - base : chunkMax;
+      for (unsigned int i = 0; i < count; ++i) {
+        const float carrier = evaluateCarrier(waveform, phase, increment);
+        gains[i] = dryGain + wet * carrier;
+        phase += increment;
+        if (phase >= TWO_PI)
+          phase -= TWO_PI;
+      }
+      for (unsigned int ch = 0; ch < aChannels; ++ch) {
+        float *chBuf = aBuffer + (size_t)ch * stride + base;
+        unsigned int i = 0;
 #if defined(SOLOUD_SSE_INTRINSICS)
-      for (; i + 4 <= aSamples; i += 4) {
-        _mm_storeu_ps(chBuf + i,
-                      _mm_mul_ps(_mm_loadu_ps(chBuf + i), _mm_loadu_ps(gains + i)));
-      }
+        for (; i + 4 <= count; i += 4) {
+          _mm_storeu_ps(chBuf + i, _mm_mul_ps(_mm_loadu_ps(chBuf + i),
+                                              _mm_loadu_ps(gains + i)));
+        }
 #elif defined(SOLOUD_NEON_INTRINSICS)
-      for (; i + 4 <= aSamples; i += 4) {
-        vst1q_f32(chBuf + i,
-                  vmulq_f32(vld1q_f32(chBuf + i), vld1q_f32(gains + i)));
-      }
+        for (; i + 4 <= count; i += 4) {
+          vst1q_f32(chBuf + i,
+                    vmulq_f32(vld1q_f32(chBuf + i), vld1q_f32(gains + i)));
+        }
 #elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-      for (; i + 4 <= aSamples; i += 4) {
-        wasm_v128_store(
-            chBuf + i,
-            wasm_f32x4_mul(wasm_v128_load(chBuf + i), wasm_v128_load(gains + i)));
-      }
+        for (; i + 4 <= count; i += 4) {
+          wasm_v128_store(chBuf + i,
+                          wasm_f32x4_mul(wasm_v128_load(chBuf + i),
+                                         wasm_v128_load(gains + i)));
+        }
 #endif
-      for (; i < aSamples; ++i) {
-        chBuf[i] *= gains[i];
+        for (; i < count; ++i) {
+          chBuf[i] *= gains[i];
+        }
       }
     }
   }

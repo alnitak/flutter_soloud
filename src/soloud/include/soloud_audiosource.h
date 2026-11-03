@@ -109,6 +109,12 @@ namespace SoLoud
 	struct SourceStateSnapshot
 	{
 		virtual ~SourceStateSnapshot() {}
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// False when part of the instance's state lives outside what was
+		// captured (e.g. inside a user DSP callback), so a re-mix from this
+		// snapshot could not reproduce the original output. Such a voice
+		// makes the checkpoint unrestorable.
+		bool mComplete = true;
 	};
 
 	// Base class for audio instances

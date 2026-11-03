@@ -3800,36 +3800,39 @@ extern "C"
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeFloat32(unsigned int hash, const float *data,
-                      unsigned int numFrames)
+                      unsigned int numFrames, unsigned int numSamples)
   {
     PlayerLease p;
-    return p ? p->pushRealtimeFloat32(hash, data, numFrames) : 0;
+    return p ? p->pushRealtimeFloat32(hash, data, numFrames, numSamples) : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeInt16(unsigned int hash, const int16_t *data,
-                    unsigned int numFrames)
+                    unsigned int numFrames, unsigned int numSamples)
   {
     PlayerLease p;
-    return p ? p->pushRealtimeInt16(hash, data, numFrames) : 0;
+    return p ? p->pushRealtimeInt16(hash, data, numFrames, numSamples) : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeClockedFloat32(unsigned int hash, double soundTime,
-                             const float *data, unsigned int numFrames)
+                             const float *data, unsigned int numFrames,
+                             unsigned int numSamples)
   {
     PlayerLease p;
-    return p ? p->pushRealtimeClockedFloat32(hash, soundTime, data, numFrames)
+    return p ? p->pushRealtimeClockedFloat32(hash, soundTime, data, numFrames,
+                                             numSamples)
              : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeScheduledFloat32(unsigned int hash, double engineTime,
-                               const float *data, unsigned int numFrames)
+                               const float *data, unsigned int numFrames,
+                               unsigned int numSamples)
   {
     PlayerLease p;
     return p ? p->pushRealtimeScheduledFloat32(hash, engineTime, data,
-                                               numFrames)
+                                               numFrames, numSamples)
              : 0;
   }
 
@@ -3855,7 +3858,8 @@ extern "C"
       unsigned int *hash, unsigned int sampleRate, unsigned int channels,
       SoLoudSourceDspCallback_t callback, void *userData,
       SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
-      bool singleInstance, const char *webJsCallbackName)
+      bool singleInstance, const char *webJsCallbackName,
+      bool mustTickWhenInaudible, bool killWhenInaudible)
   {
     if (hash != nullptr)
       *hash = 0;
@@ -3865,7 +3869,8 @@ extern "C"
       return nullPointer;
     return player.get()->createCustomAudioSource(
         *hash, sampleRate, channels, callback, userData, lifecycleCallback,
-        singleInstance, webJsCallbackName);
+        singleInstance, webJsCallbackName, mustTickWhenInaudible,
+        killWhenInaudible);
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
