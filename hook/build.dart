@@ -326,6 +326,8 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
   addDir('filters/');
   addDir('mixeroutput/');
   addDir('synth/');
+  // Each file compiles to nothing on platforms it doesn't serve.
+  addDir('native_stream/');
   addDir('waveform/');
   addDir(
     'native_decoder/',

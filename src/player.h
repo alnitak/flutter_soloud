@@ -141,9 +141,11 @@ public:
 
   /// @brief Decode [completeFileName] without touching any Player state, so
   /// callers can run it without holding the engine lifecycle locks. This is
-  /// the slow part of [loadFile]: formats with no streaming decoder (M4A/MP4,
-  /// AAC, AC-3, E-AC-3) and Ogg Opus/FLAC are decoded in full to PCM even
-  /// when [loadIntoMem] is false. Ogg Opus decodes to [engineSampleRate] and
+  /// the slow part of [loadFile]: formats with no streaming decoder (AAC,
+  /// AC-3, E-AC-3 elementary streams, and M4A/MP4 on platforms without a
+  /// NativeStream backend) and Ogg Opus/FLAC are decoded in full to PCM even
+  /// when [loadIntoMem] is false. M4A/MP4 on Apple and Android only decodes a
+  /// short head here (see NativeStream). Ogg Opus decodes to [engineSampleRate] and
   /// [engineChannels].
   static PendingSound decodeFile(const std::string &completeFileName,
                                  bool loadIntoMem,
