@@ -57,6 +57,11 @@ namespace SoLoud
 		uint64_t mParamChanged;
 		float *mParam;
 		Fader *mParamFader;
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// Unique for the process lifetime (never reused, unlike the instance's
+		// address), so a checkpoint can tell whether a voice's filter slot
+		// still holds the instance it captured.
+		unsigned long long mInstanceId;
 
 
 		FilterInstance();
@@ -72,8 +77,9 @@ namespace SoLoud
 		virtual void restoreState(FilterStateSnapshot *) {}
 		// Refills aState, a snapshot that is no longer needed (it may come
 		// from another instance or filter type), with this instance's state
-		// without allocating. Returns false when aState cannot be reused, in
-		// which case the caller falls back to captureState(). Checkpoints call
+		// without allocating. Returns false, leaving aState untouched, when
+		// it cannot be reused; the caller then falls back to captureState().
+		// Checkpoints call
 		// this on the audio thread every quantum, so filters with large state
 		// (delay lines, reverb tanks) should implement it.
 		virtual bool captureStateInto(FilterStateSnapshot *) { return false; }

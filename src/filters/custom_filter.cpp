@@ -44,8 +44,20 @@ CustomFilterInstance::CustomFilterInstance(CustomFilter *aParent)
   }
 }
 
+static const char kCustomFilterSnapshotKind = 0;
+
 FilterStateSnapshot *CustomFilterInstance::captureState() {
   auto *snap = new CustomFilterSnapshot();
+  snap->mKind = &kCustomFilterSnapshotKind;
+  captureStateInto(snap);
+  return snap;
+}
+
+bool CustomFilterInstance::captureStateInto(FilterStateSnapshot *aState) {
+  if (aState == nullptr || aState->mKind != &kCustomFilterSnapshotKind) {
+    return false;
+  }
+  auto *snap = static_cast<CustomFilterSnapshot *>(aState);
   // Only the parameters are captured. Whatever state the user callback (or
   // the VST3 plugin behind it) keeps is out of reach, so a re-mix could not
   // reproduce its output.
@@ -59,7 +71,7 @@ FilterStateSnapshot *CustomFilterInstance::captureState() {
     snap->mParams[i] = mParam[i];
     snap->mFaders[i] = mParamFader[i];
   }
-  return snap;
+  return true;
 }
 
 void CustomFilterInstance::restoreState(FilterStateSnapshot *aState) {

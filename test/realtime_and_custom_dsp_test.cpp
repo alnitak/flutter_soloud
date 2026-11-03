@@ -12,8 +12,12 @@
 #include "../src/synth/custom_source.h"
 #include "../src/soloud/include/soloud_biquadresonantfilter.h"
 #include "../src/soloud/include/soloud_echofilter.h"
+#include "../src/soloud/include/soloud_wav.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdlib>
+#include <new>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -30,6 +34,34 @@ static int g_assertions = 0;
         std::fprintf(stderr, "  FAIL [%s:%d] " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
     } \
 } while (0)
+
+// Heap allocations and frees made while gCountHeap is set (see
+// testCheckpointCaptureDoesNotAllocate).
+static std::atomic<bool> gCountHeap{false};
+static std::atomic<unsigned long> gHeapAllocs{0};
+static std::atomic<unsigned long> gHeapFrees{0};
+
+static void *countedAlloc(std::size_t n) {
+    if (gCountHeap.load(std::memory_order_relaxed))
+        gHeapAllocs.fetch_add(1, std::memory_order_relaxed);
+    void *p = std::malloc(n != 0 ? n : 1);
+    if (p == nullptr)
+        throw std::bad_alloc();
+    return p;
+}
+
+static void countedFree(void *p) {
+    if (p != nullptr && gCountHeap.load(std::memory_order_relaxed))
+        gHeapFrees.fetch_add(1, std::memory_order_relaxed);
+    std::free(p);
+}
+
+void *operator new(std::size_t n) { return countedAlloc(n); }
+void *operator new[](std::size_t n) { return countedAlloc(n); }
+void operator delete(void *p) noexcept { countedFree(p); }
+void operator delete[](void *p) noexcept { countedFree(p); }
+void operator delete(void *p, std::size_t) noexcept { countedFree(p); }
+void operator delete[](void *p, std::size_t) noexcept { countedFree(p); }
 
 // 1. Test RealtimeRingBuffer SPSC planar & interleaved push/pop + SIMD de-interleaving + rewind
 static void testRealtimeRingBuffer() {
@@ -844,6 +876,304 @@ static void testEchoSnapshotRecycling() {
     delete inst;
 }
 
+// A checkpoint's filter snapshot belongs to one filter instance. When the
+// voice's filter slot holds another instance by the time of a rollback (the
+// filter was removed, replaced or moved), restoring the snapshot into it
+// would static_cast it to the wrong type: the rollback must be refused.
+static void testRemixRefusedAfterFilterSwap() {
+    std::printf("Test: re-mix refused after a voice's filter is replaced\n");
+
+    RingRig rig;
+    SoLoud::EchoFilter echo;
+    echo.setParams(0.05f, 0.5f, 0.0f);
+    SoLoud::BiquadResonantFilter lowpass;
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                       16384) == PlayerErrors::noError,
+           "init failed");
+    stream.setFilter(0, &echo);
+    std::vector<float> chunk(8000, 0.1f);
+    stream.pushDataFloat32(chunk.data(), 8000);
+    const SoLoud::handle h = rig.engine.play(stream);
+    EXPECT(h != 0, "play failed");
+    rig.topUp();
+    rig.discard(1024);
+    EXPECT(remixFrom(rig, rig.engine.getPlayheadTime()),
+           "re-mix should work with an echo filter");
+
+    // Swap the voice's echo instance for a biquad instance behind the API's
+    // back, as a path that replaces instances without retiring checkpoints
+    // would.
+    rig.engine.lockAudioMutex_internal();
+    const int slot = rig.engine.getVoiceFromHandle_internal(h);
+    EXPECT(slot >= 0, "voice not found");
+    SoLoud::FilterInstance *old = rig.engine.mVoice[slot]->mFilter[0];
+    rig.engine.mVoice[slot]->mFilter[0] = lowpass.createInstance();
+    rig.engine.unlockAudioMutex_internal();
+    delete old;
+    EXPECT(!remixFrom(rig, rig.engine.getPlayheadTime()),
+           "an echo snapshot was restored into a biquad instance");
+
+    // Once checkpoints have captured the new instance, rollbacks work again.
+    rig.discard(rig.engine.mRenderRing.availableToRead());
+    rig.topUp();
+    rig.discard(1024);
+    EXPECT(remixFrom(rig, rig.engine.getPlayheadTime()),
+           "re-mix should work again once checkpoints hold the new filter");
+
+    rig.engine.stopAll();
+    stream.setFilter(0, nullptr);
+}
+
+// Capturing a checkpoint runs on the audio thread every quantum for every
+// voice. Once the snapshot objects exist they are refilled in place, and the
+// snapshots of a voice that ended are reused for a voice started later, so
+// steady-state mixing performs no heap allocation or free at all.
+static void testCheckpointCaptureDoesNotAllocate() {
+    std::printf("Test: checkpoint capture does not allocate in steady state\n");
+
+    RingRig rig;
+    std::vector<float> pcm(kSampleRate * 8, 0.05f);
+    SoLoud::Wav echoed;
+    SoLoud::Wav filtered;
+    EXPECT(echoed.loadRawWave(pcm.data(), static_cast<unsigned int>(pcm.size()),
+                              kSampleRate, 1, true, false) == SoLoud::SO_NO_ERROR,
+           "loadRawWave failed");
+    EXPECT(filtered.loadRawWave(pcm.data(), static_cast<unsigned int>(pcm.size()),
+                                kSampleRate, 1, true, false) == SoLoud::SO_NO_ERROR,
+           "loadRawWave failed");
+    SoLoud::EchoFilter echo;
+    echo.setParams(0.05f, 0.5f, 0.0f);
+    SoLoud::BiquadResonantFilter lowpass;
+    lowpass.setParams(SoLoud::BiquadResonantFilter::LOWPASS, 2000.0f, 1.0f);
+    echoed.setFilter(0, &echo);
+    echoed.setFilter(1, &lowpass);
+    filtered.setFilter(0, &lowpass);
+
+    SoLoud::Bus bus;
+    EXPECT(rig.engine.play(bus) != 0, "bus play failed");
+    EXPECT(bus.play(echoed) != 0, "play on bus failed");
+    EXPECT(rig.engine.play(echoed) != 0, "play failed");
+    SoLoud::handle churn = rig.engine.play(filtered);
+    EXPECT(churn != 0, "play failed");
+    SoLoud::RealtimeStream stream;
+    EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                       kSampleRate * 4) == PlayerErrors::noError,
+           "init failed");
+    stream.pushDataFloat32(pcm.data(), kSampleRate * 4);
+    EXPECT(rig.engine.play(stream) != 0, "stream play failed");
+
+    std::vector<float> sink(kQuantum * 2);
+    auto mixQuanta = [&](unsigned int n) {
+        for (unsigned int i = 0; i < n; ++i) {
+            rig.topUp();
+            rig.engine.mRenderRing.read(sink.data(), kQuantum);
+        }
+    };
+    const unsigned int pool = static_cast<unsigned int>(rig.engine.mCheckpointPool.size());
+
+    // Warm up: every checkpoint slot gets its snapshot objects.
+    mixQuanta(pool * 2);
+    gHeapAllocs = 0;
+    gHeapFrees = 0;
+    gCountHeap = true;
+    mixQuanta(pool * 3);
+    gCountHeap = false;
+    EXPECT(gHeapAllocs.load() == 0 && gHeapFrees.load() == 0,
+           "steady-state mixing allocated %lu and freed %lu times",
+           gHeapAllocs.load(), gHeapFrees.load());
+
+    // Replace a voice by another of the same kind: its snapshots come from
+    // the ended voice's spares, not the heap. (play() itself allocates the
+    // new voice instance on this thread, outside the counted window.)
+    for (int round = 0; round < 3; ++round) {
+        rig.engine.stop(churn);
+        churn = rig.engine.play(filtered);
+        EXPECT(churn != 0, "play failed");
+        mixQuanta(1);
+    }
+    mixQuanta(pool);
+    gHeapAllocs = 0;
+    gHeapFrees = 0;
+    gCountHeap = true;
+    for (int round = 0; round < 4; ++round) {
+        gCountHeap = false;
+        rig.engine.stop(churn);
+        churn = rig.engine.play(filtered);
+        gCountHeap = true;
+        mixQuanta(pool);
+    }
+    gCountHeap = false;
+    EXPECT(gHeapAllocs.load() == 0,
+           "mixing after a voice was replaced allocated %lu times", gHeapAllocs.load());
+
+    rig.engine.stopAll();
+    echoed.setFilter(0, nullptr);
+    echoed.setFilter(1, nullptr);
+    filtered.setFilter(0, nullptr);
+}
+
+// Plays a 4 s mono Wav (constant level) with render-ahead. Helper for the
+// rollback-keeps-state tests below.
+struct WavRig {
+    WavRig() : pcm(kSampleRate * 4, 0.05f) {
+        EXPECT(wav.loadRawWave(pcm.data(), static_cast<unsigned int>(pcm.size()),
+                               kSampleRate, 1, true, false) == SoLoud::SO_NO_ERROR,
+               "loadRawWave failed");
+    }
+    std::vector<float> pcm;
+    SoLoud::Wav wav;
+};
+
+static SoLoud::AudioSourceInstance *voiceOf(RingRig &rig, SoLoud::handle h) {
+    const int slot = rig.engine.getVoiceFromHandle_internal(h);
+    return slot >= 0 ? rig.engine.mVoice[slot] : nullptr;
+}
+
+// Voice state that the API changes without journaling it (loop region,
+// looping flag, unpause, seek, ...) must survive any later rollback: a
+// rollback restores checkpointed state and replays only the journal, so it
+// would otherwise put the old state back for good.
+static void testRollbackKeepsUnjournaledVoiceState() {
+    std::printf("Test: rollbacks keep unjournaled voice state\n");
+
+    // Loop region and looping flag set on a voice that is already playing.
+    {
+        RingRig rig;
+        WavRig w;
+        const SoLoud::handle h = rig.engine.play(w.wav);
+        EXPECT(h != 0, "play failed");
+        rig.topUp();
+        rig.discard(1024);
+        rig.engine.setLooping(h, true);
+        rig.engine.setLoopPoint(h, 0.25);
+        EXPECT(!remixFrom(rig, rig.engine.getPlayheadTime()),
+               "a checkpoint from before setLooping() was rolled back to");
+        EXPECT(rig.engine.getLooping(h), "rollback undid setLooping()");
+        EXPECT(std::fabs(rig.engine.getLoopPoint(h) - 0.25) < 1e-9,
+               "rollback undid setLoopPoint()");
+        // Once the window has moved past the change, rollbacks work again
+        // and still keep it.
+        rig.discard(rig.engine.mRenderRing.availableToRead());
+        rig.topUp();
+        rig.discard(1024);
+        EXPECT(remixFrom(rig, rig.engine.getPlayheadTime()),
+               "rollbacks should work again past the change");
+        EXPECT(rig.engine.getLooping(h), "looping lost after a later rollback");
+        rig.engine.stopAll();
+    }
+
+    // Unpause: checkpoints taken while the voice was paused must not pause
+    // it again.
+    {
+        RingRig rig;
+        WavRig w;
+        const SoLoud::handle h = rig.engine.play(w.wav);
+        rig.topUp();
+        rig.discard(1024);
+        rig.engine.setPause(h, true);
+        rig.discard(rig.engine.mRenderRing.availableToRead());
+        rig.topUp();
+        rig.discard(1024);
+        rig.engine.setPause(h, false);
+        remixFrom(rig, rig.engine.getPlayheadTime());
+        EXPECT(!rig.engine.getPause(h), "rollback paused the voice again");
+        rig.engine.stopAll();
+    }
+
+    // Seek: the source position must not jump back.
+    {
+        RingRig rig;
+        WavRig w;
+        const SoLoud::handle h = rig.engine.play(w.wav);
+        rig.topUp();
+        rig.discard(1024);
+        rig.engine.seek(h, 3.0);
+        const double pos = rig.engine.getStreamPosition(h);
+        remixFrom(rig, rig.engine.getPlayheadTime());
+        EXPECT(rig.engine.getStreamPosition(h) >= pos - 1e-9,
+               "rollback undid seek() (position %.3f, was %.3f)",
+               rig.engine.getStreamPosition(h), pos);
+        rig.engine.stopAll();
+    }
+
+    // Global volume.
+    {
+        RingRig rig;
+        WavRig w;
+        rig.engine.play(w.wav);
+        rig.topUp();
+        rig.discard(1024);
+        rig.engine.setGlobalVolume(0.25f);
+        remixFrom(rig, rig.engine.getPlayheadTime());
+        EXPECT(rig.engine.getGlobalVolume() == 0.25f, "rollback undid setGlobalVolume()");
+        rig.engine.stopAll();
+    }
+}
+
+// Player::play() creates a voice paused, configures it and unpauses it before
+// anything is mixed. That configuration belongs in the voice's birth record:
+// rollbacks across the birth stay possible and reproduce it.
+static void testConfigureBeforeMixKeepsRollbacks() {
+    std::printf("Test: configuring a voice before it is mixed keeps rollbacks\n");
+
+    RingRig rig;
+    WavRig w;
+    rig.topUp();
+    rig.discard(1024);
+    const SoLoud::handle h = rig.engine.play(w.wav, 1.0f, 0.0f, true);
+    EXPECT(h != 0, "play failed");
+    rig.engine.setLooping(h, true);
+    rig.engine.setLoopPoint(h, 0.5);
+    rig.engine.lockAudioMutex_internal();
+    SoLoud::AudioSourceInstance *v = voiceOf(rig, h);
+    v->mLoopEndFrame = 1234;
+    rig.engine.voiceStateChanged_internal(rig.engine.getVoiceFromHandle_internal(h));
+    rig.engine.unlockAudioMutex_internal();
+    rig.engine.setPause(h, false);
+
+    EXPECT(remixFrom(rig, rig.engine.getPlayheadTime()),
+           "a rollback across the configured birth was refused");
+    v = voiceOf(rig, h);
+    EXPECT(v != nullptr && !rig.engine.getPause(h), "voice paused after the rollback");
+    EXPECT(rig.engine.getLooping(h), "looping lost across the rollback");
+    EXPECT(std::fabs(rig.engine.getLoopPoint(h) - 0.5) < 1e-9, "loop point lost");
+    EXPECT(v != nullptr && v->mLoopEndFrame == 1234, "loop end frame lost");
+    rig.engine.stopAll();
+}
+
+// Listener and source 3d parameters are API state the mix never changes: a
+// rollback keeps them, and keeps the volumes update3dAudio() derived from
+// them.
+static void testRollbackKeeps3dState() {
+    std::printf("Test: rollbacks keep 3d state\n");
+
+    RingRig rig;
+    WavRig w;
+    const SoLoud::handle h = rig.engine.play3d(w.wav, 1.0f, 0.0f, 0.0f);
+    EXPECT(h != 0, "play3d failed");
+    rig.topUp();
+    rig.discard(1024);
+    rig.engine.set3dSourcePosition(h, -5.0f, 0.0f, 0.0f);
+    rig.engine.set3dListenerPosition(0.0f, 0.0f, 1.0f);
+    rig.engine.update3dAudio();
+    SoLoud::AudioSourceInstance *v = voiceOf(rig, h);
+    const float left = v->mChannelVolume[0];
+    const float right = v->mChannelVolume[1];
+    const float overall = v->mOverallVolume;
+
+    EXPECT(remixFrom(rig, rig.engine.getPlayheadTime()),
+           "3d updates should not block rollbacks");
+    const int slot = rig.engine.getVoiceFromHandle_internal(h);
+    EXPECT(rig.engine.m3dData[slot].m3dPosition[0] == -5.0f, "rollback undid the source position");
+    EXPECT(rig.engine.m3dPosition[2] == 1.0f, "rollback undid the listener position");
+    v = voiceOf(rig, h);
+    EXPECT(v->mChannelVolume[0] == left && v->mChannelVolume[1] == right &&
+               v->mOverallVolume == overall,
+           "rollback undid the derived 3d volumes");
+    rig.engine.stopAll();
+}
+
 } // namespace rt_engine
 
 // 6. reset() clears the underrun statistics.
@@ -887,6 +1217,11 @@ int main() {
     rt_engine::testRemixRefusedWithStatefulCustomDsp();
     rt_engine::testMaxActiveVoiceShrinkRetiresCheckpoints();
     rt_engine::testEchoSnapshotRecycling();
+    rt_engine::testRemixRefusedAfterFilterSwap();
+    rt_engine::testCheckpointCaptureDoesNotAllocate();
+    rt_engine::testRollbackKeepsUnjournaledVoiceState();
+    rt_engine::testConfigureBeforeMixKeepsRollbacks();
+    rt_engine::testRollbackKeeps3dState();
     testRealtimeResetClearsUnderrunCount();
 
     std::printf("\n%d assertions, %d failures\n", g_assertions, g_failures);

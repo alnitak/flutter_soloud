@@ -75,12 +75,22 @@ public:
   unsigned int mOffset;
 };
 
+static const char kWavSnapshotKind = 0;
+
 SourceStateSnapshot *WavInstance::captureSourceState() {
   // The wav data is fully decoded in memory (mParent->mData), so the
   // consumption state is exactly the read offset.
   WavSourceStateSnapshot *s = new WavSourceStateSnapshot();
+  s->mKind = &kWavSnapshotKind;
   s->mOffset = mOffset;
   return s;
+}
+
+bool WavInstance::captureSourceStateInto(SourceStateSnapshot *aState) {
+  if (aState == NULL || aState->mKind != &kWavSnapshotKind)
+    return false;
+  static_cast<WavSourceStateSnapshot *>(aState)->mOffset = mOffset;
+  return true;
 }
 
 void WavInstance::restoreSourceState(SourceStateSnapshot *aState) {

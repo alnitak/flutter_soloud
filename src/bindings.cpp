@@ -4008,14 +4008,18 @@ extern "C"
     if (cf == nullptr)
       return filterNotFound;
 
+    // A global custom filter runs in the device callback under the global
+    // filter lock, a voice or bus one under the audio mutex: hold both.
     if (player.get() != nullptr && player.get()->isInited())
     {
       player.get()->soloud.lockAudioMutex_internal();
+      player.get()->soloud.lockGlobalFilters_internal();
     }
     cf->setCallback(callback, userData, numParams);
     cf->setWebJsCallbackName(webJsCallbackName);
     if (player.get() != nullptr && player.get()->isInited())
     {
+      player.get()->soloud.unlockGlobalFilters_internal();
       player.get()->soloud.unlockAudioMutex_internal();
     }
     return noError;
@@ -4844,8 +4848,9 @@ extern "C"
     Player *p = player.get();
     if (p != nullptr && p->isInited())
     {
-      p->soloud.lockAudioMutex_internal();
-      p->soloud.unlockAudioMutex_internal();
+      // Mixing (render worker or device callback) and the post-ring global
+      // filters (device callback) each run under their own lock.
+      p->soloud.audioThreadBarrier_internal();
     }
   }
 

@@ -69,8 +69,20 @@ RealtimeStreamInstance::~RealtimeStreamInstance() {
   }
 }
 
+static const char kRealtimeStreamSnapshotKind = 0;
+
 SourceStateSnapshot *RealtimeStreamInstance::captureSourceState() {
   auto *snap = new RealtimeStreamSnapshot();
+  snap->mKind = &kRealtimeStreamSnapshotKind;
+  captureSourceStateInto(snap);
+  return snap;
+}
+
+bool RealtimeStreamInstance::captureSourceStateInto(SourceStateSnapshot *aState) {
+  if (aState == nullptr || aState->mKind != &kRealtimeStreamSnapshotKind) {
+    return false;
+  }
+  auto *snap = static_cast<RealtimeStreamSnapshot *>(aState);
   snap->mReadFrame =
       mParent != nullptr ? mParent->mRingBuffer.getReadFrame() : 0;
   snap->mSilentFramesSinceUnderrun = mSilentFramesSinceUnderrun;
@@ -78,7 +90,7 @@ SourceStateSnapshot *RealtimeStreamInstance::captureSourceState() {
   snap->mSubQuantumDelayFrames = mSubQuantumDelayFrames;
   snap->mWasUnderrun = mWasUnderrun;
   snap->mLastSample = mLastSample;
-  return snap;
+  return true;
 }
 
 void RealtimeStreamInstance::restoreSourceState(SourceStateSnapshot *aState) {

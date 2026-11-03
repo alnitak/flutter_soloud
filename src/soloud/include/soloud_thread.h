@@ -47,6 +47,11 @@ namespace SoLoud
 		ThreadHandle createThread(threadFunction aThreadFunction, void *aParameter);
 
 		void sleep(int aMSec);
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		// Best effort: run the calling thread ahead of ordinary threads
+		// (it feeds the audio device). Silently does nothing where the
+		// platform does not allow it.
+		void raiseCurrentThreadPriority();
         void wait(ThreadHandle aThreadHandle);
         void release(ThreadHandle aThreadHandle);
 		int getTimeMillis();

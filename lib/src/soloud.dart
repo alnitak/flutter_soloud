@@ -531,6 +531,13 @@ interface class SoLoud {
   /// [bufferSize]. This is the prerequisite for low-latency reactive playback
   /// with large mix buffers. When null or 0 (the default) the engine mixes
   /// directly into the device callback as before. Ignored on web.
+  /// With the ring enabled the mixing runs on a dedicated render thread and
+  /// the device callback only reads the ring, so a slow mix or a busy engine
+  /// call does not interrupt the output. Changing a playing voice in a way
+  /// the engine cannot replay (its loop region, a seek, unpausing it, its
+  /// filters or their parameters, or the global volume) makes events in the
+  /// next [renderAheadFrames] fall back to being placed at the end of the
+  /// ring instead of at the playhead.
   /// With the ring enabled, global filters run at the device playhead on the
   /// frames read from the ring, and the output is clipped after them, as
   /// without the ring. The one difference is that the global volume is

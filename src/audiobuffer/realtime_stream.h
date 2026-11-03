@@ -43,6 +43,7 @@ public:
 
   SourceStateSnapshot *captureSourceState() override;
   void restoreSourceState(SourceStateSnapshot *aState) override;
+  bool captureSourceStateInto(SourceStateSnapshot *aState) override;
 
   friend class RealtimeStream;
 

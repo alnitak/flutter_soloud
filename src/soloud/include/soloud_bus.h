@@ -77,6 +77,7 @@ namespace SoLoud
 		// ###### flutter_soloud local patch (mix checkpoints) ######
 		virtual SourceStateSnapshot *captureSourceState();
 		virtual void restoreSourceState(SourceStateSnapshot *aSnapshot);
+		virtual bool captureSourceStateInto(SourceStateSnapshot *aSnapshot);
 	};
 
 	class Bus : public AudioSource

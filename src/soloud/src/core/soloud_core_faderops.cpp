@@ -240,7 +240,11 @@ namespace SoLoud
 			setGlobalVolume(aTo);
 			return;
 		}
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		lockAudioMutex_internal();
 		mGlobalVolumeFader.set(from, aTo, aTime, mStreamTime);
+		engineStateChanged_internal();
+		unlockAudioMutex_internal();
 	}
 
 
@@ -254,6 +258,8 @@ namespace SoLoud
 
 		FOR_ALL_VOICES_PRE
 		mVoice[ch]->mVolumeFader.setLFO(aFrom, aTo, aTime, mVoice[ch]->mStreamTime);
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -267,6 +273,8 @@ namespace SoLoud
 
 		FOR_ALL_VOICES_PRE
 		mVoice[ch]->mPanFader.setLFO(aFrom, aTo, aTime, mVoice[ch]->mStreamTime);
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -280,6 +288,8 @@ namespace SoLoud
 		
 		FOR_ALL_VOICES_PRE
 		mVoice[ch]->mRelativePlaySpeedFader.setLFO(aFrom, aTo, aTime, mVoice[ch]->mStreamTime);
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -290,6 +300,10 @@ namespace SoLoud
 			setGlobalVolume(aTo);
 			return;
 		}
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		lockAudioMutex_internal();
 		mGlobalVolumeFader.setLFO(aFrom, aTo, aTime, mStreamTime);
+		engineStateChanged_internal();
+		unlockAudioMutex_internal();
 	}
 }

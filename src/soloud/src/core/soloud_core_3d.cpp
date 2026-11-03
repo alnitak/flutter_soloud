@@ -382,6 +382,8 @@ namespace SoLoud
 				{
 					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
 					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+					// ###### flutter_soloud local patch (retroactive re-mix) ######
+					voiceStateChanged_internal(ch);
 				}
 				unlockAudioMutex_internal();
 			}
@@ -455,6 +457,9 @@ namespace SoLoud
 			mVoice[v]->mFlags &= ~AudioSourceInstance::INAUDIBLE;
 		}
 		mActiveVoiceDirty = true;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The 3d setup above is not journaled.
+		voiceStateChanged_internal(v);
 
 		unlockAudioMutex_internal();
 		setDelaySamples(h, samples);
@@ -481,6 +486,8 @@ namespace SoLoud
 				{
 					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
 					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+					// ###### flutter_soloud local patch (retroactive re-mix) ######
+					voiceStateChanged_internal(ch);
 				}
 				unlockAudioMutex_internal();
 			}
@@ -551,6 +558,9 @@ namespace SoLoud
 			mVoice[v]->mFlags &= ~AudioSourceInstance::INAUDIBLE;
 		}
 		mActiveVoiceDirty = true;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The 3d setup above is not journaled.
+		voiceStateChanged_internal(v);
 		unlockAudioMutex_internal();
 
 		setDelaySamples(h, samples);
@@ -577,6 +587,8 @@ namespace SoLoud
 				{
 					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
 					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
+					// ###### flutter_soloud local patch (retroactive re-mix) ######
+					voiceStateChanged_internal(ch);
 				}
 				unlockAudioMutex_internal();
 			}
@@ -647,6 +659,9 @@ namespace SoLoud
 			mVoice[v]->mFlags &= ~AudioSourceInstance::INAUDIBLE;
 		}
 		mActiveVoiceDirty = true;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The 3d setup above is not journaled.
+		voiceStateChanged_internal(v);
 		unlockAudioMutex_internal();
 
 		setDelaySamples(h, samples);

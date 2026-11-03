@@ -8,10 +8,12 @@
 *
 * Capture runs on the audio thread at the end of mix_internal, under the
 * audio mutex, so it must not allocate: the pool and all its buffers are
-* pre-sized by allocateCheckpoints_internal() and reused in place. (Filters
-* and sources that support snapshotting return heap objects from
-* captureState()/captureSourceState(); the Phase 2 built-ins all return
-* nullptr, so no allocation happens in practice.)
+* pre-sized by allocateCheckpoints_internal() and reused in place. Filters
+* and sources that support snapshotting keep their state in heap objects
+* (captureState()/captureSourceState()); a capture refills the objects of the
+* checkpoint slot it overwrites, or spares left by ended voices, in place
+* (captureStateInto()/captureSourceStateInto()), so it only allocates while
+* the number of snapshotted voices grows.
 *
 * Fader hazard (invariant respected by both capture and restore): Fader::get()
 * treats a time before mStartTime as a clock rollover and restarts the fade
@@ -62,18 +64,19 @@ namespace SoLoud
 	}
 
 	// ###### flutter_soloud local patch (retroactive re-mix) ######
-	// Delete the heap snapshots owned by a journal entry's birth record.
-	static void releaseJournalEntry(RetroJournalEntry &aEntry)
+	// Hand the heap snapshots owned by a journal entry's birth record to the
+	// spare pools.
+	static void releaseJournalEntry(Soloud &aSoloud, RetroJournalEntry &aEntry)
 	{
 		if (aEntry.mType != RetroJournalEntry::BIRTH)
 			return;
 		unsigned int i;
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
-			delete aEntry.mBirth.mFilterState[i];
+			aSoloud.mFilterSnapshotSpares.give(aEntry.mBirth.mFilterState[i]);
 			aEntry.mBirth.mFilterState[i] = NULL;
 		}
-		delete aEntry.mBirth.mSourceState;
+		aSoloud.mSourceSnapshotSpares.give(aEntry.mBirth.mSourceState);
 		aEntry.mBirth.mSourceState = NULL;
 	}
 
@@ -110,7 +113,7 @@ namespace SoLoud
 		while (!aSoloud.mRetroJournal.empty() &&
 			aSoloud.mRetroJournal.front().mTime < oldest)
 		{
-			releaseJournalEntry(aSoloud.mRetroJournal.front());
+			releaseJournalEntry(aSoloud, aSoloud.mRetroJournal.front());
 			aSoloud.mRetroJournal.erase(aSoloud.mRetroJournal.begin());
 		}
 	}
@@ -131,7 +134,7 @@ namespace SoLoud
 			pos--;
 		if (aSoloud.mRetroJournal.size() >= RETRO_JOURNAL_CAPACITY)
 		{
-			releaseJournalEntry(aSoloud.mRetroJournal.front());
+			releaseJournalEntry(aSoloud, aSoloud.mRetroJournal.front());
 			aSoloud.mRetroJournal.erase(aSoloud.mRetroJournal.begin());
 			if (pos > 0)
 				pos--;
@@ -158,6 +161,11 @@ namespace SoLoud
 		unsigned int i, j;
 		mCheckpointRecycle.clear();
 		mCheckpointRecycle.reserve(mMaxActiveVoices > 128 ? mMaxActiveVoices : 128);
+		// Room for the snapshots of every voice a checkpoint slot can hold,
+		// twice over, per snapshot type.
+		const unsigned int spares = 2 * (mMaxActiveVoices > 128 ? mMaxActiveVoices : 128);
+		mSourceSnapshotSpares.reserve(spares);
+		mFilterSnapshotSpares.reserve(spares);
 		for (i = 0; i < aPoolSize; i++)
 		{
 			MixCheckpoint &cp = mCheckpointPool[i];
@@ -187,8 +195,10 @@ namespace SoLoud
 		mCheckpointCounter = 0;
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
 		for (i = 0; i < mRetroJournal.size(); i++)
-			releaseJournalEntry(mRetroJournal[i]);
+			releaseJournalEntry(*this, mRetroJournal[i]);
 		mRetroJournal.clear();
+		mSourceSnapshotSpares.clear();
+		mFilterSnapshotSpares.clear();
 	}
 
 	// Take the filter snapshot the previous capture recorded for the same
@@ -207,6 +217,28 @@ namespace SoLoud
 			{
 				FilterStateSnapshot *s = old.mFilterState[aFilter];
 				old.mFilterState[aFilter] = NULL;
+				return s;
+			}
+		}
+		return NULL;
+	}
+
+	// Take the source snapshot the previous capture recorded for the same
+	// voice instance out of aRecycle (ownership passes to the caller), or
+	// return NULL.
+	static SourceStateSnapshot *takeRecycledSourceState(std::vector<CheckpointVoice> *aRecycle,
+		unsigned int aSlot, unsigned int aPlayIndex)
+	{
+		if (aRecycle == NULL)
+			return NULL;
+		size_t v;
+		for (v = 0; v < aRecycle->size(); v++)
+		{
+			CheckpointVoice &old = (*aRecycle)[v];
+			if (old.mSlot == aSlot && old.mPlayIndex == aPlayIndex)
+			{
+				SourceStateSnapshot *s = old.mSourceState;
+				old.mSourceState = NULL;
 				return s;
 			}
 		}
@@ -276,18 +308,43 @@ namespace SoLoud
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
 			cv.mFilterLive[i] = v->mFilter[i] != NULL;
+			cv.mFilterId[i] = v->mFilter[i] != NULL ? v->mFilter[i]->mInstanceId : 0;
+			// Refill, in order of preference, the snapshot this same filter
+			// produced last time, a spare of the same type, or allocate.
 			FilterStateSnapshot *reuse = takeRecycledFilterState(aRecycle, aSlot, v->mPlayIndex, i);
-			if (v->mFilter[i] != NULL && reuse != NULL && v->mFilter[i]->captureStateInto(reuse))
+			FilterInstance *filter = v->mFilter[i];
+			cv.mFilterState[i] = NULL;
+			if (filter != NULL)
 			{
-				cv.mFilterState[i] = reuse;
+				if (reuse != NULL && filter->captureStateInto(reuse))
+				{
+					cv.mFilterState[i] = reuse;
+					reuse = NULL;
+				}
+				else
+				{
+					cv.mFilterState[i] = aSoloud.mFilterSnapshotSpares.take(
+						[filter](FilterStateSnapshot *s) { return filter->captureStateInto(s); });
+				}
+				if (cv.mFilterState[i] == NULL)
+					cv.mFilterState[i] = filter->captureState();
 			}
-			else
-			{
-				delete reuse;
-				cv.mFilterState[i] = v->mFilter[i] ? v->mFilter[i]->captureState() : NULL;
-			}
+			aSoloud.mFilterSnapshotSpares.give(reuse);
 		}
-		cv.mSourceState = v->captureSourceState();
+		SourceStateSnapshot *reuse = takeRecycledSourceState(aRecycle, aSlot, v->mPlayIndex);
+		if (reuse != NULL && v->captureSourceStateInto(reuse))
+		{
+			cv.mSourceState = reuse;
+			reuse = NULL;
+		}
+		else
+		{
+			cv.mSourceState = aSoloud.mSourceSnapshotSpares.take(
+				[v](SourceStateSnapshot *s) { return v->captureSourceStateInto(s); });
+		}
+		if (cv.mSourceState == NULL)
+			cv.mSourceState = v->captureSourceState();
+		aSoloud.mSourceSnapshotSpares.give(reuse);
 	}
 
 	// Whether a voice described by a snapshot can be re-mixed bit-exactly:
@@ -312,6 +369,24 @@ namespace SoLoud
 			if (aVoiceState.mFilterLive[i] &&
 				(aVoiceState.mFilterState[i] == NULL ||
 				 !aVoiceState.mFilterState[i]->mComplete))
+				return false;
+		}
+		return true;
+	}
+
+	// Whether aVoice still has exactly the filter instances aVoiceState was
+	// captured with. Filter snapshots are concrete per filter type and are
+	// restored with a static_cast, so a snapshot must never reach a different
+	// instance (a filter removed, added, moved to another slot or replaced
+	// since the capture).
+	static bool voiceFiltersMatch(const CheckpointVoice &aVoiceState, const AudioSourceInstance *aVoice)
+	{
+		unsigned int i;
+		for (i = 0; i < FILTERS_PER_STREAM; i++)
+		{
+			const unsigned long long live =
+				aVoice->mFilter[i] != NULL ? aVoice->mFilter[i]->mInstanceId : 0;
+			if (live != aVoiceState.mFilterId[i])
 				return false;
 		}
 		return true;
@@ -403,18 +478,28 @@ namespace SoLoud
 
 		MixCheckpoint &cp = mCheckpointPool[targetIndex];
 		// Set the slot's previous voices aside (swap keeps both vectors'
-		// reserved capacity, so nothing allocates) so their filter snapshots
-		// can be refilled below. Source snapshots are small; free them now.
+		// reserved capacity, so nothing allocates) so their snapshots can be
+		// refilled below by the same voices. The snapshots of voices that have
+		// ended since become spares right away, for voices started since.
 		mCheckpointRecycle.clear();
 		std::swap(cp.mVoices, mCheckpointRecycle);
 		{
 			size_t r;
+			unsigned int f;
 			for (r = 0; r < mCheckpointRecycle.size(); r++)
 			{
-				delete mCheckpointRecycle[r].mSourceState;
-				mCheckpointRecycle[r].mSourceState = NULL;
+				CheckpointVoice &old = mCheckpointRecycle[r];
+				if (old.mSlot < mHighestVoice && mVoice[old.mSlot] != NULL &&
+					mVoice[old.mSlot]->mPlayIndex == old.mPlayIndex)
+					continue;
+				mSourceSnapshotSpares.give(old.mSourceState);
+				old.mSourceState = NULL;
+				for (f = 0; f < FILTERS_PER_STREAM; f++)
+				{
+					mFilterSnapshotSpares.give(old.mFilterState[f]);
+					old.mFilterState[f] = NULL;
+				}
 			}
-			unsigned int f;
 			for (f = 0; f < FILTERS_PER_STREAM; f++)
 			{
 				delete cp.mFilterState[f];
@@ -453,21 +538,15 @@ namespace SoLoud
 		cp.mClockedAnchorTime = mClockedAnchorTime;
 		cp.mClockedAnchorSample = mClockedAnchorSample;
 		cp.mClockedLastTime = mClockedLastTime;
-		memcpy(cp.m3dData, m3dData, sizeof(m3dData));
-		memcpy(cp.m3dPosition, m3dPosition, sizeof(m3dPosition));
-		memcpy(cp.m3dAt, m3dAt, sizeof(m3dAt));
-		memcpy(cp.m3dUp, m3dUp, sizeof(m3dUp));
-		memcpy(cp.m3dVelocity, m3dVelocity, sizeof(m3dVelocity));
-		cp.m3dSoundSpeed = m3dSoundSpeed;
 		unsigned int i;
 		bool restorable = true;
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
-			// When mixing into mRenderRing, global filters run post-ring at
-			// the playhead and must not be rolled back by in-window re-mixes.
-			cp.mFilterState[i] = (!mMixingToRenderRing && !mRemixing && mFilterInstance[i])
-				? mFilterInstance[i]->captureState()
-				: NULL;
+			// Checkpoints only exist with the render-ahead ring, where the
+			// global filters run post-ring at the playhead (in the device
+			// callback, under their own lock): a re-mix never rolls them
+			// back, so their state is not captured.
+			cp.mFilterState[i] = NULL;
 		}
 
 		// Voices. Pass 1: the active (sounding) voices, so they are always
@@ -499,16 +578,18 @@ namespace SoLoud
 			if (!already)
 				captureVoice(*this, cp, i, &mCheckpointRecycle);
 		}
-		// Free whatever the previous voices left unclaimed (ended voices,
-		// replaced filters).
+		// Park whatever the previous voices left unclaimed (voices beyond the
+		// capture capacity, removed filters) as spares.
 		{
 			size_t r;
 			unsigned int f;
 			for (r = 0; r < mCheckpointRecycle.size(); r++)
 			{
+				mSourceSnapshotSpares.give(mCheckpointRecycle[r].mSourceState);
+				mCheckpointRecycle[r].mSourceState = NULL;
 				for (f = 0; f < FILTERS_PER_STREAM; f++)
 				{
-					delete mCheckpointRecycle[r].mFilterState[f];
+					mFilterSnapshotSpares.give(mCheckpointRecycle[r].mFilterState[f]);
 					mCheckpointRecycle[r].mFilterState[f] = NULL;
 				}
 			}
@@ -639,20 +720,9 @@ namespace SoLoud
 		mClockedAnchorTime = cp.mClockedAnchorTime;
 		mClockedAnchorSample = cp.mClockedAnchorSample;
 		mClockedLastTime = cp.mClockedLastTime;
-		memcpy(m3dData, cp.m3dData, sizeof(m3dData));
-		memcpy(m3dPosition, cp.m3dPosition, sizeof(m3dPosition));
-		memcpy(m3dAt, cp.m3dAt, sizeof(m3dAt));
-		memcpy(m3dUp, cp.m3dUp, sizeof(m3dUp));
-		memcpy(m3dVelocity, cp.m3dVelocity, sizeof(m3dVelocity));
-		m3dSoundSpeed = cp.m3dSoundSpeed;
 
-		// Global filters. A nullptr snapshot means the filter cannot be
-		// re-mixed; its state is left alone (going-forward degradation).
-		for (i = 0; i < FILTERS_PER_STREAM; i++)
-		{
-			if (cp.mFilterState[i] != NULL && mFilterInstance[i] != NULL)
-				mFilterInstance[i]->restoreState(cp.mFilterState[i]);
-		}
+		// Global filters are never restored: they run after the ring, on the
+		// device's timeline (see captureMixCheckpoint_internal).
 
 		// Voices. slotRestored tracks which current voice objects were
 		// restored from the checkpoint; anything else still in the table is a
@@ -693,7 +763,8 @@ namespace SoLoud
 				voice->restoreSourceState(cv.mSourceState);
 			for (i = 0; i < FILTERS_PER_STREAM; i++)
 			{
-				if (cv.mFilterState[i] != NULL && voice->mFilter[i] != NULL)
+				if (cv.mFilterState[i] != NULL && voice->mFilter[i] != NULL &&
+					voice->mFilter[i]->mInstanceId == cv.mFilterId[i])
 					voice->mFilter[i]->restoreState(cv.mFilterState[i]);
 			}
 		}
@@ -771,6 +842,7 @@ namespace SoLoud
 			mActiveVoiceDirty = true;
 		}
 
+		reapply3dVoices_internal();
 		return true;
 	}
 
@@ -802,7 +874,7 @@ namespace SoLoud
 			if (e.mType == RetroJournalEntry::BIRTH && e.mSlot == aSlot &&
 				e.mPlayIndex == playIndex)
 			{
-				releaseJournalEntry(e);
+				releaseJournalEntry(*this, e);
 				mRetroJournal.erase(mRetroJournal.begin() + i);
 				break;
 			}
@@ -819,7 +891,6 @@ namespace SoLoud
 			e.mBirth.mFilterState[i] = NULL;
 		fillCheckpointVoice(*this, e.mBirth, aSlot);
 		e.mRestorable = voiceSnapshotRestorable(e.mBirth);
-		e.m3dData = m3dData[aSlot];
 		insertJournalEntry(*this, e);
 	}
 
@@ -861,7 +932,7 @@ namespace SoLoud
 				existing.mPlayIndex == aPlayIndex &&
 				existing.mParam == aParam)
 			{
-				releaseJournalEntry(existing);
+				releaseJournalEntry(*this, existing);
 				mRetroJournal.erase(mRetroJournal.begin() + i);
 			}
 			else
@@ -910,6 +981,110 @@ namespace SoLoud
 		e.mBirth = CheckpointVoice();
 		e.mBirth.mSourceState = NULL;
 		insertJournalEntry(*this, e);
+	}
+
+	// ###### flutter_soloud local patch (retroactive re-mix) ######
+	void Soloud::voiceStateChanged_internal(unsigned int aVoice)
+	{
+		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+		// Changes a rollback makes itself (restore, replay, re-mix) are not
+		// user changes.
+		if (mRemixing || mCheckpointPool.empty() || aVoice >= VOICE_COUNT ||
+			mVoice[aVoice] == NULL)
+			return;
+		AudioSourceInstance *v = mVoice[aVoice];
+		const unsigned int playIndex = v->mPlayIndex;
+		const time halfSample = mSamplerate > 0 ? 0.5 / (time)mSamplerate : 0;
+
+		size_t j;
+		for (j = 0; j < mRetroJournal.size(); j++)
+		{
+			RetroJournalEntry &e = mRetroJournal[j];
+			if (e.mType != RetroJournalEntry::BIRTH || e.mSlot != aVoice ||
+				e.mPlayIndex != playIndex)
+				continue;
+			if (e.mSnapshotEngineTime >= mStreamTime - halfSample)
+			{
+				// No quantum has been mixed since the birth was recorded (the
+				// usual case: a voice configured right after play()), so the
+				// record can describe the voice as it is now.
+				const unsigned int oldDelay = e.mBirth.mDelaySamples;
+				unsigned int k;
+				for (k = 0; k < FILTERS_PER_STREAM; k++)
+				{
+					mFilterSnapshotSpares.give(e.mBirth.mFilterState[k]);
+					e.mBirth.mFilterState[k] = NULL;
+				}
+				mSourceSnapshotSpares.give(e.mBirth.mSourceState);
+				e.mBirth.mSourceState = NULL;
+				fillCheckpointVoice(*this, e.mBirth, aVoice);
+				e.mRestorable = voiceSnapshotRestorable(e.mBirth);
+				if (v->mDelaySamples != oldDelay && mSamplerate > 0)
+				{
+					// The first sounding sample moved with the delay; keep
+					// the journal sorted by event time.
+					RetroJournalEntry moved = e;
+					moved.mTime += ((time)v->mDelaySamples - (time)oldDelay) / (time)mSamplerate;
+					mRetroJournal.erase(mRetroJournal.begin() + j);
+					insertJournalEntry(*this, moved);
+				}
+			}
+			else
+			{
+				e.mRestorable = false;
+			}
+			break;
+		}
+
+		unsigned int i;
+		for (i = 0; i < mCheckpointPool.size(); i++)
+		{
+			MixCheckpoint &cp = mCheckpointPool[i];
+			if (!cp.mRestorable)
+				continue;
+			size_t k;
+			for (k = 0; k < cp.mVoices.size(); k++)
+			{
+				if (cp.mVoices[k].mSlot == aVoice && cp.mVoices[k].mPlayIndex == playIndex)
+				{
+					cp.mRestorable = false;
+					break;
+				}
+			}
+		}
+	}
+
+	void Soloud::engineStateChanged_internal()
+	{
+		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+		if (mRemixing)
+			return;
+		unsigned int i;
+		for (i = 0; i < mCheckpointPool.size(); i++)
+			mCheckpointPool[i].mRestorable = false;
+	}
+
+	void Soloud::reapply3dVoices_internal()
+	{
+		// Same locking as restoreMixCheckpoint_internal(), its caller.
+		unsigned int i;
+		for (i = 0; i < mHighestVoice; i++)
+		{
+			AudioSourceInstance *v = mVoice[i];
+			if (v == NULL || !(v->mFlags & AudioSourceInstance::PROCESS_3D))
+				continue;
+			// The same derivation update3dAudio() applies, from the values
+			// it last computed.
+			updateVoiceRelativePlaySpeed_internal(i);
+			updateVoiceVolume_internal(i);
+			unsigned int j;
+			for (j = 0; j < MAX_CHANNELS; j++)
+				v->mChannelVolume[j] = m3dData[i].mChannelVolume[j];
+			if (v->mOverallVolume < 0.001f)
+				v->mFlags |= AudioSourceInstance::INAUDIBLE;
+			else
+				v->mFlags &= ~AudioSourceInstance::INAUDIBLE;
+		}
 	}
 
 	void Soloud::replayJournal_internal(time aFromTime)
@@ -976,10 +1151,10 @@ namespace SoLoud
 					v->restoreSourceState(e.mBirth.mSourceState);
 				for (k = 0; k < FILTERS_PER_STREAM; k++)
 				{
-					if (e.mBirth.mFilterState[k] != NULL && v->mFilter[k] != NULL)
+					if (e.mBirth.mFilterState[k] != NULL && v->mFilter[k] != NULL &&
+						v->mFilter[k]->mInstanceId == e.mBirth.mFilterId[k])
 						v->mFilter[k]->restoreState(e.mBirth.mFilterState[k]);
 				}
-				m3dData[e.mSlot] = e.m3dData;
 				mActiveVoiceDirty = true;
 			}
 			else if (e.mType == RetroJournalEntry::PARAM)
@@ -1102,6 +1277,10 @@ namespace SoLoud
 			if (cvoice.mSlot >= VOICE_COUNT || mVoice[cvoice.mSlot] == NULL ||
 				mVoice[cvoice.mSlot]->mPlayIndex != cvoice.mPlayIndex)
 				return -1;
+			// A filter graph changed since the capture: the old instances'
+			// state is gone and the new ones have no state at cp.mTime.
+			if (!voiceFiltersMatch(cvoice, mVoice[cvoice.mSlot]))
+				return -1;
 		}
 		for (j = 0; j < mRetroJournal.size(); j++)
 		{
@@ -1110,6 +1289,11 @@ namespace SoLoud
 				e.mTime <= mStreamTime &&
 				(e.mSlot >= VOICE_COUNT || mVoice[e.mSlot] == NULL ||
 				 mVoice[e.mSlot]->mPlayIndex != e.mPlayIndex))
+				return -1;
+			if (e.mType == RetroJournalEntry::BIRTH && e.mTime >= cp.mTime &&
+				e.mSlot < VOICE_COUNT && mVoice[e.mSlot] != NULL &&
+				mVoice[e.mSlot]->mPlayIndex == e.mPlayIndex &&
+				!voiceFiltersMatch(e.mBirth, mVoice[e.mSlot]))
 				return -1;
 		}
 
@@ -1168,6 +1352,7 @@ namespace SoLoud
 		if (!restoreMixCheckpoint_internal(ci))
 			return -1;
 		replayJournal_internal(cp.mTime);
+		reapply3dVoices_internal();
 		mRemixing = true;
 		return ci;
 	}
@@ -1179,19 +1364,22 @@ namespace SoLoud
 		(void)aPoolIndex; // the context members carry everything
 
 		// Re-mix forward from the checkpoint to the old write head,
-		// overwriting the ring in place. Frames at/behind the read head
-		// belong to the device and are never touched, so the first quantum
-		// may be a partial rewrite. The ring heads do not move.
+		// overwriting the ring in place. Frames the device has read, or is
+		// reading right now, belong to it and are never touched, so the first
+		// quantum may be a partial rewrite. The ring heads do not move.
 		const unsigned long long writePos = mRemixWritePos;
 		unsigned long long pos = mRemixStartPos;
 		while (pos < writePos)
 		{
 			mRemixStartPos = pos + mBufferSize;
 			remixQuantum_internal(mRenderRingStaging.mData, mBufferSize);
-			const unsigned long long readPos = mRenderRing.getReadPosition();
-			unsigned long long from = pos < readPos ? readPos : pos;
 			const unsigned long long quantumEnd =
 				(pos + mBufferSize <= writePos) ? (pos + mBufferSize) : writePos;
+			// The device callback reads the ring without the audio mutex:
+			// fence the frames from pos on for the duration of the copy only
+			// (the mix above runs unfenced), and start past anything the
+			// device has already claimed.
+			const unsigned long long from = mRenderRing.beginRewrite(pos);
 			if (from < quantumEnd)
 			{
 				const float *src = mRenderRingStaging.mData + (size_t)(from - pos) * mChannels;
@@ -1205,6 +1393,7 @@ namespace SoLoud
 					mRenderRing.rewrite(from, src, frames);
 				}
 			}
+			mRenderRing.endRewrite();
 			pos += mBufferSize;
 		}
 		mRemixing = false;
@@ -1241,9 +1430,9 @@ namespace SoLoud
 				(aEventTime - mRemixCheckpointTime) * (time)mSamplerate + 0.5);
 			if (voice->mFlags & AudioSourceInstance::PAUSED)
 				setVoicePause_internal(aSlot, 0);
-			// The restore reset the slot's 3d data to the checkpoint's
-			// (pre-birth) contents.
-			m3dData[aSlot].init(aSound);
+			// The slot's 3d data is the one play() initialized: rollbacks
+			// leave 3d state alone.
+			(void)aSound;
 			journalBirth_internal(aSlot, aEventTime);
 		}
 

@@ -25,6 +25,7 @@ public:
 
   FilterStateSnapshot *captureState() override;
   void restoreState(FilterStateSnapshot *aState) override;
+  bool captureStateInto(FilterStateSnapshot *aState) override;
 
 private:
   void invokeCallback(float *aBuffer, unsigned int aSamples,

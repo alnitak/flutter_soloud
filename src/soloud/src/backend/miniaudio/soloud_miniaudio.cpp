@@ -1239,7 +1239,7 @@ namespace SoLoud
         // state. Emit silence instead.
         if (soloud == nullptr ||
             soloud != gSoloud.load(std::memory_order_acquire) ||
-            soloud->mEngineReady == 0)
+            soloud->mEngineReady.load(std::memory_order_acquire) == 0)
         {
             std::memset(pOutput, 0,
                         frameCount * (outChannels != 0 ? outChannels : 1) *
@@ -1279,28 +1279,24 @@ namespace SoLoud
 #else
         if (soloud->isRenderAheadEnabled())
         {
-            // Render-ahead ring path: the engine has already mixed
-            // renderAheadFrames into its own ring; this callback only copies
-            // out and tops the ring back up. The ring read is lock-free SPSC,
-            // so the device never blocks behind the audio mutex.
-            soloud->renderRingTopUp_internal();
+            // Render-ahead ring path: the render worker keeps
+            // renderAheadFrames mixed into the engine's ring, so this callback
+            // only copies frames out (and runs the post-ring stage). The ring
+            // read takes no lock and mixing happens on the worker, so a busy
+            // API thread or an expensive mix never delays the device.
             unsigned int got =
-                soloud->mRenderRing.read((float *)pOutput, frameCount);
+                soloud->readRenderRingForDevice_internal((float *)pOutput, frameCount);
             if (got < frameCount)
             {
-                // Underrun: emit silence for the gap. Recoverable on the next
-                // callback -- the top-up above keeps producing.
+                // Underrun (silence was emitted for the gap). Recoverable on
+                // the next callback -- the render worker keeps producing.
                 static bool underrunLogged = false;
                 if (!underrunLogged)
                 {
                     underrunLogged = true;
                     soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun (%u/%u frames)\n", got, frameCount);
                 }
-                unsigned int outCh = pDevice->playback.channels;
-                std::memset((float *)pOutput + (size_t)got * outCh, 0,
-                            (size_t)(frameCount - got) * outCh * sizeof(float));
             }
-            soloud->postProcessRenderRing_internal((float *)pOutput, frameCount);
             // The capture tap sits after the ring read, so it always reflects
             // what was actually played, including any retroactive rewrite.
             MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
@@ -1557,6 +1553,11 @@ namespace SoLoud
         // Opens notification admission as well as publishing the pointer.
         // Retired again by the guard on any failure return below.
         NotificationPublishGuard notificationGuard(aSoloud);
+#if !defined(__EMSCRIPTEN__)
+        // A real device: with the render-ahead ring, Soloud::init() starts
+        // the render worker once the engine is ready.
+        aSoloud->mRenderWorkerWanted = true;
+#endif
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         if (pPlaybackInfos_id != NULL)
         {

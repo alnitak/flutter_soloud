@@ -22,6 +22,8 @@ freely, subject to the following restrictions:
    distribution.
 */
 
+#include <atomic>
+
 #include "soloud.h"
 #include <cstdio>
 
@@ -63,6 +65,9 @@ namespace SoLoud
 	
 	FilterInstance::FilterInstance()
 	{
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		static std::atomic<unsigned long long> nextInstanceId(1);
+		mInstanceId = nextInstanceId.fetch_add(1, std::memory_order_relaxed);
 		mNumParams = 0;
 		mParamChanged = 0;
 		mParam = 0;

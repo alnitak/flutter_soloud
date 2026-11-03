@@ -71,21 +71,12 @@ namespace SoLoud
 			{
 				mVoice[aVoice]->mFlags &= ~AudioSourceInstance::PAUSED;
 				// ###### flutter_soloud local patch (retroactive re-mix) ######
-				// If this voice was born paused earlier in the current render-ahead
-				// window (e.g. Player::play starts paused, configures attributes,
-				// and immediately unpauses), update its BIRTH journal snapshot so a
-				// subsequent retroactive re-mix does not restore the PAUSED flag.
-				const unsigned int playIdx = mVoice[aVoice]->mPlayIndex;
-				for (size_t j = 0; j < mRetroJournal.size(); j++)
-				{
-					RetroJournalEntry &e = mRetroJournal[j];
-					if (e.mType == RetroJournalEntry::BIRTH &&
-						e.mSlot == aVoice &&
-						e.mPlayIndex == playIdx)
-					{
-						e.mBirth.mFlags &= ~AudioSourceInstance::PAUSED;
-					}
-				}
+				// Unpausing is not journaled, so a rollback to state recorded
+				// while the voice was paused would pause it again for good.
+				// A voice born paused and unpaused before anything was mixed
+				// (Player::play() does exactly that) just has its birth record
+				// updated; any other record of the voice is retired.
+				voiceStateChanged_internal(aVoice);
 			}
 		}
 	}

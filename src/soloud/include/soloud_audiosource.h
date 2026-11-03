@@ -115,6 +115,9 @@ namespace SoLoud
 		// snapshot could not reproduce the original output. Such a voice
 		// makes the checkpoint unrestorable.
 		bool mComplete = true;
+		// Identifies the concrete snapshot type for captureSourceStateInto():
+		// the address of a static tag owned by that type, or nullptr.
+		const void *mKind = nullptr;
 	};
 
 	// Base class for audio instances
@@ -244,6 +247,13 @@ namespace SoLoud
 		// going-forward behavior instead of restoring. Asked under the audio
 		// mutex right before a rollback.
 		virtual bool canRestoreSourceState(SourceStateSnapshot *) { return true; }
+		// Refills aState, a snapshot that is no longer needed (it may come
+		// from another instance or source type), with this instance's state
+		// without allocating. Returns false, leaving aState untouched, when
+		// it cannot be reused; the caller then falls back to
+		// captureSourceState(). Checkpoints call this on the audio thread
+		// every quantum for every voice, so restorable sources implement it.
+		virtual bool captureSourceStateInto(SourceStateSnapshot *) { return false; }
 		// Has the stream ended?
 		virtual bool hasEnded() = 0;
 		// Seek to certain place in the stream. Base implementation is generic "tape" seek (and slow).

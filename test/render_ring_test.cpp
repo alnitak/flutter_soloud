@@ -21,8 +21,11 @@
 #include "soloud_render_ring.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -150,6 +153,123 @@ void testRingRewriteAndRewind()
     for (unsigned int i = 16; i < 24; ++i)
         ok = ok && out[i] == 7.0f;                  // rewound + rewritten tail
     EXPECT(ok, "rewrite/rewind data mismatch");
+}
+
+// A retroactive rewrite runs on an API thread while the device callback
+// reads the ring with no lock. Every frame carries its position and the
+// generation that wrote it in both channels; a frame copied while it was being
+// overwritten would mix two generations. Run under -fsanitize=thread to have
+// the data race itself reported.
+void testRingConcurrentRewrite()
+{
+    constexpr unsigned int kCap = 2048;
+    constexpr unsigned int kPeriod = 64;
+    SoLoud::RenderRing ring;
+    ring.init(kCap, 2);
+
+    auto encode = [](unsigned long long pos, unsigned int gen, float *frame) {
+        const float v = static_cast<float>((pos % 4096) * 1024 + (gen % 1024));
+        frame[0] = v;
+        frame[1] = v;
+    };
+
+    std::atomic<bool> stop{false};
+    std::atomic<unsigned long long> framesRead{0};
+    std::atomic<unsigned long long> badFrames{0};
+    std::atomic<unsigned long long> shortReads{0};
+
+    std::thread reader([&] {
+        std::vector<float> out(kPeriod * 2);
+        unsigned long long pos = 0;
+        while (!stop.load(std::memory_order_relaxed)) {
+            const unsigned int got = ring.read(out.data(), kPeriod);
+            if (got < kPeriod)
+                shortReads.fetch_add(1, std::memory_order_relaxed);
+            for (unsigned int f = 0; f < got; ++f, ++pos) {
+                const float a = out[f * 2];
+                const float b = out[f * 2 + 1];
+                const unsigned long long v = static_cast<unsigned long long>(a);
+                if (a != b || v / 1024 != pos % 4096)
+                    badFrames.fetch_add(1, std::memory_order_relaxed);
+            }
+            framesRead.fetch_add(got, std::memory_order_relaxed);
+        }
+    });
+
+    std::vector<float> block(kPeriod * 4 * 2);
+    unsigned int gen = 0;
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(400);
+    unsigned long long rewrites = 0;
+    while (std::chrono::steady_clock::now() < until) {
+        // Append whole blocks of generation 0 while there is room.
+        const unsigned int blockFrames = kPeriod * 4;
+        if (ring.availableToWrite() >= blockFrames) {
+            const unsigned long long w = ring.getWritePosition();
+            for (unsigned int f = 0; f < blockFrames; ++f)
+                encode(w + f, 0, &block[f * 2]);
+            ring.write(block.data(), blockFrames);
+        }
+        // Rewrite everything not yet consumed with a new generation, one
+        // block at a time, exactly as retroactiveEnd_internal does.
+        ++gen;
+        unsigned long long pos = ring.getReadPosition();
+        const unsigned long long w = ring.getWritePosition();
+        while (pos < w) {
+            const unsigned long long end = pos + blockFrames < w ? pos + blockFrames : w;
+            const unsigned long long from = ring.beginRewrite(pos);
+            if (from < end) {
+                const unsigned int n = static_cast<unsigned int>(end - from);
+                for (unsigned int f = 0; f < n; ++f)
+                    encode(from + f, gen, &block[f * 2]);
+                ring.rewrite(from, block.data(), n);
+            }
+            ring.endRewrite();
+            pos = end;
+        }
+        ++rewrites;
+    }
+    stop.store(true);
+    reader.join();
+
+    EXPECT(framesRead.load() > kCap * 4, "reader made too little progress (%llu frames)",
+           static_cast<unsigned long long>(framesRead.load()));
+    EXPECT(rewrites > 100, "writer made too few rewrite passes (%llu)", rewrites);
+    EXPECT(badFrames.load() == 0, "%llu frames were torn or misplaced",
+           static_cast<unsigned long long>(badFrames.load()));
+}
+
+// The reader stops at a rewrite's fence instead of copying frames that are
+// being overwritten, and resumes when the rewrite ends.
+void testRingReadStopsAtFence()
+{
+    SoLoud::RenderRing ring;
+    ring.init(64, 1);
+    std::vector<float> in(32, 1.0f);
+    ring.write(in.data(), 32);
+
+    // A rewrite from frame 8 on is in progress: the reader gets frames 0-7
+    // only (after its short wait) and keeps the rest for the next read.
+    EXPECT(ring.beginRewrite(8) == 8, "idle reader must not move the rewrite start");
+    std::vector<float> out(32, 0.0f);
+    const unsigned int got = ring.read(out.data(), 16, 50);
+    EXPECT(got == 8, "read crossed the rewrite fence (%u frames)", got);
+    std::vector<float> patch(24, 5.0f);
+    ring.rewrite(8, patch.data(), 24);
+    ring.endRewrite();
+    EXPECT(ring.read(out.data(), 24) == 24, "read after the rewrite came up short");
+    bool ok = true;
+    for (unsigned int i = 0; i < 24; ++i)
+        ok = ok && out[i] == 5.0f;
+    EXPECT(ok, "frames after the fence must come from the rewrite");
+
+    // A rewrite that starts behind what the reader already consumed is moved
+    // up to the read head.
+    ring.write(in.data(), 16);
+    std::vector<float> sink(4);
+    ring.read(sink.data(), 4);
+    const unsigned long long head = ring.getReadPosition();
+    EXPECT(ring.beginRewrite(head - 2) == head, "rewrite start must not precede the read head");
+    ring.endRewrite();
 }
 
 // ---- Part B: engine integration on the null backend -----------------------
@@ -289,14 +409,86 @@ void testEngineFeatureOn()
 
 } // namespace
 
+// The device callback must keep playing what the ring holds while an API
+// thread holds the audio mutex (a long re-mix, a slow call): with the render
+// worker it only copies frames out. A paced fake device thread calls the same
+// entry point the miniaudio callback uses. Without a worker (the null backend
+// default, and the fallback) the callback mixes itself and waits for the
+// mutex, which is the control case.
+unsigned long long framesServedWhileMutexHeld(bool withWorker, bool &workerRan)
+{
+    SoLoud::Soloud engine;
+    engine.setRenderAheadConfig(kDevicePeriod, kRenderAhead);
+    engine.mRenderWorkerWanted = withWorker; // what a device backend sets
+    const SoLoud::result result =
+        engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER,
+                    kSampleRate, kQuantum, 2);
+    EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+    workerRan = engine.isRenderWorkerRunning_internal();
+
+    DcSource source;
+    engine.play(source);
+    engine.renderRingTopUp_internal();
+
+    std::atomic<bool> stop{false};
+    std::atomic<unsigned long long> fromRing{0};
+    const auto period = std::chrono::microseconds(
+        1000000ull * kDevicePeriod / kSampleRate);
+    std::thread device([&] {
+        std::vector<float> buf(kDevicePeriod * 2);
+        auto next = std::chrono::steady_clock::now();
+        while (!stop.load()) {
+            fromRing += engine.readRenderRingForDevice_internal(buf.data(), kDevicePeriod);
+            next += period;
+            std::this_thread::sleep_until(next);
+        }
+    });
+    // Let the device and the worker settle, then hold the mutex for 60 ms
+    // (less than the 93 ms the ring holds).
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    engine.lockAudioMutex_internal();
+    const unsigned long long before = fromRing.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    const unsigned long long during = fromRing.load() - before;
+    engine.unlockAudioMutex_internal();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    stop = true;
+    device.join();
+    engine.stopAll();
+    engine.deinit();
+    EXPECT(!engine.isRenderWorkerRunning_internal(), "deinit() must stop the worker");
+    return during;
+}
+
+void testRenderWorkerKeepsDeviceFed()
+{
+    bool workerRan = false;
+    const unsigned long long withWorker = framesServedWhileMutexHeld(true, workerRan);
+    EXPECT(workerRan, "the render worker did not start");
+    // 60 ms is ~5 device periods; allow for scheduling jitter.
+    EXPECT(withWorker >= 3 * kDevicePeriod,
+           "device got %llu frames while the audio mutex was held (want >= %u)",
+           withWorker, 3 * kDevicePeriod);
+    const unsigned long long without = framesServedWhileMutexHeld(false, workerRan);
+    EXPECT(!workerRan, "no worker was requested");
+    EXPECT(without <= kDevicePeriod,
+           "control: without a worker the callback should wait for the mutex (%llu frames)",
+           without);
+    std::printf("  device frames served during a 60 ms audio-mutex hold: %llu with the "
+                "render worker, %llu without\n", withWorker, without);
+}
+
 int main()
 {
     testRingRoundtrip();
     testRingWraparound();
     testRingUnderrunAndClamp();
     testRingRewriteAndRewind();
+    testRingConcurrentRewrite();
+    testRingReadStopsAtFence();
     testEngineFeatureOff();
     testEngineFeatureOn();
+    testRenderWorkerKeepsDeviceFed();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);

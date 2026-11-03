@@ -24,6 +24,7 @@ public:
 
   SourceStateSnapshot *captureSourceState() override;
   void restoreSourceState(SourceStateSnapshot *aState) override;
+  bool captureSourceStateInto(SourceStateSnapshot *aState) override;
 
 private:
   CustomAudioSource *mParent = nullptr;

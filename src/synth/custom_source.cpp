@@ -38,8 +38,21 @@ CustomAudioSourceInstance::~CustomAudioSourceInstance() {
   }
 }
 
+static const char kCustomAudioSourceSnapshotKind = 0;
+
 SourceStateSnapshot *CustomAudioSourceInstance::captureSourceState() {
   auto *snap = new CustomAudioSourceSnapshot();
+  snap->mKind = &kCustomAudioSourceSnapshotKind;
+  captureSourceStateInto(snap);
+  return snap;
+}
+
+bool CustomAudioSourceInstance::captureSourceStateInto(
+    SourceStateSnapshot *aState) {
+  if (aState == nullptr || aState->mKind != &kCustomAudioSourceSnapshotKind) {
+    return false;
+  }
+  auto *snap = static_cast<CustomAudioSourceSnapshot *>(aState);
   snap->mHasEnded = mHasEnded;
   snap->mNotifiedCreated = mNotifiedCreated;
   // The DSP callback's own state (oscillator phase, envelopes, a VST3
@@ -48,7 +61,7 @@ SourceStateSnapshot *CustomAudioSourceInstance::captureSourceState() {
   snap->mComplete = mParent == nullptr ||
                     (mParent->getCallback() == nullptr &&
                      mParent->getWebJsCallbackName().empty());
-  return snap;
+  return true;
 }
 
 void CustomAudioSourceInstance::restoreSourceState(

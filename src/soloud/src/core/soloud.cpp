@@ -34,6 +34,12 @@ freely, subject to the following restrictions:
 #include "soloud_thread.h"
 #include "soloud_fft.h"
 
+#if !defined(__EMSCRIPTEN__)
+#include <chrono>
+#include <condition_variable>
+#include <thread>
+#endif
+
 
 #ifdef SOLOUD_SSE_INTRINSICS
 #include <xmmintrin.h>
@@ -104,6 +110,26 @@ namespace SoLoud
 		mData = (float *)(((size_t)basePtr + 15)&~15);
 	}
 
+	// ###### flutter_soloud local patch (render-ahead worker) ######
+#if !defined(__EMSCRIPTEN__)
+	struct RenderWorker
+	{
+		RenderWorker() : mRunning(false), mStop(false), mWake(false) {}
+		std::thread mThread;
+		std::mutex mMutex;
+		std::condition_variable mCv;
+		// Read by the device callback.
+		std::atomic<bool> mRunning;
+		std::atomic<bool> mStop;
+		std::atomic<bool> mWake;
+	};
+#else
+	// The web build mixes in the device callback (no render-ahead ring).
+	struct RenderWorker
+	{
+	};
+#endif
+
 	Soloud::Soloud()
 	{
 #ifdef FLOATING_POINT_DEBUG
@@ -133,6 +159,10 @@ namespace SoLoud
 		mCheckpointWriteIndex = 0;
 		mCheckpointCounter = 0;
 		mMixingToRenderRing = false;
+		mRenderWorkerWanted = false;
+		mRenderWorker.store(NULL, std::memory_order_relaxed);
+		mRenderRingTimeOrigin.store(0.0, std::memory_order_relaxed);
+		mGlobalFilterMask.store(0, std::memory_order_relaxed);
 		mRemixing = false;
 		mRemixSuppressEndedCount = 0;
 		mClockedAnchorTime = 0;
@@ -194,6 +224,9 @@ namespace SoLoud
 		// let's stop all sounds before deinit, so we don't mess up our mutexes
 		stopAll();
 		deinit();
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		// deinit() joined the thread and the backend has stopped the device.
+		delete mRenderWorker.exchange(NULL);
 		unsigned int i;
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
@@ -210,11 +243,18 @@ namespace SoLoud
 	{
 		// Stop the audio callback from mixing (see mEngineReady) before
 		// tearing anything down.
-		mEngineReady = 0;
+		mEngineReady.store(0, std::memory_order_seq_cst);
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		stopRenderWorker_internal();
 		// Make sure no audio operation is currently pending
 		lockAudioMutex_internal();
 		unlockAudioMutex_internal();
-		SOLOUD_ASSERT(!mInsideAudioThreadMutex);
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		// No SOLOUD_ASSERT(!mInsideAudioThreadMutex) here: that flag belongs
+		// to whichever thread holds the mutex, and a device callback that
+		// was already running when mEngineReady was cleared may legitimately
+		// hold it now (it stops at the next quantum boundary); reading it
+		// unlocked would be a data race and a spurious abort.
 		stopAll();
 		if (mBackendCleanupFunc)
 			mBackendCleanupFunc(this);
@@ -631,7 +671,9 @@ namespace SoLoud
 			return UNKNOWN_ERROR;
 		// The engine is fully initialized; let the audio callback mix (see
 		// mEngineReady).
-		mEngineReady = 1;
+		mEngineReady.store(1, std::memory_order_seq_cst);
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		startRenderWorker_internal();
 		return 0;
 	}
 
@@ -653,7 +695,10 @@ namespace SoLoud
 
 
 	void Soloud::postinit_internal(unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aFlags, unsigned int aChannels)
-	{		
+	{
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		// The ring is reallocated below; nothing may be mixing into it.
+		stopRenderWorker_internal();
 		mGlobalVolume = 1;
 		mChannels = aChannels;
 		mSamplerate = aSamplerate;
@@ -775,6 +820,7 @@ namespace SoLoud
 			unsigned int capacity =
 				mRenderAheadFrames + aBufferSize + 4 * mDevicePeriodFrames;
 			mRenderRing.init(capacity, aChannels);
+			mRenderRingTimeOrigin.store(mStreamTime, std::memory_order_release);
 			mRenderRingStaging.init(aBufferSize * aChannels);
 			mPostRingScratch.init(mScratchSize * MAX_CHANNELS);
 			// ###### flutter_soloud local patch (mix checkpoints) ######
@@ -841,6 +887,44 @@ namespace SoLoud
 		return (time)(buffered + mDevicePeriodFrames) / (time)mSamplerate;
 	}
 
+	bool Soloud::renderRingMixQuantumLocked_internal()
+	{
+		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+		unsigned int stride = (mBufferSize + 15) & ~0xf;
+		time buffertime = (time)mBufferSize / (time)mSamplerate;
+		float globalVolume[2];
+
+		mMixingToRenderRing = true;
+		mStreamTime += buffertime;
+
+		globalVolume[0] = mGlobalVolume;
+		if (mGlobalVolumeFader.mActive)
+		{
+			mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
+		}
+		globalVolume[1] = mGlobalVolume;
+
+		mixVoicesLocked_internal(mBufferSize, stride);
+
+		const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
+		mVoiceInactiveCallbackPending = false;
+
+		// Global volume only: the ring holds the unclipped mix, and
+		// postProcessRenderRing_internal() clips after the global
+		// filters, as the direct mix path does.
+		applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+		interlace_samples_float(mScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
+		mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
+		// Ring frames and the mix clock advance in lockstep (a re-mix puts
+		// mStreamTime back where it was), so this stays constant; publishing
+		// it keeps the device callback independent of how it was set up.
+		mRenderRingTimeOrigin.store(
+			mStreamTime - (time)mRenderRing.getWritePosition() / (time)mSamplerate,
+			std::memory_order_release);
+		mMixingToRenderRing = false;
+		return notifyVoiceInactive;
+	}
+
 	void Soloud::renderRingTopUp_internal()
 	{
 		if (!mRenderRing.isInited() || mBufferSize == 0)
@@ -848,33 +932,15 @@ namespace SoLoud
 		while (mRenderRing.availableToRead() < mRenderAheadFrames &&
 			mRenderRing.availableToWrite() >= mBufferSize)
 		{
-			unsigned int stride = (mBufferSize + 15) & ~0xf;
-			time buffertime = (time)mBufferSize / (time)mSamplerate;
-			float globalVolume[2];
-
 			lockAudioMutex_internal();
-			mMixingToRenderRing = true;
-			mStreamTime += buffertime;
-
-			globalVolume[0] = mGlobalVolume;
-			if (mGlobalVolumeFader.mActive)
+			// deinit() clears mEngineReady and then takes the audio mutex
+			// once: no quantum may start after that.
+			if (mEngineReady.load(std::memory_order_acquire) == 0)
 			{
-				mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
+				unlockAudioMutex_internal();
+				return;
 			}
-			globalVolume[1] = mGlobalVolume;
-
-			mixVoicesLocked_internal(mBufferSize, stride);
-
-			const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
-			mVoiceInactiveCallbackPending = false;
-
-			// Global volume only: the ring holds the unclipped mix, and
-			// postProcessRenderRing_internal() clips after the global
-			// filters, as the direct mix path does.
-			applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
-			interlace_samples_float(mScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
-			mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
-			mMixingToRenderRing = false;
+			const bool notifyVoiceInactive = renderRingMixQuantumLocked_internal();
 			unlockAudioMutex_internal();
 
 			auto voiceInactiveCallback =
@@ -884,38 +950,211 @@ namespace SoLoud
 		}
 	}
 
+	void Soloud::renderRingTopUpNoWait_internal(unsigned int aFrames)
+	{
+		if (!mRenderRing.isInited() || mBufferSize == 0)
+			return;
+		while (mRenderRing.availableToRead() < aFrames &&
+			mRenderRing.availableToWrite() >= mBufferSize)
+		{
+			if (!tryLockAudioMutex_internal())
+				return;
+			if (mEngineReady.load(std::memory_order_acquire) == 0)
+			{
+				unlockAudioMutex_internal();
+				return;
+			}
+			const bool notifyVoiceInactive = renderRingMixQuantumLocked_internal();
+			unlockAudioMutex_internal();
+
+			auto voiceInactiveCallback =
+				_voiceInactiveCallback.load(std::memory_order_acquire);
+			if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
+				voiceInactiveCallback();
+		}
+	}
+
+	// ###### flutter_soloud local patch (render-ahead worker) ######
+#if !defined(__EMSCRIPTEN__)
+
+	static void renderWorkerLoop(Soloud *aSoloud, RenderWorker *aWorker)
+	{
+		Thread::raiseCurrentThreadPriority();
+		while (!aWorker->mStop.load(std::memory_order_acquire))
+		{
+			aSoloud->renderRingTopUp_internal();
+			std::unique_lock<std::mutex> lock(aWorker->mMutex);
+			// Woken by the device callback after every read. The timeout is
+			// only a safety net (the ring is full while it waits).
+			aWorker->mCv.wait_for(lock, std::chrono::milliseconds(100), [aWorker] {
+				return aWorker->mStop.load(std::memory_order_acquire) ||
+					aWorker->mWake.exchange(false, std::memory_order_acq_rel);
+			});
+		}
+	}
+#endif
+
+	void Soloud::startRenderWorker_internal()
+	{
+#if !defined(__EMSCRIPTEN__)
+		if (!mRenderWorkerWanted || !isRenderAheadEnabled() || !mRenderRing.isInited() ||
+			mBufferSize == 0 || mSamplerate == 0)
+			return;
+		RenderWorker *w = mRenderWorker.load(std::memory_order_acquire);
+		if (w == NULL)
+		{
+			w = new RenderWorker();
+			mRenderWorker.store(w, std::memory_order_release);
+		}
+		if (w->mThread.joinable())
+			return;
+		w->mStop.store(false, std::memory_order_release);
+		w->mWake.store(false, std::memory_order_release);
+		try
+		{
+			w->mThread = std::thread(renderWorkerLoop, this, w);
+		}
+		catch (...)
+		{
+			// No thread: the device callback keeps mixing itself.
+			return;
+		}
+		w->mRunning.store(true, std::memory_order_release);
+#endif
+	}
+
+	void Soloud::stopRenderWorker_internal()
+	{
+#if !defined(__EMSCRIPTEN__)
+		RenderWorker *w = mRenderWorker.load(std::memory_order_acquire);
+		if (w == NULL || !w->mThread.joinable())
+			return;
+		// The device callback mixes for itself again from here on.
+		w->mRunning.store(false, std::memory_order_release);
+		w->mStop.store(true, std::memory_order_release);
+		{
+			std::lock_guard<std::mutex> lock(w->mMutex);
+		}
+		w->mCv.notify_all();
+		w->mThread.join();
+#endif
+	}
+
+	bool Soloud::isRenderWorkerRunning_internal() const
+	{
+#if !defined(__EMSCRIPTEN__)
+		RenderWorker *w = mRenderWorker.load(std::memory_order_acquire);
+		return w != NULL && w->mRunning.load(std::memory_order_acquire);
+#else
+		return false;
+#endif
+	}
+
+	void Soloud::wakeRenderWorker_internal()
+	{
+#if !defined(__EMSCRIPTEN__)
+		RenderWorker *w = mRenderWorker.load(std::memory_order_acquire);
+		if (w == NULL || !w->mRunning.load(std::memory_order_acquire))
+			return;
+		w->mWake.store(true, std::memory_order_seq_cst);
+		// Passing through the mutex orders this wake with the worker's check
+		// of mWake: it either sees the flag or is already waiting and gets
+		// the notification. The worker only holds the mutex to check the
+		// flag, so a few attempts are enough; never block on it.
+		int attempt;
+		for (attempt = 0; attempt < 64; attempt++)
+		{
+			if (w->mMutex.try_lock())
+			{
+				w->mMutex.unlock();
+				break;
+			}
+		}
+		w->mCv.notify_one();
+#endif
+	}
+
+	bool Soloud::tryLockAudioMutex_internal()
+	{
+		if (mAudioThreadMutex && Thread::tryLockMutex(mAudioThreadMutex) != 0)
+			return false;
+		SOLOUD_ASSERT(!mInsideAudioThreadMutex);
+		mInsideAudioThreadMutex = true;
+		return true;
+	}
+
+	void Soloud::lockGlobalFilters_internal()
+	{
+		mGlobalFilterMutex.lock();
+	}
+
+	void Soloud::unlockGlobalFilters_internal()
+	{
+		mGlobalFilterMutex.unlock();
+	}
+
+	void Soloud::audioThreadBarrier_internal()
+	{
+		lockAudioMutex_internal();
+		unlockAudioMutex_internal();
+		lockGlobalFilters_internal();
+		unlockGlobalFilters_internal();
+	}
+
+	unsigned int Soloud::readRenderRingForDevice_internal(float *aBuffer, unsigned int aFrames)
+	{
+		const bool worker = isRenderWorkerRunning_internal();
+		if (!worker)
+		{
+			// No worker (none wanted, or it could not be started): mix here.
+			renderRingTopUp_internal();
+		}
+		else if (mRenderRing.availableToRead() < aFrames)
+		{
+			// The worker fell behind: mix what this read needs, but only if
+			// the audio mutex is free right now.
+			renderRingTopUpNoWait_internal(aFrames);
+		}
+		const unsigned int got = mRenderRing.read(aBuffer, aFrames);
+		if (worker)
+			wakeRenderWorker_internal();
+		if (got < aFrames)
+		{
+			const unsigned int channels = mRenderRing.getChannels();
+			memset(aBuffer + (size_t)got * channels, 0,
+				(size_t)(aFrames - got) * channels * sizeof(float));
+		}
+		postProcessRenderRing_internal(aBuffer, aFrames);
+		return got;
+	}
+
 	void Soloud::postProcessRenderRing_internal(float *aBuffer, unsigned int aSamples)
 	{
 		if (aSamples == 0 || mChannels == 0 || mScratchSize == 0 || mPostRingScratch.mData == NULL)
 			return;
-		// The global filters need the audio mutex; the clip below does not
-		// (clip_internal() runs unlocked on the direct mix path too), so the
-		// mutex is only held when there is a filter to run.
-		lockAudioMutex_internal();
-		bool anyFilter = false;
+		// Runs in the device callback. The global filters have their own lock
+		// (see lockGlobalFilters_internal()): the render worker holds the
+		// audio mutex while it mixes, and the device must not wait for that.
+		// The clip below needs no lock (clip_internal() runs unlocked on the
+		// direct mix path too), so the lock is only taken when there is a
+		// filter to run.
+		const bool anyFilter = mGlobalFilterMask.load(std::memory_order_acquire) != 0;
 		unsigned int i;
-		for (i = 0; i < FILTERS_PER_STREAM; i++)
-		{
-			if (mFilterInstance[i] != NULL)
-			{
-				anyFilter = true;
-				break;
-			}
-		}
 		time t = 0;
 		if (anyFilter)
 		{
-			// The device callback has already read aBuffer out of the ring,
-			// so the playhead now points just past it: step back to the time
-			// of its first frame.
-			t = playheadTimeLocked_internal();
+			lockGlobalFilters_internal();
+			// The device callback has already read aBuffer out of the ring:
+			// time its first frame from the ring position, not the mix clock
+			// (which needs the audio mutex).
+			const unsigned long long readPos = mRenderRing.getReadPosition();
+			const unsigned long long firstFrame = readPos > aSamples ? readPos - aSamples : 0;
 			if (mSamplerate > 0)
-				t -= (time)aSamples / (time)mSamplerate;
+				t = mRenderRingTimeOrigin.load(std::memory_order_acquire) +
+					(time)firstFrame / (time)mSamplerate;
 			if (t < 0)
 				t = 0;
 		}
-		else
-			unlockAudioMutex_internal();
 		unsigned int offset = 0;
 		unsigned int maxChunk = mScratchSize & ~0xfu;
 		if (maxChunk == 0)
@@ -1011,7 +1250,7 @@ namespace SoLoud
 			offset += chunk;
 		}
 		if (anyFilter)
-			unlockAudioMutex_internal();
+			unlockGlobalFilters_internal();
 	}
 
 	const char * Soloud::getErrorString(result aErrorCode) const
