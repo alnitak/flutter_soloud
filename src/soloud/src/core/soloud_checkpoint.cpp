@@ -1227,13 +1227,16 @@ namespace SoLoud
 
 		// Eligibility gate (plan §7): the checkpoint and every journaled
 		// in-window birth the replay would re-apply must be restorable.
+		// ">=" matches replayJournal_internal(): a birth exactly at the
+		// checkpoint time postdates the capture and is replayed, so a stale
+		// (non-restorable) one there must block the rollback too.
 		if (!cp.mRestorable)
 			return -1;
 		size_t j;
 		for (j = 0; j < mRetroJournal.size(); j++)
 		{
 			const RetroJournalEntry &e = mRetroJournal[j];
-			if (e.mTime > cp.mTime &&
+			if (e.mTime >= cp.mTime &&
 				e.mType == RetroJournalEntry::BIRTH && !e.mRestorable)
 				return -1;
 		}
@@ -1285,7 +1288,7 @@ namespace SoLoud
 		for (j = 0; j < mRetroJournal.size(); j++)
 		{
 			const RetroJournalEntry &e = mRetroJournal[j];
-			if (e.mType == RetroJournalEntry::BIRTH && e.mTime > cp.mTime &&
+			if (e.mType == RetroJournalEntry::BIRTH && e.mTime >= cp.mTime &&
 				e.mTime <= mStreamTime &&
 				(e.mSlot >= VOICE_COUNT || mVoice[e.mSlot] == NULL ||
 				 mVoice[e.mSlot]->mPlayIndex != e.mPlayIndex))
