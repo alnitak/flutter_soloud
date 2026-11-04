@@ -448,6 +448,9 @@ interface class SoLoud {
   /// The channels the engine was initialized with.
   Channels _channels = Channels.stereo;
 
+  /// The mix quantum (`bufferSize`) the engine was initialized with.
+  int _bufferSize = 2048;
+
   /// Initializes the audio engine.
   ///
   /// Run this before anything else, and `await` its result in a try/catch.
@@ -744,6 +747,7 @@ interface class SoLoud {
       // Store the initialization parameters for later use.
       _sampleRate = sampleRate;
       _channels = channels;
+      _bufferSize = bufferSize;
 
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
@@ -5154,8 +5158,10 @@ interface class SoLoud {
   /// - [format]: Input PCM format: [BufferType.f32le] (interleaved 32-bit
   ///   float, default), [BufferType.s16le] (interleaved 16-bit signed int), or
   ///   [BufferType.f32lePlanar] (contiguous channel-planar 32-bit float).
-  /// - [bufferFrames]: Forward ring buffer capacity in frames (rounded up to a
-  ///   power of two in native code, default `2048`).
+  /// - [bufferFrames]: Forward ring buffer capacity in frames (default
+  ///   `2048`). Native code rounds it up to a power of two and raises it to at
+  ///   least two engine mix quanta (the `bufferSize` given to [init], in
+  ///   stream frames), so a feeder can always keep one quantum buffered.
   /// - [historyFrames]: Minimum historical rewind window in frames retained
   ///   so the mixer can retroactively re-mix the currently playing window when
   ///   new samples arrive (default `4096`). Native code raises it as needed to
@@ -5205,6 +5211,9 @@ interface class SoLoud {
       format: format,
       bufferFrames: bufferFrames,
       historyFrames: historyFrames,
+      engineQuantumFrames: _sampleRate > 0
+          ? (_bufferSize * sampleRate / _sampleRate).ceil()
+          : _bufferSize,
     );
   }
 
@@ -5241,8 +5250,11 @@ interface class SoLoud {
   ///   the DSP callback) while inaudible, e.g. at zero volume (default
   ///   `true`). Applies to every voice of this source; see
   ///   [setInaudibleBehavior] to change it per voice.
-  /// - [killWhenInaudible]: Whether a voice is stopped as soon as it becomes
-  ///   inaudible (default `false`).
+  /// - [killWhenInaudible]: Whether a voice is stopped once it becomes
+  ///   inaudible (default `false`). As with [setInaudibleBehavior], the engine
+  ///   evaluates this during its 3D audio update, so it only takes effect for
+  ///   voices started with `play3d` (where distance attenuation makes them
+  ///   inaudible); a 2D voice faded to zero volume keeps playing.
   /// - [autoDispose]: Whether to dispose the source automatically when all
   ///   voices finish (default `false`).
   @experimental

@@ -193,6 +193,7 @@ class SoLoudIsolate {
     int bufferFrames = 2048,
     int historyFrames = 4096,
     SoundHandle? activeHandle,
+    int engineQuantumFrames = 0,
   }) => RealtimeStreamHandle.fromHash(
     soundHash: soundHash,
     sampleRate: sampleRate,
@@ -201,6 +202,7 @@ class SoLoudIsolate {
     bufferFrames: bufferFrames,
     historyFrames: historyFrames,
     activeHandle: activeHandle,
+    engineQuantumFrames: engineQuantumFrames,
   );
 
   /// Allocates a persistent [RealtimeNativeBuffer] in native/WASM memory for

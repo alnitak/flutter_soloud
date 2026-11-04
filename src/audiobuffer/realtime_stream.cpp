@@ -390,7 +390,21 @@ PlayerErrors RealtimeStream::init(Soloud *aEngine, unsigned int sampleRate,
         history,
         static_cast<size_t>(std::ceil(window)) + SAMPLE_GRANULARITY * 2);
   }
-  mRingBuffer.init(channels, bufferCapacityFrames, history);
+  // The engine pulls a whole mix quantum from the stream at a time, so a
+  // ring smaller than one quantum underruns on every mix whatever the
+  // feeder does. Keep room for two quanta (in stream frames) so a feeder
+  // can hold one quantum buffered while it refills.
+  size_t capacity = bufferCapacityFrames;
+  if (mEngine != nullptr && mEngine->mBufferSize > 0) {
+    double quantum = static_cast<double>(mEngine->mBufferSize);
+    if (mEngine->mSamplerate > 0) {
+      quantum = quantum * sampleRate / static_cast<double>(mEngine->mSamplerate);
+    }
+    capacity = std::max<size_t>(
+        capacity, static_cast<size_t>(std::ceil(2.0 * quantum)) +
+                      SAMPLE_GRANULARITY);
+  }
+  mRingBuffer.init(channels, capacity, history);
   return PlayerErrors::noError;
 }
 

@@ -223,6 +223,7 @@ final class RealtimeStreamHandle {
     required this.bufferFrames,
     required this.historyFrames,
     this.activeHandle,
+    this.engineQuantumFrames = 0,
   }) : soundHash = source.soundHash;
 
   /// Reconstructs a lightweight [RealtimeStreamHandle] from a [soundHash]
@@ -236,6 +237,7 @@ final class RealtimeStreamHandle {
     this.bufferFrames = 2048,
     this.historyFrames = 4096,
     this.activeHandle,
+    this.engineQuantumFrames = 0,
   }) : source = AudioSource(soundHash);
 
   /// The underlying [AudioSource] that can be passed to `SoLoud.instance.play`,
@@ -263,6 +265,29 @@ final class RealtimeStreamHandle {
   /// mixer re-mixing, as requested at creation. Native code raises it as
   /// needed to cover the render-ahead window.
   final int historyFrames;
+
+  /// Estimated number of this stream's frames the engine pulls in one mix
+  /// quantum (the `bufferSize` given to `SoLoud.instance.init`, converted to
+  /// the stream's sample rate), or `0` when unknown. The feeders' default
+  /// `targetBufferedFrames` stays above it: a fill level below one quantum
+  /// underruns on every mix.
+  final int engineQuantumFrames;
+
+  /// Default low watermark for the feeders: three chunks, raised to one
+  /// engine mix quantum plus two chunks of refill headroom, and capped by the
+  /// ring capacity.
+  int _defaultTargetBufferedFrames(int chunkFrames) {
+    var target = chunkFrames * 3;
+    if (engineQuantumFrames > 0 &&
+        engineQuantumFrames + chunkFrames * 2 > target) {
+      target = engineQuantumFrames + chunkFrames * 2;
+    }
+    final capacity = availableToRead + availableToWrite;
+    if (capacity > chunkFrames && target > capacity) {
+      target = capacity;
+    }
+    return target < chunkFrames ? chunkFrames : target;
+  }
 
   /// The currently bound active voice handle used for instantaneous
   /// playing-window mixer injection, if any.
@@ -315,7 +340,9 @@ final class RealtimeStreamHandle {
   ///   invocation (default `480`, i.e. 10 ms at 48 kHz). Must be `> 0` and
   ///   `<= bufferFrames`.
   /// - [targetBufferedFrames]: Low-watermark target fill level in frames
-  ///   (default `chunkFrames * 3`, i.e. 30 ms at 48 kHz). Whenever
+  ///   (default `chunkFrames * 3`, i.e. 30 ms at 48 kHz, raised to
+  ///   [engineQuantumFrames] plus two chunks when that is larger, since the
+  ///   engine pulls a whole mix quantum at a time). Whenever
   ///   [availableToRead] drops below this threshold, the feeder invokes
   ///   [onFeed] in `chunkFrames` increments until the buffer reaches
   ///   [targetBufferedFrames] or [onFeed] returns `< chunkFrames`.
@@ -345,7 +372,8 @@ final class RealtimeStreamHandle {
       onMessage: onMessage,
       onUiEvent: onUiEvent,
       chunkFrames: chunkFrames,
-      targetBufferedFrames: targetBufferedFrames ?? (chunkFrames * 3),
+      targetBufferedFrames:
+          targetBufferedFrames ?? _defaultTargetBufferedFrames(chunkFrames),
       tickInterval: tickInterval,
       useIsolate: useIsolate && !_kIsWeb,
       isInt16: false,
@@ -395,7 +423,9 @@ final class RealtimeStreamHandle {
   ///   invocation (default `480`, i.e. 10 ms at 48 kHz). Must be `> 0` and
   ///   `<= bufferFrames`.
   /// - [targetBufferedFrames]: Low-watermark target fill level in frames
-  ///   (default `chunkFrames * 3`, i.e. 30 ms at 48 kHz). Whenever
+  ///   (default `chunkFrames * 3`, i.e. 30 ms at 48 kHz, raised to
+  ///   [engineQuantumFrames] plus two chunks when that is larger, since the
+  ///   engine pulls a whole mix quantum at a time). Whenever
   ///   [availableToRead] drops below this threshold, the feeder invokes
   ///   [onFeed] in `chunkFrames` increments until the buffer reaches
   ///   [targetBufferedFrames] or [onFeed] returns `< chunkFrames`.
@@ -425,7 +455,8 @@ final class RealtimeStreamHandle {
       onMessage: onMessage,
       onUiEvent: onUiEvent,
       chunkFrames: chunkFrames,
-      targetBufferedFrames: targetBufferedFrames ?? (chunkFrames * 3),
+      targetBufferedFrames:
+          targetBufferedFrames ?? _defaultTargetBufferedFrames(chunkFrames),
       tickInterval: tickInterval,
       useIsolate: useIsolate && !_kIsWeb,
       isInt16: true,
