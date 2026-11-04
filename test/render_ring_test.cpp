@@ -471,7 +471,11 @@ void testRenderWorkerKeepsDeviceFed()
            withWorker, 3 * kDevicePeriod);
     const unsigned long long without = framesServedWhileMutexHeld(false, workerRan);
     EXPECT(!workerRan, "no worker was requested");
-    EXPECT(without <= kDevicePeriod,
+    // Without a worker each top-up mixes whole quanta, so the ring can sit up
+    // to kQuantum - 1 frames above kRenderAhead; reads that keep it at or
+    // above kRenderAhead need no lock. That allows at most kQuantum frames
+    // (two 512-frame reads) before the callback blocks on the mutex.
+    EXPECT(without <= kQuantum,
            "control: without a worker the callback should wait for the mutex (%llu frames)",
            without);
     std::printf("  device frames served during a 60 ms audio-mutex hold: %llu with the "
