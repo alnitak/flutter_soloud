@@ -62,21 +62,32 @@ namespace SoLoud
 		}
 
 		// Hands out a spare that aRefill(spare) accepted (it refills the
-		// spare in place and returns true), or NULL. At most one candidate
-		// per group is tried.
+		// spare in place and returns true), or NULL. A group can hold
+		// differently sized snapshots of one kind (e.g. an echo snapshot
+		// taken before its delay line existed, next to ones with it), so up
+		// to MAX_TRIES candidates per group are tried, newest first; a
+		// refill rejects a mismatch before copying anything.
+		enum { MAX_TRIES = 16 };
 		template <class F>
 		T *take(F aRefill)
 		{
 			unsigned int i;
 			for (i = 0; i < GROUPS; i++)
 			{
-				if (mItems[i].empty())
-					continue;
-				T *s = mItems[i].back();
-				if (aRefill(s))
+				std::vector<T *> &items = mItems[i];
+				size_t tries = 0;
+				size_t j = items.size();
+				while (j > 0 && tries < MAX_TRIES)
 				{
-					mItems[i].pop_back();
-					return s;
+					j--;
+					tries++;
+					T *s = items[j];
+					if (aRefill(s))
+					{
+						items[j] = items.back();
+						items.pop_back();
+						return s;
+					}
 				}
 			}
 			return 0;
