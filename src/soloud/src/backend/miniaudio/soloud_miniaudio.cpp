@@ -1202,7 +1202,10 @@ namespace SoLoud
 
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
     {
-        static bool first_call = true;
+        // Per callback thread, not per process: a device re-opened after
+        // deinit()/init() or a device change gets a new callback thread,
+        // which needs the same elevation.
+        static thread_local bool first_call = true;
         if (first_call) {
 #ifdef __ANDROID__
             int policy;
@@ -1286,15 +1289,20 @@ namespace SoLoud
             // API thread or an expensive mix never delays the device.
             unsigned int got =
                 soloud->readRenderRingForDevice_internal((float *)pOutput, frameCount);
-            if (got < frameCount)
+            if (got < frameCount && soloud->mRenderRing.getReadPosition() > got)
             {
                 // Underrun (silence was emitted for the gap). Recoverable on
                 // the next callback -- the render worker keeps producing.
-                static bool underrunLogged = false;
-                if (!underrunLogged)
+                // The very first callbacks can arrive before the first quantum
+                // is mixed; those are expected and not counted. Log the 1st,
+                // 2nd, 4th, 8th... occurrence so repeated underruns stay
+                // visible without flooding the log from the audio thread.
+                static std::atomic<unsigned int> underrunCount{0};
+                const unsigned int n =
+                    underrunCount.fetch_add(1, std::memory_order_relaxed) + 1;
+                if ((n & (n - 1)) == 0)
                 {
-                    underrunLogged = true;
-                    soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun (%u/%u frames)\n", got, frameCount);
+                    soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun #%u (%u/%u frames)\n", n, got, frameCount);
                 }
             }
             // The capture tap sits after the ring read, so it always reflects

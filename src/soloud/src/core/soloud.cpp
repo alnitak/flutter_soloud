@@ -1114,6 +1114,28 @@ namespace SoLoud
 			// The worker fell behind: mix what this read needs, but only if
 			// the audio mutex is free right now.
 			renderRingTopUpNoWait_internal(aFrames);
+			// Some backends deliver callbacks in back-to-back bursts (AAudio's
+			// non-low-latency path fires several callbacks within a
+			// millisecond), which drains the whole render-ahead window faster
+			// than the worker can be scheduled. When the try-lock above lost
+			// to the worker, the worker is mixing exactly the frames this read
+			// needs: wait a bounded time for them (re-trying the lock in case
+			// the mutex frees up) rather than emitting silence. The bound
+			// keeps a long API-thread hold from stalling the device.
+			if (mRenderRing.availableToRead() < aFrames && mSamplerate > 0)
+			{
+				const long long budgetUs =
+					(long long)aFrames * 1000000LL / (2LL * (long long)mSamplerate);
+				const std::chrono::steady_clock::time_point deadline =
+					std::chrono::steady_clock::now() + std::chrono::microseconds(budgetUs);
+				do
+				{
+					wakeRenderWorker_internal();
+					std::this_thread::yield();
+					renderRingTopUpNoWait_internal(aFrames);
+				} while (mRenderRing.availableToRead() < aFrames &&
+					std::chrono::steady_clock::now() < deadline);
+			}
 		}
 		const unsigned int got = mRenderRing.read(aBuffer, aFrames);
 		if (worker)
