@@ -199,11 +199,7 @@ void main(List<String> args) async {
             if (os == OS.linux) 'src/vst3/vst3_editor_linux.cpp',
             if (os == OS.windows) 'src/vst3/vst3_editor_windows.cpp',
           ],
-          includes: [
-            'src',
-            'src/vst3',
-            ...vst3.includeDirs,
-          ],
+          includes: ['src', 'src/vst3', ...vst3.includeDirs],
           defines: {
             'SOLOUD_ENABLE_VST3': '1',
             'SOLOUD_VST3_HELPER_MAIN': '1',
@@ -214,7 +210,10 @@ void main(List<String> args) async {
             },
           },
           flags: [
-            if (os == OS.windows) ...['/Ox', '/EHsc'] else ...[
+            if (os == OS.windows) ...[
+              '/Ox',
+              '/EHsc',
+            ] else ...[
               '-O3',
               '-fvisibility=hidden',
               '-Wno-unused-command-line-argument',
