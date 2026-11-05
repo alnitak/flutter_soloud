@@ -11,12 +11,14 @@
 #include <cstring>
 #include <vector>
 
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
-#include <emmintrin.h>
-#define SOLOUD_RT_SIMD_SSE2 1
-#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64) ||       \
+    defined(_M_ARM64EC)
 #include <arm_neon.h>
 #define SOLOUD_RT_SIMD_NEON 1
+#elif defined(__SSE2__) || defined(_M_X64) ||                                  \
+    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#include <emmintrin.h>
+#define SOLOUD_RT_SIMD_SSE2 1
 #elif defined(__wasm_simd128__)
 #include <wasm_simd128.h>
 #define SOLOUD_RT_SIMD_WASM 1
