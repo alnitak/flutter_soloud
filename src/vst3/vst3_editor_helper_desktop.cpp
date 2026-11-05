@@ -44,7 +44,7 @@ Vst3HostManager &Vst3HostManager::instance() {
 }
 Vst3HostManager::Vst3HostManager() = default;
 Vst3HostManager::~Vst3HostManager() = default;
-void Vst3HostManager::unloadAll() {}
+void Vst3HostManager::unloadAll(void (*)(void *), void *) {}
 } // namespace SoLoud
 
 namespace {
