@@ -36,11 +36,15 @@ namespace SoLoud
 		float *mBuffer;
 		int mBufferLength;
 		int mBufferMaxLength;
+		// Channels mBuffer was allocated for: it holds
+		// mBufferMaxLength * mBufferChannels floats.
+		int mBufferChannels;
 		int mOffset;
 
 	public:
 		virtual FilterStateSnapshot *captureState();
 		virtual void restoreState(FilterStateSnapshot *aSnapshot);
+		virtual bool captureStateInto(FilterStateSnapshot *aState);
 		virtual void filter(float *aBuffer, unsigned int aSamples, unsigned int aBufferSize, unsigned int aChannels, float aSamplerate, time aTime);
 		virtual ~EchoFilterInstance();
 		EchoFilterInstance(EchoFilter *aParent);

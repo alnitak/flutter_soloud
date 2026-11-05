@@ -1968,12 +1968,15 @@ PlayerErrors oscillateFilterParameter(
 /// //////////////////////////////////////
 /// Real-time PCM streaming & Custom DSP
 /// //////////////////////////////////////
+/// [historyFrames] is the minimum rewind window in frames (0 = default);
+/// native code raises it as needed to cover the render-ahead window.
 @ffi.Native<
   ffi.UnsignedInt Function(
     ffi.Pointer<ffi.UnsignedInt>,
     ffi.UnsignedInt,
     ffi.UnsignedInt,
     ffi.Int,
+    ffi.UnsignedInt,
     ffi.UnsignedInt,
   )
 >(symbol: 'setRealtimeStream')
@@ -1983,16 +1986,27 @@ external int _setRealtimeStream(
   int channels,
   int format,
   int bufferCapacityFrames,
+  int historyFrames,
 );
 
+/// [historyFrames] is the minimum rewind window in frames (0 = default);
+/// native code raises it as needed to cover the render-ahead window.
 PlayerErrors setRealtimeStream(
   ffi.Pointer<ffi.UnsignedInt> hash,
   int sampleRate,
   int channels,
   int format,
   int bufferCapacityFrames,
+  int historyFrames,
 ) => PlayerErrors.fromValue(
-  _setRealtimeStream(hash, sampleRate, channels, format, bufferCapacityFrames),
+  _setRealtimeStream(
+    hash,
+    sampleRate,
+    channels,
+    format,
+    bufferCapacityFrames,
+    historyFrames,
+  ),
 );
 
 @ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>(
@@ -2003,10 +2017,14 @@ external int _resetRealtimeStream(int hash);
 PlayerErrors resetRealtimeStream(int hash) =>
     PlayerErrors.fromValue(_resetRealtimeStream(hash));
 
+/// For the realtime pushes below, [numSamples] is the number of samples
+/// readable at [data]; a push whose numFrames * channels exceeds it is
+/// rejected and returns 0.
 @ffi.Native<
   ffi.UnsignedInt Function(
     ffi.UnsignedInt,
     ffi.Pointer<ffi.Float>,
+    ffi.UnsignedInt,
     ffi.UnsignedInt,
   )
 >()
@@ -2014,6 +2032,7 @@ external int pushRealtimeFloat32(
   int hash,
   ffi.Pointer<ffi.Float> data,
   int numFrames,
+  int numSamples,
 );
 
 @ffi.Native<
@@ -2021,12 +2040,14 @@ external int pushRealtimeFloat32(
     ffi.UnsignedInt,
     ffi.Pointer<ffi.Int16>,
     ffi.UnsignedInt,
+    ffi.UnsignedInt,
   )
 >()
 external int pushRealtimeInt16(
   int hash,
   ffi.Pointer<ffi.Int16> data,
   int numFrames,
+  int numSamples,
 );
 
 @ffi.Native<
@@ -2034,6 +2055,7 @@ external int pushRealtimeInt16(
     ffi.UnsignedInt,
     ffi.Double,
     ffi.Pointer<ffi.Float>,
+    ffi.UnsignedInt,
     ffi.UnsignedInt,
   )
 >()
@@ -2042,6 +2064,7 @@ external int pushRealtimeClockedFloat32(
   double soundTime,
   ffi.Pointer<ffi.Float> data,
   int numFrames,
+  int numSamples,
 );
 
 @ffi.Native<
@@ -2050,6 +2073,7 @@ external int pushRealtimeClockedFloat32(
     ffi.Double,
     ffi.Pointer<ffi.Float>,
     ffi.UnsignedInt,
+    ffi.UnsignedInt,
   )
 >()
 external int pushRealtimeScheduledFloat32(
@@ -2057,6 +2081,7 @@ external int pushRealtimeScheduledFloat32(
   double engineTime,
   ffi.Pointer<ffi.Float> data,
   int numFrames,
+  int numSamples,
 );
 
 @ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt)>()
@@ -2078,6 +2103,8 @@ external int getRealtimeUnderrunCount(int hash);
     SoLoudSourceInstanceLifecycleCallback_t,
     ffi.Bool,
     ffi.Pointer<ffi.Char>,
+    ffi.Bool,
+    ffi.Bool,
   )
 >(symbol: 'createCustomAudioSource')
 external int _createCustomAudioSource(
@@ -2089,8 +2116,14 @@ external int _createCustomAudioSource(
   SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
   bool singleInstance,
   ffi.Pointer<ffi.Char> webJsCallbackName,
+  bool mustTickWhenInaudible,
+  bool killWhenInaudible,
 );
 
+/// [lifecycleCallback] receives both the created (aIsCreated == 1) and the
+/// destroyed (aIsCreated == 0) event of every voice instance.
+/// [mustTickWhenInaudible] / [killWhenInaudible] set the source's inaudible
+/// behavior (see AudioSource::setInaudibleBehavior) for all its voices.
 PlayerErrors createCustomAudioSource(
   ffi.Pointer<ffi.UnsignedInt> hash,
   int sampleRate,
@@ -2100,6 +2133,8 @@ PlayerErrors createCustomAudioSource(
   SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
   bool singleInstance,
   ffi.Pointer<ffi.Char> webJsCallbackName,
+  bool mustTickWhenInaudible,
+  bool killWhenInaudible,
 ) => PlayerErrors.fromValue(
   _createCustomAudioSource(
     hash,
@@ -2110,6 +2145,8 @@ PlayerErrors createCustomAudioSource(
     lifecycleCallback,
     singleInstance,
     webJsCallbackName,
+    mustTickWhenInaudible,
+    killWhenInaudible,
   ),
 );
 

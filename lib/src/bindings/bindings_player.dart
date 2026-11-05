@@ -25,6 +25,26 @@ typedef OnAudioDurationCallbackTFunction = void Function(double duration);
 /// [offset] is the byte position in the original encoded stream.
 typedef OnMoreDataIsNeededCallbackTFunction = void Function(int offset);
 
+/// Picks the single native lifecycle callback of a custom audio source.
+///
+/// Native code has one lifecycle callback that receives both events (its
+/// `aIsCreated` argument is 1 on creation and 0 on destruction), so the two
+/// Dart-side addresses can only name the same function. Rejecting two
+/// different ones beats silently never calling one of them.
+@internal
+int customSourceLifecycleAddress(int createdAddress, int destroyedAddress) {
+  if (createdAddress != 0 &&
+      destroyedAddress != 0 &&
+      createdAddress != destroyedAddress) {
+    throw ArgumentError(
+      'onInstanceCreatedAddress and onInstanceDestroyedAddress must be the '
+      'same lifecycle callback: it receives aIsCreated = 1 when a voice '
+      'instance is created and 0 when it is destroyed.',
+    );
+  }
+  return createdAddress != 0 ? createdAddress : destroyedAddress;
+}
+
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
 abstract class FlutterSoLoud {
@@ -1636,6 +1656,10 @@ abstract class FlutterSoLoud {
   PlayerErrors resetRealtimeStream(SoundHash soundHash);
 
   /// Push Float32 PCM samples immediately into a real-time stream.
+  ///
+  /// In all realtime pushes, native code rejects (returns `0`) a push whose
+  /// `frameCount * channels` exceeds the samples available: `samples.length`,
+  /// or `sampleCapacity` for the address variants.
   @mustBeOverridden
   int pushRealtimeFloat32(
     int hash,
@@ -1651,6 +1675,7 @@ abstract class FlutterSoLoud {
     int handle,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   );
 
   /// Push Int16 PCM samples immediately into a real-time stream.
@@ -1669,6 +1694,7 @@ abstract class FlutterSoLoud {
     int handle,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   );
 
   /// Push Float32 PCM samples with clocked sub-buffer offset calculation.
@@ -1689,6 +1715,7 @@ abstract class FlutterSoLoud {
     double soundTime,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   );
 
   /// Push Float32 PCM samples scheduled at an absolute engine time.
@@ -1709,6 +1736,7 @@ abstract class FlutterSoLoud {
     double atTime,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   );
 
   /// Get available frames to read in the real-time stream ring buffer.

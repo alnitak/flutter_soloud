@@ -12,6 +12,12 @@ cd "$REPO_ROOT"
 
 OUT="${TMPDIR:-/tmp}/change_device_test"
 
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+# The analyzer the device callback feeds uses pffft, which is C.
+cc -std=gnu99 -O2 -c -I src/pffft -o "$WORK_DIR/pffft.o" src/pffft/pffft.c
+
 c++ -std=c++17 -O2 -Wall -Wextra -pthread \
     -DWITH_MINIAUDIO \
     -DNO_XIPH_LIBS \
@@ -20,9 +26,11 @@ c++ -std=c++17 -O2 -Wall -Wextra -pthread \
     -o "$OUT" \
     test/change_device_test.cpp \
     src/soloud_common.cpp \
+    src/analyzer.cpp \
     src/soloud/src/core/*.cpp \
     src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp \
     src/mixeroutput/*.cpp \
+    "$WORK_DIR/pffft.o" \
     -ldl -lm
 
 "$OUT"

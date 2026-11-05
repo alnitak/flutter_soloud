@@ -159,8 +159,22 @@ private:
   PreallocatedParameterChanges mOutputParamChanges;
   PreallocatedEventList mInputEvents;
 
+  // Single-consumer (the audio thread) queues with several producers: the
+  // plugin editor's GUI thread (performEdit) and the Dart thread
+  // (setParameterNormalized, setState, sendMidiNote). Producers serialize on
+  // the push mutexes so the SPSC queues only ever see one writer at a time;
+  // the audio thread pops without locking.
   LockFreeSpscQueue<Vst3ParamChangeEvent, 1024> mPendingParamQueue;
   LockFreeSpscQueue<Vst3MidiNoteEvent, 1024> mPendingMidiQueue;
+  std::mutex mParamQueuePushMutex;
+  std::mutex mMidiQueuePushMutex;
+
+  // MIDI events drained for the block being processed, with sample offsets
+  // relative to the block start. prepareAndProcessBlock() hands each one to
+  // the mMaxBlockSize chunk that contains it.
+  std::array<Steinberg::Vst::Event, PreallocatedEventList::kMaxEvents>
+      mBlockMidiEvents{};
+  size_t mBlockMidiCount = 0;
 
   // Maps SoLoud CustomFilterSlot param index (0..15) -> VST3 ParamID (-1 = unmapped)
   std::array<std::atomic<int64_t>, 16> mMappedSlotParams{};
@@ -186,13 +200,29 @@ public:
                           unsigned int sampleRate, unsigned int maxBlockSize,
                           unsigned int channels, int *outPluginHandle);
 
-  PlayerErrors unloadPlugin(int pluginHandle);
+  /// Unload one plugin. [audioThreadBarrier] has the same contract as for
+  /// unloadAll(): it runs after the plugin left the audio-thread lookup table
+  /// and before it is shut down.
+  PlayerErrors unloadPlugin(int pluginHandle,
+                            void (*audioThreadBarrier)(void *) = nullptr,
+                            void *barrierUserData = nullptr);
 
-  void unloadAll();
+  /// Unload every plugin and cached module.
+  ///
+  /// [audioThreadBarrier], when set, is invoked after every plugin has been
+  /// removed from the audio-thread lookup table and before any instance is
+  /// shut down or released. It must return only once no audio callback that
+  /// may have loaded a plugin pointer from the table is still running (for
+  /// SoLoud: acquire and release the audio mutex, which every mix holds).
+  /// Without it, callers must guarantee that no audio is being processed.
+  void unloadAll(void (*audioThreadBarrier)(void *) = nullptr,
+                 void *barrierUserData = nullptr);
 
   std::shared_ptr<Vst3PluginInstance> getPlugin(int pluginHandle);
 
   /// Lock-free lookup for the real-time audio thread (no mutex, no refcounting).
+  /// Returns nullptr for a handle whose plugin was unloaded, even if its table
+  /// slot now holds a newer plugin.
   Vst3PluginInstance *getPluginAudioThread(int pluginHandle) noexcept;
 
   VST3::Hosting::Module::Ptr getOrLoadModule(const std::string &bundlePath,
@@ -205,7 +235,18 @@ public:
   void setRestartComponentCallback(
       dartVst3RestartComponentCallback_t callback);
 
-  static constexpr size_t kMaxFastPlugins = 1024;
+  /// A handle is `(generation << kSlotBits) | slot`. The slot indexes the
+  /// lookup table and is reused; the generation is not (until it wraps after
+  /// ~2 million loads), so a stale handle still held by a filter slot or a
+  /// custom source never resolves to a plugin loaded later into its slot.
+  static constexpr unsigned int kSlotBits = 10;
+  static constexpr size_t kMaxFastPlugins = size_t{1} << kSlotBits;
+  static constexpr uint32_t kMaxGeneration = (1u << (31 - kSlotBits)) - 1;
+  static size_t slotOf(int pluginHandle) noexcept {
+    return pluginHandle > 0
+               ? static_cast<size_t>(pluginHandle) & (kMaxFastPlugins - 1)
+               : 0;
+  }
 
 private:
   Vst3HostManager();
@@ -213,7 +254,7 @@ private:
 
   mutable std::mutex mMutex;
   Steinberg::Vst::HostApplication mHostApp;
-  int mNextHandle = 1;
+  uint32_t mNextGeneration = 1;
   std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> mPlugins;
   std::array<std::atomic<Vst3PluginInstance *>, kMaxFastPlugins> mPluginTable{};
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> mLoadedModules;

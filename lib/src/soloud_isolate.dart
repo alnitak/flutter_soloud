@@ -193,6 +193,7 @@ class SoLoudIsolate {
     int bufferFrames = 2048,
     int historyFrames = 4096,
     SoundHandle? activeHandle,
+    int engineQuantumFrames = 0,
   }) => RealtimeStreamHandle.fromHash(
     soundHash: soundHash,
     sampleRate: sampleRate,
@@ -201,6 +202,7 @@ class SoLoudIsolate {
     bufferFrames: bufferFrames,
     historyFrames: historyFrames,
     activeHandle: activeHandle,
+    engineQuantumFrames: engineQuantumFrames,
   );
 
   /// Allocates a persistent [RealtimeNativeBuffer] in native/WASM memory for
@@ -213,6 +215,9 @@ class SoLoudIsolate {
 
   /// Pushes Float32 PCM samples directly into the real-time stream identified
   /// by [soundHash] from a worker isolate.
+  ///
+  /// Returns the number of frames written. Nothing is written (`0`) if
+  /// [frameCount] times the stream's channel count exceeds `samples.length`.
   @experimental
   int pushRealtimeFloat32(
     SoundHash soundHash,
@@ -228,6 +233,9 @@ class SoLoudIsolate {
 
   /// Pushes Int16 PCM samples directly into the real-time stream identified
   /// by [soundHash] from a worker isolate.
+  ///
+  /// Returns the number of frames written. Nothing is written (`0`) if
+  /// [frameCount] times the stream's channel count exceeds `samples.length`.
   @experimental
   int pushRealtimeInt16(
     SoundHash soundHash,

@@ -6,8 +6,18 @@
 * Interleaved float32 ring sitting between the engine mixer and the output
 * device. The mixer (or a retroactive re-mix) is the single writer, always
 * serialized by the engine audio mutex; the miniaudio device callback is the
-* single reader and never blocks: positions are monotonic 64-bit frame
+* single reader and takes no lock: positions are monotonic 64-bit frame
 * counters read through atomics, so the read side is lock-free SPSC.
+*
+* Appends never touch unread frames, but a retroactive re-mix overwrites
+* frames the device has not consumed yet (rewrite()/rewriteCrossfade()), so
+* those two must never touch the same storage at once. The reader publishes
+* the end of the span it is about to copy (mReadReserve) and the writer
+* publishes the first frame it is about to overwrite (mRewriteFence); both
+* sides store their own marker and then load the other's with seq_cst, so at
+* least one of them sees the other: either the writer starts its rewrite past
+* the reader's span (beginRewrite() returns that position), or the reader
+* stops at the fence and waits for endRewrite(), which is only a memcpy away.
 *
 * Monotonic counters (never wrapped) remove the empty/full ambiguity; the
 * buffer index is `position % mCapacityFrames`. 64-bit frame positions wrap
@@ -18,6 +28,7 @@
 #define SOLOUD_RENDER_RING_H
 
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <vector>
 
@@ -34,11 +45,16 @@ namespace SoLoud
 	class RenderRing
 	{
 	public:
+		// No rewrite in progress.
+		static const unsigned long long NO_FENCE = ~0ull;
+
 		RenderRing() :
 			mChannels(0),
 			mCapacityFrames(0),
 			mWritePos(0),
-			mReadPos(0)
+			mReadPos(0),
+			mReadReserve(0),
+			mRewriteFence(NO_FENCE)
 		{
 		}
 
@@ -51,6 +67,8 @@ namespace SoLoud
 			mCapacityFrames = aCapacityFrames;
 			mWritePos.store(0, std::memory_order_release);
 			mReadPos.store(0, std::memory_order_release);
+			mReadReserve.store(0, std::memory_order_release);
+			mRewriteFence.store(NO_FENCE, std::memory_order_release);
 		}
 
 		void clear()
@@ -60,6 +78,8 @@ namespace SoLoud
 			mCapacityFrames = 0;
 			mWritePos.store(0, std::memory_order_release);
 			mReadPos.store(0, std::memory_order_release);
+			mReadReserve.store(0, std::memory_order_release);
+			mRewriteFence.store(NO_FENCE, std::memory_order_release);
 		}
 
 		bool isInited() const
@@ -129,9 +149,27 @@ namespace SoLoud
 			return aFrames;
 		}
 
+		// Writer side of a retroactive rewrite. Announces that frames from
+		// aPos on are about to be overwritten and returns the first frame the
+		// writer may actually touch: aPos, or later when the device is reading
+		// (or has already read) past it. Every rewrite()/rewriteCrossfade()
+		// must start at or after the returned position and happen before the
+		// matching endRewrite(); the reader does not cross aPos in between.
+		unsigned long long beginRewrite(unsigned long long aPos)
+		{
+			mRewriteFence.store(aPos, std::memory_order_seq_cst);
+			const unsigned long long reserved = mReadReserve.load(std::memory_order_seq_cst);
+			return aPos > reserved ? aPos : reserved;
+		}
+
+		void endRewrite()
+		{
+			mRewriteFence.store(NO_FENCE, std::memory_order_seq_cst);
+		}
+
 		// Overwrite frames at an absolute position (Phase 3 retroactive
-		// re-mix). aPos must be >= read head; frames at/behind the read head
-		// belong to the device and are never touched.
+		// re-mix). Only between beginRewrite() and endRewrite(), starting at
+		// or after the position beginRewrite() returned.
 		void rewrite(unsigned long long aPos, const float *aSrc, unsigned int aFrames)
 		{
 			unsigned int offset = (unsigned int)(aPos % mCapacityFrames);
@@ -214,7 +252,9 @@ namespace SoLoud
 		}
 
 		// Move the write head back (Phase 3). Caller guarantees
-		// aNewWritePos >= read head and <= current write head.
+		// aNewWritePos >= read head and <= current write head. Not
+		// coordinated with a concurrent read() (later appends may overwrite
+		// frames it is copying): only for use while no reader runs.
 		void rewindWrite(unsigned long long aNewWritePos)
 		{
 			mWritePos.store(aNewWritePos, std::memory_order_release);
@@ -222,15 +262,61 @@ namespace SoLoud
 
 		// Consume frames into aDst (reader/device side). Returns frames
 		// actually read; the caller silence-fills any remainder (underrun).
-		unsigned int read(float *aDst, unsigned int aFrames)
+		// Never blocks on a lock: when a rewrite is overwriting the frames it
+		// needs, it waits at most aMaxRewriteWaitMicros for that rewrite's
+		// memcpy to finish and otherwise returns the frames before it.
+		unsigned int read(float *aDst, unsigned int aFrames, unsigned int aMaxRewriteWaitMicros = 500)
 		{
 			unsigned int avail = availableToRead();
 			if (aFrames > avail)
 				aFrames = avail;
 			if (aFrames == 0)
 				return 0;
-			unsigned long long r = mReadPos.load(std::memory_order_relaxed);
-			unsigned int offset = (unsigned int)(r % mCapacityFrames);
+			const unsigned long long r = mReadPos.load(std::memory_order_relaxed);
+			const unsigned long long end = r + aFrames;
+			// Claim [r, end) before looking at the fence (see the header).
+			mReadReserve.store(end, std::memory_order_seq_cst);
+			unsigned long long fence = mRewriteFence.load(std::memory_order_seq_cst);
+			unsigned long long done = r;
+			std::chrono::steady_clock::time_point deadline;
+			bool waiting = false;
+			for (;;)
+			{
+				unsigned long long limit = end;
+				if (fence < limit)
+					limit = fence > done ? fence : done;
+				if (limit > done)
+				{
+					copyOut(aDst + (size_t)(done - r) * mChannels, done, (unsigned int)(limit - done));
+					done = limit;
+				}
+				if (done >= end)
+					break;
+				// A rewrite holds the frames from `fence` on. It only lasts a
+				// memcpy, so spin until it ends rather than drop the frames.
+				if (!waiting)
+				{
+					waiting = true;
+					deadline = std::chrono::steady_clock::now() +
+						std::chrono::microseconds(aMaxRewriteWaitMicros);
+				}
+				else if (std::chrono::steady_clock::now() >= deadline)
+				{
+					break;
+				}
+				cpuRelax();
+				fence = mRewriteFence.load(std::memory_order_seq_cst);
+			}
+			mReadPos.store(done, std::memory_order_release);
+			if (done != end)
+				mReadReserve.store(done, std::memory_order_seq_cst);
+			return (unsigned int)(done - r);
+		}
+
+	private:
+		void copyOut(float *aDst, unsigned long long aPos, unsigned int aFrames) const
+		{
+			unsigned int offset = (unsigned int)(aPos % mCapacityFrames);
 			unsigned int first = mCapacityFrames - offset;
 			if (first > aFrames)
 				first = aFrames;
@@ -242,16 +328,26 @@ namespace SoLoud
 				std::memcpy(aDst + (size_t)first * mChannels, mBuffer.data(),
 							(size_t)second * mChannels * sizeof(float));
 			}
-			mReadPos.store(r + aFrames, std::memory_order_release);
-			return aFrames;
 		}
 
-	private:
+		static void cpuRelax()
+		{
+#if defined(SOLOUD_SSE_INTRINSICS)
+			_mm_pause();
+#elif defined(__aarch64__) || defined(__arm__)
+			__asm__ __volatile__("yield");
+#endif
+		}
+
 		std::vector<float> mBuffer;
 		unsigned int mChannels;
 		unsigned int mCapacityFrames;
 		std::atomic<unsigned long long> mWritePos;
 		std::atomic<unsigned long long> mReadPos;
+		// Reader: end of the span it may be copying (== mReadPos when idle).
+		std::atomic<unsigned long long> mReadReserve;
+		// Writer: first frame a rewrite in progress may overwrite.
+		std::atomic<unsigned long long> mRewriteFence;
 	};
 };
 

@@ -223,6 +223,7 @@ final class RealtimeStreamHandle {
     required this.bufferFrames,
     required this.historyFrames,
     this.activeHandle,
+    this.engineQuantumFrames = 0,
   }) : soundHash = source.soundHash;
 
   /// Reconstructs a lightweight [RealtimeStreamHandle] from a [soundHash]
@@ -236,6 +237,7 @@ final class RealtimeStreamHandle {
     this.bufferFrames = 2048,
     this.historyFrames = 4096,
     this.activeHandle,
+    this.engineQuantumFrames = 0,
   }) : source = AudioSource(soundHash);
 
   /// The underlying [AudioSource] that can be passed to `SoLoud.instance.play`,
@@ -259,9 +261,33 @@ final class RealtimeStreamHandle {
   /// native code).
   final int bufferFrames;
 
-  /// Historical rewind window in frames retained for retroactive mixer
-  /// re-mixing.
+  /// Minimum historical rewind window in frames retained for retroactive
+  /// mixer re-mixing, as requested at creation. Native code raises it as
+  /// needed to cover the render-ahead window.
   final int historyFrames;
+
+  /// Estimated number of this stream's frames the engine pulls in one mix
+  /// quantum (the `bufferSize` given to `SoLoud.instance.init`, converted to
+  /// the stream's sample rate), or `0` when unknown. The feeders' default
+  /// `targetBufferedFrames` stays above it: a fill level below one quantum
+  /// underruns on every mix.
+  final int engineQuantumFrames;
+
+  /// Default low watermark for the feeders: three chunks, raised to one
+  /// engine mix quantum plus two chunks of refill headroom, and capped by the
+  /// ring capacity.
+  int _defaultTargetBufferedFrames(int chunkFrames) {
+    var target = chunkFrames * 3;
+    if (engineQuantumFrames > 0 &&
+        engineQuantumFrames + chunkFrames * 2 > target) {
+      target = engineQuantumFrames + chunkFrames * 2;
+    }
+    final capacity = availableToRead + availableToWrite;
+    if (capacity > chunkFrames && target > capacity) {
+      target = capacity;
+    }
+    return target < chunkFrames ? chunkFrames : target;
+  }
 
   /// The currently bound active voice handle used for instantaneous
   /// playing-window mixer injection, if any.
@@ -314,7 +340,9 @@ final class RealtimeStreamHandle {
   ///   invocation (default `480`, i.e. 10 ms at 48 kHz). Must be `> 0` and
   ///   `<= bufferFrames`.
   /// - [targetBufferedFrames]: Low-watermark target fill level in frames
-  ///   (default `chunkFrames * 3`, i.e. 30 ms at 48 kHz). Whenever
+  ///   (default `chunkFrames * 3`, i.e. 30 ms at 48 kHz, raised to
+  ///   [engineQuantumFrames] plus two chunks when that is larger, since the
+  ///   engine pulls a whole mix quantum at a time). Whenever
   ///   [availableToRead] drops below this threshold, the feeder invokes
   ///   [onFeed] in `chunkFrames` increments until the buffer reaches
   ///   [targetBufferedFrames] or [onFeed] returns `< chunkFrames`.
@@ -344,7 +372,8 @@ final class RealtimeStreamHandle {
       onMessage: onMessage,
       onUiEvent: onUiEvent,
       chunkFrames: chunkFrames,
-      targetBufferedFrames: targetBufferedFrames ?? (chunkFrames * 3),
+      targetBufferedFrames:
+          targetBufferedFrames ?? _defaultTargetBufferedFrames(chunkFrames),
       tickInterval: tickInterval,
       useIsolate: useIsolate && !_kIsWeb,
       isInt16: false,
@@ -394,7 +423,9 @@ final class RealtimeStreamHandle {
   ///   invocation (default `480`, i.e. 10 ms at 48 kHz). Must be `> 0` and
   ///   `<= bufferFrames`.
   /// - [targetBufferedFrames]: Low-watermark target fill level in frames
-  ///   (default `chunkFrames * 3`, i.e. 30 ms at 48 kHz). Whenever
+  ///   (default `chunkFrames * 3`, i.e. 30 ms at 48 kHz, raised to
+  ///   [engineQuantumFrames] plus two chunks when that is larger, since the
+  ///   engine pulls a whole mix quantum at a time). Whenever
   ///   [availableToRead] drops below this threshold, the feeder invokes
   ///   [onFeed] in `chunkFrames` increments until the buffer reaches
   ///   [targetBufferedFrames] or [onFeed] returns `< chunkFrames`.
@@ -424,7 +455,8 @@ final class RealtimeStreamHandle {
       onMessage: onMessage,
       onUiEvent: onUiEvent,
       chunkFrames: chunkFrames,
-      targetBufferedFrames: targetBufferedFrames ?? (chunkFrames * 3),
+      targetBufferedFrames:
+          targetBufferedFrames ?? _defaultTargetBufferedFrames(chunkFrames),
       tickInterval: tickInterval,
       useIsolate: useIsolate && !_kIsWeb,
       isInt16: true,
@@ -464,9 +496,10 @@ final class RealtimeStreamHandle {
   ///    instantaneously into the currently playing mixer window.
   ///
   /// ### Interpreting [underrunCount]
-  /// - **At startup (`1`)**: Calling `SoLoud.instance.play(stream.source)`
-  ///   before pushing initial audio frames causes the first mixer callback to
-  ///   observe an empty buffer (`underrunCount == 1`), which is normal.
+  /// - **At startup (`0`)**: Calling `SoLoud.instance.play(stream.source)`
+  ///   before pushing initial audio frames makes the first mixer callbacks
+  ///   observe an empty buffer. That is not counted: only running dry after
+  ///   audio has been playing is.
   /// - **When stopping a generator (`+1`)**: Intentionally stopping sample
   ///   production (e.g. pausing a sequencer or finishing a one-shot note) lets
   ///   the remaining buffered frames play out to `0`, incrementing
@@ -478,11 +511,30 @@ final class RealtimeStreamHandle {
   int get underrunCount =>
       SoLoudController().soLoudFFI.getRealtimeUnderrunCount(soundHash.hash);
 
-  /// Clears all unread frames in the ring buffer and resets the underrun count.
+  /// Clears all unread frames in the ring buffer, drops any pending scheduled
+  /// gaps, and resets [underrunCount] to `0`.
+  ///
+  /// Frames the mixer has already rendered into the render-ahead window (when
+  /// `renderAheadFrames > 0`) still play; the discarded frames are never
+  /// played, even if the window is later re-mixed.
   void reset() {
     final error = SoLoudController().soLoudFFI.resetRealtimeStream(soundHash);
     if (error != PlayerErrors.noError) {
       throw SoLoudCppException.fromPlayerError(error);
+    }
+  }
+
+  /// Throws if [frames] frames of this stream's [channels] do not fit in
+  /// [sampleCount] samples, instead of letting native code read past the
+  /// caller's list.
+  void _checkFramesFit(int frames, int sampleCount) {
+    if (frames * channels.count > sampleCount) {
+      throw ArgumentError.value(
+        frames,
+        'frameCount',
+        'needs ${frames * channels.count} samples for ${channels.count} '
+            'channel(s), but only $sampleCount were given',
+      );
     }
   }
 
@@ -507,6 +559,7 @@ final class RealtimeStreamHandle {
   }) {
     final frames = frameCount ?? (samples.length ~/ channels.count);
     if (frames <= 0) return 0;
+    _checkFramesFit(frames, samples.length);
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeFloat32(
       soundHash.hash,
@@ -528,6 +581,7 @@ final class RealtimeStreamHandle {
   }) {
     final frames = frameCount ?? (samples.length ~/ channels.count);
     if (frames <= 0) return 0;
+    _checkFramesFit(frames, samples.length);
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeInt16(
       soundHash.hash,
@@ -544,6 +598,10 @@ final class RealtimeStreamHandle {
   /// their sub-buffer timing offsets and are spliced into the currently playing
   /// mixer window when `renderAheadFrames > 0` is enabled.
   ///
+  /// Chunks of one stream never overlap: if audio pushed earlier is still
+  /// queued past the requested time, these samples start right after it;
+  /// if it ends earlier, the stream is silent until the requested time.
+  ///
   /// Returns the number of frames actually written (`0..frameCount`).
   int pushClockedFloat32(
     Duration soundTime,
@@ -553,6 +611,7 @@ final class RealtimeStreamHandle {
   }) {
     final frames = frameCount ?? (samples.length ~/ channels.count);
     if (frames <= 0) return 0;
+    _checkFramesFit(frames, samples.length);
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeClockedFloat32(
       soundHash.hash,
@@ -570,7 +629,14 @@ final class RealtimeStreamHandle {
   /// If [atTime] falls inside the currently playing render-ahead window, the
   /// mixer rewinds to [atTime] and splices the samples with sample accuracy.
   ///
-  /// Returns the number of frames actually written (`0..frameCount`).
+  /// Chunks of one stream never overlap: if audio pushed earlier is still
+  /// queued past [atTime], these samples start right after it; if it ends
+  /// earlier, the stream is silent until [atTime]. Several future chunks can
+  /// be scheduled back to back this way.
+  ///
+  /// Returns the number of frames actually written (`0..frameCount`). `0`
+  /// is also returned when 256 silent gaps between scheduled chunks are
+  /// already pending; push again once some of them have played.
   int pushScheduledFloat32(
     Duration atTime,
     Float32List samples, {
@@ -579,6 +645,7 @@ final class RealtimeStreamHandle {
   }) {
     final frames = frameCount ?? (samples.length ~/ channels.count);
     if (frames <= 0) return 0;
+    _checkFramesFit(frames, samples.length);
     final handleId = (voiceHandle ?? activeHandle)?.id ?? 0;
     return SoLoudController().soLoudFFI.pushRealtimeScheduledFloat32(
       soundHash.hash,
@@ -609,6 +676,7 @@ final class RealtimeStreamHandle {
       handleId,
       buffer.address,
       clampedFrames,
+      buffer._totalSamples,
     );
   }
 
@@ -632,6 +700,7 @@ final class RealtimeStreamHandle {
       handleId,
       buffer.address,
       clampedFrames,
+      buffer._totalSamples,
     );
   }
 
@@ -657,6 +726,7 @@ final class RealtimeStreamHandle {
       soundTime.toDouble(),
       buffer.address,
       clampedFrames,
+      buffer._totalSamples,
     );
   }
 
@@ -682,6 +752,7 @@ final class RealtimeStreamHandle {
       atTime.toDouble(),
       buffer.address,
       clampedFrames,
+      buffer._totalSamples,
     );
   }
 }

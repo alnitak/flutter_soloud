@@ -25,13 +25,25 @@ public:
 
   FilterStateSnapshot *captureState() override;
   void restoreState(FilterStateSnapshot *aState) override;
+  bool captureStateInto(FilterStateSnapshot *aState) override;
 
 private:
   void invokeCallback(float *aBuffer, unsigned int aSamples,
                       unsigned int aBufferSize, unsigned int aChannels,
                       float aSamplerate, time aTime);
 
+  void blendPartialWet(float *aBuffer, unsigned int aSamples,
+                       unsigned int aBufferSize, unsigned int aChannels,
+                       float aSamplerate, time aTime, float aWet);
+
+  /// Frames per channel the dry-signal scratch holds. Blocks larger than this
+  /// (global or bus filters on a large engine quantum) are blended in chunks
+  /// of this size, so `filter()` never allocates on the audio thread.
+  static constexpr unsigned int kDryScratchFrames = SAMPLE_GRANULARITY;
+
   CustomFilter *mParent;
+  /// Dry copy for the partial-wet blend. Sized once in the constructor (on
+  /// the thread that creates the instance) and never resized afterwards.
   std::vector<float> mDryScratch;
 };
 

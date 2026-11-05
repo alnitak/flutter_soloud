@@ -155,9 +155,21 @@ namespace SoLoud
 		Fader mParamFader[4];
 	};
 
+	static const char kBiquadSnapshotKind = 0;
+
 	FilterStateSnapshot *BiquadResonantFilterInstance::captureState()
 	{
 		BQRFilterSnapshot *s = new BQRFilterSnapshot();
+		s->mKind = &kBiquadSnapshotKind;
+		captureStateInto(s);
+		return s;
+	}
+
+	bool BiquadResonantFilterInstance::captureStateInto(FilterStateSnapshot *aSnapshot)
+	{
+		if (aSnapshot == NULL || aSnapshot->mKind != &kBiquadSnapshotKind)
+			return false;
+		BQRFilterSnapshot *s = static_cast<BQRFilterSnapshot *>(aSnapshot);
 		int i;
 		for (i = 0; i < 8; i++)
 			s->mState[i] = mState[i];
@@ -174,7 +186,7 @@ namespace SoLoud
 			s->mParam[i] = mParam[i];
 			s->mParamFader[i] = mParamFader[i];
 		}
-		return s;
+		return true;
 	}
 
 	void BiquadResonantFilterInstance::restoreState(FilterStateSnapshot *aSnapshot)

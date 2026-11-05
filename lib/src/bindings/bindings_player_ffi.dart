@@ -2276,6 +2276,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       channels,
       format,
       bufferFrames,
+      historyFrames,
     );
     final soundHash = SoundHash.fromValue(hash.value);
     final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
@@ -2301,7 +2302,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
     ptr.asTypedList(samples.length).setAll(0, samples);
-    return native.pushRealtimeFloat32(hash, ptr, frameCount);
+    return native.pushRealtimeFloat32(hash, ptr, frameCount, samples.length);
   }
 
   @override
@@ -2310,6 +2311,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int handle,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   ) {
     if (frameCount <= 0 || samplesAddress == 0) {
       return 0;
@@ -2318,6 +2320,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       hash,
       ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
       frameCount,
+      sampleCapacity,
     );
   }
 
@@ -2333,7 +2336,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Int16>();
     ptr.asTypedList(samples.length).setAll(0, samples);
-    return native.pushRealtimeInt16(hash, ptr, frameCount);
+    return native.pushRealtimeInt16(hash, ptr, frameCount, samples.length);
   }
 
   @override
@@ -2342,6 +2345,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int handle,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   ) {
     if (frameCount <= 0 || samplesAddress == 0) {
       return 0;
@@ -2350,6 +2354,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       hash,
       ffi.Pointer<ffi.Int16>.fromAddress(samplesAddress),
       frameCount,
+      sampleCapacity,
     );
   }
 
@@ -2366,7 +2371,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
     ptr.asTypedList(samples.length).setAll(0, samples);
-    return native.pushRealtimeClockedFloat32(hash, soundTime, ptr, frameCount);
+    return native.pushRealtimeClockedFloat32(
+      hash,
+      soundTime,
+      ptr,
+      frameCount,
+      samples.length,
+    );
   }
 
   @override
@@ -2376,6 +2387,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double soundTime,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   ) {
     if (frameCount <= 0 || samplesAddress == 0) {
       return 0;
@@ -2385,6 +2397,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       soundTime,
       ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
       frameCount,
+      sampleCapacity,
     );
   }
 
@@ -2401,7 +2414,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
     ptr.asTypedList(samples.length).setAll(0, samples);
-    return native.pushRealtimeScheduledFloat32(hash, atTime, ptr, frameCount);
+    return native.pushRealtimeScheduledFloat32(
+      hash,
+      atTime,
+      ptr,
+      frameCount,
+      samples.length,
+    );
   }
 
   @override
@@ -2411,6 +2430,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double atTime,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   ) {
     if (frameCount <= 0 || samplesAddress == 0) {
       return 0;
@@ -2420,6 +2440,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       atTime,
       ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
       frameCount,
+      sampleCapacity,
     );
   }
 
@@ -2478,9 +2499,10 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     final cWebName = webJsFunctionName != null && webJsFunctionName.isNotEmpty
         ? webJsFunctionName.toNativeUtf8()
         : ffi.nullptr;
-    final lifecycleAddress = onInstanceCreatedAddress != 0
-        ? onInstanceCreatedAddress
-        : onInstanceDestroyedAddress;
+    final lifecycleAddress = customSourceLifecycleAddress(
+      onInstanceCreatedAddress,
+      onInstanceDestroyedAddress,
+    );
     final e = native.createCustomAudioSource(
       hash,
       sampleRate,
@@ -2502,6 +2524,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
             >.fromAddress(lifecycleAddress),
       false,
       cWebName == ffi.nullptr ? ffi.nullptr : cWebName.cast<ffi.Char>(),
+      mustTickWhenInaudible,
+      killWhenInaudible,
     );
     if (cWebName != ffi.nullptr) {
       calloc.free(cWebName);

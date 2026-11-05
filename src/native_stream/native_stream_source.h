@@ -55,6 +55,7 @@ namespace SoLoud
 		result rewind() override;
 		bool hasEnded() override;
 		SourceStateSnapshot *captureSourceState() override;
+		bool captureSourceStateInto(SourceStateSnapshot *aState) override;
 		void restoreSourceState(SourceStateSnapshot *aState) override;
 		bool canRestoreSourceState(SourceStateSnapshot *aState) override;
 

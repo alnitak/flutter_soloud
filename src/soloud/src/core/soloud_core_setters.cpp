@@ -41,8 +41,14 @@ namespace SoLoud
 
 	void Soloud::setGlobalVolume(float aVolume)
 	{
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The mixer reads both under the audio mutex, and checkpoints restore
+		// them.
+		lockAudioMutex_internal();
 		mGlobalVolumeFader.mActive = 0;
 		mGlobalVolume = aVolume;
+		engineStateChanged_internal();
+		unlockAudioMutex_internal();
 	}		
 
 	result Soloud::setRelativePlaySpeed(handle aVoiceHandle, float aSpeed)
@@ -66,6 +72,8 @@ namespace SoLoud
 		FOR_ALL_VOICES_PRE
 			mVoice[ch]->mBaseSamplerate = aSamplerate;
 			updateVoiceRelativePlaySpeed_internal(ch);
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -116,6 +124,7 @@ namespace SoLoud
 		for (i = 0; i < aVoiceCount; i++)
 			mResampleDataOwner[i] = NULL;
 
+		mCheckpointRecycle.reserve(aVoiceCount);
 		for (i = 0; i < mCheckpointPool.size(); i++)
 		{
 			mCheckpointPool[i].mVoices.reserve(aVoiceCount);
@@ -125,6 +134,12 @@ namespace SoLoud
 				mCheckpointPool[i].mResampleBlocks.push_back(CheckpointResampleBlock());
 				mCheckpointPool[i].mResampleBlocks.back().mData.resize(SAMPLE_GRANULARITY * MAX_CHANNELS);
 			}
+			// ###### flutter_soloud local patch (mix checkpoints) ######
+			// Every existing checkpoint refers to the old resample pool by
+			// block index (and the voices' pointers into it were cleared
+			// above). Restoring one would index the new, possibly smaller,
+			// arrays with stale indices, so none of them may be used again.
+			mCheckpointPool[i].mRestorable = false;
 		}
 
 		mActiveVoiceDirty = true;
@@ -139,6 +154,9 @@ namespace SoLoud
 		for (ch = 0; ch < (signed)mHighestVoice; ch++)
 		{
 			setVoicePause_internal(ch, aPause);
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			// Not journaled: keep rollbacks from undoing it.
+			voiceStateChanged_internal(ch);
 		}
 		unlockAudioMutex_internal();
 	}
@@ -154,6 +172,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mFlags &= ~AudioSourceInstance::PROTECTED;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -177,6 +197,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mChannelVolume[aChannel] = aVolume;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -207,6 +229,8 @@ namespace SoLoud
 				mVoice[ch]->mChannelVolume[6] = aLVolume;
 				mVoice[ch]->mChannelVolume[7] = aRVolume;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -222,6 +246,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mFlags |= AudioSourceInstance::INAUDIBLE_KILL;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -234,6 +260,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mLoopEndPoint = 0;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -250,6 +278,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mLoopEndPoint = 0;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -264,6 +294,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mFlags &= ~AudioSourceInstance::LOOPING;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -278,6 +310,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mFlags |= AudioSourceInstance::DISABLE_AUTOSTOP;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -298,6 +332,8 @@ namespace SoLoud
 	{
 		FOR_ALL_VOICES_PRE
 			mVoice[ch]->mDelaySamples = aSamples;
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 

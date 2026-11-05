@@ -1217,28 +1217,36 @@ extern "C"
   /// Real-time PCM streaming & Custom DSP
   /////////////////////////////////////////
 
+  /// [historyFrames] is the minimum rewind window in frames (0 = default);
+  /// native code raises it as needed to cover the render-ahead window.
   FFI_PLUGIN_EXPORT enum PlayerErrors
   setRealtimeStream(unsigned int *hash, unsigned int sampleRate,
                     unsigned int channels, int format,
-                    unsigned int bufferCapacityFrames);
+                    unsigned int bufferCapacityFrames,
+                    unsigned int historyFrames);
 
   FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash);
 
+  /// For the realtime pushes below, [numSamples] is the number of samples
+  /// readable at [data]; a push whose numFrames * channels exceeds it is
+  /// rejected and returns 0.
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeFloat32(unsigned int hash, const float *data,
-                      unsigned int numFrames);
+                      unsigned int numFrames, unsigned int numSamples);
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeInt16(unsigned int hash, const int16_t *data,
-                    unsigned int numFrames);
+                    unsigned int numFrames, unsigned int numSamples);
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeClockedFloat32(unsigned int hash, double soundTime,
-                             const float *data, unsigned int numFrames);
+                             const float *data, unsigned int numFrames,
+                             unsigned int numSamples);
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeScheduledFloat32(unsigned int hash, double engineTime,
-                               const float *data, unsigned int numFrames);
+                               const float *data, unsigned int numFrames,
+                               unsigned int numSamples);
 
   FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToRead(unsigned int hash);
 
@@ -1246,11 +1254,16 @@ extern "C"
 
   FFI_PLUGIN_EXPORT unsigned int getRealtimeUnderrunCount(unsigned int hash);
 
+  /// [lifecycleCallback] receives both the created (aIsCreated == 1) and the
+  /// destroyed (aIsCreated == 0) event of every voice instance.
+  /// [mustTickWhenInaudible] / [killWhenInaudible] set the source's inaudible
+  /// behavior (see AudioSource::setInaudibleBehavior) for all its voices.
   FFI_PLUGIN_EXPORT enum PlayerErrors createCustomAudioSource(
       unsigned int *hash, unsigned int sampleRate, unsigned int channels,
       SoLoudSourceDspCallback_t callback, void *userData,
       SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
-      bool singleInstance, const char *webJsCallbackName);
+      bool singleInstance, const char *webJsCallbackName,
+      bool mustTickWhenInaudible, bool killWhenInaudible);
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
   addCustomFilter(unsigned int soundHash, unsigned int busId,

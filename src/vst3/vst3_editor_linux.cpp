@@ -32,7 +32,6 @@ using XDisplay = void;
 using XWindow = unsigned long;
 using XAtom = unsigned long;
 
-using FnXInitThreads = int (*)();
 using FnXOpenDisplay = XDisplay *(*)(const char *);
 using FnXCloseDisplay = int (*)(XDisplay *);
 using FnXDefaultScreen = int (*)(XDisplay *);
@@ -93,14 +92,12 @@ using FnGdkDisplayGetDefault = void *(*)();
 using FnGdkX11DisplayGetType = unsigned long (*)();
 using FnGTypeCheckInstanceIsA = int (*)(void *, unsigned long);
 using FnGdkX11DisplayGetXdisplay = XDisplay *(*)(void *);
-using FnGdkSetAllowedBackends = void (*)(const char *);
 
 struct LinuxGuiSymbols {
   void *x11Lib = nullptr;
   void *glibLib = nullptr;
   void *gdkLib = nullptr;
 
-  FnXInitThreads XInitThreads = nullptr;
   FnXOpenDisplay XOpenDisplay = nullptr;
   FnXCloseDisplay XCloseDisplay = nullptr;
   FnXDefaultScreen XDefaultScreen = nullptr;
@@ -136,7 +133,6 @@ struct LinuxGuiSymbols {
   FnGdkX11DisplayGetType gdk_x11_display_get_type = nullptr;
   FnGTypeCheckInstanceIsA g_type_check_instance_is_a = nullptr;
   FnGdkX11DisplayGetXdisplay gdk_x11_display_get_xdisplay = nullptr;
-  FnGdkSetAllowedBackends gdk_set_allowed_backends = nullptr;
 
   bool load() {
     if (x11Lib != nullptr && glibLib != nullptr) {
@@ -158,7 +154,6 @@ struct LinuxGuiSymbols {
       return false;
     }
 
-    XInitThreads = reinterpret_cast<FnXInitThreads>(dlsym(x11Lib, "XInitThreads"));
     XOpenDisplay = reinterpret_cast<FnXOpenDisplay>(dlsym(x11Lib, "XOpenDisplay"));
     XCloseDisplay = reinterpret_cast<FnXCloseDisplay>(dlsym(x11Lib, "XCloseDisplay"));
     XDefaultScreen = reinterpret_cast<FnXDefaultScreen>(dlsym(x11Lib, "XDefaultScreen"));
@@ -204,7 +199,6 @@ struct LinuxGuiSymbols {
       gdk_x11_display_get_type = reinterpret_cast<FnGdkX11DisplayGetType>(dlsym(gdkLib, "gdk_x11_display_get_type"));
       g_type_check_instance_is_a = reinterpret_cast<FnGTypeCheckInstanceIsA>(dlsym(gdkLib, "g_type_check_instance_is_a"));
       gdk_x11_display_get_xdisplay = reinterpret_cast<FnGdkX11DisplayGetXdisplay>(dlsym(gdkLib, "gdk_x11_display_get_xdisplay"));
-      gdk_set_allowed_backends = reinterpret_cast<FnGdkSetAllowedBackends>(dlsym(gdkLib, "gdk_set_allowed_backends"));
     }
 
     return XOpenDisplay && XCloseDisplay && XDefaultScreen && XRootWindow &&
@@ -475,14 +469,12 @@ public:
       return false;
     }
 
-    if (guiSymbols().XInitThreads) {
-      guiSymbols().XInitThreads();
-    }
-
-    setenv("GDK_BACKEND", "x11", 1);
-    if (guiSymbols().gdk_set_allowed_backends) {
-      guiSymbols().gdk_set_allowed_backends("x11");
-    }
+    // No XInitThreads() and no GDK backend selection here: both only work
+    // before the first Xlib/GDK call, and the Flutter GTK runner has long
+    // since opened its display (calling XInitThreads now is undefined
+    // behavior, and setenv() would race other threads' getenv()). The
+    // editor only touches X from the GTK main loop, so Xlib threading is not
+    // needed; a Wayland GDK backend is detected and refused below.
 
     if (sSharedDisplay == nullptr) {
       if (guiSymbols().gdk_display_get_default &&

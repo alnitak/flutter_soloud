@@ -569,9 +569,23 @@ namespace SoLoud
 		FreeverbFilterSnapshot() : mModel(FreeverbImpl::Revmodel::UninitializedTag()), mParamChanged(0) {}
 	};
 
+	static const char kFreeverbSnapshotKind = 0;
+
 	FilterStateSnapshot *FreeverbFilterInstance::captureState()
 	{
 		FreeverbFilterSnapshot *s = new FreeverbFilterSnapshot();
+		s->mKind = &kFreeverbSnapshotKind;
+		captureStateInto(s);
+		return s;
+	}
+
+	bool FreeverbFilterInstance::captureStateInto(FilterStateSnapshot *aState)
+	{
+		// Only a snapshot this type produced can be refilled. The reverb tank
+		// is a fixed-size member of the snapshot, so no size check is needed.
+		if (aState == NULL || aState->mKind != &kFreeverbSnapshotKind)
+			return false;
+		FreeverbFilterSnapshot *s = static_cast<FreeverbFilterSnapshot *>(aState);
 		if (mModel)
 			s->mModel.copyFrom(*mModel);
 		s->mParamChanged = mParamChanged;
@@ -580,7 +594,7 @@ namespace SoLoud
 			s->mParam[i] = mParam[i];
 			s->mParamFader[i] = mParamFader[i];
 		}
-		return s;
+		return true;
 	}
 
 	void FreeverbFilterInstance::restoreState(FilterStateSnapshot *aSnapshot)

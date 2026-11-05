@@ -2314,6 +2314,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       channels,
       format,
       bufferFrames,
+      historyFrames,
     );
     final hash = wasmGetI32Value(hashPtr, 'i32');
     wasmFree(hashPtr);
@@ -2341,7 +2342,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
     wasmHeapF32.toDart.setAll(ptr >> 2, samples);
-    return wasmPushRealtimeFloat32(hash, ptr, frameCount);
+    return wasmPushRealtimeFloat32(hash, ptr, frameCount, samples.length);
   }
 
   @override
@@ -2350,11 +2351,17 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int handle,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   ) {
     if (frameCount <= 0 || samplesAddress == 0) {
       return 0;
     }
-    return wasmPushRealtimeFloat32(hash, samplesAddress, frameCount);
+    return wasmPushRealtimeFloat32(
+      hash,
+      samplesAddress,
+      frameCount,
+      sampleCapacity,
+    );
   }
 
   @override
@@ -2374,7 +2381,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       samples.lengthInBytes,
     );
     wasmHeapU8.toDart.setAll(ptr, bytesView);
-    return wasmPushRealtimeInt16(hash, ptr, frameCount);
+    return wasmPushRealtimeInt16(hash, ptr, frameCount, samples.length);
   }
 
   @override
@@ -2383,11 +2390,17 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int handle,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   ) {
     if (frameCount <= 0 || samplesAddress == 0) {
       return 0;
     }
-    return wasmPushRealtimeInt16(hash, samplesAddress, frameCount);
+    return wasmPushRealtimeInt16(
+      hash,
+      samplesAddress,
+      frameCount,
+      sampleCapacity,
+    );
   }
 
   @override
@@ -2403,7 +2416,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
     wasmHeapF32.toDart.setAll(ptr >> 2, samples);
-    return wasmPushRealtimeClockedFloat32(hash, soundTime, ptr, frameCount);
+    return wasmPushRealtimeClockedFloat32(
+      hash,
+      soundTime,
+      ptr,
+      frameCount,
+      samples.length,
+    );
   }
 
   @override
@@ -2413,6 +2432,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double soundTime,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   ) {
     if (frameCount <= 0 || samplesAddress == 0) {
       return 0;
@@ -2422,6 +2442,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       soundTime,
       samplesAddress,
       frameCount,
+      sampleCapacity,
     );
   }
 
@@ -2438,7 +2459,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     }
     final ptr = _ensureRealtimeScratch(samples.lengthInBytes);
     wasmHeapF32.toDart.setAll(ptr >> 2, samples);
-    return wasmPushRealtimeScheduledFloat32(hash, atTime, ptr, frameCount);
+    return wasmPushRealtimeScheduledFloat32(
+      hash,
+      atTime,
+      ptr,
+      frameCount,
+      samples.length,
+    );
   }
 
   @override
@@ -2448,6 +2475,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     double atTime,
     int samplesAddress,
     int frameCount,
+    int sampleCapacity,
   ) {
     if (frameCount <= 0 || samplesAddress == 0) {
       return 0;
@@ -2457,6 +2485,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       atTime,
       samplesAddress,
       frameCount,
+      sampleCapacity,
     );
   }
 
@@ -2523,9 +2552,10 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       webNamePtr = _allocUtf8CString(webJsFunctionName);
     }
     try {
-      final lifecyclePtr = onInstanceCreatedAddress != 0
-          ? onInstanceCreatedAddress
-          : onInstanceDestroyedAddress;
+      final lifecyclePtr = customSourceLifecycleAddress(
+        onInstanceCreatedAddress,
+        onInstanceDestroyedAddress,
+      );
       final result = wasmCreateCustomAudioSource(
         hashPtr,
         sampleRate,
@@ -2535,6 +2565,8 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         lifecyclePtr,
         0,
         webNamePtr,
+        mustTickWhenInaudible ? 1 : 0,
+        killWhenInaudible ? 1 : 0,
       );
       final hash = wasmGetI32Value(hashPtr, 'i32');
       return (

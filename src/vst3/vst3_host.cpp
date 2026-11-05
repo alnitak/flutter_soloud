@@ -259,6 +259,7 @@ uint32_t Vst3PluginInstance::getLatencySamples() const noexcept {
 void Vst3PluginInstance::enqueueGuiParamChange(
     Steinberg::Vst::ParamID id, Steinberg::Vst::ParamValue value) noexcept {
   const double clamped = std::clamp<double>(value, 0.0, 1.0);
+  std::lock_guard<std::mutex> lock(mParamQueuePushMutex);
   mPendingParamQueue.push(Vst3ParamChangeEvent{id, clamped, 0});
 }
 
@@ -317,8 +318,16 @@ void Vst3PluginInstance::drainPendingParamChanges() noexcept {
 
 void Vst3PluginInstance::drainPendingMidiEvents(
     unsigned int maxSampleOffset) noexcept {
+  // Stage events for this block (offsets relative to the block start).
+  // Stop once the staging array is full: the rest stay queued for the next
+  // block rather than being popped and dropped.
+  mBlockMidiCount = 0;
+  if (maxSampleOffset == 0) {
+    return;
+  }
   Vst3MidiNoteEvent midiEvt;
-  while (mPendingMidiQueue.pop(midiEvt)) {
+  while (mBlockMidiCount < mBlockMidiEvents.size() &&
+         mPendingMidiQueue.pop(midiEvt)) {
     Steinberg::Vst::Event vstEvent{};
     vstEvent.busIndex = 0;
     vstEvent.sampleOffset = std::clamp<int32_t>(
@@ -343,7 +352,7 @@ void Vst3PluginInstance::drainPendingMidiEvents(
       vstEvent.noteOff.noteId = midiEvt.noteId;
       vstEvent.noteOff.tuning = 0.0f;
     }
-    mInputEvents.addEvent(vstEvent);
+    mBlockMidiEvents[mBlockMidiCount++] = vstEvent;
   }
 }
 
@@ -359,7 +368,18 @@ void Vst3PluginInstance::prepareAndProcessBlock(
     if (offset > 0) {
       mInputParamChanges.clear();
       mOutputParamChanges.clear();
-      mInputEvents.clear();
+    }
+    // Hand this chunk the staged MIDI events that fall inside it, with
+    // offsets relative to the chunk (VST3 requires 0 <= offset < numSamples).
+    mInputEvents.clear();
+    for (size_t e = 0; e < mBlockMidiCount; ++e) {
+      const int32_t blockOffset = mBlockMidiEvents[e].sampleOffset;
+      if (blockOffset >= static_cast<int32_t>(offset) &&
+          blockOffset < static_cast<int32_t>(offset + chunkSamples)) {
+        Steinberg::Vst::Event chunkEvent = mBlockMidiEvents[e];
+        chunkEvent.sampleOffset = blockOffset - static_cast<int32_t>(offset);
+        mInputEvents.addEvent(chunkEvent);
+      }
     }
 
     for (unsigned int ch = 0; ch < numCh; ++ch) {
@@ -443,6 +463,7 @@ void Vst3PluginInstance::processAudioEffectBlock(
   mInputParamChanges.clear();
   mOutputParamChanges.clear();
   mInputEvents.clear();
+  mBlockMidiCount = 0;
 
   drainPendingParamChanges();
 
@@ -560,7 +581,10 @@ double Vst3PluginInstance::getParameterNormalized(
 bool Vst3PluginInstance::setParameterNormalized(uint32_t paramId,
                                                 double normalizedValue) {
   const double clamped = std::clamp<double>(normalizedValue, 0.0, 1.0);
-  mPendingParamQueue.push(Vst3ParamChangeEvent{paramId, clamped, 0});
+  {
+    std::lock_guard<std::mutex> lock(mParamQueuePushMutex);
+    mPendingParamQueue.push(Vst3ParamChangeEvent{paramId, clamped, 0});
+  }
   if (mEditorWindow) {
     mEditorWindow->notifyParameterChanged(paramId, clamped);
   }
@@ -612,6 +636,7 @@ bool Vst3PluginInstance::sendMidiNote(bool isNoteOn, int channel, int pitch,
   evt.velocity = std::clamp(velocity, 0.0f, 1.0f);
   evt.noteId = -1;
   evt.sampleOffset = std::max(0, sampleOffset);
+  std::lock_guard<std::mutex> lock(mMidiQueuePushMutex);
   return mPendingMidiQueue.push(evt);
 }
 
@@ -965,16 +990,22 @@ PlayerErrors Vst3HostManager::loadPlugin(
   }
 
   std::lock_guard<std::mutex> lock(mMutex);
-  int handle = 0;
+  size_t slot = 0;
   for (size_t i = 1; i < kMaxFastPlugins; ++i) {
-    if (mPlugins.find(static_cast<int>(i)) == mPlugins.end()) {
-      handle = static_cast<int>(i);
+    if (mPluginTable[i].load(std::memory_order_relaxed) == nullptr) {
+      slot = i;
       break;
     }
   }
-  if (handle == 0) {
+  if (slot == 0) {
     return outOfMemory;
   }
+  // Tag the reused slot with a fresh generation (see kSlotBits).
+  if (mNextGeneration > kMaxGeneration) {
+    mNextGeneration = 1;
+  }
+  const int handle =
+      static_cast<int>((mNextGeneration++ << kSlotBits) | slot);
 
   auto instance =
       std::make_shared<Vst3PluginInstance>(handle, module, selectedClass);
@@ -1000,12 +1031,14 @@ PlayerErrors Vst3HostManager::loadPlugin(
   }
 
   *outPluginHandle = handle;
-  mPluginTable[handle].store(instance.get(), std::memory_order_release);
+  mPluginTable[slot].store(instance.get(), std::memory_order_release);
   mPlugins.emplace(handle, instance);
   return noError;
 }
 
-PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle) {
+PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle,
+                                           void (*audioThreadBarrier)(void *),
+                                           void *barrierUserData) {
   std::shared_ptr<Vst3PluginInstance> removed;
   {
     std::lock_guard<std::mutex> lock(mMutex);
@@ -1013,11 +1046,17 @@ PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle) {
     if (it == mPlugins.end()) {
       return invalidParameter;
     }
-    if (pluginHandle > 0 && static_cast<size_t>(pluginHandle) < kMaxFastPlugins) {
-      mPluginTable[pluginHandle].store(nullptr, std::memory_order_release);
+    const size_t slot = slotOf(pluginHandle);
+    if (slot != 0 &&
+        mPluginTable[slot].load(std::memory_order_relaxed) == it->second.get()) {
+      mPluginTable[slot].store(nullptr, std::memory_order_release);
     }
     removed = it->second;
     mPlugins.erase(it);
+  }
+  // As in unloadAll(): let any mix that loaded the pointer finish first.
+  if (audioThreadBarrier != nullptr) {
+    audioThreadBarrier(barrierUserData);
   }
   if (removed) {
     removed->shutdown();
@@ -1025,7 +1064,8 @@ PlayerErrors Vst3HostManager::unloadPlugin(int pluginHandle) {
   return noError;
 }
 
-void Vst3HostManager::unloadAll() {
+void Vst3HostManager::unloadAll(void (*audioThreadBarrier)(void *),
+                                void *barrierUserData) {
   std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> toUnload;
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> modulesToUnload;
   {
@@ -1035,6 +1075,13 @@ void Vst3HostManager::unloadAll() {
     }
     toUnload.swap(mPlugins);
     modulesToUnload.swap(mLoadedModules);
+  }
+  // The audio thread reads raw pointers from mPluginTable without a lock.
+  // Clearing the table stops new lookups, but a mix already in progress may
+  // still hold a pointer it loaded before the clear. Wait for it to finish
+  // before any instance is shut down or destroyed below.
+  if (audioThreadBarrier != nullptr) {
+    audioThreadBarrier(barrierUserData);
   }
   // 1. Shutdown all active plugin instances: close editors, stop processing,
   //    deactivate, and terminate components/controllers before modules unload.
@@ -1057,10 +1104,16 @@ std::shared_ptr<Vst3PluginInstance> Vst3HostManager::getPlugin(int pluginHandle)
 }
 
 Vst3PluginInstance *Vst3HostManager::getPluginAudioThread(int pluginHandle) noexcept {
-  if (pluginHandle > 0 && static_cast<size_t>(pluginHandle) < kMaxFastPlugins) {
-    return mPluginTable[pluginHandle].load(std::memory_order_acquire);
+  const size_t slot = slotOf(pluginHandle);
+  if (slot == 0) {
+    return nullptr;
   }
-  return nullptr;
+  // The pointer stays valid while the audio thread uses it (unloading waits
+  // on the audio mutex before destroying), so its handle can be compared.
+  Vst3PluginInstance *plugin =
+      mPluginTable[slot].load(std::memory_order_acquire);
+  return (plugin != nullptr && plugin->handle() == pluginHandle) ? plugin
+                                                                  : nullptr;
 }
 
 void Vst3HostManager::setParameterEditCallback(

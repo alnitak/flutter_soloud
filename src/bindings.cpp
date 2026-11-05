@@ -43,6 +43,7 @@
 #include <memory.h>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <stdio.h>
 #include <thread>
 
@@ -235,6 +236,73 @@ extern "C"
   [[clang::no_destroy]]
 #endif
   std::unique_ptr<Player> player = std::make_unique<Player>();
+
+  /// Pins the `player` object for exports that run on any isolate's thread
+  /// (the realtime stream API is fed from background isolates) while another
+  /// isolate may tear the engine down: dispose() runs in `Isolate.run`.
+  ///
+  /// Such exports hold it shared for their whole call through PlayerLease.
+  /// Code that destroys, replaces or deinitializes `player` holds it
+  /// exclusively through PlayerLifetimeWriteGuard, so it waits for in-flight
+  /// calls and none can start meanwhile.
+  ///
+  /// Lock ordering: `init_deinit_mutex -> loadMutex -> player_lifetime_mutex
+  /// -> sounds_mutex -> audio mutex`. A leased call never takes
+  /// init_deinit_mutex or loadMutex, and the exclusive holder never waits for
+  /// anything a leased call holds.
+  std::shared_mutex player_lifetime_mutex;
+
+  /// Raised before player_lifetime_mutex is taken exclusively. New leases see
+  /// it and fail at once instead of queueing on the lock: std::shared_mutex
+  /// may prefer readers (glibc does), so feeders pushing back to back would
+  /// otherwise starve the teardown forever. Only calls that read it before it
+  /// was raised can still delay the writer, and each of them is short.
+  std::atomic<bool> player_teardown_pending{false};
+
+  /// RAII shared hold on player_lifetime_mutex. Yields the player only while
+  /// it is initialized and no teardown is pending.
+  class PlayerLease
+  {
+  public:
+    PlayerLease()
+    {
+      if (player_teardown_pending.load(std::memory_order_acquire))
+        return;
+      mLock = std::shared_lock<std::shared_mutex>(player_lifetime_mutex);
+      Player *p = player.get();
+      mPlayer = (p != nullptr && p->isInited()) ? p : nullptr;
+    }
+    PlayerLease(const PlayerLease &) = delete;
+    PlayerLease &operator=(const PlayerLease &) = delete;
+
+    explicit operator bool() const { return mPlayer != nullptr; }
+    Player *operator->() const { return mPlayer; }
+
+  private:
+    std::shared_lock<std::shared_mutex> mLock;
+    Player *mPlayer = nullptr;
+  };
+
+  /// RAII exclusive hold on player_lifetime_mutex for code that destroys,
+  /// replaces or deinitializes `player`. Turns new leases away for its whole
+  /// lifetime (see player_teardown_pending).
+  class PlayerLifetimeWriteGuard
+  {
+  public:
+    PlayerLifetimeWriteGuard()
+    {
+      player_teardown_pending.store(true, std::memory_order_release);
+      player_lifetime_mutex.lock();
+    }
+    ~PlayerLifetimeWriteGuard()
+    {
+      player_teardown_pending.store(false, std::memory_order_release);
+      player_lifetime_mutex.unlock();
+    }
+    PlayerLifetimeWriteGuard(const PlayerLifetimeWriteGuard &) = delete;
+    PlayerLifetimeWriteGuard &operator=(const PlayerLifetimeWriteGuard &) =
+        delete;
+  };
 
   typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
   typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter);
@@ -1137,7 +1205,10 @@ extern "C"
     }
 
     if (player.get() == nullptr)
+    {
+      PlayerLifetimeWriteGuard lifetime;
       player = std::make_unique<Player>();
+    }
 
     player.get()->setStateChangedCallback(stateChangedCallback);
     PlayerErrors res = (PlayerErrors)player.get()->init(
@@ -1523,13 +1594,20 @@ extern "C"
     // then has to wait out, on exactly the backends where starting is slow.
     // Player::dispose() destroys the sounds itself, as the sole owner of native
     // sound destruction during teardown.
-    player.get()->dispose();
+    {
+      // Wait out in-flight leased calls (e.g. a feeder isolate pushing into a
+      // realtime stream) and keep new ones out while the engine is
+      // deinitialized and the Player destroyed.
+      PlayerLifetimeWriteGuard lifetime;
+      player.get()->dispose();
 #ifdef SOLOUD_ENABLE_VST3
-    SoLoud::Vst3HostManager::instance().setParameterEditCallback(nullptr);
-    SoLoud::Vst3HostManager::instance().unloadAll();
+      // The device is stopped: no mix can be using a plugin, so no barrier.
+      SoLoud::Vst3HostManager::instance().setParameterEditCallback(nullptr);
+      SoLoud::Vst3HostManager::instance().unloadAll();
 #endif
-    player.reset();
-    player = std::make_unique<Player>();
+      player.reset();
+      player = std::make_unique<Player>();
+    }
     // Bump the engine session counter only now that the old engine is fully
     // torn down: voiceEnded events posted while it was stopping its voices
     // keep the old generation, and the Dart side (which reads the counter
@@ -3691,93 +3769,97 @@ extern "C"
   /// Real-time PCM streaming & Custom DSP
   /////////////////////////////////////////
 
+  // The realtime stream exports are called from feeder isolates, so each one
+  // pins the Player for its whole call (see PlayerLease).
+
   FFI_PLUGIN_EXPORT enum PlayerErrors
   setRealtimeStream(unsigned int *hash, unsigned int sampleRate,
                     unsigned int channels, int format,
-                    unsigned int bufferCapacityFrames)
+                    unsigned int bufferCapacityFrames,
+                    unsigned int historyFrames)
   {
     if (hash != nullptr)
       *hash = 0;
-    if (player.get() == nullptr || !player.get()->isInited())
+    PlayerLease p;
+    if (!p)
       return backendNotInited;
     if (hash == nullptr)
       return nullPointer;
-    return player.get()->setRealtimeStream(
+    return p->setRealtimeStream(
         *hash, sampleRate, channels, static_cast<BufferType>(format),
-        bufferCapacityFrames);
+        bufferCapacityFrames, historyFrames);
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
+    PlayerLease p;
+    if (!p)
       return backendNotInited;
-    return player.get()->resetRealtimeStream(hash);
+    return p->resetRealtimeStream(hash);
   }
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeFloat32(unsigned int hash, const float *data,
-                      unsigned int numFrames)
+                      unsigned int numFrames, unsigned int numSamples)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return 0;
-    return player.get()->pushRealtimeFloat32(hash, data, numFrames);
+    PlayerLease p;
+    return p ? p->pushRealtimeFloat32(hash, data, numFrames, numSamples) : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeInt16(unsigned int hash, const int16_t *data,
-                    unsigned int numFrames)
+                    unsigned int numFrames, unsigned int numSamples)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return 0;
-    return player.get()->pushRealtimeInt16(hash, data, numFrames);
+    PlayerLease p;
+    return p ? p->pushRealtimeInt16(hash, data, numFrames, numSamples) : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeClockedFloat32(unsigned int hash, double soundTime,
-                             const float *data, unsigned int numFrames)
+                             const float *data, unsigned int numFrames,
+                             unsigned int numSamples)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return 0;
-    return player.get()->pushRealtimeClockedFloat32(hash, soundTime, data,
-                                                    numFrames);
+    PlayerLease p;
+    return p ? p->pushRealtimeClockedFloat32(hash, soundTime, data, numFrames,
+                                             numSamples)
+             : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int
   pushRealtimeScheduledFloat32(unsigned int hash, double engineTime,
-                               const float *data, unsigned int numFrames)
+                               const float *data, unsigned int numFrames,
+                               unsigned int numSamples)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return 0;
-    return player.get()->pushRealtimeScheduledFloat32(hash, engineTime, data,
-                                                      numFrames);
+    PlayerLease p;
+    return p ? p->pushRealtimeScheduledFloat32(hash, engineTime, data,
+                                               numFrames, numSamples)
+             : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToRead(unsigned int hash)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return 0;
-    return player.get()->getRealtimeAvailableToRead(hash);
+    PlayerLease p;
+    return p ? p->getRealtimeAvailableToRead(hash) : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToWrite(unsigned int hash)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return 0;
-    return player.get()->getRealtimeAvailableToWrite(hash);
+    PlayerLease p;
+    return p ? p->getRealtimeAvailableToWrite(hash) : 0;
   }
 
   FFI_PLUGIN_EXPORT unsigned int getRealtimeUnderrunCount(unsigned int hash)
   {
-    if (player.get() == nullptr || !player.get()->isInited())
-      return 0;
-    return player.get()->getRealtimeUnderrunCount(hash);
+    PlayerLease p;
+    return p ? p->getRealtimeUnderrunCount(hash) : 0;
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors createCustomAudioSource(
       unsigned int *hash, unsigned int sampleRate, unsigned int channels,
       SoLoudSourceDspCallback_t callback, void *userData,
       SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
-      bool singleInstance, const char *webJsCallbackName)
+      bool singleInstance, const char *webJsCallbackName,
+      bool mustTickWhenInaudible, bool killWhenInaudible)
   {
     if (hash != nullptr)
       *hash = 0;
@@ -3787,7 +3869,8 @@ extern "C"
       return nullPointer;
     return player.get()->createCustomAudioSource(
         *hash, sampleRate, channels, callback, userData, lifecycleCallback,
-        singleInstance, webJsCallbackName);
+        singleInstance, webJsCallbackName, mustTickWhenInaudible,
+        killWhenInaudible);
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
@@ -3925,14 +4008,18 @@ extern "C"
     if (cf == nullptr)
       return filterNotFound;
 
+    // A global custom filter runs in the device callback under the global
+    // filter lock, a voice or bus one under the audio mutex: hold both.
     if (player.get() != nullptr && player.get()->isInited())
     {
       player.get()->soloud.lockAudioMutex_internal();
+      player.get()->soloud.lockGlobalFilters_internal();
     }
     cf->setCallback(callback, userData, numParams);
     cf->setWebJsCallbackName(webJsCallbackName);
     if (player.get() != nullptr && player.get()->isInited())
     {
+      player.get()->soloud.unlockGlobalFilters_internal();
       player.get()->soloud.unlockAudioMutex_internal();
     }
     return noError;
@@ -4743,18 +4830,34 @@ extern "C"
         outPluginHandle);
   }
 
+  /// Audio-thread barrier for VST3 unloading: returns once no mix that may
+  /// have loaded a plugin pointer from the lookup table is still running.
+  /// Holds the lifetime lock only for the barrier itself, never across plugin
+  /// shutdown (which can close editor windows).
+  ///
+  /// Deliberately not a PlayerLease: a lease gives up while a teardown is
+  /// pending, and a barrier must never give up -- the device may still be
+  /// mixing until the teardown actually stops it. Taking the shared lock
+  /// unconditionally guarantees one of two outcomes: either this runs before
+  /// the teardown and synchronizes with the live mixer, or it waits for the
+  /// teardown to finish, by which point the device is stopped and the new
+  /// Player is not initialized, so nothing is mixing.
+  static void vst3AudioThreadBarrier(void * /*userData*/)
+  {
+    std::shared_lock<std::shared_mutex> lifetime(player_lifetime_mutex);
+    Player *p = player.get();
+    if (p != nullptr && p->isInited())
+    {
+      // Mixing (render worker or device callback) and the post-ring global
+      // filters (device callback) each run under their own lock.
+      p->soloud.audioThreadBarrier_internal();
+    }
+  }
+
   FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3UnloadPlugin(int pluginHandle)
   {
-    if (player.get() != nullptr && player.get()->isInited())
-    {
-      player.get()->soloud.lockAudioMutex_internal();
-    }
-    auto result = SoLoud::Vst3HostManager::instance().unloadPlugin(pluginHandle);
-    if (player.get() != nullptr && player.get()->isInited())
-    {
-      player.get()->soloud.unlockAudioMutex_internal();
-    }
-    return result;
+    return SoLoud::Vst3HostManager::instance().unloadPlugin(
+        pluginHandle, &vst3AudioThreadBarrier, nullptr);
   }
 
   FFI_PLUGIN_EXPORT void *soloud_vst3GetFilterCallbackPtr(void)
@@ -4960,7 +5063,12 @@ extern "C"
   {
     SoLoud::Vst3HostManager::instance().setParameterEditCallback(nullptr);
     SoLoud::Vst3HostManager::instance().setRestartComponentCallback(nullptr);
-    SoLoud::Vst3HostManager::instance().unloadAll();
+    // Vst3HostUnloadAll() can be called from Dart while audio is playing:
+    // the mixer calls into plugins through raw pointers loaded from the
+    // lock-free lookup table, so wait for in-flight mixes after the table is
+    // cleared and before any plugin is shut down.
+    SoLoud::Vst3HostManager::instance().unloadAll(&vst3AudioThreadBarrier,
+                                                  nullptr);
   }
 
 #else // !SOLOUD_ENABLE_VST3

@@ -30,7 +30,9 @@ struct CustomFilterSnapshot : public FilterStateSnapshot {
 };
 
 CustomFilterInstance::CustomFilterInstance(CustomFilter *aParent)
-    : mParent(aParent) {
+    : mParent(aParent),
+      mDryScratch(static_cast<size_t>(kDryScratchFrames) * MAX_CHANNELS,
+                  0.0f) {
   const unsigned int numParams =
       mParent != nullptr
           ? static_cast<unsigned int>(mParent->getParamCount())
@@ -42,8 +44,26 @@ CustomFilterInstance::CustomFilterInstance(CustomFilter *aParent)
   }
 }
 
+static const char kCustomFilterSnapshotKind = 0;
+
 FilterStateSnapshot *CustomFilterInstance::captureState() {
   auto *snap = new CustomFilterSnapshot();
+  snap->mKind = &kCustomFilterSnapshotKind;
+  captureStateInto(snap);
+  return snap;
+}
+
+bool CustomFilterInstance::captureStateInto(FilterStateSnapshot *aState) {
+  if (aState == nullptr || aState->mKind != &kCustomFilterSnapshotKind) {
+    return false;
+  }
+  auto *snap = static_cast<CustomFilterSnapshot *>(aState);
+  // Only the parameters are captured. Whatever state the user callback (or
+  // the VST3 plugin behind it) keeps is out of reach, so a re-mix could not
+  // reproduce its output.
+  snap->mComplete = mParent == nullptr ||
+                    (mParent->getCallback() == nullptr &&
+                     mParent->getWebJsCallbackName().empty());
   snap->mNumParams =
       std::min<unsigned int>(mNumParams, CustomFilter::kMaxParams);
   snap->mParamChanged = mParamChanged;
@@ -51,7 +71,7 @@ FilterStateSnapshot *CustomFilterInstance::captureState() {
     snap->mParams[i] = mParam[i];
     snap->mFaders[i] = mParamFader[i];
   }
-  return snap;
+  return true;
 }
 
 void CustomFilterInstance::restoreState(FilterStateSnapshot *aState) {
@@ -128,13 +148,36 @@ void CustomFilterInstance::filter(float *aBuffer, unsigned int aSamples,
     return;
   }
 
-  // Branch 3: Partial blend (0.0f < wet < 1.0f) — copy dry signal into
-  // pre-allocated scratch, invoke callback in-place, and blend.
-  const size_t totalSamples = static_cast<size_t>(aSamples) * aChannels;
-  if (mDryScratch.size() < totalSamples) {
-    mDryScratch.resize(totalSamples);
+  // Branch 3: Partial blend (0.0f < wet < 1.0f) — copy the dry signal into
+  // the pre-allocated scratch, invoke the callback in-place, and blend. A
+  // block larger than the scratch is processed in scratch-sized chunks (each
+  // a valid sub-block at the same channel stride, with its own start time)
+  // rather than growing the scratch on the audio thread.
+  const unsigned int channels =
+      std::min<unsigned int>(aChannels, MAX_CHANNELS);
+  unsigned int offset = 0;
+  while (offset < aSamples) {
+    const unsigned int chunk =
+        std::min<unsigned int>(aSamples - offset, kDryScratchFrames);
+    const time chunkTime =
+        aSamplerate > 0.0f
+            ? aTime + static_cast<time>(offset) / static_cast<time>(aSamplerate)
+            : aTime;
+    blendPartialWet(aBuffer + offset, chunk, aBufferSize, channels,
+                    aSamplerate, chunkTime, wet);
+    // Only the first chunk reports which parameters changed.
+    mParamChanged = 0;
+    offset += chunk;
   }
+}
 
+void CustomFilterInstance::blendPartialWet(float *aBuffer, unsigned int aSamples,
+                                           unsigned int aBufferSize,
+                                           unsigned int aChannels,
+                                           float aSamplerate, time aTime,
+                                           float aWet) {
+  // Callers guarantee aSamples <= kDryScratchFrames and
+  // aChannels <= MAX_CHANNELS, so the scratch never needs to grow.
   for (unsigned int ch = 0; ch < aChannels; ++ch) {
     std::memcpy(mDryScratch.data() + static_cast<size_t>(ch) * aSamples,
                 aBuffer + static_cast<size_t>(ch) * aBufferSize,
@@ -143,6 +186,7 @@ void CustomFilterInstance::filter(float *aBuffer, unsigned int aSamples,
 
   invokeCallback(aBuffer, aSamples, aBufferSize, aChannels, aSamplerate, aTime);
 
+  const float wet = aWet;
   for (unsigned int ch = 0; ch < aChannels; ++ch) {
     const float *dry = mDryScratch.data() + static_cast<size_t>(ch) * aSamples;
     float *out = aBuffer + static_cast<size_t>(ch) * aBufferSize;
@@ -175,8 +219,6 @@ void CustomFilterInstance::filter(float *aBuffer, unsigned int aSamples,
       out[i] = dry[i] + (out[i] - dry[i]) * wet;
     }
   }
-
-  mParamChanged = 0;
 }
 
 // /////////////////////////////////////////////////////////////////////////////

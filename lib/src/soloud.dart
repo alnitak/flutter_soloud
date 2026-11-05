@@ -448,6 +448,9 @@ interface class SoLoud {
   /// The channels the engine was initialized with.
   Channels _channels = Channels.stereo;
 
+  /// The mix quantum (`bufferSize`) the engine was initialized with.
+  int _bufferSize = 2048;
+
   /// Initializes the audio engine.
   ///
   /// Run this before anything else, and `await` its result in a try/catch.
@@ -531,6 +534,19 @@ interface class SoLoud {
   /// [bufferSize]. This is the prerequisite for low-latency reactive playback
   /// with large mix buffers. When null or 0 (the default) the engine mixes
   /// directly into the device callback as before. Ignored on web.
+  /// With the ring enabled the mixing runs on a dedicated render thread and
+  /// the device callback only reads the ring, so a slow mix or a busy engine
+  /// call does not interrupt the output. Changing a playing voice in a way
+  /// the engine cannot replay (its loop region, a seek, unpausing it, its
+  /// filters or their parameters, or the global volume) makes events in the
+  /// next [renderAheadFrames] fall back to being placed at the end of the
+  /// ring instead of at the playhead.
+  /// With the ring enabled, global filters run at the device playhead on the
+  /// frames read from the ring, and the output is clipped after them, as
+  /// without the ring. The one difference is that the global volume is
+  /// applied when mixing into the ring, so it comes before the global filters
+  /// rather than after them (only noticeable with non-linear filters such as
+  /// a limiter or compressor).
   Future<void> init({
     PlaybackDevice? device,
     bool automaticCleanup = false,
@@ -731,6 +747,7 @@ interface class SoLoud {
       // Store the initialization parameters for later use.
       _sampleRate = sampleRate;
       _channels = channels;
+      _bufferSize = bufferSize;
 
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
@@ -5141,11 +5158,15 @@ interface class SoLoud {
   /// - [format]: Input PCM format: [BufferType.f32le] (interleaved 32-bit
   ///   float, default), [BufferType.s16le] (interleaved 16-bit signed int), or
   ///   [BufferType.f32lePlanar] (contiguous channel-planar 32-bit float).
-  /// - [bufferFrames]: Forward ring buffer capacity in frames (rounded up to a
-  ///   power of two in native code, default `2048`).
-  /// - [historyFrames]: Historical rewind window in frames retained so the
-  ///   mixer can retroactively re-mix the currently playing window when new
-  ///   samples arrive (default `4096`).
+  /// - [bufferFrames]: Forward ring buffer capacity in frames (default
+  ///   `2048`). Native code rounds it up to a power of two and raises it to at
+  ///   least two engine mix quanta (the `bufferSize` given to [init], in
+  ///   stream frames), so a feeder can always keep one quantum buffered.
+  /// - [historyFrames]: Minimum historical rewind window in frames retained
+  ///   so the mixer can retroactively re-mix the currently playing window when
+  ///   new samples arrive (default `4096`). Native code raises it as needed to
+  ///   cover the `renderAheadFrames` window given to [init] (plus two
+  ///   resampler blocks), so a smaller value cannot break re-mixing.
   /// - [autoDispose]: Whether to automatically dispose the source when all
   ///   playing handles finish (default `false`).
   @experimental
@@ -5190,6 +5211,9 @@ interface class SoLoud {
       format: format,
       bufferFrames: bufferFrames,
       historyFrames: historyFrames,
+      engineQuantumFrames: _sampleRate > 0
+          ? (_bufferSize * sampleRate / _sampleRate).ceil()
+          : _bufferSize,
     );
   }
 
@@ -5211,17 +5235,26 @@ interface class SoLoud {
   ///   int samplesToRead, unsigned int bufferSize, unsigned int channels, float
   ///   sampleRate, double streamTime, double streamPosition, uint32_t*
   ///   outHasEnded, void* userData)`).
-  /// - [onInstanceCreatedAddress]: Optional native lifecycle callback invoked
-  ///   when a voice instance is created or destroyed.
-  /// - [onInstanceDestroyedAddress]: Optional native lifecycle callback.
+  /// - [onInstanceCreatedAddress]: Optional native lifecycle callback
+  ///   (`void (*)(uint32_t isCreated, unsigned int playIndex, void*
+  ///   userData)`) invoked once when a voice instance is created
+  ///   (`isCreated == 1`) and once when it is destroyed (`isCreated == 0`).
+  /// - [onInstanceDestroyedAddress]: The same lifecycle callback, accepted
+  ///   under this name too. If both are given they must be the same address
+  ///   (an [ArgumentError] is thrown otherwise).
   /// - [userdataAddress]: Optional opaque pointer passed to the callbacks.
   /// - [webJsFunctionName]: On Web, the name of a JavaScript function on
   ///   `globalThis` (e.g. `'myCustomSynthDsp'`) invoked synchronously from
   ///   WASM via `EM_ASM_INT`.
-  /// - [mustTickWhenInaudible]: Whether the voice continues advancing when
-  ///   volume is zero (default `true`).
-  /// - [killWhenInaudible]: Whether the voice is killed if it becomes
-  ///   inaudible (default `false`).
+  /// - [mustTickWhenInaudible]: Whether the voices keep advancing (calling
+  ///   the DSP callback) while inaudible, e.g. at zero volume (default
+  ///   `true`). Applies to every voice of this source; see
+  ///   [setInaudibleBehavior] to change it per voice.
+  /// - [killWhenInaudible]: Whether a voice is stopped once it becomes
+  ///   inaudible (default `false`). As with [setInaudibleBehavior], the engine
+  ///   evaluates this during its 3D audio update, so it only takes effect for
+  ///   voices started with `play3d` (where distance attenuation makes them
+  ///   inaudible); a 2D voice faded to zero volume keeps playing.
   /// - [autoDispose]: Whether to dispose the source automatically when all
   ///   voices finish (default `false`).
   @experimental

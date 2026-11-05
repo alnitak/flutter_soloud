@@ -226,6 +226,10 @@ abstract class CustomFilterSlot extends FilterBase {
     }
   }
 
+  /// Removes this slot from its filter chain.
+  ///
+  /// The slot's parameter definitions are kept, but its native/JS callback is
+  /// cleared: after a later [activate], call [setNativeCallback] again.
   @override
   void deactivate() {
     if (kIsWeb && soundHash != null) {

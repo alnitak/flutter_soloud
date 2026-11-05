@@ -787,8 +787,22 @@ namespace SoLoud
     // UISceneDidActivateNotification. We track both the active interruption
     // state and the app foreground/background state so we can synthesize the
     // missing interruption_ended notification in either delivery order.
+    //
+    // Only an interruption that can stem from suspension is ever ended this
+    // way. A suspension needs the app to have entered the background first,
+    // whereas a phone/FaceTime call, Siri or Control Center only make it
+    // inactive; such an interruption may still be in progress when the user
+    // returns to the app, and iOS does send its Ended.
+    //
+    // gIosAppInBackground: between DidEnterBackground and WillEnterForeground.
+    // gIosAppInactive: between WillResignActive and DidBecomeActive.
     static std::atomic<bool> gIosAppInBackground{false};
-    static std::atomic<int64_t> gIosLastForegroundSteadyMs{0};
+    static std::atomic<bool> gIosAppInactive{false};
+    // When the app last came back from the background (not merely from
+    // inactive); 0 if it has not since the observers were registered.
+    static std::atomic<int64_t> gIosLastReturnFromBackgroundMs{0};
+    // Whether the latched interruption can stem from suspension (see above).
+    static std::atomic<bool> gIosInterruptionFromSuspension{false};
     static NSMutableArray<id> *gIosLifecycleObservers = nil;
 
     static int64_t iosSteadyNowMs()
@@ -800,8 +814,11 @@ namespace SoLoud
 
     static void synthesizeIosInterruptionEnded()
     {
+        if (!gIosInterruptionFromSuspension.load(std::memory_order_acquire))
+            return;
         if (!gIosInterruptionActive.exchange(false, std::memory_order_acq_rel))
             return;
+        gIosInterruptionFromSuspension.store(false, std::memory_order_release);
 
         if (!gDeviceInitialized.load(std::memory_order_acquire) ||
             gSoloud.load(std::memory_order_acquire) == nullptr)
@@ -859,15 +876,26 @@ namespace SoLoud
                         }
                     }
 
+                    // Delivered while backgrounded (i.e. on thaw), or
+                    // explicitly flagged: this one can stem from suspension.
+                    // Delivered while the app was active or merely inactive
+                    // (a call, Siri), it is a genuine interruption.
+                    const bool inBackground =
+                        gIosAppInBackground.load(std::memory_order_acquire);
+                    gIosInterruptionFromSuspension.store(
+                        wasSuspended || inBackground, std::memory_order_release);
                     gIosInterruptionActive.store(true, std::memory_order_release);
 
                     dispatch_async(dispatch_get_main_queue(), ^{
+                        const bool foregroundActive =
+                            !gIosAppInBackground.load(std::memory_order_acquire) &&
+                            !gIosAppInactive.load(std::memory_order_acquire);
+
                         // If the delayed suspension notification arrived after
                         // the app already became active in the foreground,
                         // clear the interruption latch once miniaudio has
                         // processed Began.
-                        if (wasSuspended &&
-                            !gIosAppInBackground.load(std::memory_order_acquire))
+                        if (wasSuspended && foregroundActive)
                         {
                             synthesizeIosInterruptionEnded();
                             return;
@@ -875,21 +903,24 @@ namespace SoLoud
 
                         // On iOS 16+ (where wasSuspended is no longer set), a
                         // delayed suspension Began can arrive from mediaserverd
-                        // right as the app wakes up in the foreground, slightly
-                        // after DidBecomeActive. Verify after a short settle
-                        // window that the app is still in the foreground (i.e.
-                        // did not resign active for an incoming call/Siri)
-                        // before synthesizing interruption_ended.
-                        const int64_t sinceForegroundMs =
-                            iosSteadyNowMs() -
-                            gIosLastForegroundSteadyMs.load(std::memory_order_acquire);
-                        if (!gIosAppInBackground.load(std::memory_order_acquire) &&
-                            sinceForegroundMs >= 0 && sinceForegroundMs <= 2000)
+                        // right as the app wakes up from the background,
+                        // slightly after DidBecomeActive. Treat it as one only
+                        // if the app really returned from the background just
+                        // now (a suspension needs the background), and verify
+                        // after a short settle window that the app is still
+                        // active (did not resign for an incoming call/Siri).
+                        const int64_t lastReturnMs =
+                            gIosLastReturnFromBackgroundMs.load(std::memory_order_acquire);
+                        const int64_t sinceReturnMs = iosSteadyNowMs() - lastReturnMs;
+                        if (!wasSuspended && foregroundActive && lastReturnMs != 0 &&
+                            sinceReturnMs >= 0 && sinceReturnMs <= 2000)
                         {
+                            gIosInterruptionFromSuspension.store(true, std::memory_order_release);
                             dispatch_after(
                                 dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
                                 dispatch_get_main_queue(), ^{
-                                    if (!gIosAppInBackground.load(std::memory_order_acquire))
+                                    if (!gIosAppInBackground.load(std::memory_order_acquire) &&
+                                        !gIosAppInactive.load(std::memory_order_acquire))
                                     {
                                         synthesizeIosInterruptionEnded();
                                     }
@@ -900,45 +931,55 @@ namespace SoLoud
                 else if (type == AVAudioSessionInterruptionTypeEnded)
                 {
                     gIosInterruptionActive.store(false, std::memory_order_release);
+                    gIosInterruptionFromSuspension.store(false, std::memory_order_release);
                 }
             }];
         if (interruptionObs != nil)
             [gIosLifecycleObservers addObject:interruptionObs];
 
-        NSArray<NSString *> *backgroundNames = @[
-            @"UIApplicationWillResignActiveNotification",
-            @"UIApplicationDidEnterBackgroundNotification",
-            @"UISceneWillDeactivateNotification",
-            @"UISceneDidEnterBackgroundNotification"
-        ];
-        for (NSString *name in backgroundNames)
+        // Each notification updates the lifecycle flags; returning to the
+        // foreground also ends a latched suspension interruption.
+        struct LifecycleEvent
         {
-            id obs = [center addObserverForName:name
+            const char *name;
+            int inBackground; // 1 set, 0 clear, -1 leave
+            int inactive;     // 1 set, 0 clear, -1 leave
+            bool returnsFromBackground;
+            bool foreground;
+        };
+        const LifecycleEvent events[] = {
+            {"UIApplicationWillResignActiveNotification", -1, 1, false, false},
+            {"UISceneWillDeactivateNotification", -1, 1, false, false},
+            {"UIApplicationDidEnterBackgroundNotification", 1, 1, false, false},
+            {"UISceneDidEnterBackgroundNotification", 1, 1, false, false},
+            {"UIApplicationWillEnterForegroundNotification", 0, -1, true, true},
+            {"UISceneWillEnterForegroundNotification", 0, -1, true, true},
+            {"UIApplicationDidBecomeActiveNotification", 0, 0, false, true},
+            {"UISceneDidActivateNotification", 0, 0, false, true},
+        };
+        for (const LifecycleEvent &event : events)
+        {
+            const int inBackground = event.inBackground;
+            const int inactive = event.inactive;
+            const bool returnsFromBackground = event.returnsFromBackground;
+            const bool foreground = event.foreground;
+            id obs = [center addObserverForName:[NSString stringWithUTF8String:event.name]
                                          object:nil
                                           queue:[NSOperationQueue mainQueue]
                                      usingBlock:^(NSNotification * _Nonnull note) {
                                          (void)note;
-                                         gIosAppInBackground.store(true, std::memory_order_release);
-                                     }];
-            if (obs != nil)
-                [gIosLifecycleObservers addObject:obs];
-        }
-
-        NSArray<NSString *> *foregroundNames = @[
-            @"UIApplicationWillEnterForegroundNotification",
-            @"UIApplicationDidBecomeActiveNotification",
-            @"UISceneWillEnterForegroundNotification",
-            @"UISceneDidActivateNotification"
-        ];
-        for (NSString *name in foregroundNames)
-        {
-            id obs = [center addObserverForName:name
-                                         object:nil
-                                          queue:[NSOperationQueue mainQueue]
-                                     usingBlock:^(NSNotification * _Nonnull note) {
-                                         (void)note;
-                                         gIosAppInBackground.store(false, std::memory_order_release);
-                                         gIosLastForegroundSteadyMs.store(iosSteadyNowMs(), std::memory_order_release);
+                                         if (returnsFromBackground &&
+                                             gIosAppInBackground.load(std::memory_order_acquire))
+                                         {
+                                             gIosLastReturnFromBackgroundMs.store(
+                                                 iosSteadyNowMs(), std::memory_order_release);
+                                         }
+                                         if (inBackground >= 0)
+                                             gIosAppInBackground.store(inBackground != 0, std::memory_order_release);
+                                         if (inactive >= 0)
+                                             gIosAppInactive.store(inactive != 0, std::memory_order_release);
+                                         if (!foreground)
+                                             return;
                                          synthesizeIosInterruptionEnded();
                                          dispatch_async(dispatch_get_main_queue(), ^{
                                              if (!gIosAppInBackground.load(std::memory_order_acquire))
@@ -967,7 +1008,10 @@ namespace SoLoud
             gIosLifecycleObservers = nil;
         }
         gIosInterruptionActive.store(false, std::memory_order_release);
+        gIosInterruptionFromSuspension.store(false, std::memory_order_release);
         gIosAppInBackground.store(false, std::memory_order_release);
+        gIosAppInactive.store(false, std::memory_order_release);
+        gIosLastReturnFromBackgroundMs.store(0, std::memory_order_release);
     }
 #endif
 
@@ -1158,7 +1202,10 @@ namespace SoLoud
 
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
     {
-        static bool first_call = true;
+        // Per callback thread, not per process: a device re-opened after
+        // deinit()/init() or a device change gets a new callback thread,
+        // which needs the same elevation.
+        static thread_local bool first_call = true;
         if (first_call) {
 #ifdef __ANDROID__
             int policy;
@@ -1195,7 +1242,7 @@ namespace SoLoud
         // state. Emit silence instead.
         if (soloud == nullptr ||
             soloud != gSoloud.load(std::memory_order_acquire) ||
-            soloud->mEngineReady == 0)
+            soloud->mEngineReady.load(std::memory_order_acquire) == 0)
         {
             std::memset(pOutput, 0,
                         frameCount * (outChannels != 0 ? outChannels : 1) *
@@ -1235,28 +1282,29 @@ namespace SoLoud
 #else
         if (soloud->isRenderAheadEnabled())
         {
-            // Render-ahead ring path: the engine has already mixed
-            // renderAheadFrames into its own ring; this callback only copies
-            // out and tops the ring back up. The ring read is lock-free SPSC,
-            // so the device never blocks behind the audio mutex.
-            soloud->renderRingTopUp_internal();
+            // Render-ahead ring path: the render worker keeps
+            // renderAheadFrames mixed into the engine's ring, so this callback
+            // only copies frames out (and runs the post-ring stage). The ring
+            // read takes no lock and mixing happens on the worker, so a busy
+            // API thread or an expensive mix never delays the device.
             unsigned int got =
-                soloud->mRenderRing.read((float *)pOutput, frameCount);
-            if (got < frameCount)
+                soloud->readRenderRingForDevice_internal((float *)pOutput, frameCount);
+            if (got < frameCount && soloud->mRenderRing.getReadPosition() > got)
             {
-                // Underrun: emit silence for the gap. Recoverable on the next
-                // callback -- the top-up above keeps producing.
-                static bool underrunLogged = false;
-                if (!underrunLogged)
+                // Underrun (silence was emitted for the gap). Recoverable on
+                // the next callback -- the render worker keeps producing.
+                // The very first callbacks can arrive before the first quantum
+                // is mixed; those are expected and not counted. Log the 1st,
+                // 2nd, 4th, 8th... occurrence so repeated underruns stay
+                // visible without flooding the log from the audio thread.
+                static std::atomic<unsigned int> underrunCount{0};
+                const unsigned int n =
+                    underrunCount.fetch_add(1, std::memory_order_relaxed) + 1;
+                if ((n & (n - 1)) == 0)
                 {
-                    underrunLogged = true;
-                    soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun (%u/%u frames)\n", got, frameCount);
+                    soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun #%u (%u/%u frames)\n", n, got, frameCount);
                 }
-                unsigned int outCh = pDevice->playback.channels;
-                std::memset((float *)pOutput + (size_t)got * outCh, 0,
-                            (size_t)(frameCount - got) * outCh * sizeof(float));
             }
-            soloud->postProcessRenderRing_internal((float *)pOutput, frameCount);
             // The capture tap sits after the ring read, so it always reflects
             // what was actually played, including any retroactive rewrite.
             MixerOutput::instance().onAudioData((float *)pOutput, frameCount);
@@ -1513,6 +1561,11 @@ namespace SoLoud
         // Opens notification admission as well as publishing the pointer.
         // Retired again by the guard on any failure return below.
         NotificationPublishGuard notificationGuard(aSoloud);
+#if !defined(__EMSCRIPTEN__)
+        // A real device: with the render-ahead ring, Soloud::init() starts
+        // the render worker once the engine is ready.
+        aSoloud->mRenderWorkerWanted = true;
+#endif
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         if (pPlaybackInfos_id != NULL)
         {

@@ -96,6 +96,8 @@ public:
   bool samplerateAlreadySet;
 };
 
+static const char kBufferStreamSnapshotKind = 0;
+
 SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
   // Only PRESERVED streams keep the consumed data around to re-read.
   if (mParent == nullptr ||
@@ -103,9 +105,23 @@ SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
     return nullptr;
   }
   auto *s = new BufferStreamSourceStateSnapshot();
+  s->mKind = &kBufferStreamSnapshotKind;
   s->mOffset = mOffset;
   s->samplerateAlreadySet = samplerateAlreadySet;
   return s;
+}
+
+bool BufferStreamInstance::captureSourceStateInto(
+    SoLoud::SourceStateSnapshot *aState) {
+  if (aState == nullptr || aState->mKind != &kBufferStreamSnapshotKind ||
+      mParent == nullptr ||
+      mParent->mBuffer.bufferingType != BufferingType::PRESERVED) {
+    return false;
+  }
+  auto *s = static_cast<BufferStreamSourceStateSnapshot *>(aState);
+  s->mOffset = mOffset;
+  s->samplerateAlreadySet = samplerateAlreadySet;
+  return true;
 }
 
 void BufferStreamInstance::restoreSourceState(
