@@ -1,3 +1,6 @@
+##### 5.2.3 (XX Xxx 2026)
+- fix win arm64: include `<malloc.h>` on MSVC for Windows ARM64 compilation #603
+
 ##### 5.2.2 (28 Oct 2026)
 - perf: block-copy pull buffer stream chunks into native memory. Thanks to @riderous #594
 - feat: per-bus audio visualization via `Bus.setVisualizationEnabled`, `Bus.getVisualizationEnabled`, and the `Bus.audioVisualizationEvents` stream (#590). Also fixes `Bus.getChannelVolume` and `SoLoud.getApproximateVolume` to accurately return peak volume levels. Thanks to @Colton127 #592
