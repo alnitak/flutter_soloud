@@ -2568,14 +2568,18 @@ namespace SoLoud
 								memset(voice->mResampleData[0] + readcount + SAMPLE_GRANULARITY * k, 0, sizeof(float) * (SAMPLE_GRANULARITY - readcount));
 						}
 
-						// If we go past zero, crop to zero (a bit of a kludge)
+						// ###### flutter_soloud local patch (resampler carry) ######
+						// We have new block of data, move pointer backwards. The previous
+						// block was resampled to its end (see writesamples below), so this
+						// carries what is left of the last step into the new block. Only a
+						// new or reset voice is still at offset 0 here; upstream cropped
+						// every block to 0, which skipped up to one step per block.
 						if (voice->mSrcOffset < SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL)
 						{
 							voice->mSrcOffset = 0;
 						}
 						else
 						{
-							// We have new block of data, move pointer backwards
 							voice->mSrcOffset -= SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL;
 						}
 
@@ -2608,12 +2612,10 @@ namespace SoLoud
 
 					if (voice->mSrcOffset < SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL)
 					{
-						writesamples = ((SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL) - voice->mSrcOffset) / step_fixed + 1;
-
-						// avoid reading past the current buffer..
-						if (writesamples > 0 &&
-							(((writesamples - 1) * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
-							writesamples--;
+						// ###### flutter_soloud local patch (resampler carry) ######
+						// Every position left in this block, rounded up: the last one is
+						// still inside the block, the one after it is at or past its end.
+						writesamples = ((SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL) - voice->mSrcOffset + step_fixed - 1) / step_fixed;
 					}
 
 
@@ -2765,14 +2767,18 @@ namespace SoLoud
 								SAMPLE_GRANULARITY);
 						}
 
-						// If we go past zero, crop to zero (a bit of a kludge)
+						// ###### flutter_soloud local patch (resampler carry) ######
+						// We have new block of data, move pointer backwards. The previous
+						// block was resampled to its end (see writesamples below), so this
+						// carries what is left of the last step into the new block. Only a
+						// new or reset voice is still at offset 0 here; upstream cropped
+						// every block to 0, which skipped up to one step per block.
 						if (voice->mSrcOffset < SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL)
 						{
 							voice->mSrcOffset = 0;
 						}
 						else
 						{
-							// We have new block of data, move pointer backwards
 							voice->mSrcOffset -= SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL;
 						}
 
@@ -2790,12 +2796,10 @@ namespace SoLoud
 
 					if (voice->mSrcOffset < SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL)
 					{
-						writesamples = ((SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL) - voice->mSrcOffset) / step_fixed + 1;
-
-						// avoid reading past the current buffer..
-						if (writesamples > 0 &&
-							(((writesamples - 1) * step_fixed + voice->mSrcOffset) >> FIXPOINT_FRAC_BITS) >= SAMPLE_GRANULARITY)
-							writesamples--;
+						// ###### flutter_soloud local patch (resampler carry) ######
+						// Every position left in this block, rounded up: the last one is
+						// still inside the block, the one after it is at or past its end.
+						writesamples = ((SAMPLE_GRANULARITY * FIXPOINT_FRAC_MUL) - voice->mSrcOffset + step_fixed - 1) / step_fixed;
 					}
 
 
