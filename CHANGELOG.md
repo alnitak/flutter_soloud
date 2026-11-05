@@ -1,5 +1,6 @@
-##### 5.2.3 (XX Xxx 2026)
+##### 5.2.3 (5 Nov 2026)
 - fix win arm64: include `<malloc.h>` on MSVC for Windows ARM64 compilation #603
+- fix: resampler skips up to one source sample per 512-sample block (solve hearing clicks when buffer size is 512). Thanks to @NomiAdam #602
 
 ##### 5.2.2 (28 Oct 2026)
 - perf: block-copy pull buffer stream chunks into native memory. Thanks to @riderous #594
