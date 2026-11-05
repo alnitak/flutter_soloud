@@ -80,6 +80,7 @@
 #  define RESTRICT __restrict
 #  define VLA_ARRAY_ON_STACK(type__, varname__, size__) type__ varname__[size__];
 #elif defined(COMPILER_MSVC)
+#  include <malloc.h>
 #  define ALWAYS_INLINE(return_type) __forceinline return_type
 #  define NEVER_INLINE(return_type) __declspec(noinline) return_type
 #  define RESTRICT __restrict
