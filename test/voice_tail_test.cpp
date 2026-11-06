@@ -7,7 +7,8 @@
 // voice at the end of that pass, throwing away whatever of the block was not
 // output yet: up to 512 source samples (11.6 ms at 44.1 kHz). Handing a
 // sound off to a copy scheduled at its end left a gap at the seam. Now the
-// voice is stopped once a read made after the end comes back empty.
+// voice is stopped once a read made after the end comes back empty, or as
+// soon as it is no longer mixed.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -36,6 +37,8 @@ int gAssertions = 0;
 } while (0)
 
 constexpr unsigned int kBlock = 512; // SAMPLE_GRANULARITY
+constexpr int kFracBits = 20;        // FIXPOINT_FRAC_BITS in soloud.cpp
+constexpr long long kFrac = 1LL << kFracBits;
 constexpr double kStart = 0.01;      // engine time the first voice starts at
 
 // ---- Test sound -------------------------------------------------------------
@@ -185,6 +188,23 @@ unsigned int frameAt(double aTime, unsigned int aEngineRate)
     return (unsigned int)std::floor(aTime * aEngineRate + 0.5);
 }
 
+// The step as mixBus_internal computes it, in 12.20 fixed point.
+long long stepFixedOf(float aSourceRate, unsigned int aEngineRate)
+{
+    const float step = aSourceRate / (float)aEngineRate;
+    return (long long)(unsigned int)(int)std::floor(step * (int)kFrac);
+}
+
+// The mixer reads source block b when it needs the first output sample whose
+// position, k * step, lies at or after b * 512. This is the output sample,
+// counted from the voice's start, at which it reads past the last block of
+// a sound of aLength samples: that read comes back empty.
+long readPastEnd(unsigned int aLength, long long aStepFixed)
+{
+    const long long end = (long long)((aLength + kBlock - 1) / kBlock) * kBlock;
+    return (long)((end * kFrac + aStepFixed - 1) / aStepFixed);
+}
+
 // ---- Tests ------------------------------------------------------------------
 
 // A sound that does not loop, handed off to a looping copy scheduled at its
@@ -256,10 +276,10 @@ void testSeam()
     }
 }
 
-// A single voice that does not loop plays to its last sample, is stopped
-// within one block of silence after it, and a twin that is inaudible but
-// ticking (the second branch of mixBus_internal) is stopped in the same mix
-// call.
+// A single voice that does not loop plays to its last sample and is stopped
+// in the mix call that reads past its last block, no earlier and no later,
+// and a twin that is inaudible but ticking (the second branch of
+// mixBus_internal) is stopped in the same mix call.
 void testTail()
 {
     std::fprintf(stderr, "testTail\n");
@@ -267,10 +287,7 @@ void testTail()
     for (const Rates &rates : kRates)
     {
         const double step = (double)rates.source / rates.engine;
-        // Silent frames the mixer may still produce from the last block
-        // after the sound's last sample: the rest of the block, plus the
-        // resampler's reach past a block edge.
-        const long allowedSilence = (long)std::ceil(kBlock / step) + 2;
+        const long long stepFixed = stepFixedOf(rates.source, rates.engine);
         for (unsigned int resampler : kResamplers)
         {
             for (int uneven = 0; uneven < 2; uneven++)
@@ -288,12 +305,14 @@ void testTail()
                         SoLoud::AudioSourceInstance::INAUDIBLE_TICK;
 
                     const long startFrame = frameAt(kStart, rates.engine);
+                    const long emptyRead = startFrame + readPastEnd(length, stepFixed);
                     const long limit = startFrame + (long)(length / step) + 4 * 4096;
                     long total = 0, lastSound = -1;
-                    long aliveUntil = -1;  // frames mixed while the voice was alive
-                    int voiceStop = -1, twinStop = -1;
+                    int voiceStop = -1, twinStop = -1, expectedStop = -1;
                     std::vector<float> buffer;
-                    for (int call = 0; (voiceStop < 0 || twinStop < 0) && total < limit; call++)
+                    for (int call = 0;
+                         (voiceStop < 0 || twinStop < 0 || expectedStop < 0) && total < limit;
+                         call++)
                     {
                         const unsigned int n = chunkSize(uneven, call);
                         buffer.assign(n, 0.0f);
@@ -301,12 +320,12 @@ void testTail()
                         for (unsigned int i = 0; i < n; i++)
                             if (!silent(buffer[i]))
                                 lastSound = total + i;
+                        if (expectedStop < 0 && total + n > emptyRead)
+                            expectedStop = call;
                         if (voiceStop < 0 && !soloud.isValidVoiceHandle(voice))
                             voiceStop = call;
                         if (twinStop < 0 && !soloud.isValidVoiceHandle(twin))
                             twinStop = call;
-                        if (voiceStop < 0)
-                            aliveUntil = total + n;
                         total += n;
                     }
                     soloud.deinit();
@@ -320,12 +339,13 @@ void testTail()
                            rates.name, resamplerName(resampler),
                            uneven ? "uneven" : "512-frame", length,
                            lastExpected - lastSound);
-                    EXPECT(voiceStop >= 0 && aliveUntil - (lastSound + 1) <= allowedSilence,
-                           "%s, %s, %s mix calls, %u samples: the voice is still "
-                           "playing %ld frames after its last sample (%ld allowed)",
+                    EXPECT(voiceStop == expectedStop,
+                           "%s, %s, %s mix calls, %u samples: the voice is stopped "
+                           "in mix call %d, expected %d (the one holding output "
+                           "frame %ld, which reads past the last block)",
                            rates.name, resamplerName(resampler),
-                           uneven ? "uneven" : "512-frame", length,
-                           aliveUntil - (lastSound + 1), allowedSilence);
+                           uneven ? "uneven" : "512-frame", length, voiceStop,
+                           expectedStop, emptyRead);
                     EXPECT(twinStop == voiceStop,
                            "%s, %s, %s mix calls, %u samples: the ticking twin is "
                            "stopped in mix call %d, the audible voice in %d",
@@ -338,12 +358,97 @@ void testTail()
     }
 }
 
+// A voice that read its last block but is not mixed any more must not keep
+// its unplayed tail: it is stopped by the next mix call. Two ways out of the
+// mix: 3D attenuation makes it inaudible (update3dAudio flags it INAUDIBLE,
+// without ticking), or louder voices push it beyond the active voice count.
+// Without the stop the voice stayed alive as long as it was not mixed, and
+// played its stale tail if it was mixed again.
+void testUnmixed()
+{
+    std::fprintf(stderr, "testUnmixed\n");
+    const std::vector<unsigned int> lens = lengths(25);
+    const char *const ways[] = {"inaudible through 3D attenuation",
+                                "beyond the active voice count"};
+    for (int way = 0; way < 2; way++)
+    {
+        unsigned int pending = 0, alive = 0, aliveLength = 0;
+        for (unsigned int length : lens)
+        {
+            SoLoud::Soloud soloud;
+            soloud.init(0, SoLoud::Soloud::NULLDRIVER, 48000, kBlock, 2);
+            Noise noise(length, 44100.0f);
+            Noise loud(4096, 44100.0f);
+            SoLoud::handle voice;
+            if (way == 0)
+            {
+                voice = soloud.play3d(noise, 0.0f, 0.0f, 0.0f);
+                soloud.set3dSourceAttenuation(voice, SoLoud::AudioSource::INVERSE_DISTANCE, 1.0f);
+                soloud.set3dSourceMinMaxDistance(voice, 1.0f, 1e6f);
+                soloud.update3dAudio();
+            }
+            else
+            {
+                soloud.setMaxActiveVoiceCount(1);
+                voice = soloud.play(noise, 0.5f);
+            }
+
+            // Mix until the voice has read its last block, while it is still
+            // alive with the rest of that block to play.
+            std::vector<float> buffer(2 * kBlock);
+            bool tailPending = false;
+            for (int call = 0; call < 1000 && soloud.isValidVoiceHandle(voice); call++)
+            {
+                soloud.mix(buffer.data(), kBlock);
+                if (soloud.isValidVoiceHandle(voice) &&
+                    soloud.mVoice[soloud.getVoiceFromHandle_internal(voice)]->hasEnded())
+                {
+                    tailPending = true;
+                    break;
+                }
+            }
+            if (!tailPending)
+            {
+                soloud.deinit();
+                continue; // the read past the end fell in the same mix call
+            }
+            pending++;
+
+            if (way == 0)
+            {
+                soloud.set3dSourcePosition(voice, 1e4f, 0.0f, 0.0f);
+                soloud.update3dAudio();
+            }
+            else
+            {
+                const SoLoud::handle louder = soloud.play(loud, 1.0f);
+                soloud.setLooping(louder, true);
+            }
+            soloud.mix(buffer.data(), kBlock);
+            if (soloud.isValidVoiceHandle(voice))
+            {
+                alive++;
+                aliveLength = length;
+            }
+            soloud.deinit();
+        }
+        EXPECT(pending > 0,
+               "%s: no voice was ever left alive with the rest of its last block "
+               "to play, so the case is not exercised", ways[way]);
+        EXPECT(alive == 0,
+               "%s: %u of %u voices with the rest of their last block to play stay "
+               "alive (a %u-sample sound, for one)",
+               ways[way], alive, pending, aliveLength);
+    }
+}
+
 } // namespace
 
 int main()
 {
     testSeam();
     testTail();
+    testUnmixed();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);
