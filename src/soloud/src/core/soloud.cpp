@@ -2362,6 +2362,30 @@ namespace SoLoud
 		if (mActiveVoiceDirty)
 			calcActiveVoices_internal();
 
+		// ###### flutter_soloud local patch (voice tail) ######
+		// mixBus_internal stops a voice that read its last block only once a
+		// later read comes back empty, and only voices that are mixed read.
+		// One that is not mixed now (inaudible without ticking, or beyond the
+		// active voice count) would keep the unplayed rest of that block and
+		// stay alive, then play it late if it is ever mixed again. Nothing of
+		// it can be heard now, so stop the voice, as the mixer did before.
+		{
+			unsigned char mixed[VOICE_COUNT];
+			memset(mixed, 0, mHighestVoice);
+			for (i = 0; i < (signed)mActiveVoiceCount; i++)
+				mixed[mActiveVoice[i]] = 1;
+			for (i = 0; i < (signed)mHighestVoice; i++)
+			{
+				AudioSourceInstance *voice = mVoice[i];
+				if (voice && !mixed[i] &&
+					!(voice->mFlags & (AudioSourceInstance::PAUSED | AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) &&
+					voice->hasEnded())
+				{
+					stopVoice_internal(i);
+				}
+			}
+		}
+
 		mixBus_internal(mOutputScratch.mData, aSamples, aStride, mScratch.mData, 0, (float)mSamplerate, mChannels, mResampler);
 
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
