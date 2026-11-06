@@ -9,11 +9,52 @@
  ==============================================================================
   1. CUSTOM AUDIO SOURCE CALLBACK (SoLoudSourceDspCallback_t)
  ==============================================================================
-  This function is called directly and synchronously by the low-level audio
-  engine thread whenever the mixer needs a new block of audio samples for this
-  voice.
+  Called directly and synchronously by the low-level audio engine thread
+  whenever the mixer needs a new block of audio samples for this voice.
 
-  Generates a pure sine wave (440 Hz) across all channels.
+  BUFFER LAYOUT: PLANAR (DE-INTERLEAVED)
+  ----------------------------------------------------------------------------
+  SoLoud does NOT use interleaved samples [L0, R0, L1, R1, ...].
+  Instead, it uses planar (de-interleaved) layout where each channel is a
+  contiguous array separated by 'aBufferSize' elements:
+
+    aBuffer + 0 * aBufferSize -> [ L0, L1, L2, L3, ... L(N-1) ]  (Channel 0)
+    aBuffer + 1 * aBufferSize -> [ R0, R1, R2, R3, ... R(N-1) ]  (Channel 1)
+    aBuffer + ch * aBufferSize -> Start of Channel 'ch'
+
+  To write sample 'i' for channel 'ch':
+    aBuffer[(size_t)ch * aBufferSize + i] = sampleValue;
+
+  CALLBACK PARAMETERS:
+  ----------------------------------------------------------------------------
+  - aBuffer:
+      Pointer to the float output buffer where generated audio must be written.
+  - aSamplesToRead:
+      The number of audio frames (sample points per channel) requested for this
+      render cycle (e.g. 128, 256, 512). Never write past this frame count!
+  - aBufferSize:
+      The channel stride (in float elements) from the start of one channel to
+      the next. Always index channel 'ch' using: (ch * aBufferSize).
+      NOTE: aBufferSize may be greater than aSamplesToRead for alignment/headroom.
+  - aChannels:
+      Channel count configured for this source (e.g. 1 = Mono, 2 = Stereo).
+  - aSamplerate:
+      Audio sample rate in Hz (e.g. 44100.0, 48000.0). Used to calculate phase
+      increments: phaseInc = (2.0 * M_PI * freq) / aSamplerate.
+  - aStreamTime:
+      Engine time in seconds since this sound instance was started.
+  - aStreamPosition:
+      Current playback position in seconds (resets to 0.0 on start or seek).
+  - aOutHasEnded:
+      Pointer to a uint32_t end-of-stream flag:
+        * Set *aOutHasEnded = 0 for continuous / infinite synthesizers or loops.
+        * Set *aOutHasEnded = 1 when finite playback is complete (voice stops).
+  - aUserData:
+      Optional pointer passed to createCustomAudioSource(userdataAddress: ...).
+      Can hold custom C/C++ struct state (oscillators, envelopes, wavetables).
+
+  RETURN:
+      The actual number of frames written to aBuffer (usually aSamplesToRead).
  ==============================================================================
 */
 static double s_sourcePhase = 0.0;
@@ -68,11 +109,46 @@ CUSTOM_DSP_EXPORT unsigned int myCustomSourceDspCallback(
  ==============================================================================
   2. CUSTOM FILTER CALLBACK (SoLoudFilterDspCallback_t)
  ==============================================================================
-  This function is called on the real-time audio thread to process or mutate
-  the audio stream passing through a CustomFilter slot.
+  Called directly on the real-time audio thread to process or mutate the audio
+  stream passing through a CustomFilter slot IN-PLACE.
 
-  Implements a real-time pitch shift filter using a dual crossfading delay-line
-  technique with smooth Hann windowing (pure scalar C, no SIMD instructions).
+  BUFFER LAYOUT: PLANAR (DE-INTERLEAVED)
+  ----------------------------------------------------------------------------
+  The incoming audio in 'aBuffer' is already de-interleaved:
+    Channel 0 sample 'i': aBuffer[0 * aBufferSize + i]
+    Channel 1 sample 'i': aBuffer[1 * aBufferSize + i]
+    Channel ch sample 'i': aBuffer[(size_t)ch * aBufferSize + i]
+  You mutate the samples directly in this buffer.
+
+  CALLBACK PARAMETERS:
+  ----------------------------------------------------------------------------
+  - aBuffer:
+      Pointer to planar float audio data. Modify this buffer directly in-place.
+  - aSamples:
+      The number of audio frames to process in this block.
+  - aBufferSize:
+      Channel stride distance in float samples.
+  - aChannels:
+      Number of audio channels passing through this filter (e.g. 1, 2, 6, 8).
+  - aSamplerate:
+      Audio sample rate in Hz.
+  - aTime:
+      Current engine time in seconds.
+  - aParams:
+      Array of float parameter values:
+        * aParams[0] = "Wet" factor (0.0 = full bypass, 1.0 = fully wet).
+          Note: SoLoud automatically blends dry/wet when wet is between 0 and 1.
+        * aParams[1] = First user parameter (here: Pitch Shift Ratio).
+        * aParams[2..N] = Additional parameters defined via CustomFilterParamSpec.
+  - aParamChangedMask:
+      Bitmask indicating which parameters changed since the last invocation:
+        * Bit 0: Wet changed
+        * Bit 1: Param 1 changed, etc.
+      Useful for avoiding recalculation of expensive coefficients every block.
+  - aParamCount:
+      Number of valid parameter entries in aParams.
+  - aUserData:
+      Optional state pointer passed into slot.setNativeCallback(userdataAddress: ...).
  ==============================================================================
 */
 #define PITCH_MAX_CHANNELS 8
