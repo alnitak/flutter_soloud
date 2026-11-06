@@ -1839,6 +1839,10 @@ namespace SoLoud
 								voice->mResampleData[0], SAMPLE_GRANULARITY,
 								SAMPLE_GRANULARITY);
 						}
+						// ###### flutter_soloud local patch (voice tail) ######
+						// Nothing came back: everything read before this block has
+						// been resampled, so the voice may now be auto-stopped.
+						voice->mSourceDrained = readcount == 0;
 
                         // Clear remaining of the resample data if the full scratch wasn't used
 						if (readcount < SAMPLE_GRANULARITY)
@@ -1966,7 +1970,14 @@ namespace SoLoud
 					voice->mStopSamplesLeft = -1;
 					stopVoice_internal(mActiveVoice[i]);
 				}
-				else if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded())
+				// ###### flutter_soloud local patch (voice tail) ######
+				// hasEnded() alone turns true when the last block is read, with
+				// up to SAMPLE_GRANULARITY source samples of it not yet output.
+				// Wait for a read after the end to come back empty, so all of
+				// that block is output: the voice outlives its last sample by
+				// the silent rest of the block, at most one more pass at the
+				// usual buffer sizes.
+				else if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained)
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}
@@ -2027,12 +2038,17 @@ namespace SoLoud
 
 						// Get a block of source data
 
+						// ###### flutter_soloud local patch (voice tail) ######
+						// Keep the read count, as the audible path does, so a
+						// ticking voice is auto-stopped in the same pass.
+						unsigned int readcount = 0;
 						if (!voice->hasEnded() || voice->mFlags & AudioSourceInstance::LOOPING)
 						{
-							readSourceSamples_internal(voice,
+							readcount = readSourceSamples_internal(voice,
 								voice->mResampleData[0], SAMPLE_GRANULARITY,
 								SAMPLE_GRANULARITY);
 						}
+						voice->mSourceDrained = readcount == 0;
 
 						// ###### flutter_soloud local patch (resampler carry) ######
 						// We have new block of data, move pointer backwards. The previous
@@ -2087,7 +2103,9 @@ namespace SoLoud
 				}
 
 				// clear voice if the sound is over
-				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded())
+				// ###### flutter_soloud local patch (voice tail) ######
+				// Once a read after the end came back empty, as above.
+				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained)
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}
