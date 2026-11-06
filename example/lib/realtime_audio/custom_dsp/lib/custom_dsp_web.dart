@@ -40,26 +40,10 @@ void _ensureWebCallbacks() {
 
     for (int i = 0; i < count; i++) {
       final double t = t0 + (i / sr);
-      final double lfoL = 1.0 + 0.0035 * math.sin(2.0 * math.pi * 0.22 * t);
-      final double lfoR = 1.0 + 0.0035 * math.cos(2.0 * math.pi * 0.31 * t);
+      final double sample = 0.5 * math.sin(2.0 * math.pi * 440.0 * t);
 
-      final double sL = 0.18 * math.sin(2.0 * math.pi * 110.0 * t) +
-          0.12 * math.sin(2.0 * math.pi * 164.81 * lfoL * t) +
-          0.10 * math.sin(2.0 * math.pi * 196.00 * t) +
-          0.08 * math.sin(2.0 * math.pi * 246.94 * lfoL * t) +
-          0.05 * math.sin(2.0 * math.pi * 329.63 * t) +
-          0.08 * math.sin(2.0 * math.pi * 55.0 * t);
-
-      final double sR = 0.18 * math.sin(2.0 * math.pi * 110.2 * t) +
-          0.12 * math.sin(2.0 * math.pi * 165.10 * t) +
-          0.10 * math.sin(2.0 * math.pi * 196.30 * lfoR * t) +
-          0.08 * math.sin(2.0 * math.pi * 247.30 * t) +
-          0.05 * math.sin(2.0 * math.pi * 330.10 * lfoR * t) +
-          0.08 * math.sin(2.0 * math.pi * 55.0 * t);
-
-      heap[f32Offset + i] = sL;
-      for (int ch = 1; ch < chs; ch++) {
-        heap[f32Offset + ch * bufStride + i] = (ch & 1) != 0 ? sR : sL;
+      for (int ch = 0; ch < chs; ch++) {
+        heap[f32Offset + ch * bufStride + i] = sample;
       }
     }
     return samplesToRead;

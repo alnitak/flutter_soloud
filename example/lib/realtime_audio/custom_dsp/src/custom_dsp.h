@@ -15,7 +15,7 @@ extern "C" {
 #endif
 
 /// 1. Custom Audio Source Callback matching `SoLoudSourceDspCallback_t`.
-/// Generates procedural stereo dual-tone audio (Left: 220Hz, Right: 330Hz).
+/// Generates a simple sine wave (440 Hz) across all channels.
 CUSTOM_DSP_EXPORT unsigned int myCustomSourceDspCallback(
     float *aBuffer,
     unsigned int aSamplesToRead,
@@ -28,7 +28,7 @@ CUSTOM_DSP_EXPORT unsigned int myCustomSourceDspCallback(
     void *aUserData);
 
 /// 2. Custom Filter Callback matching `SoLoudFilterDspCallback_t`.
-/// Applies soft saturation/overdrive driven by user parameter 1 (Drive).
+/// Applies real-time pitch shifting driven by user parameter 1 (Shift ratio).
 CUSTOM_DSP_EXPORT void myCustomFilterDspCallback(
     float *aBuffer,
     unsigned int aSamples,

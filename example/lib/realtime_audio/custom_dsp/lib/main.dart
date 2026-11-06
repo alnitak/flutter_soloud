@@ -8,10 +8,12 @@ import 'custom_dsp.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SoLoud.instance.init();
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: CustomDspExampleApp(),
-  ));
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: CustomDspExampleApp(),
+    ),
+  );
 }
 
 class CustomDspExampleApp extends StatefulWidget {
@@ -133,8 +135,10 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
               children: [
                 // Platform Info Badge
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blueGrey.shade50,
                     borderRadius: BorderRadius.circular(8),
@@ -142,8 +146,11 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.memory,
-                          size: 20, color: Colors.blueGrey.shade700),
+                      Icon(
+                        Icons.memory,
+                        size: 20,
+                        color: Colors.blueGrey.shade700,
+                      ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -173,8 +180,10 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.graphic_eq,
-                                color: Colors.indigo.shade700),
+                            Icon(
+                              Icons.graphic_eq,
+                              color: Colors.indigo.shade700,
+                            ),
                             const SizedBox(width: 8),
                             const Text(
                               'Custom Audio Source',
@@ -189,7 +198,9 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                         Text(
                           'Generates a lush A-minor 9th ambient pad with stereo chorus modulation directly on the audio thread.',
                           style: TextStyle(
-                              color: Colors.grey.shade600, fontSize: 13),
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
                         ),
                         const SizedBox(height: 20),
                         SizedBox(
@@ -205,17 +216,20 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            icon:
-                                Icon(isPlaying ? Icons.stop : Icons.play_arrow),
+                            icon: Icon(
+                              isPlaying ? Icons.stop : Icons.play_arrow,
+                            ),
                             label: Text(
                               isPlaying
                                   ? 'Stop Custom Synth'
                                   : 'Play Custom Synth',
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                            onPressed:
-                                _customSource == null ? null : _togglePlayback,
+                            onPressed: _customSource == null
+                                ? null
+                                : _togglePlayback,
                           ),
                         ),
                       ],
@@ -261,7 +275,9 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                         Text(
                           'Applies real-time tanh soft-clipping saturation in-place.',
                           style: TextStyle(
-                              color: Colors.grey.shade600, fontSize: 13),
+                            color: Colors.grey.shade600,
+                            fontSize: 13,
+                          ),
                         ),
                         const SizedBox(height: 16),
 
@@ -287,7 +303,7 @@ class _CustomDspExampleAppState extends State<CustomDspExampleApp> {
                         Slider(
                           value: _drive,
                           min: 1.0,
-                          max: 10.0,
+                          max: 4.0,
                           divisions: 90,
                           label: _drive.toStringAsFixed(1),
                           onChanged: _filterActive ? _onDriveChanged : null,
