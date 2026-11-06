@@ -32,21 +32,77 @@ Inside your audio callbacks:
 
 ---
 
-## 2. Implementing the Callbacks (C/C++ & Rust)
+## 2. Audio Buffer Layout: Planar (De-Interleaved)
+
+SoLoud does **NOT** use interleaved audio buffers (`[L0, R0, L1, R1, ...]`). Instead, it uses **planar (de-interleaved)** memory layout: each audio channel is laid out in a contiguous array separated by `aBufferSize` elements:
+
+```
+aBuffer + 0 * aBufferSize -> [ L0, L1, L2, L3, ... L(N-1) ]  (Channel 0 - Left)
+aBuffer + 1 * aBufferSize -> [ R0, R1, R2, R3, ... R(N-1) ]  (Channel 1 - Right)
+aBuffer + ch * aBufferSize -> Start of Channel 'ch'
+```
+
+### Critical Rules for Buffer Access:
+1. **Always index using `aBufferSize` stride**:
+   ```c
+   aBuffer[(size_t)ch * aBufferSize + i] = sampleValue;
+   ```
+   Never index as `aBuffer[i * aChannels + ch]`.
+2. **`aBufferSize` vs `aSamplesToRead`**:
+   - `aSamplesToRead` (or `aSamples` in filters) is the exact number of frames (samples per channel) requested for the current render block. Never write past index `i = aSamplesToRead - 1`.
+   - `aBufferSize` is the distance (in `float` elements) between channel starts. It can be larger than `aSamplesToRead` (e.g., padded for SIMD alignment or allocated to the maximum buffer granularity). Never assume `aBufferSize == aSamplesToRead`.
+3. **Oscillator Phase Continuity**:
+   For procedural waveforms (sine, saw, square), do **not** calculate sample values using `sin(2 * M_PI * freq * aStreamPosition + ...)`. `aStreamPosition` is updated by the engine at block boundaries and floating-point quantization can cause phase jumps (audible buzzing or clicks). Always maintain a running phase accumulator:
+   ```c
+   static double s_phase = 0.0;
+   const double phaseInc = (2.0 * M_PI * freq) / aSamplerate;
+   for (unsigned int i = 0; i < aSamplesToRead; ++i) {
+       float sample = (float)sin(s_phase);
+       s_phase += phaseInc;
+       if (s_phase >= 2.0 * M_PI) s_phase -= 2.0 * M_PI;
+       for (unsigned int ch = 0; ch < aChannels; ++ch) {
+           aBuffer[(size_t)ch * aBufferSize + i] = sample;
+       }
+   }
+   ```
+
+---
+
+## 3. Implementing the Callbacks (C/C++ & Rust)
 
 ### A. Custom Audio Source Callback (`SoLoudSourceDspCallback_t`)
 Used to generate audio procedurally (oscillators, physical modeling, custom samplers).
+
+#### Parameter Reference (`SoLoudSourceDspCallback_t`):
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `aBuffer` | `float*` | Output buffer. Write planar channel data here. Channel `ch` sample `i` is at `aBuffer[ch * aBufferSize + i]`. |
+| `aSamplesToRead` | `unsigned int` | Number of audio frames requested in this render block (e.g. 128, 256, 512). |
+| `aBufferSize` | `unsigned int` | Channel stride in `float` elements (distance between channel start pointers). |
+| `aChannels` | `unsigned int` | Configured channel count (1 = Mono, 2 = Stereo, 6 = 5.1 Surround, etc.). |
+| `aSamplerate` | `float` | Sample rate in Hz (e.g. 44100.0, 48000.0). |
+| `aStreamTime` | `double` | Total elapsed playback time in seconds since this voice started. |
+| `aStreamPosition` | `double` | Current playback position in seconds (resets to 0.0 on start or seek). |
+| `aOutHasEnded` | `uint32_t*` | End-of-stream flag pointer: set `*aOutHasEnded = 0` for continuous synths, `1` when finished. |
+| `aUserData` | `void*` | Optional user struct pointer passed to `createCustomAudioSource(userdataAddress: ...)`. |
+| **Return** | `unsigned int` | The actual number of frames rendered (normally `aSamplesToRead`). |
 
 #### C / C++
 ```c
 #include <stdint.h>
 #include <math.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 #if defined(_WIN32)
   #define MY_EXPORT __declspec(dllexport)
 #else
   #define MY_EXPORT __attribute__((visibility("default")))
 #endif
+
+static double s_sourcePhase = 0.0;
 
 MY_EXPORT unsigned int myCustomSourceDspCallback(
     float *aBuffer,
@@ -59,26 +115,41 @@ MY_EXPORT unsigned int myCustomSourceDspCallback(
     uint32_t *aOutHasEnded,
     void *aUserData)
 {
-    // Buffer layout is planar (de-interleaved):
-    // Channel 0: aBuffer + 0 * aBufferSize
-    // Channel 1: aBuffer + 1 * aBufferSize
-    for (unsigned int i = 0; i < aSamplesToRead; ++i) {
-        double t = aStreamPosition + (double)i / (double)aSamplerate;
-        float sampleL = 0.25f * sinf(2.0f * 3.14159265f * 220.0f * (float)t);
-        float sampleR = 0.25f * sinf(2.0f * 3.14159265f * 330.0f * (float)t);
+    (void)aStreamTime;
+    (void)aUserData;
 
-        aBuffer[i] = sampleL;
-        if (aChannels > 1) {
-            aBuffer[aBufferSize + i] = sampleR;
+    if (aBuffer == (float*)0 || aSamplesToRead == 0 || aChannels == 0) {
+        return 0;
+    }
+
+    // Reset phase when starting or seeking
+    if (aStreamPosition <= 0.0) {
+        s_sourcePhase = 0.0;
+    }
+
+    const double sr = aSamplerate > 0.0f ? (double)aSamplerate : 48000.0;
+    const double phaseInc = (2.0 * M_PI * 440.0) / sr;
+    const float amplitude = 0.5f;
+
+    // Buffer layout is planar (de-interleaved)
+    for (unsigned int i = 0; i < aSamplesToRead; ++i) {
+        const float sample = (float)(amplitude * sin(s_sourcePhase));
+        s_sourcePhase += phaseInc;
+        if (s_sourcePhase >= 2.0 * M_PI) {
+            s_sourcePhase -= 2.0 * M_PI;
+        }
+
+        for (unsigned int ch = 0; ch < aChannels; ++ch) {
+            aBuffer[(size_t)ch * aBufferSize + i] = sample;
         }
     }
 
-    // Set *aOutHasEnded = 1 when the audio source finishes playing (e.g. sampler finished)
+    // Set *aOutHasEnded = 1 when finished (0 = continuous)
     if (aOutHasEnded != (uint32_t*)0) {
-        *aOutHasEnded = 0; // 0 = keep playing, 1 = ended
+        *aOutHasEnded = 0;
     }
 
-    return aSamplesToRead; // Return number of frames actually rendered
+    return aSamplesToRead;
 }
 
 // Export a helper returning the raw function pointer address:
@@ -127,7 +198,21 @@ pub extern "C" fn get_custom_source_callback_address() -> *const std::ffi::c_voi
 ---
 
 ### B. Custom DSP Filter Callback (`SoLoudFilterDspCallback_t`)
-Used to process audio in real-time (distortion, saturation, custom biquads, ring mod, delays).
+Used to process audio in real-time (distortion, saturation, custom biquads, ring mod, delays, pitch filters).
+
+#### Parameter Reference (`SoLoudFilterDspCallback_t`):
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `aBuffer` | `float*` | Input/Output buffer containing planar channel audio. Modify in-place! Channel `ch` is at `aBuffer + ch * aBufferSize`. |
+| `aSamples` | `unsigned int` | Number of audio frames to process in this block. |
+| `aBufferSize` | `unsigned int` | Channel stride in `float` elements (`aBuffer + ch * aBufferSize`). |
+| `aChannels` | `unsigned int` | Number of audio channels passing through this filter. |
+| `aSamplerate` | `float` | Audio sample rate in Hz. |
+| `aTime` | `double` | Current audio engine time in seconds. |
+| `aParams` | `const float*` | Parameter values: `aParams[0]` is "Wet" ($0.0 \dots 1.0$), `aParams[1..7]` are user parameters from `CustomFilterParamSpec`. |
+| `aParamChangedMask` | `uint64_t` | Bitmask of changed parameters (bit 0 = Wet changed, bit 1 = param 1 changed, etc.). |
+| `aParamCount` | `unsigned int` | Total count of valid parameter entries in `aParams`. |
+| `aUserData` | `void*` | Optional state pointer passed into `slot.setNativeCallback(userdataAddress: ...)`. |
 
 #### C / C++
 ```c
@@ -176,7 +261,7 @@ MY_EXPORT void *getCustomFilterCallbackAddress(void) {
 
 ---
 
-## 3. Compilation Workflows
+## 4. Compilation Workflows
 
 ### Option A: Automated Cross-Compilation with Dart Native Assets (`hook/build.dart`)
 *(Recommended for Dart 3 and Flutter 3.24+)*
