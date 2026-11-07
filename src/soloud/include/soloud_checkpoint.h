@@ -70,6 +70,9 @@ namespace SoLoud
 		unsigned int mBusHandle;
 		unsigned int mSrcOffset;
 		unsigned int mLeftoverSamples;
+		// ###### flutter_soloud local patch (voice tail) ######
+		// Decides when the mixer auto-stops the voice.
+		bool mSourceDrained;
 		unsigned int mDelaySamples;
 		long long mStopSamplesLeft;
 		time mLoopPoint;
