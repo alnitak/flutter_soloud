@@ -557,8 +557,12 @@ result Wav::loadRawWave16(short *aMem, unsigned int aLength, float aSamplerate,
 result Wav::loadRawWave(float *aMem, unsigned int aLength, float aSamplerate,
                         unsigned int aChannels, bool aCopy,
                         bool aTakeOwndership) {
-  if (aMem == 0 || aLength == 0 || aSamplerate <= 0 || aChannels < 1)
+  if (aMem == 0 || aLength == 0 || aSamplerate <= 0 || aChannels < 1) {
+    if (aTakeOwndership && !aCopy && aMem != 0) {
+      delete[] aMem;
+    }
     return INVALID_PARAMETER;
+  }
   stop();
   delete[] mData;
   if (aCopy == true || aTakeOwndership == false) {
