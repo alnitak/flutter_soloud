@@ -6,6 +6,7 @@
 
 #include "../soloud_common.h"
 #include "metadata_ffi.h"
+#include "realtime_ring_buffer.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -92,6 +93,7 @@ PullBufferStreamInstance::PullBufferStreamInstance(PullBufferStream *aParent)
     mBaseSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
     mSamplerate = mBaseSamplerate;
     mChannels = mParent->mPCMformat.channels;
+    mReadScratch.reserve(SAMPLE_GRANULARITY * MAX_CHANNELS);
     mParent->mInstance = this;
   }
 }
@@ -158,11 +160,8 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
       mParent->mCircularBuffer.read(mReadScratch.data(), samplesToRead);
   const size_t readFrames = readSamples / mChannels;
   if (readFrames > 0) {
-    for (unsigned int ch = 0; ch < mChannels; ++ch) {
-      for (size_t i = 0; i < readFrames; ++i) {
-        aBuffer[ch * aBufferSize + i] = mReadScratch[i * mChannels + ch];
-      }
-    }
+    deinterleaveFloatsToPlanar(mReadScratch.data(), aBuffer, aBufferSize,
+                               readFrames, mChannels);
   }
   mParent->mDecodedSamplesRead += readSamples;
 

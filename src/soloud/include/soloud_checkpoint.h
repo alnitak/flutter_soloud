@@ -29,6 +29,117 @@
 
 namespace SoLoud
 {
+	// ###### flutter_soloud local patch (mix checkpoints) ######
+	// Spare heap snapshots kept for reuse, so that capturing checkpoints on
+	// the audio thread neither allocates nor frees in steady state: a
+	// snapshot a checkpoint no longer needs is parked here and later refilled
+	// in place (captureStateInto()/captureSourceStateInto()) by any voice of
+	// the same snapshot type. Snapshots are grouped by their mKind tag; one
+	// without a tag cannot be refilled and is deleted instead. Only used
+	// under the audio mutex.
+	template <class T>
+	class SnapshotFreeList
+	{
+	public:
+		enum { GROUPS = 16 };
+
+		SnapshotFreeList() : mPerGroup(0)
+		{
+			unsigned int i;
+			for (i = 0; i < GROUPS; i++)
+				mKind[i] = 0;
+		}
+		~SnapshotFreeList() { clear(); }
+
+		// Pre-size every group so that give() never allocates. A group that
+		// is full deletes what it is given.
+		void reserve(unsigned int aPerGroup)
+		{
+			mPerGroup = aPerGroup;
+			unsigned int i;
+			for (i = 0; i < GROUPS; i++)
+				mItems[i].reserve(aPerGroup);
+		}
+
+		// Hands out a spare that aRefill(spare) accepted (it refills the
+		// spare in place and returns true), or NULL. A group can hold
+		// differently sized snapshots of one kind (e.g. an echo snapshot
+		// taken before its delay line existed, next to ones with it), so up
+		// to MAX_TRIES candidates per group are tried, newest first; a
+		// refill rejects a mismatch before copying anything.
+		enum { MAX_TRIES = 16 };
+		template <class F>
+		T *take(F aRefill)
+		{
+			unsigned int i;
+			for (i = 0; i < GROUPS; i++)
+			{
+				std::vector<T *> &items = mItems[i];
+				size_t tries = 0;
+				size_t j = items.size();
+				while (j > 0 && tries < MAX_TRIES)
+				{
+					j--;
+					tries++;
+					T *s = items[j];
+					if (aRefill(s))
+					{
+						items[j] = items.back();
+						items.pop_back();
+						return s;
+					}
+				}
+			}
+			return 0;
+		}
+
+		void give(T *aSnapshot)
+		{
+			if (aSnapshot == 0)
+				return;
+			if (aSnapshot->mKind != 0 && mPerGroup != 0)
+			{
+				int group = -1;
+				unsigned int i;
+				for (i = 0; i < GROUPS && group < 0; i++)
+				{
+					if (mKind[i] == aSnapshot->mKind)
+						group = (int)i;
+				}
+				for (i = 0; i < GROUPS && group < 0; i++)
+				{
+					if (mItems[i].empty())
+						group = (int)i;
+				}
+				if (group >= 0 && mItems[group].size() < mPerGroup)
+				{
+					mKind[group] = aSnapshot->mKind;
+					mItems[group].push_back(aSnapshot);
+					return;
+				}
+			}
+			delete aSnapshot;
+		}
+
+		void clear()
+		{
+			unsigned int i;
+			size_t j;
+			for (i = 0; i < GROUPS; i++)
+			{
+				for (j = 0; j < mItems[i].size(); j++)
+					delete mItems[i][j];
+				mItems[i].clear();
+				mKind[i] = 0;
+			}
+		}
+
+	private:
+		const void *mKind[GROUPS];
+		std::vector<T *> mItems[GROUPS];
+		unsigned int mPerGroup;
+	};
+
 	// Per-voice snapshot: every mutable POD field of AudioSourceInstance,
 	// copied by value. Pointers are never copied: mResampleData[0..1] are
 	// stored as pool block indices and mFilter[] as owned heap snapshots.
@@ -88,6 +199,11 @@ namespace SoLoud
 		// (mFilterState[i] alone cannot distinguish "no filter" from "filter
 		// cannot be re-mixed").
 		bool mFilterLive[FILTERS_PER_STREAM];
+		// FilterInstance::mInstanceId of mFilter[i] at capture time, 0 for an
+		// empty slot. Filters can be added, removed or replaced on a live
+		// voice; a snapshot is only ever restored into the instance it came
+		// from.
+		unsigned long long mFilterId[FILTERS_PER_STREAM];
 		// Owned heap snapshots of the voice's filter instances; nullptr where
 		// the slot is empty or the filter cannot be re-mixed.
 		FilterStateSnapshot *mFilterState[FILTERS_PER_STREAM];
@@ -148,13 +264,9 @@ namespace SoLoud
 		long long mClockedAnchorSample;
 		time mClockedLastTime;
 
-		// 3d state (feeds update3dAudio; snapshotted for completeness).
-		AudioSourceInstance3dData m3dData[VOICE_COUNT];
-		float m3dPosition[3];
-		float m3dAt[3];
-		float m3dUp[3];
-		float m3dVelocity[3];
-		float m3dSoundSpeed;
+		// No 3d state: listener and source parameters are set through the
+		// API, never by the mix, so a rollback keeps their live values (see
+		// reapply3dVoices_internal).
 
 		// Owned heap snapshots of the global filter instances; nullptr where
 		// the slot is empty or the filter cannot be re-mixed.
@@ -197,7 +309,8 @@ namespace SoLoud
 			PARAM_VOLUME = 0,
 			PARAM_PAN = 1,
 			PARAM_SPEED = 2,
-			PARAM_PAUSE = 3
+			PARAM_PAUSE = 3,
+			PARAM_STOP = 4
 		};
 		int mType;
 		// Engine time of the event: for births the first sounding sample,
@@ -216,8 +329,9 @@ namespace SoLoud
 		// voices are always restorable: their source state does not advance
 		// while paused.
 		bool mRestorable;
-		// PARAM only: which parameter (enum Param) and its new value.
+		// PARAM only: which parameter (enum Param), its starting value, and its new value.
 		int mParam;
+		float mFrom;
 		float mValue;
 		// PARAM only: fade duration in seconds (0 = step change; replay uses
 		// the zero-duration RETRO_FADE_TIME step for it).
@@ -225,9 +339,6 @@ namespace SoLoud
 		// Births only: full POD snapshot of the instance right after
 		// creation, including owned heap snapshots of source/filter state.
 		CheckpointVoice mBirth;
-		// Births only: 3d data at creation (the checkpoint's m3dData predates
-		// the birth and would otherwise clobber the slot's entry).
-		AudioSourceInstance3dData m3dData;
 	};
 };
 

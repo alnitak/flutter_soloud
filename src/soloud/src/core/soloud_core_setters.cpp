@@ -41,8 +41,14 @@ namespace SoLoud
 
 	void Soloud::setGlobalVolume(float aVolume)
 	{
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The mixer reads both under the audio mutex, and checkpoints restore
+		// them.
+		lockAudioMutex_internal();
 		mGlobalVolumeFader.mActive = 0;
 		mGlobalVolume = aVolume;
+		engineStateChanged_internal();
+		unlockAudioMutex_internal();
 	}		
 
 	result Soloud::setRelativePlaySpeed(handle aVoiceHandle, float aSpeed)
@@ -54,6 +60,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mRelativePlaySpeedFader.mActive = 0;
 				retVal = setVoiceRelativePlaySpeed_internal(ch, aSpeed);
+				if (retVal == SO_NO_ERROR)
+					journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_SPEED, aSpeed, mStreamTime, 0);
 			}
 			FOR_ALL_VOICES_POST
 		return retVal;
@@ -64,6 +72,8 @@ namespace SoLoud
 		FOR_ALL_VOICES_PRE
 			mVoice[ch]->mBaseSamplerate = aSamplerate;
 			updateVoiceRelativePlaySpeed_internal(ch);
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -76,6 +86,8 @@ namespace SoLoud
 				!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_PAUSE, 1.0f, 0, playheadTimeLocked_internal()))
 			{
 				setVoicePause_internal(ch, aPause);
+				if (aPause)
+					journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAUSE, 1.0f, mStreamTime, 0);
 			}
 		FOR_ALL_VOICES_POST
 	}
@@ -85,18 +97,34 @@ namespace SoLoud
 		if (aVoiceCount == 0 || aVoiceCount >= VOICE_COUNT)
 			return INVALID_PARAMETER;
 		lockAudioMutex_internal();
+		if (aVoiceCount == mMaxActiveVoices && mResampleData != NULL && mResampleDataOwner != NULL)
+		{
+			unlockAudioMutex_internal();
+			return SO_NO_ERROR;
+		}
+		unsigned int i;
+		for (i = 0; i < mHighestVoice; i++)
+		{
+			if (mVoice[i] != NULL)
+			{
+				mVoice[i]->mResampleData[0] = NULL;
+				mVoice[i]->mResampleData[1] = NULL;
+				mVoice[i]->mSrcOffset = 0;
+				mVoice[i]->mLeftoverSamples = 0;
+			}
+		}
 		mMaxActiveVoices = aVoiceCount;
 		delete[] mResampleData;
 		delete[] mResampleDataOwner;
 		mResampleData = new float*[aVoiceCount * 2];
 		mResampleDataOwner = new AudioSourceInstance*[aVoiceCount];
 		mResampleDataBuffer.init(SAMPLE_GRANULARITY * MAX_CHANNELS * aVoiceCount * 2);
-		unsigned int i;
 		for (i = 0; i < aVoiceCount * 2; i++)
 			mResampleData[i] = mResampleDataBuffer.mData + (SAMPLE_GRANULARITY * MAX_CHANNELS * i);
 		for (i = 0; i < aVoiceCount; i++)
 			mResampleDataOwner[i] = NULL;
 
+		mCheckpointRecycle.reserve(aVoiceCount);
 		for (i = 0; i < mCheckpointPool.size(); i++)
 		{
 			mCheckpointPool[i].mVoices.reserve(aVoiceCount);
@@ -106,6 +134,12 @@ namespace SoLoud
 				mCheckpointPool[i].mResampleBlocks.push_back(CheckpointResampleBlock());
 				mCheckpointPool[i].mResampleBlocks.back().mData.resize(SAMPLE_GRANULARITY * MAX_CHANNELS);
 			}
+			// ###### flutter_soloud local patch (mix checkpoints) ######
+			// Every existing checkpoint refers to the old resample pool by
+			// block index (and the voices' pointers into it were cleared
+			// above). Restoring one would index the new, possibly smaller,
+			// arrays with stale indices, so none of them may be used again.
+			mCheckpointPool[i].mRestorable = false;
 		}
 
 		mActiveVoiceDirty = true;
@@ -120,6 +154,9 @@ namespace SoLoud
 		for (ch = 0; ch < (signed)mHighestVoice; ch++)
 		{
 			setVoicePause_internal(ch, aPause);
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			// Not journaled: keep rollbacks from undoing it.
+			voiceStateChanged_internal(ch);
 		}
 		unlockAudioMutex_internal();
 	}
@@ -135,6 +172,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mFlags &= ~AudioSourceInstance::PROTECTED;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -146,6 +185,7 @@ namespace SoLoud
 			{
 				mVoice[ch]->mPanFader.mActive = 0;
 				setVoicePan_internal(ch, aPan);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAN, aPan, mStreamTime, 0);
 			}
 		FOR_ALL_VOICES_POST
 	}
@@ -157,6 +197,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mChannelVolume[aChannel] = aVolume;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -187,6 +229,8 @@ namespace SoLoud
 				mVoice[ch]->mChannelVolume[6] = aLVolume;
 				mVoice[ch]->mChannelVolume[7] = aRVolume;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -202,6 +246,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mFlags |= AudioSourceInstance::INAUDIBLE_KILL;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -214,6 +260,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mLoopEndPoint = 0;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -230,6 +278,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mLoopEndPoint = 0;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -244,6 +294,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mFlags &= ~AudioSourceInstance::LOOPING;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -258,6 +310,8 @@ namespace SoLoud
 			{
 				mVoice[ch]->mFlags |= AudioSourceInstance::DISABLE_AUTOSTOP;
 			}
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -269,6 +323,7 @@ namespace SoLoud
 			{
 				mVoice[ch]->mVolumeFader.mActive = 0;
 				setVoiceVolume_internal(ch, aVolume);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aVolume, mStreamTime, 0);
 			}
 		FOR_ALL_VOICES_POST
 	}
@@ -277,6 +332,8 @@ namespace SoLoud
 	{
 		FOR_ALL_VOICES_PRE
 			mVoice[ch]->mDelaySamples = aSamples;
+			// ###### flutter_soloud local patch (retroactive re-mix) ######
+			voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 

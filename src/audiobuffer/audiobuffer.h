@@ -45,6 +45,7 @@ public:
   // consumed data and return nullptr (going-forward only, plan §7).
   virtual SoLoud::SourceStateSnapshot *captureSourceState();
   virtual void restoreSourceState(SoLoud::SourceStateSnapshot *aState);
+  virtual bool captureSourceStateInto(SoLoud::SourceStateSnapshot *aState);
   bool samplerateAlreadySet;
 };
 

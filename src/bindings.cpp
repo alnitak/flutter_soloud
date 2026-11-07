@@ -10,6 +10,7 @@
 // definitions rather than being repeated by hand in Java, Objective-C++ and
 // Dart.
 #include "engine_lifecycle.h"
+#include "filters/custom_filter.h"
 #include "mixeroutput/mixer_output.h"
 #include "mixeroutput/wav_output_encoder.h"
 #include "player.h"
@@ -18,6 +19,9 @@
 #include "soloud/include/soloud_internal.h"
 #include "soloud_thread.h"
 #include "waveform/waveform.h"
+#ifdef SOLOUD_ENABLE_VST3
+#include "vst3/vst3_host.h"
+#endif
 
 #ifndef SOLOUD_COMMON_H
 #include "soloud_common.h"
@@ -39,6 +43,7 @@
 #include <memory.h>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <stdio.h>
 #include <thread>
 
@@ -231,6 +236,73 @@ extern "C"
   [[clang::no_destroy]]
 #endif
   std::unique_ptr<Player> player = std::make_unique<Player>();
+
+  /// Pins the `player` object for exports that run on any isolate's thread
+  /// (the realtime stream API is fed from background isolates) while another
+  /// isolate may tear the engine down: dispose() runs in `Isolate.run`.
+  ///
+  /// Such exports hold it shared for their whole call through PlayerLease.
+  /// Code that destroys, replaces or deinitializes `player` holds it
+  /// exclusively through PlayerLifetimeWriteGuard, so it waits for in-flight
+  /// calls and none can start meanwhile.
+  ///
+  /// Lock ordering: `init_deinit_mutex -> loadMutex -> player_lifetime_mutex
+  /// -> sounds_mutex -> audio mutex`. A leased call never takes
+  /// init_deinit_mutex or loadMutex, and the exclusive holder never waits for
+  /// anything a leased call holds.
+  std::shared_mutex player_lifetime_mutex;
+
+  /// Raised before player_lifetime_mutex is taken exclusively. New leases see
+  /// it and fail at once instead of queueing on the lock: std::shared_mutex
+  /// may prefer readers (glibc does), so feeders pushing back to back would
+  /// otherwise starve the teardown forever. Only calls that read it before it
+  /// was raised can still delay the writer, and each of them is short.
+  std::atomic<bool> player_teardown_pending{false};
+
+  /// RAII shared hold on player_lifetime_mutex. Yields the player only while
+  /// it is initialized and no teardown is pending.
+  class PlayerLease
+  {
+  public:
+    PlayerLease()
+    {
+      if (player_teardown_pending.load(std::memory_order_acquire))
+        return;
+      mLock = std::shared_lock<std::shared_mutex>(player_lifetime_mutex);
+      Player *p = player.get();
+      mPlayer = (p != nullptr && p->isInited()) ? p : nullptr;
+    }
+    PlayerLease(const PlayerLease &) = delete;
+    PlayerLease &operator=(const PlayerLease &) = delete;
+
+    explicit operator bool() const { return mPlayer != nullptr; }
+    Player *operator->() const { return mPlayer; }
+
+  private:
+    std::shared_lock<std::shared_mutex> mLock;
+    Player *mPlayer = nullptr;
+  };
+
+  /// RAII exclusive hold on player_lifetime_mutex for code that destroys,
+  /// replaces or deinitializes `player`. Turns new leases away for its whole
+  /// lifetime (see player_teardown_pending).
+  class PlayerLifetimeWriteGuard
+  {
+  public:
+    PlayerLifetimeWriteGuard()
+    {
+      player_teardown_pending.store(true, std::memory_order_release);
+      player_lifetime_mutex.lock();
+    }
+    ~PlayerLifetimeWriteGuard()
+    {
+      player_teardown_pending.store(false, std::memory_order_release);
+      player_lifetime_mutex.unlock();
+    }
+    PlayerLifetimeWriteGuard(const PlayerLifetimeWriteGuard &) = delete;
+    PlayerLifetimeWriteGuard &operator=(const PlayerLifetimeWriteGuard &) =
+        delete;
+  };
 
   typedef void (*dartVoiceEndedCallback_t)(unsigned int *);
   typedef void (*dartFileLoadedCallback_t)(enum PlayerErrors *, char *completeFileName, unsigned int *, uint64_t *counter);
@@ -1133,7 +1205,10 @@ extern "C"
     }
 
     if (player.get() == nullptr)
+    {
+      PlayerLifetimeWriteGuard lifetime;
       player = std::make_unique<Player>();
+    }
 
     player.get()->setStateChangedCallback(stateChangedCallback);
     PlayerErrors res = (PlayerErrors)player.get()->init(
@@ -1519,9 +1594,20 @@ extern "C"
     // then has to wait out, on exactly the backends where starting is slow.
     // Player::dispose() destroys the sounds itself, as the sole owner of native
     // sound destruction during teardown.
-    player.get()->dispose();
-    player.reset();
-    player = std::make_unique<Player>();
+    {
+      // Wait out in-flight leased calls (e.g. a feeder isolate pushing into a
+      // realtime stream) and keep new ones out while the engine is
+      // deinitialized and the Player destroyed.
+      PlayerLifetimeWriteGuard lifetime;
+      player.get()->dispose();
+#ifdef SOLOUD_ENABLE_VST3
+      // The device is stopped: no mix can be using a plugin, so no barrier.
+      SoLoud::Vst3HostManager::instance().setParameterEditCallback(nullptr);
+      SoLoud::Vst3HostManager::instance().unloadAll();
+#endif
+      player.reset();
+      player = std::make_unique<Player>();
+    }
     // Bump the engine session counter only now that the old engine is fully
     // torn down: voiceEnded events posted while it was stopping its voices
     // keep the old generation, and the Dart side (which reads the counter
@@ -3680,6 +3766,476 @@ extern "C"
   }
 
   /////////////////////////////////////////
+  /// Real-time PCM streaming & Custom DSP
+  /////////////////////////////////////////
+
+  // The realtime stream exports are called from feeder isolates, so each one
+  // pins the Player for its whole call (see PlayerLease).
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  setRealtimeStream(unsigned int *hash, unsigned int sampleRate,
+                    unsigned int channels, int format,
+                    unsigned int bufferCapacityFrames,
+                    unsigned int historyFrames)
+  {
+    if (hash != nullptr)
+      *hash = 0;
+    PlayerLease p;
+    if (!p)
+      return backendNotInited;
+    if (hash == nullptr)
+      return nullPointer;
+    return p->setRealtimeStream(
+        *hash, sampleRate, channels, static_cast<BufferType>(format),
+        bufferCapacityFrames, historyFrames);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash)
+  {
+    PlayerLease p;
+    if (!p)
+      return backendNotInited;
+    return p->resetRealtimeStream(hash);
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeFloat32(unsigned int hash, const float *data,
+                      unsigned int numFrames, unsigned int numSamples)
+  {
+    PlayerLease p;
+    return p ? p->pushRealtimeFloat32(hash, data, numFrames, numSamples) : 0;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeInt16(unsigned int hash, const int16_t *data,
+                    unsigned int numFrames, unsigned int numSamples)
+  {
+    PlayerLease p;
+    return p ? p->pushRealtimeInt16(hash, data, numFrames, numSamples) : 0;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeClockedFloat32(unsigned int hash, double soundTime,
+                             const float *data, unsigned int numFrames,
+                             unsigned int numSamples)
+  {
+    PlayerLease p;
+    return p ? p->pushRealtimeClockedFloat32(hash, soundTime, data, numFrames,
+                                             numSamples)
+             : 0;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeScheduledFloat32(unsigned int hash, double engineTime,
+                               const float *data, unsigned int numFrames,
+                               unsigned int numSamples)
+  {
+    PlayerLease p;
+    return p ? p->pushRealtimeScheduledFloat32(hash, engineTime, data,
+                                               numFrames, numSamples)
+             : 0;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToRead(unsigned int hash)
+  {
+    PlayerLease p;
+    return p ? p->getRealtimeAvailableToRead(hash) : 0;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToWrite(unsigned int hash)
+  {
+    PlayerLease p;
+    return p ? p->getRealtimeAvailableToWrite(hash) : 0;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeUnderrunCount(unsigned int hash)
+  {
+    PlayerLease p;
+    return p ? p->getRealtimeUnderrunCount(hash) : 0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors createCustomAudioSource(
+      unsigned int *hash, unsigned int sampleRate, unsigned int channels,
+      SoLoudSourceDspCallback_t callback, void *userData,
+      SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
+      bool singleInstance, const char *webJsCallbackName,
+      bool mustTickWhenInaudible, bool killWhenInaudible)
+  {
+    if (hash != nullptr)
+      *hash = 0;
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (hash == nullptr)
+      return nullPointer;
+    return player.get()->createCustomAudioSource(
+        *hash, sampleRate, channels, callback, userData, lifecycleCallback,
+        singleInstance, webJsCallbackName, mustTickWhenInaudible,
+        killWhenInaudible);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  addCustomFilter(unsigned int soundHash, unsigned int busId,
+                  int customFilterId)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+    if (soundHash == 0 && busId == 0)
+      return player.get()->mFilters.addFilter(FilterType::CustomFilter,
+                                              customFilterId);
+
+    if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      return s->filters->addFilter(FilterType::CustomFilter, customFilterId);
+    }
+    else
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      return busFilters->filters.addFilter(FilterType::CustomFilter,
+                                           customFilterId);
+    }
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  removeCustomFilter(unsigned int soundHash, unsigned int busId,
+                     int customFilterId)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+    if (soundHash == 0 && busId == 0)
+    {
+      if (!player.get()->mFilters.removeFilter(FilterType::CustomFilter,
+                                               customFilterId))
+        return filterNotFound;
+    }
+    else if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      if (!s->filters->removeFilter(FilterType::CustomFilter, customFilterId))
+        return filterNotFound;
+    }
+    else
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      if (!busFilters->filters.removeFilter(FilterType::CustomFilter,
+                                            customFilterId))
+        return filterNotFound;
+    }
+    return PlayerErrors::noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  isCustomFilterActive(unsigned int soundHash, unsigned int busId,
+                       int customFilterId, int *index)
+  {
+    if (index != nullptr)
+      *index = -1;
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (index == nullptr)
+      return nullPointer;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (soundHash == 0 && busId == 0)
+    {
+      *index = player.get()->mFilters.isFilterActive(FilterType::CustomFilter,
+                                                     customFilterId);
+    }
+    else if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      *index =
+          s->filters->isFilterActive(FilterType::CustomFilter, customFilterId);
+    }
+    else
+    {
+      auto *busData = player.get()->findBusData(busId);
+      if (busData == nullptr)
+        return busIdNotFound;
+      *index = busData->filters.isFilterActive(FilterType::CustomFilter,
+                                               customFilterId);
+    }
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors setCustomFilterCallback(
+      unsigned int soundHash, unsigned int busId, int customFilterId,
+      SoLoudFilterDspCallback_t callback, void *userData,
+      unsigned int numParams, const char *webJsCallbackName)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    Filters *targetFilters = nullptr;
+    if (soundHash == 0 && busId == 0)
+    {
+      targetFilters = &player.get()->mFilters;
+    }
+    else if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      targetFilters = s->filters.get();
+    }
+    else
+    {
+      auto *busData = player.get()->findBusData(busId);
+      if (busData == nullptr)
+        return busIdNotFound;
+      targetFilters = &busData->filters;
+    }
+
+    SoLoud::CustomFilter *cf =
+        targetFilters->getOrCreateCustomFilter(customFilterId);
+    if (cf == nullptr)
+      return filterNotFound;
+
+    // A global custom filter runs in the device callback under the global
+    // filter lock, a voice or bus one under the audio mutex: hold both.
+    if (player.get() != nullptr && player.get()->isInited())
+    {
+      player.get()->soloud.lockAudioMutex_internal();
+      player.get()->soloud.lockGlobalFilters_internal();
+    }
+    cf->setCallback(callback, userData, numParams);
+    cf->setWebJsCallbackName(webJsCallbackName);
+    if (player.get() != nullptr && player.get()->isInited())
+    {
+      player.get()->soloud.unlockGlobalFilters_internal();
+      player.get()->soloud.unlockAudioMutex_internal();
+    }
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors setCustomFilterParamDefinition(
+      unsigned int soundHash, unsigned int busId, int customFilterId,
+      unsigned int paramIndex, const char *name, float minVal, float maxVal,
+      float defaultVal)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+    if (paramIndex >= SoLoud::CustomFilter::kMaxParams)
+      return invalidParameter;
+
+    Filters *targetFilters = nullptr;
+    if (soundHash == 0 && busId == 0)
+    {
+      targetFilters = &player.get()->mFilters;
+    }
+    else if (soundHash != 0)
+    {
+      auto const s = player.get()->findByHash(soundHash);
+      if (s == nullptr)
+        return soundHashNotFound;
+      targetFilters = s->filters.get();
+    }
+    else
+    {
+      auto *busData = player.get()->findBusData(busId);
+      if (busData == nullptr)
+        return busIdNotFound;
+      targetFilters = &busData->filters;
+    }
+
+    SoLoud::CustomFilter *cf =
+        targetFilters->getOrCreateCustomFilter(customFilterId);
+    if (cf == nullptr)
+      return filterNotFound;
+
+    cf->setParamDefinition(paramIndex, defaultVal, minVal, maxVal, name);
+    if (soundHash == 0 &&
+        targetFilters->isFilterActive(FilterType::CustomFilter,
+                                      customFilterId) >= 0)
+    {
+      targetFilters->setFilterParams(0, FilterType::CustomFilter,
+                                     static_cast<int>(paramIndex), defaultVal,
+                                     customFilterId);
+    }
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  setCustomFilterParams(unsigned int handle, unsigned int busId,
+                        int customFilterId, int attributeId, float value)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (handle == 0 && busId == 0)
+    {
+      player.get()->mFilters.setFilterParams(
+          handle, FilterType::CustomFilter, attributeId, value, customFilterId);
+    }
+    else if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      busFilters->filters.setFilterParams(
+          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
+          attributeId, value, customFilterId);
+    }
+    else if (handle > 0)
+    {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      s->filters.get()->setFilterParams(handle, FilterType::CustomFilter,
+                                        attributeId, value, customFilterId);
+    }
+    return PlayerErrors::noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  getCustomFilterParams(unsigned int handle, unsigned int busId,
+                        int customFilterId, int attributeId,
+                        float *filterValue)
+  {
+    if (filterValue != nullptr)
+      *filterValue = 9999.0f;
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (filterValue == nullptr)
+      return nullPointer;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (handle == 0 && busId == 0)
+    {
+      *filterValue = player.get()->mFilters.getFilterParams(
+          handle, FilterType::CustomFilter, attributeId, customFilterId);
+      if (*filterValue == 9999.0f)
+        return filterNotFound;
+      return noError;
+    }
+    else if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      *filterValue = busFilters->filters.getFilterParams(
+          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
+          attributeId, customFilterId);
+      if (!(isnormal(*filterValue) || isnan(*filterValue) ||
+            *filterValue == 0.0f))
+        return filterParameterGetError;
+      if (*filterValue == 9999.0f)
+        return filterNotFound;
+      return noError;
+    }
+    else
+    {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      *filterValue = s->filters.get()->getFilterParams(
+          handle, FilterType::CustomFilter, attributeId, customFilterId);
+      if (!(isnormal(*filterValue) || isnan(*filterValue) ||
+            *filterValue == 0.0f))
+        return filterParameterGetError;
+      if (*filterValue == 9999.0f)
+        return filterNotFound;
+      return noError;
+    }
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  fadeCustomFilterParameter(unsigned int handle, unsigned int busId,
+                            int customFilterId, int attributeId, float to,
+                            float time)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (handle == 0 && busId == 0)
+    {
+      player.get()->mFilters.fadeFilterParameter(
+          handle, FilterType::CustomFilter, attributeId, to, time,
+          customFilterId);
+    }
+    else if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      busFilters->filters.fadeFilterParameter(
+          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
+          attributeId, to, time, customFilterId);
+    }
+    else
+    {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      s->filters.get()->fadeFilterParameter(handle, FilterType::CustomFilter,
+                                            attributeId, to, time,
+                                            customFilterId);
+    }
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  oscillateCustomFilterParameter(unsigned int handle, unsigned int busId,
+                                 int customFilterId, int attributeId,
+                                 float from, float to, float time)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return backendNotInited;
+    if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
+      return invalidParameter;
+
+    if (handle == 0 && busId == 0)
+    {
+      player.get()->mFilters.oscillateFilterParameter(
+          handle, FilterType::CustomFilter, attributeId, from, to, time,
+          customFilterId);
+    }
+    else if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      busFilters->filters.oscillateFilterParameter(
+          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
+          attributeId, from, to, time, customFilterId);
+    }
+    else
+    {
+      auto const &s = player.get()->findByHandle(handle);
+      if (s == nullptr)
+        return soundHandleNotFound;
+      s->filters.get()->oscillateFilterParameter(
+          handle, FilterType::CustomFilter, attributeId, from, to, time,
+          customFilterId);
+    }
+    return noError;
+  }
+
+  /////////////////////////////////////////
   /// 3D audio methods
   /////////////////////////////////////////
 
@@ -4157,6 +4713,528 @@ extern "C"
       return 0;
     return player.get()->busGetActiveVoiceCount(busId);
   }
+
+  /////////////////////////////////////////
+  /// VST3 Plugin Hosting API
+  /////////////////////////////////////////
+
+#ifdef SOLOUD_ENABLE_VST3
+
+  static char *duplicateCString(const std::string &str)
+  {
+    char *buf = static_cast<char *>(malloc(str.size() + 1));
+    if (buf != nullptr)
+    {
+      memcpy(buf, str.c_str(), str.size() + 1);
+    }
+    return buf;
+  }
+
+  static void copyToFixedBuffer(const std::string &src, char *dst, int dstLen)
+  {
+    if (dst == nullptr || dstLen <= 0)
+      return;
+    const size_t copyLen =
+        std::min<size_t>(src.size(), static_cast<size_t>(dstLen - 1));
+    memcpy(dst, src.data(), copyLen);
+    dst[copyLen] = '\0';
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3IsSupported(void) { return 1; }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3ScanBundle(
+      const char *bundlePath, int *outClassCount, char ***outClassUids,
+      char ***outClassNames, char ***outSubCategories)
+  {
+    if (outClassCount != nullptr)
+      *outClassCount = 0;
+    if (outClassUids != nullptr)
+      *outClassUids = nullptr;
+    if (outClassNames != nullptr)
+      *outClassNames = nullptr;
+    if (outSubCategories != nullptr)
+      *outSubCategories = nullptr;
+
+    if (bundlePath == nullptr || outClassCount == nullptr ||
+        outClassUids == nullptr || outClassNames == nullptr ||
+        outSubCategories == nullptr)
+    {
+      return invalidParameter;
+    }
+
+    std::vector<SoLoud::Vst3DiscoveredClass> classes;
+    PlayerErrors err =
+        SoLoud::Vst3HostManager::instance().scanBundle(bundlePath, classes);
+    if (err != noError)
+      return err;
+
+    const int count = static_cast<int>(classes.size());
+    *outClassCount = count;
+    if (count == 0)
+      return noError;
+
+    char **uids =
+        static_cast<char **>(calloc(static_cast<size_t>(count), sizeof(char *)));
+    char **names =
+        static_cast<char **>(calloc(static_cast<size_t>(count), sizeof(char *)));
+    char **subCats =
+        static_cast<char **>(calloc(static_cast<size_t>(count), sizeof(char *)));
+    if (uids == nullptr || names == nullptr || subCats == nullptr)
+    {
+      free(uids);
+      free(names);
+      free(subCats);
+      *outClassCount = 0;
+      return outOfMemory;
+    }
+
+    for (int i = 0; i < count; ++i)
+    {
+      uids[i] = duplicateCString(classes[static_cast<size_t>(i)].classUid);
+      names[i] = duplicateCString(classes[static_cast<size_t>(i)].name);
+      subCats[i] =
+          duplicateCString(classes[static_cast<size_t>(i)].subCategories);
+    }
+
+    *outClassUids = uids;
+    *outClassNames = names;
+    *outSubCategories = subCats;
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3FreeScanResults(int classCount,
+                                                    char **classUids,
+                                                    char **classNames,
+                                                    char **subCategories)
+  {
+    for (int i = 0; i < classCount; ++i)
+    {
+      if (classUids != nullptr)
+        free(classUids[i]);
+      if (classNames != nullptr)
+        free(classNames[i]);
+      if (subCategories != nullptr)
+        free(subCategories[i]);
+    }
+    free(classUids);
+    free(classNames);
+    free(subCategories);
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3LoadPlugin(
+      const char *bundlePath, const char *classUidHex, unsigned int sampleRate,
+      unsigned int maxBlockSize, unsigned int channels, int *outPluginHandle)
+  {
+    return SoLoud::Vst3HostManager::instance().loadPlugin(
+        bundlePath, classUidHex, sampleRate, maxBlockSize, channels,
+        outPluginHandle);
+  }
+
+  /// Audio-thread barrier for VST3 unloading: returns once no mix that may
+  /// have loaded a plugin pointer from the lookup table is still running.
+  /// Holds the lifetime lock only for the barrier itself, never across plugin
+  /// shutdown (which can close editor windows).
+  ///
+  /// Deliberately not a PlayerLease: a lease gives up while a teardown is
+  /// pending, and a barrier must never give up -- the device may still be
+  /// mixing until the teardown actually stops it. Taking the shared lock
+  /// unconditionally guarantees one of two outcomes: either this runs before
+  /// the teardown and synchronizes with the live mixer, or it waits for the
+  /// teardown to finish, by which point the device is stopped and the new
+  /// Player is not initialized, so nothing is mixing.
+  static void vst3AudioThreadBarrier(void * /*userData*/)
+  {
+    std::shared_lock<std::shared_mutex> lifetime(player_lifetime_mutex);
+    Player *p = player.get();
+    if (p != nullptr && p->isInited())
+    {
+      // Mixing (render worker or device callback) and the post-ring global
+      // filters (device callback) each run under their own lock.
+      p->soloud.audioThreadBarrier_internal();
+    }
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3UnloadPlugin(int pluginHandle)
+  {
+    return SoLoud::Vst3HostManager::instance().unloadPlugin(
+        pluginHandle, &vst3AudioThreadBarrier, nullptr);
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetFilterCallbackPtr(void)
+  {
+    return reinterpret_cast<void *>(&vst3FilterDspCallback);
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetSourceCallbackPtr(void)
+  {
+    return reinterpret_cast<void *>(&vst3SourceDspCallback);
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetPluginUserData(int pluginHandle)
+  {
+    return reinterpret_cast<void *>(static_cast<uintptr_t>(pluginHandle));
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int soloud_vst3GetLatencySamples(int pluginHandle)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    return plugin != nullptr ? plugin->getLatencySamples() : 0;
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3GetParameterCount(int pluginHandle)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    return plugin != nullptr ? plugin->getParameterCount() : 0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetParameterInfo(
+      int pluginHandle, int paramIndex, unsigned int *outParamId,
+      char *outTitle, int titleBufferLen, char *outUnits, int unitsBufferLen,
+      double *outDefaultNormalized, int *outStepCount, unsigned int *outFlags)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+
+    SoLoud::Vst3ParameterMetadata info{};
+    if (!plugin->getParameterInfo(paramIndex, info))
+      return invalidParameter;
+
+    if (outParamId != nullptr)
+      *outParamId = info.paramId;
+    copyToFixedBuffer(info.title, outTitle, titleBufferLen);
+    copyToFixedBuffer(info.units, outUnits, unitsBufferLen);
+    if (outDefaultNormalized != nullptr)
+      *outDefaultNormalized = info.defaultNormalized;
+    if (outStepCount != nullptr)
+      *outStepCount = info.stepCount;
+    if (outFlags != nullptr)
+      *outFlags = info.flags;
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT double soloud_vst3GetParameterNormalized(
+      int pluginHandle, unsigned int paramId, char *outDisplayText,
+      int displayBufferLen)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+    {
+      copyToFixedBuffer("", outDisplayText, displayBufferLen);
+      return 0.0;
+    }
+    std::string display;
+    const double val = plugin->getParameterNormalized(
+        paramId,
+        (outDisplayText != nullptr && displayBufferLen > 0) ? &display
+                                                            : nullptr);
+    copyToFixedBuffer(display, outDisplayText, displayBufferLen);
+    return val;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetParameterNormalized(
+      int pluginHandle, unsigned int paramId, double normalizedValue)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+    return plugin->setParameterNormalized(paramId, normalizedValue)
+               ? noError
+               : invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3MapSlotParameter(
+      int pluginHandle, int customFilterParamIndex, unsigned int vst3ParamId)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+    return plugin->mapSlotParameter(customFilterParamIndex, vst3ParamId)
+               ? noError
+               : invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetTransport(int pluginHandle, double bpm,
+                                                 int timeSigNumerator,
+                                                 int timeSigDenominator,
+                                                 int isPlaying)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin != nullptr)
+    {
+      plugin->setTransport(bpm, timeSigNumerator, timeSigDenominator,
+                           isPlaying != 0);
+    }
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SendMidiNote(
+      int pluginHandle, int isNoteOn, int channel, int pitch, float velocity,
+      int sampleOffset)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+    return plugin->sendMidiNote(isNoteOn != 0, channel, pitch, velocity,
+                                sampleOffset)
+               ? noError
+               : outOfMemory;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetState(
+      int pluginHandle, unsigned char **outData, unsigned int *outSize)
+  {
+    if (outData != nullptr)
+      *outData = nullptr;
+    if (outSize != nullptr)
+      *outSize = 0;
+    if (outData == nullptr || outSize == nullptr)
+      return invalidParameter;
+
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+
+    std::vector<uint8_t> bytes;
+    if (!plugin->getState(bytes))
+      return unknownError;
+
+    if (bytes.empty())
+      return noError;
+
+    unsigned char *buf = static_cast<unsigned char *>(malloc(bytes.size()));
+    if (buf == nullptr)
+      return outOfMemory;
+    memcpy(buf, bytes.data(), bytes.size());
+    *outData = buf;
+    *outSize = static_cast<unsigned int>(bytes.size());
+    return noError;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetState(
+      int pluginHandle, const unsigned char *data, unsigned int size)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr || data == nullptr || size == 0)
+      return invalidParameter;
+    return plugin->setState(data, size) ? noError : unknownError;
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3HasEditor(int pluginHandle)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    return (plugin != nullptr && plugin->hasEditor()) ? 1 : 0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3OpenEditor(
+      int pluginHandle, const char *windowTitle)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin == nullptr)
+      return invalidParameter;
+    return plugin->openEditor(windowTitle) ? noError : unknownError;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3CloseEditor(int pluginHandle)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    if (plugin != nullptr)
+      plugin->closeEditor();
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3IsEditorOpen(int pluginHandle)
+  {
+    auto plugin = SoLoud::Vst3HostManager::instance().getPlugin(pluginHandle);
+    return (plugin != nullptr && plugin->isEditorOpen()) ? 1 : 0;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetParameterEditCallback(
+      dartVst3ParameterEditCallback_t callback)
+  {
+    SoLoud::Vst3HostManager::instance().setParameterEditCallback(callback);
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetRestartComponentCallback(
+      dartVst3RestartComponentCallback_t callback)
+  {
+    SoLoud::Vst3HostManager::instance().setRestartComponentCallback(callback);
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3HostUnloadAll(void)
+  {
+    SoLoud::Vst3HostManager::instance().setParameterEditCallback(nullptr);
+    SoLoud::Vst3HostManager::instance().setRestartComponentCallback(nullptr);
+    // Vst3HostUnloadAll() can be called from Dart while audio is playing:
+    // the mixer calls into plugins through raw pointers loaded from the
+    // lock-free lookup table, so wait for in-flight mixes after the table is
+    // cleared and before any plugin is shut down.
+    SoLoud::Vst3HostManager::instance().unloadAll(&vst3AudioThreadBarrier,
+                                                  nullptr);
+  }
+
+#else // !SOLOUD_ENABLE_VST3
+
+  // These functions could be safely removed because the Dart layer already
+  // checks isSupported before calling any VST3 function.
+  // Leaving them here for now.
+  // TODO: remove them in the future.
+  FFI_PLUGIN_EXPORT int soloud_vst3IsSupported(void) { return 0; }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3ScanBundle(
+      const char * /*bundlePath*/, int *outClassCount, char ***outClassUids,
+      char ***outClassNames, char ***outSubCategories)
+  {
+    if (outClassCount != nullptr)
+      *outClassCount = 0;
+    if (outClassUids != nullptr)
+      *outClassUids = nullptr;
+    if (outClassNames != nullptr)
+      *outClassNames = nullptr;
+    if (outSubCategories != nullptr)
+      *outSubCategories = nullptr;
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3FreeScanResults(int /*classCount*/,
+                                                    char ** /*classUids*/,
+                                                    char ** /*classNames*/,
+                                                    char ** /*subCategories*/)
+  {
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3LoadPlugin(
+      const char * /*bundlePath*/, const char * /*classUidHex*/,
+      unsigned int /*sampleRate*/, unsigned int /*maxBlockSize*/,
+      unsigned int /*channels*/, int *outPluginHandle)
+  {
+    if (outPluginHandle != nullptr)
+      *outPluginHandle = 0;
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3UnloadPlugin(
+      int /*pluginHandle*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetFilterCallbackPtr(void)
+  {
+    return nullptr;
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetSourceCallbackPtr(void)
+  {
+    return nullptr;
+  }
+
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetPluginUserData(int /*pluginHandle*/)
+  {
+    return nullptr;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int soloud_vst3GetLatencySamples(
+      int /*pluginHandle*/)
+  {
+    return 0;
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3GetParameterCount(int /*pluginHandle*/)
+  {
+    return 0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetParameterInfo(
+      int /*pluginHandle*/, int /*paramIndex*/, unsigned int * /*outParamId*/,
+      char * /*outTitle*/, int /*titleBufferLen*/, char * /*outUnits*/,
+      int /*unitsBufferLen*/, double * /*outDefaultNormalized*/,
+      int * /*outStepCount*/, unsigned int * /*outFlags*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT double soloud_vst3GetParameterNormalized(
+      int /*pluginHandle*/, unsigned int /*paramId*/, char *outDisplayText,
+      int displayBufferLen)
+  {
+    if (outDisplayText != nullptr && displayBufferLen > 0)
+      outDisplayText[0] = '\0';
+    return 0.0;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetParameterNormalized(
+      int /*pluginHandle*/, unsigned int /*paramId*/,
+      double /*normalizedValue*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3MapSlotParameter(
+      int /*pluginHandle*/, int /*customFilterParamIndex*/,
+      unsigned int /*vst3ParamId*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetTransport(int /*pluginHandle*/,
+                                                 double /*bpm*/,
+                                                 int /*timeSigNumerator*/,
+                                                 int /*timeSigDenominator*/,
+                                                 int /*isPlaying*/)
+  {
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SendMidiNote(
+      int /*pluginHandle*/, int /*isNoteOn*/, int /*channel*/, int /*pitch*/,
+      float /*velocity*/, int /*sampleOffset*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetState(
+      int /*pluginHandle*/, unsigned char **outData, unsigned int *outSize)
+  {
+    if (outData != nullptr)
+      *outData = nullptr;
+    if (outSize != nullptr)
+      *outSize = 0;
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetState(
+      int /*pluginHandle*/, const unsigned char * /*data*/,
+      unsigned int /*size*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT int soloud_vst3HasEditor(int /*pluginHandle*/) { return 0; }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3OpenEditor(
+      int /*pluginHandle*/, const char * /*windowTitle*/)
+  {
+    return invalidParameter;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3CloseEditor(int /*pluginHandle*/) {}
+
+  FFI_PLUGIN_EXPORT int soloud_vst3IsEditorOpen(int /*pluginHandle*/)
+  {
+    return 0;
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetParameterEditCallback(
+      dartVst3ParameterEditCallback_t /*callback*/)
+  {
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3SetRestartComponentCallback(
+      dartVst3RestartComponentCallback_t /*callback*/)
+  {
+  }
+
+  FFI_PLUGIN_EXPORT void soloud_vst3HostUnloadAll(void) {}
+
+#endif // SOLOUD_ENABLE_VST3
 
 #ifdef __cplusplus
 }

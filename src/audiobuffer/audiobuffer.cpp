@@ -96,6 +96,8 @@ public:
   bool samplerateAlreadySet;
 };
 
+static const char kBufferStreamSnapshotKind = 0;
+
 SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
   // Only PRESERVED streams keep the consumed data around to re-read.
   if (mParent == nullptr ||
@@ -103,9 +105,23 @@ SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
     return nullptr;
   }
   auto *s = new BufferStreamSourceStateSnapshot();
+  s->mKind = &kBufferStreamSnapshotKind;
   s->mOffset = mOffset;
   s->samplerateAlreadySet = samplerateAlreadySet;
   return s;
+}
+
+bool BufferStreamInstance::captureSourceStateInto(
+    SoLoud::SourceStateSnapshot *aState) {
+  if (aState == nullptr || aState->mKind != &kBufferStreamSnapshotKind ||
+      mParent == nullptr ||
+      mParent->mBuffer.bufferingType != BufferingType::PRESERVED) {
+    return false;
+  }
+  auto *s = static_cast<BufferStreamSourceStateSnapshot *>(aState);
+  s->mOffset = mOffset;
+  s->samplerateAlreadySet = samplerateAlreadySet;
+  return true;
 }
 
 void BufferStreamInstance::restoreSourceState(
@@ -284,7 +300,7 @@ result BufferStreamInstance::seek(double aSeconds, float *mScratch,
   // frame: getAudio() consumes data in units of `mChannels` floats, so an
   // unaligned offset would leave an unplayable sub-frame remainder at the
   // end of the buffer and the voice could never reach its end.
-  const int pos = static_cast<int>(floor(mBaseSamplerate * mChannels * aSeconds));
+  const int pos = static_cast<int>(floor(mBaseSamplerate * mChannels * aSeconds + 0.5));
   mOffset = mChannels > 0 ? pos - (pos % static_cast<int>(mChannels)) : pos;
   mStreamPosition = static_cast<float>(mOffset) / (mBaseSamplerate * mChannels);
   return SO_NO_ERROR;

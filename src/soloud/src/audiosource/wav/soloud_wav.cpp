@@ -75,12 +75,22 @@ public:
   unsigned int mOffset;
 };
 
+static const char kWavSnapshotKind = 0;
+
 SourceStateSnapshot *WavInstance::captureSourceState() {
   // The wav data is fully decoded in memory (mParent->mData), so the
   // consumption state is exactly the read offset.
   WavSourceStateSnapshot *s = new WavSourceStateSnapshot();
+  s->mKind = &kWavSnapshotKind;
   s->mOffset = mOffset;
   return s;
+}
+
+bool WavInstance::captureSourceStateInto(SourceStateSnapshot *aState) {
+  if (aState == NULL || aState->mKind != &kWavSnapshotKind)
+    return false;
+  static_cast<WavSourceStateSnapshot *>(aState)->mOffset = mOffset;
+  return true;
 }
 
 void WavInstance::restoreSourceState(SourceStateSnapshot *aState) {
@@ -92,24 +102,18 @@ void WavInstance::restoreSourceState(SourceStateSnapshot *aState) {
 
 result WavInstance::seek(double aSeconds, float *mScratch,
                          unsigned int mScratchSize) {
-  double offset = aSeconds - mStreamPosition;
-  if (offset <= 0) {
-    if (rewind() != SO_NO_ERROR) {
-      // can't do generic seek backwards unless we can rewind.
-      return NOT_IMPLEMENTED;
-    }
-    offset = aSeconds;
+  (void)mScratch;
+  (void)mScratchSize;
+  if (aSeconds <= 0.0) {
+    return rewind();
   }
-  long samples_to_discard = (long)floor(mSamplerate * offset);
-
-  while (samples_to_discard) {
-    long samples = mScratchSize / mChannels;
-    if (samples > samples_to_discard)
-      samples = samples_to_discard;
-    getAudio(mScratch, samples, samples);
-    samples_to_discard -= samples;
+  if (mParent == NULL || mBaseSamplerate <= 0.0f) {
+    return INVALID_PARAMETER;
   }
-  int pos = (int)floor(mBaseSamplerate * aSeconds);
+  unsigned int pos = (unsigned int)floor(mBaseSamplerate * aSeconds + 0.5);
+  if (pos > mParent->mActualSampleCount) {
+    pos = mParent->mActualSampleCount;
+  }
   mOffset = pos;
   mStreamPosition = float(pos / mBaseSamplerate);
   return SO_NO_ERROR;

@@ -1,7 +1,7 @@
 ---
 name: flutter-soloud-setup
-version: 4
-description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux audio backends ALSA/PulseAudio/JACK, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, set up logging, and enumerate/switch output devices or Linux audio backends. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, configure Linux audio backends, reduce binary size, or switch the audio output device.
+version: 6
+description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux audio backends ALSA/PulseAudio/JACK, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, enable opt-in desktop VST3 plugin hosting (enable_vst3), set up logging, and enumerate/switch output devices or Linux audio backends. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, configure Linux audio backends, reduce binary size, enable VST3 hosting, or switch the audio output device.
 ---
 
 # flutter_soloud setup
@@ -50,7 +50,7 @@ Native C/C++ sources are compiled by [Dart build hooks](https://dart.dev/tools/h
   <script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
   ```
   The script auto-picks between the multi-threaded (AudioWorklet) and single-threaded (ScriptProcessorNode) WASM builds based on whether the page is cross-origin isolated. Details in [references/web.md](references/web.md).
-- **Linux** — audio playback uses `miniaudio` with dynamic runtime loading for ALSA (`libasound.so.2`), PulseAudio (`libpulse.so`), and JACK (`libjack.so`). No extra C/C++ development packages or compile-time headers are required to build. Ensure runtime libraries are present on the host system (e.g. `libasound2`, `libpulse0`). To decode extended OS-native formats (**M4A**, **MP4 audio tracks**, **AAC**, **AC-3**, and **E-AC-3**), the engine dynamically loads FFmpeg shared libraries (`libavcodec` and `libavformat`) at runtime; ensure FFmpeg is installed on the user system (e.g. `sudo apt install ffmpeg libavcodec-extra` on Debian/Ubuntu, `sudo pacman -S ffmpeg` on Arch, `sudo dnf install ffmpeg-free` on Fedora). Core formats (MP3, WAV, OGG, FLAC) work without FFmpeg.
+- **Linux** — audio playback uses `miniaudio` with dynamic runtime loading for ALSA (`libasound.so.2`), PulseAudio (`libpulse.so`), and JACK (`libjack.so`). No extra C/C++ development packages or compile-time headers are required to build. Ensure runtime libraries are present on the host system (e.g. `libasound2`, `libpulse0`). To decode extended OS-native formats (**M4A**, **MP4 audio tracks**, **AAC**, **AC-3**, and **E-AC-3**), the engine dynamically loads FFmpeg shared libraries (`libavcodec` and `libavformat`) at runtime; ensure FFmpeg is installed on the user system (e.g. `sudo apt install ffmpeg libavcodec-extra` on Debian/Ubuntu, `sudo pacman -S ffmpeg` on Arch, `sudo dnf install ffmpeg-free` on Fedora). Core formats (MP3, WAV, OGG, FLAC) work without FFmpeg. If using opt-in VST3 plugin hosting with GUI, launch with `GDK_BACKEND=x11 flutter run -d linux` as VST3 editor GUIs standardly require X11.
 - **Android** — `minSdk = 21` (the plugin sets this in its own `build.gradle`; your app-level `minSdkVersion` must be >= 21).
 - **iOS** — deployment target iOS 13.0+; **macOS** — 10.15+. Native assets are compiled and bundled for both CocoaPods and SPM projects.
 
@@ -109,11 +109,11 @@ await SoLoud.instance.init(
 - **Don't distribute desktop apps with `<platform>_use_system_libs: true`**: System libraries are not bundled into the app package; if missing on the end user's machine, the app will crash at startup. Use the default bundled prebuilts for app distribution.
 - **`<platform>_force_build_libs: true` significantly increases build time**: It clones 4 Git repos and compiles them via CMake across all target architectures (4 for Android, 2 for Apple). Artifacts are cached in `flutter_soloud`'s `.dart_tool/` (persisting across `flutter clean` in your app), but clean CI jobs will compile from scratch. Leave at default `false` unless you need custom compilation.
 
-## Xiph audio libraries (Ogg, Vorbis, Opus, FLAC)
+## Xiph audio libraries (Ogg, Vorbis, Opus, FLAC) & Opt-In Desktop VST3 Hosting
 
-The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). To keep the pub package lightweight, tested precompiled static and shared libraries are hosted in the companion repository [flutter_soloud_prebuilds](https://github.com/alnitak/flutter_soloud_prebuilds).
+The Xiph audio decoders provide compressed audio playback, streaming, and master output capture (600–3000 KB per binary). To keep the pub package lightweight, tested precompiled static and shared libraries (as well as the opt-in Steinberg VST3 Hosting SDK archives) are hosted in the companion repository [flutter_soloud_prebuilds](https://github.com/alnitak/flutter_soloud_prebuilds).
 
-By default, Dart Native Assets build hooks automatically download the matching prebuilt archive on first build and cache it under `.dart_tool/flutter_soloud/xiph/prebuild/`:
+By default, Dart Native Assets build hooks automatically download the matching prebuilt Xiph archive on first build and cache it under `.dart_tool/flutter_soloud/xiph/prebuild/`:
 - **Android**: 4 ABIs (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`)
 - **iOS**: Universal `arm64` device + `arm64`/`x86_64` simulator static libraries
 - **macOS**: Universal Apple Silicon (`arm64`) + Intel (`x86_64`) static libraries
@@ -131,6 +131,18 @@ You can customize this in the **app's** `pubspec.yaml` under `hooks.user_defines
       flutter_soloud:
         prebuild_tag: 'v1.0.1' # Optional: pin to a specific release tag
   ```
+
+- **Enable Desktop VST3 Plugin Hosting (`macOS`, `Windows`, `Linux`, default is `false`):**
+  ```yaml
+  hooks:
+    user_defines:
+      flutter_soloud:
+        enable_vst3: true # Default is false
+  ```
+  - When `enable_vst3: true` is set on desktop, `hook/build.dart` downloads `vst3-include.tar.gz` and the platform archive (`vst3-macos.tar.gz`, `vst3-windows-x64.zip`, `vst3-windows-arm64.zip`, `vst3-linux-x64.tar.gz`, or `vst3-linux-arm64.tar.gz`) into `.dart_tool/flutter_soloud/vst3/prebuild/` and compiles the native C++/Objective-C++ VST3 host bridge (`Vst3Host`, `Vst3EffectPlugin`, `Vst3InstrumentPlugin`).
+  - **Licensing**: By default (`enable_vst3: false`), `flutter_soloud` is 100% MIT/Zlib licensed and links zero Steinberg code. Enabling `enable_vst3: true` links the prebuilt Steinberg VST3 Hosting SDK (dual-licensed under the proprietary Steinberg VST3 License or GPLv3).
+  - **macOS Entitlement**: To load external third-party `.vst3` bundles on macOS, add `<key>com.apple.security.cs.disable-library-validation</key><true/>` to `macos/Runner/DebugProfile.entitlements` and `macos/Runner/Release.entitlements`.
+  - **Linux GUI Backend**: On Linux, VST3 plugin editor GUIs standardly use the X11 desktop backend. Applications hosting VST3 plugins with a GUI must be launched with the `GDK_BACKEND=x11` environment variable (e.g. `GDK_BACKEND=x11 flutter run -d linux`), otherwise the Flutter engine defaults to Wayland (if available) and the native VST3 plugin GUI will not be displayed.
 
 - **Link against system-installed packages (desktop only):**
   ```yaml

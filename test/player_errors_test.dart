@@ -118,6 +118,7 @@ void main() {
     // These are appended at the end so that no existing value is renumbered.
     expect(PlayerErrors.audioDeviceFailedToStart.value, 34);
     expect(PlayerErrors.failedToStartPlayback.value, 35);
+    expect(PlayerErrors.hashIsNotARealtimeStream.value, 36);
   });
 
   group('SoLoudCppException.fromPlayerError', () {
@@ -158,6 +159,12 @@ void main() {
       expect(
         SoLoudCppException.fromPlayerError(PlayerErrors.failedToStartPlayback),
         isA<SoLoudFailedToStartPlaybackCppException>(),
+      );
+      expect(
+        SoLoudCppException.fromPlayerError(
+          PlayerErrors.hashIsNotARealtimeStream,
+        ),
+        isA<SoLoudHashIsNotARealtimeStreamCppException>(),
       );
     });
 

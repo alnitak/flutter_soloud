@@ -81,16 +81,11 @@ void LimiterInstance::filter(
             if (a > peak) peak = a;
         }
 
-        // 2. Required gain reduction (dB) after maximizer drive. THRESHOLD is
+        // 2. Required gain reduction after maximizer drive. THRESHOLD is
         //    interpreted as DAW-style limiter drive/autogain: -6 dB means
         //    +6 dB into the brickwall. OUTPUT_CEILING is the only final peak
-        //    target.
-        float peakDb = 20.0f * log10f(fmaxf(peak, 1e-8f));
-        float reductionDb = peakDb - ceilingDb;
-        if (reductionDb < 0.0f) reductionDb = 0.0f;
-
-        float reqGain = powf(10.0f, -reductionDb / 20.0f);
-        if (reqGain > 1.0f) reqGain = 1.0f;
+        //    target. Mathematically: 10^(-(peakDb - ceilingDb)/20) == ceilingLin / peak.
+        float reqGain = (peak > ceilingLin) ? (ceilingLin / peak) : 1.0f;
 
         // 3. Write the new sample frame and its required gain into the ring.
         for (unsigned int ch = 0; ch < aChannels; ++ch) {
@@ -204,7 +199,7 @@ void LimiterInstance::setFilterParameter(unsigned int aAttributeId, float aValue
         break;
     }
 
-    mParamChanged |= 1 << aAttributeId;
+    mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
 }
 
 SoLoud::result Limiter::setParam(unsigned int aParamIndex, float aValue)

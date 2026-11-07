@@ -65,7 +65,7 @@ c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     src/bindings.cpp \
     src/player.cpp \
     src/analyzer.cpp \
-    src/synth/basic_wave.cpp \
+    src/synth/*.cpp \
     src/waveform/waveform.cpp \
     src/waveform/miniaudio_libvorbis.cpp \
     src/audiobuffer/*.cpp \

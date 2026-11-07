@@ -60,6 +60,7 @@ public:
         {
             case BufferType::AUTO:
             case BufferType::PCM_F32LE:
+            case BufferType::PCM_F32LE_PLANAR:
             {
                 return addData(reinterpret_cast<const float*>(data), numSamples, allDataAdded);
             }

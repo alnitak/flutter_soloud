@@ -31,6 +31,8 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - 🔴 Capture the master mixer output as a stream for recording, processing, or streaming (with different PCM formats and Opus, Vorbis, FLAC, WAV encoded stream formats)
 - ⏱️ Read audio data samples from a file with a given time range
 - 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
+- 🧬 Real-time PCM mixer injection (`setRealtimeStream` with managed Isolate/Web feeders) and synchronous zero-latency custom DSP callbacks (`createCustomAudioSource` and up to 8 `customFilters` slots per scope)
+- 🔌 Opt-in desktop **VST3 plugin hosting** (macOS, Windows, Linux): load external `.vst3` effects (`Fx`) into filter slots and virtual instruments (`Instrument|Synth`) as playable 3D voices, open native plugin GUI editor windows, and automate parameters
 
 ## Getting Started
 - Watch Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
@@ -48,6 +50,21 @@ By default, Xiph audio codecs (Ogg, Vorbis, Opus, FLAC) are linked and bundled f
 - **Without Xiph mode**: Set `no_xiph_libs: true` to exclude Xiph codecs and shrink binary size.
 
 For complete setup instructions and Windows download links, see the [Xiph Libraries & Codecs Guide](https://docs.page/alnitak/flutter_soloud_docs/get_started/xiph_libs).
+
+### Desktop VST3 Plugin Hosting (Opt-In)
+
+On **macOS**, **Windows**, and **Linux**, you can host 64-bit native `.vst3` audio effects and virtual instruments (including opening their native GUI editor windows) by enabling the prebuilt VST3 bridge in your app's `pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    flutter_soloud:
+      enable_vst3: true # Default is false
+```
+
+**Licensing Note**: By default (`enable_vst3: false`), `flutter_soloud` is 100% **MIT / Zlib** licensed and does not download or link any Steinberg code. When `enable_vst3: true` is set, the build hook links the prebuilt **Steinberg VST3 Hosting SDK**, which is dual-licensed by Steinberg under the **Steinberg VST3 License** (proprietary) or **GPLv3**. Ensure your application complies with Steinberg's VST3 licensing terms when distributing builds with `enable_vst3: true`. For more information about VST® 3 licensing: https://steinbergmedia.github.io/vst3_dev_portal/pages/VST+3+Licensing/Index.html
+
+**Linux GUI Note**: The standard VST3 windowing backend on Linux uses **X11**. When hosting VST3 plugins with a graphical user interface (GUI) on Linux, the Flutter app must be launched with the `GDK_BACKEND=x11` environment variable (e.g. `GDK_BACKEND=x11 flutter run -d linux`), otherwise the Flutter engine defaults to Wayland (if available) and the native VST3 plugin GUI will not be displayed.
 
 ### Extended Audio Formats (M4A, MP4, AAC, AC-3, E-AC-3)
 

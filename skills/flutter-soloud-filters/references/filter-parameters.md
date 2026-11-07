@@ -174,19 +174,29 @@ See `example/lib/filters/parametric_eq.dart`.
 
 ## amplitudeModulator
 
-Sine ring modulator (bipolar amplitude modulation). Not part of stock SoLoud
-(`src/filters/amplitude_modulator_filter.cpp`). At full wet the output is
-`input * sin(2π * frequency * t)`. The carrier has no DC bias, so this is not
-a tremolo: a sine input at `f1` comes out as two components at
-`frequency - f1` and `frequency + f1` (e.g. 1 kHz with a 16 kHz carrier gives
-15 kHz + 17 kHz).
+Bipolar amplitude modulator / ring modulator with selectable waveforms (`src/filters/amplitude_modulator_filter.cpp`).
+At full wet the output is `input * carrier(2π * frequency * t)`. The carrier has no DC bias, so this is suppressed-carrier
+ring modulation: with a sine carrier, an input at `f1` produces sidebands at `frequency - f1` and `frequency + f1`
+(e.g. 1 kHz with a 16 kHz carrier gives 15 kHz + 17 kHz).
 
 | Param | min | max | def | Notes |
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | 0 = transparent, 1 = only the modulated signal |
 | frequency | 0.1 | 20000 | 440 | Hz; clamped just below Nyquist (0.49 × sample rate) while processing, the queried value stays as set |
+| waveform | 0 | 3 | 0 | Carrier waveform: `0` = Sine, `1` = Triangle, `2` = Square, `3` = Saw |
 
 The carrier phase is continuous across buffers and frequency changes, so
 `fadeFilterParameter`/`oscillateFilterParameter` on `frequency` sweep without
 clicks. All channels share the same carrier phase. As a per-sound filter it
 runs at the sound's sample rate, so Nyquist is that of the sound.
+
+## customFilter(id)
+
+Multi-instance user-programmable synchronous DSP filter (`src/filters/custom_filter.cpp`).
+Up to 8 independent instances (`id` in `0..7`) can be activated on the same scope (`filters.customFilter(0)` .. `filters.customFilter(7)`).
+
+| Param | min | max | def | Notes |
+|---|---|---|---|---|
+| wet | 0 | 1 | 1 | `0.0` = hard bypass (callback not invoked); `1.0` = zero-copy in-place; `0 < wet < 1` = automatic dry/wet blend |
+| p1 .. p15 (`param(1)` .. `param(15)`) | 0 (customizable) | 1 (customizable) | 0 (customizable) | Use `defineParam(index, name: ..., min: ..., max: ..., def: ...)` before `activate()` |
+

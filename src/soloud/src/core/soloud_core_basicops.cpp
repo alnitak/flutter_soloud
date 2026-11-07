@@ -477,6 +477,9 @@ namespace SoLoud
 			mVoice[ch]->mSourceSamplePosition = (uint64_t)floor(
 				aSeconds * mVoice[ch]->mBaseSamplerate);
 		}
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// A rollback restores the source position from before the seek.
+		voiceStateChanged_internal(ch);
 		if (singleres != SO_NO_ERROR)
 			res = singleres;
 		FOR_ALL_VOICES_POST

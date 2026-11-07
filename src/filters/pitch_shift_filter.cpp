@@ -1,5 +1,13 @@
 #include "pitch_shift_filter.h"
 
+#if defined(SOLOUD_SSE_INTRINSICS)
+#include <emmintrin.h>
+#elif defined(SOLOUD_NEON_INTRINSICS)
+#include <arm_neon.h>
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+#include <wasm_simd128.h>
+#endif
+
 #include <cmath>
 #include <vector>
 
@@ -8,6 +16,7 @@ PitchShiftInstance::PitchShiftInstance(PitchShift *aParent) {
   initParams(3);
   mParam[PitchShift::SHIFT] = aParent->mShift;
   mParam[PitchShift::SEMITONES] = aParent->mSemitones;
+  mOutputBuffer.resize(SAMPLE_GRANULARITY * MAX_CHANNELS, 0.0f);
 }
 
 void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
@@ -16,48 +25,89 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
                                 SoLoud::time aTime) {
   updateParams(aTime);
 
+  const float wetRatio = mParam[PitchShift::WET];
+  if (wetRatio <= 0.0f || aChannels == 0 || aSamples == 0) {
+    return;
+  }
+
+  const unsigned int channels =
+      aChannels > MAX_CHANNELS ? MAX_CHANNELS : aChannels;
+
   // Reconfigure the stretcher if sample rate or channel count changes
-  if (mChannelCount != aChannels || mSampleRate != aSamplerate) {
-    mChannelCount = aChannels;
+  if (mChannelCount != channels || mSampleRate != aSamplerate) {
+    mChannelCount = channels;
     mSampleRate = aSamplerate;
-    mStretch.presetDefault(static_cast<int>(aChannels), aSamplerate);
+    mStretch.presetDefault(static_cast<int>(channels), aSamplerate);
   }
 
   // Set the pitch shift factor
   mStretch.setTransposeFactor(mParam[PitchShift::SHIFT]);
 
-  const float dryRatio = 1.0f - mParam[PitchShift::WET];
-  const float wetRatio = mParam[PitchShift::WET];
+  const float dryRatio = 1.0f - wetRatio;
 
-  // SignalSmith expects channel-separated buffers (float**)
-  // SoLoud provides data where each channel's samples are contiguous.
-  // I'd prefer using this way instead of using per channel stretcher
-  // with SoLoud::FilterInstance::filterChannels because SignalSmith
-  // is optimized for multichannels.
-  std::vector<float *> inputChannels(aChannels);
-  std::vector<float *> outputChannels(aChannels);
-  std::vector<float> outputBuffer(aSamples * aChannels);
+  // The output buffer is sized once in the constructor
+  // (SAMPLE_GRANULARITY frames per channel). Larger blocks (global or bus
+  // filters on a large quantum, the post-ring path) are fed to the
+  // stretcher in chunks rather than growing the buffer on the audio thread;
+  // the stretcher is a streaming processor, so this does not change the
+  // result.
+  const unsigned int chunkMax = SAMPLE_GRANULARITY;
+  for (unsigned int base = 0; base < aSamples; base += chunkMax) {
+    const unsigned int count =
+        aSamples - base < chunkMax ? aSamples - base : chunkMax;
 
-  for (unsigned int ch = 0; ch < aChannels; ch++) {
-    inputChannels[ch] = aBuffer + ch * aSamples;
-    outputChannels[ch] = outputBuffer.data() + ch * aSamples;
-  }
+    for (unsigned int ch = 0; ch < channels; ch++) {
+      mInputChannels[ch] =
+          aBuffer + static_cast<size_t>(ch) * aBufferSize + base;
+      mOutputChannels[ch] =
+          mOutputBuffer.data() + static_cast<size_t>(ch) * chunkMax;
+    }
 
-  // Process all channels together
-  mStretch.process(inputChannels.data(), static_cast<int>(aSamples),
-                   outputChannels.data(), static_cast<int>(aSamples));
+    // Process all channels together
+    mStretch.process(mInputChannels, static_cast<int>(count),
+                     mOutputChannels, static_cast<int>(count));
 
-  // Apply wet/dry mix and copy back to buffer
-  for (unsigned int ch = 0; ch < aChannels; ch++) {
-    float *channelIn = aBuffer + ch * aSamples;
-    float *channelOut = outputChannels[ch];
+    // Apply wet/dry mix and copy back to buffer
+    for (unsigned int ch = 0; ch < channels; ch++) {
+      float *channelIn = mInputChannels[ch];
+      float *channelOut = mOutputChannels[ch];
 
-    if (wetRatio < 1.0f) {
-      for (unsigned int j = 0; j < aSamples; j++) {
-        channelIn[j] = channelIn[j] * dryRatio + channelOut[j] * wetRatio;
+      if (wetRatio < 1.0f) {
+        unsigned int j = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+        const __m128 vDry = _mm_set1_ps(dryRatio);
+        const __m128 vWet = _mm_set1_ps(wetRatio);
+        for (; j + 4 <= count; j += 4) {
+          const __m128 inV = _mm_loadu_ps(channelIn + j);
+          const __m128 outV = _mm_loadu_ps(channelOut + j);
+          _mm_storeu_ps(
+              channelIn + j,
+              _mm_add_ps(_mm_mul_ps(inV, vDry), _mm_mul_ps(outV, vWet)));
+        }
+#elif defined(SOLOUD_NEON_INTRINSICS)
+        for (; j + 4 <= count; j += 4) {
+          const float32x4_t inV = vld1q_f32(channelIn + j);
+          const float32x4_t outV = vld1q_f32(channelOut + j);
+          vst1q_f32(channelIn + j,
+                    vmlaq_n_f32(vmulq_n_f32(inV, dryRatio), outV, wetRatio));
+        }
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+        const v128_t vDry = wasm_f32x4_splat(dryRatio);
+        const v128_t vWet = wasm_f32x4_splat(wetRatio);
+        for (; j + 4 <= count; j += 4) {
+          const v128_t inV = wasm_v128_load(channelIn + j);
+          const v128_t outV = wasm_v128_load(channelOut + j);
+          wasm_v128_store(channelIn + j,
+                          wasm_f32x4_add(wasm_f32x4_mul(inV, vDry),
+                                         wasm_f32x4_mul(outV, vWet)));
+        }
+#endif
+        for (; j < count; j++) {
+          channelIn[j] = channelIn[j] * dryRatio + channelOut[j] * wetRatio;
+        }
+      } else {
+        std::memcpy(channelIn, channelOut, count * sizeof(float));
       }
-    } else {
-      std::memcpy(channelIn, channelOut, aSamples * sizeof(float));
     }
   }
 }
@@ -91,7 +141,7 @@ void PitchShiftInstance::setFilterParameter(unsigned int aAttributeId,
     break;
   }
 
-  mParamChanged |= 1 << aAttributeId;
+  mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
 }
 
 SoLoud::result PitchShift::setParam(unsigned int aParamIndex, float aValue) {

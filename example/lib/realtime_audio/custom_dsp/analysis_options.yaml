@@ -1,0 +1,6 @@
+analyzer:
+  errors:
+    experimental_member_use: ignore
+  exclude:
+    - build/**
+    - macos/**

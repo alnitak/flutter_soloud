@@ -146,6 +146,41 @@ namespace SoLoud
 		}
 	}
 
+	// ###### flutter_soloud local patch (mix checkpoints) ######
+	static const char kBusSnapshotKind = 0;
+
+	SourceStateSnapshot *BusInstance::captureSourceState()
+	{
+		BusSnapshot *s = new BusSnapshot();
+		s->mKind = &kBusSnapshotKind;
+		captureSourceStateInto(s);
+		return s;
+	}
+
+	bool BusInstance::captureSourceStateInto(SourceStateSnapshot *aSnapshot)
+	{
+		if (aSnapshot == NULL || aSnapshot->mKind != &kBusSnapshotKind)
+			return false;
+		BusSnapshot *s = static_cast<BusSnapshot *>(aSnapshot);
+		int i;
+		for (i = 0; i < MAX_CHANNELS; i++)
+			s->mVisualizationChannelVolume[i] = mVisualizationChannelVolume[i];
+		for (i = 0; i < 256; i++)
+			s->mVisualizationWaveData[i] = mVisualizationWaveData[i];
+		return true;
+	}
+
+	void BusInstance::restoreSourceState(SourceStateSnapshot *aSnapshot)
+	{
+		const BusSnapshot *s = static_cast<const BusSnapshot *>(aSnapshot);
+		if (!s) return;
+		int i;
+		for (i = 0; i < MAX_CHANNELS; i++)
+			mVisualizationChannelVolume[i] = s->mVisualizationChannelVolume[i];
+		for (i = 0; i < 256; i++)
+			mVisualizationWaveData[i] = s->mVisualizationWaveData[i];
+	}
+
 	Bus::Bus()
 	{
 		mChannelHandle = 0;
@@ -309,6 +344,22 @@ namespace SoLoud
 		FOR_ALL_VOICES_POST_EXT
 	}
 
+	// ###### flutter_soloud local patch (retroactive re-mix) ######
+	// The bus voice's filter graph changed: earlier checkpoints of it must not
+	// be rolled back to. Audio mutex held.
+	static void retireBusVoiceCheckpoints(Soloud *aSoloud, BusInstance *aInstance)
+	{
+		unsigned int i;
+		for (i = 0; i < aSoloud->mHighestVoice; i++)
+		{
+			if (aSoloud->mVoice[i] == aInstance)
+			{
+				aSoloud->voiceStateChanged_internal(i);
+				return;
+			}
+		}
+	}
+
 	void Bus::setFilter(unsigned int aFilterId, Filter *aFilter)
 	{
 		if (aFilterId >= FILTERS_PER_STREAM)
@@ -331,6 +382,7 @@ namespace SoLoud
 				{
 					mInstance->mFilter[aFilterId] = mFilter[aFilterId]->createInstance();
 				}
+				retireBusVoiceCheckpoints(mSoloud, mInstance);
 			}
 			mSoloud->unlockAudioMutex_internal();
 		}
@@ -354,6 +406,7 @@ namespace SoLoud
 				delete mInstance->mFilter[aToSlot];
 				mInstance->mFilter[aToSlot] = mInstance->mFilter[aFromSlot];
 				mInstance->mFilter[aFromSlot] = 0;
+				retireBusVoiceCheckpoints(mSoloud, mInstance);
 			}
 			mSoloud->unlockAudioMutex_internal();
 		}

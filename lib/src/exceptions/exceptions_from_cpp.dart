@@ -450,3 +450,16 @@ class SoLoudFailedToStartPlaybackCppException extends SoLoudCppException {
       'Failed to start the playback. The audio engine could not create a '
       'valid voice for this sound. (on the C++ side).';
 }
+
+/// Given hash doesn't belong to a realtime stream.
+@experimental
+class SoLoudHashIsNotARealtimeStreamCppException extends SoLoudCppException {
+  /// Creates a new [SoLoudHashIsNotARealtimeStreamCppException].
+  @experimental
+  const SoLoudHashIsNotARealtimeStreamCppException([super.message]);
+
+  @override
+  String get description =>
+      "The given hash doesn't belong to a realtime stream. "
+      '(on the C++ side).';
+}

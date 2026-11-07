@@ -1,3 +1,14 @@
+##### 5.3.0 (XX Xxx 2026)
+- feat: real-time low-latency PCM audio streaming (`setRealtimeStream`) with background Isolate and Web feeding support
+- feat: procedural custom audio sources (`createCustomAudioSource`) with native and Web audio generation callbacks
+- feat: custom DSP filters (`customFilter`) supporting up to 8 programmable filter slots per scope (global, bus, single sound)
+- feat: desktop VST3 plugin hosting (`SoLoudVst3Host` on macOS, Windows, and Linux) for VST3 audio effects, virtual instruments, and native plugin GUI editors
+- feat: added waveform support to `AmplitudeModulatorFilter` (`waveform`: Sine, Triangle, Square, Saw)
+- feat: added `renderAheadFrames` option to `init()` for low-latency retroactive voice mixing. The ring is mixed on a dedicated render thread, so the audio device callback never waits for the engine
+- example: added real-time PCM synth, isolate drum sequencer, custom DSP workbench, and VST3 plugin host examples
+- fix iOS: resume audio playback after returning from background on iOS 16+ where `wasSuspended` interruption reason is no longer sent #573
+- fix: `FreeverbFilter` no longer doubles the dry signal. At `wet` 0 the output now equals the input (it used to be +6 dB), and the dry part of any wet/dry mix is half as loud as in 5.2.x; mixes tuned against the old level will sound quieter
+
 ##### 5.2.4 (X Xxx 2026)
 - fix: don't drop the end of a voice that doesn't loop. Thanks to @Colton127 #604
 

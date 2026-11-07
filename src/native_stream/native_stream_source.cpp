@@ -831,9 +831,24 @@ namespace SoLoud
 		return SO_NO_ERROR;
 	}
 
+	// Tags NativeStreamSnapshot for captureSourceStateInto().
+	static const char kNativeStreamSnapshotKind = 0;
+
 	SourceStateSnapshot *NativeStreamInstance::captureSourceState()
 	{
 		auto *s = new NativeStreamSnapshot();
+		s->mKind = &kNativeStreamSnapshotKind;
+		captureSourceStateInto(s);
+		return s;
+	}
+
+	bool NativeStreamInstance::captureSourceStateInto(SourceStateSnapshot *aState)
+	{
+		// Checkpoints refill a spent snapshot in place every quantum, so the
+		// render worker does not allocate one per voice per capture.
+		if (aState == nullptr || aState->mKind != &kNativeStreamSnapshotKind)
+			return false;
+		auto *s = static_cast<NativeStreamSnapshot *>(aState);
 		s->frame = mFrame;
 		s->headActive = mHeadActive;
 		s->ended = mEnded;
@@ -842,7 +857,7 @@ namespace SoLoud
 		s->readPos = mReadPos;
 		s->waiting = mWaiting;
 		s->waitFrames = mWaitFrames;
-		return s;
+		return true;
 	}
 
 	bool NativeStreamInstance::canRestoreSourceState(SourceStateSnapshot *aState)

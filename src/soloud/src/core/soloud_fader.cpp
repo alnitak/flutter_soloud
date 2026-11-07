@@ -35,7 +35,7 @@ namespace SoLoud
 
 	void Fader::set(float aFrom, float aTo, double aTime, double aStartTime)
 	{
-		mCurrent = mFrom;
+		mCurrent = aFrom;
 		mFrom = aFrom;
 		mTo = aTo;
 		mTime = aTime;
@@ -94,7 +94,9 @@ namespace SoLoud
 		{
 			// Time rolled over.
 			// Figure out where we were..
-			float p = (mCurrent - mFrom) / mDelta; // 0..1
+			float p = mDelta != 0 ? (mCurrent - mFrom) / mDelta : 0.0f; // 0..1
+			if (p < 0.0f) p = 0.0f;
+			if (p > 1.0f) p = 1.0f;
 			mFrom = mCurrent;
 			mStartTime = aCurrentTime;
 			mTime = mTime * (1 - p); // time left

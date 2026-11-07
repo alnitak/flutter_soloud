@@ -10,34 +10,34 @@ import 'package:logging/logging.dart';
 /// filter.
 ///
 /// Amplitude modulation (specifically bipolar / suppressed-carrier ring
-/// modulation) multiplies the incoming audio signal by a sine wave carrier
+/// modulation) multiplies the incoming audio signal by a carrier waveform
 /// at a specified frequency:
 ///
-///   output(t) = input(t) * sin(2π * frequency * t)
+///   output(t) = input(t) * carrier(2π * frequency * t)
 ///
+/// Supported carrier waveforms include Sine, Triangle, Square, and Sawtooth.
 /// Because the carrier has no DC offset (unlike unipolar tremolo), the original
 /// carrier and input fundamental frequencies are suppressed when wet is 1.0.
-/// Instead, sum and difference sideband frequencies are generated
-/// (`frequency - f_input` and `frequency + f_input`).
+/// Instead, sum and difference sideband frequencies are generated.
 ///
 /// **Common Use Cases**:
 /// - **Robotic & Dalek Voices**: Modulating human speech (e.g. vocal samples)
 ///   with a carrier between 30 Hz and 500 Hz creates classic sci-fi cyborg and
-///   Dalek-style robotic speech.
+///   Dalek-style robotic speech (square and saw waveforms produce extra buzz).
 /// - **Metallic & Bell-like Sound Effects**: Processing synthesizers, bells,
 ///   percussion, or music with carrier frequencies between 800 Hz and 3000 Hz
 ///   produces inharmonic, clangorous, and alien metallic timbres.
-/// - **Tremolo & Flutter**: Low carrier frequencies (0.5 Hz to 20 Hz) combined
-///   with a mixed wet/dry ratio produce pulsing, tremolo-like fluttering
-///   effects.
+/// - **Tremolo & Chopper**: Low carrier frequencies (0.5 Hz to 20 Hz) combined
+///   with a mixed wet/dry ratio produce pulsing tremolo fluttering; square
+///   wave produces a harsh rhythmic chopper effect.
 /// - **Sci-Fi Frequency Sweeps**: Dynamically fading or oscillating the carrier
 ///   frequency (`fadeFilterParameter` / `oscillateFilterParameter`) produces
 ///   smooth retro-futuristic laser warps and sweeps without audio clicks,
 ///   thanks to continuous phase accumulation across buffers.
 ///
 /// In this example we can load vocal speech or music samples, activate the
-/// amplitude modulator filter, adjust wet mix and carrier frequency, or test
-/// quick presets for the use-cases described above.
+/// amplitude modulator filter, adjust wet mix, carrier frequency, and carrier
+/// waveform, or test quick presets for the use-cases described above.
 ///
 /// **Amplitude Modulator parameters**:
 /// - `wet`: Wet/dry mix ratio, 1.0 means fully modulated (100% wet ring
@@ -46,6 +46,11 @@ import 'package:logging/logging.dart';
 ///   440 Hz). Frequencies requested at or above the Nyquist limit of the
 ///   active sample rate are safely clamped just below it during processing
 ///   to prevent aliasing.
+/// - `waveform`: Carrier waveform type:
+///   - 0: Sine (pure tone ring modulation)
+///   - 1: Triangle (softer odd harmonics)
+///   - 2: Square (harsh odd harmonics / hard gating / chopper)
+///   - 3: Saw (full harmonic spectrum, raspy buzz)
 
 void main() async {
   // The `flutter_soloud` package logs everything
@@ -92,6 +97,7 @@ class _AmplitudeModulatorExampleState extends State<AmplitudeModulatorExample> {
   AudioSource? musicSound;
   late double wet;
   late double frequency;
+  late int waveform;
   bool isFilterActive = false;
   bool isOscillating = false;
 
@@ -101,6 +107,7 @@ class _AmplitudeModulatorExampleState extends State<AmplitudeModulatorExample> {
 
     wet = am.queryWet.def;
     frequency = am.queryFrequency.def;
+    waveform = am.queryWaveform.def.toInt();
   }
 
   @override
@@ -123,6 +130,7 @@ class _AmplitudeModulatorExampleState extends State<AmplitudeModulatorExample> {
         am.activate();
       }
       am.wet.value = wet;
+      am.waveform.value = waveform.toDouble();
       if (isOscillating) {
         am.frequency.oscillateFilterParameter(
           from: 100,
@@ -138,11 +146,15 @@ class _AmplitudeModulatorExampleState extends State<AmplitudeModulatorExample> {
   void _setPreset({
     required double newFreq,
     required double newWet,
+    int? newWaveform,
     bool oscillate = false,
   }) {
     setState(() {
       frequency = newFreq;
       wet = newWet;
+      if (newWaveform != null) {
+        waveform = newWaveform;
+      }
       isOscillating = oscillate;
       if (!isFilterActive) {
         isFilterActive = true;
@@ -153,6 +165,7 @@ class _AmplitudeModulatorExampleState extends State<AmplitudeModulatorExample> {
       am.activate();
     }
     am.wet.value = wet;
+    am.waveform.value = waveform.toDouble();
     if (oscillate) {
       am.frequency.oscillateFilterParameter(
         from: 100,
@@ -282,32 +295,94 @@ class _AmplitudeModulatorExampleState extends State<AmplitudeModulatorExample> {
               runSpacing: 6,
               children: [
                 ActionChip(
-                  label: const Text('Dalek Voice (30 Hz)'),
-                  onPressed: () => _setPreset(newFreq: 30, newWet: 1),
+                  label: const Text('Dalek Voice (30 Hz Sine)'),
+                  onPressed: () => _setPreset(
+                    newFreq: 30,
+                    newWet: 1,
+                    newWaveform: 0,
+                  ),
                 ),
                 ActionChip(
-                  label: const Text('Robot Voice (440 Hz)'),
-                  onPressed: () => _setPreset(newFreq: 440, newWet: 1),
+                  label: const Text('Buzz Cyborg (120 Hz Saw)'),
+                  onPressed: () => _setPreset(
+                    newFreq: 120,
+                    newWet: 1,
+                    newWaveform: 3,
+                  ),
                 ),
                 ActionChip(
-                  label: const Text('Flutter / Tremolo (8 Hz)'),
-                  onPressed: () => _setPreset(newFreq: 8, newWet: 0.6),
+                  label: const Text('Hard Chopper (6 Hz Square)'),
+                  onPressed: () => _setPreset(
+                    newFreq: 6,
+                    newWet: 1,
+                    newWaveform: 2,
+                  ),
                 ),
                 ActionChip(
-                  label: const Text('Metallic Bell (1200 Hz)'),
-                  onPressed: () => _setPreset(newFreq: 1200, newWet: 1),
+                  label: const Text('Robot Voice (440 Hz Sine)'),
+                  onPressed: () => _setPreset(
+                    newFreq: 440,
+                    newWet: 1,
+                    newWaveform: 0,
+                  ),
+                ),
+                ActionChip(
+                  label: const Text('Flutter Tremolo (8 Hz Triangle)'),
+                  onPressed: () => _setPreset(
+                    newFreq: 8,
+                    newWet: 0.6,
+                    newWaveform: 1,
+                  ),
+                ),
+                ActionChip(
+                  label: const Text('Metallic Bell (1200 Hz Sine)'),
+                  onPressed: () => _setPreset(
+                    newFreq: 1200,
+                    newWet: 1,
+                    newWaveform: 0,
+                  ),
                 ),
                 ActionChip(
                   label: const Text('Sci-Fi Sweep (Oscillate)'),
                   onPressed: () => _setPreset(
                     newFreq: 500,
                     newWet: 1,
+                    newWaveform: 0,
                     oscillate: true,
                   ),
                 ),
               ],
             ),
             const Divider(height: 32),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 140,
+                  child: Text('Waveform:'),
+                ),
+                Expanded(
+                  child: SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('Sine')),
+                      ButtonSegment(value: 1, label: Text('Triangle')),
+                      ButtonSegment(value: 2, label: Text('Square')),
+                      ButtonSegment(value: 3, label: Text('Saw')),
+                    ],
+                    selected: {waveform},
+                    onSelectionChanged: (selected) {
+                      final newWave = selected.first;
+                      setState(() {
+                        waveform = newWave;
+                        if (isFilterActive) {
+                          am.waveform.value = newWave.toDouble();
+                        }
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 SizedBox(

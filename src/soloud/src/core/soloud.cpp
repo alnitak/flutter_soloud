@@ -34,12 +34,22 @@ freely, subject to the following restrictions:
 #include "soloud_thread.h"
 #include "soloud_fft.h"
 
+#if !defined(__EMSCRIPTEN__)
+#include <chrono>
+#include <condition_variable>
+#include <thread>
+#endif
+
 
 #ifdef SOLOUD_SSE_INTRINSICS
 #include <xmmintrin.h>
-#ifdef _M_IX86
 #include <emmintrin.h>
 #endif
+#ifdef SOLOUD_NEON_INTRINSICS
+#include <arm_neon.h>
+#endif
+#ifdef SOLOUD_WASM_SIMD_INTRINSICS
+#include <wasm_simd128.h>
 #endif
 
 //#define FLOATING_POINT_DEBUG
@@ -70,7 +80,7 @@ namespace SoLoud
 		mBasePtr = 0;
 		mData = 0;
 		mFloats = aFloats;
-#ifndef SOLOUD_SSE_INTRINSICS
+#if !defined(SOLOUD_SSE_INTRINSICS) && !defined(SOLOUD_NEON_INTRINSICS) && !defined(SOLOUD_WASM_SIMD_INTRINSICS)
 		mBasePtr = new unsigned char[aFloats * sizeof(float)];
 		if (mBasePtr == NULL)
 			return OUT_OF_MEMORY;
@@ -100,6 +110,26 @@ namespace SoLoud
 		mData = (float *)(((size_t)basePtr + 15)&~15);
 	}
 
+	// ###### flutter_soloud local patch (render-ahead worker) ######
+#if !defined(__EMSCRIPTEN__)
+	struct RenderWorker
+	{
+		RenderWorker() : mRunning(false), mStop(false), mWake(false) {}
+		std::thread mThread;
+		std::mutex mMutex;
+		std::condition_variable mCv;
+		// Read by the device callback.
+		std::atomic<bool> mRunning;
+		std::atomic<bool> mStop;
+		std::atomic<bool> mWake;
+	};
+#else
+	// The web build mixes in the device callback (no render-ahead ring).
+	struct RenderWorker
+	{
+	};
+#endif
+
 	Soloud::Soloud()
 	{
 #ifdef FLOATING_POINT_DEBUG
@@ -128,6 +158,11 @@ namespace SoLoud
 		mRenderAheadFrames = 0;
 		mCheckpointWriteIndex = 0;
 		mCheckpointCounter = 0;
+		mMixingToRenderRing = false;
+		mRenderWorkerWanted = false;
+		mRenderWorker.store(NULL, std::memory_order_relaxed);
+		mRenderRingTimeOrigin.store(0.0, std::memory_order_relaxed);
+		mGlobalFilterMask.store(0, std::memory_order_relaxed);
 		mRemixing = false;
 		mRemixSuppressEndedCount = 0;
 		mClockedAnchorTime = 0;
@@ -189,6 +224,9 @@ namespace SoLoud
 		// let's stop all sounds before deinit, so we don't mess up our mutexes
 		stopAll();
 		deinit();
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		// deinit() joined the thread and the backend has stopped the device.
+		delete mRenderWorker.exchange(NULL);
 		unsigned int i;
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
@@ -205,11 +243,18 @@ namespace SoLoud
 	{
 		// Stop the audio callback from mixing (see mEngineReady) before
 		// tearing anything down.
-		mEngineReady = 0;
+		mEngineReady.store(0, std::memory_order_seq_cst);
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		stopRenderWorker_internal();
 		// Make sure no audio operation is currently pending
 		lockAudioMutex_internal();
 		unlockAudioMutex_internal();
-		SOLOUD_ASSERT(!mInsideAudioThreadMutex);
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		// No SOLOUD_ASSERT(!mInsideAudioThreadMutex) here: that flag belongs
+		// to whichever thread holds the mutex, and a device callback that
+		// was already running when mEngineReady was cleared may legitimately
+		// hold it now (it stops at the next quantum boundary); reading it
+		// unlocked would be a data race and a spurious abort.
 		stopAll();
 		if (mBackendCleanupFunc)
 			mBackendCleanupFunc(this);
@@ -626,7 +671,9 @@ namespace SoLoud
 			return UNKNOWN_ERROR;
 		// The engine is fully initialized; let the audio callback mix (see
 		// mEngineReady).
-		mEngineReady = 1;
+		mEngineReady.store(1, std::memory_order_seq_cst);
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		startRenderWorker_internal();
 		return 0;
 	}
 
@@ -648,7 +695,10 @@ namespace SoLoud
 
 
 	void Soloud::postinit_internal(unsigned int aSamplerate, unsigned int aBufferSize, unsigned int aFlags, unsigned int aChannels)
-	{		
+	{
+		// ###### flutter_soloud local patch (render-ahead worker) ######
+		// The ring is reallocated below; nothing may be mixing into it.
+		stopRenderWorker_internal();
 		mGlobalVolume = 1;
 		mChannels = aChannels;
 		mSamplerate = aSamplerate;
@@ -770,7 +820,9 @@ namespace SoLoud
 			unsigned int capacity =
 				mRenderAheadFrames + aBufferSize + 4 * mDevicePeriodFrames;
 			mRenderRing.init(capacity, aChannels);
+			mRenderRingTimeOrigin.store(mStreamTime, std::memory_order_release);
 			mRenderRingStaging.init(aBufferSize * aChannels);
+			mPostRingScratch.init(mScratchSize * MAX_CHANNELS);
 			// ###### flutter_soloud local patch (mix checkpoints) ######
 			// Circular pool of quantum-boundary snapshots covering the whole
 			// render-ahead window plus margin. All storage is pre-sized here;
@@ -835,6 +887,44 @@ namespace SoLoud
 		return (time)(buffered + mDevicePeriodFrames) / (time)mSamplerate;
 	}
 
+	bool Soloud::renderRingMixQuantumLocked_internal()
+	{
+		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+		unsigned int stride = (mBufferSize + 15) & ~0xf;
+		time buffertime = (time)mBufferSize / (time)mSamplerate;
+		float globalVolume[2];
+
+		mMixingToRenderRing = true;
+		mStreamTime += buffertime;
+
+		globalVolume[0] = mGlobalVolume;
+		if (mGlobalVolumeFader.mActive)
+		{
+			mGlobalVolume = mGlobalVolumeFader.get(mStreamTime);
+		}
+		globalVolume[1] = mGlobalVolume;
+
+		mixVoicesLocked_internal(mBufferSize, stride);
+
+		const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
+		mVoiceInactiveCallbackPending = false;
+
+		// Global volume only: the ring holds the unclipped mix, and
+		// postProcessRenderRing_internal() clips after the global
+		// filters, as the direct mix path does.
+		applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+		interlace_samples_float(mScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
+		mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
+		// Ring frames and the mix clock advance in lockstep (a re-mix puts
+		// mStreamTime back where it was), so this stays constant; publishing
+		// it keeps the device callback independent of how it was set up.
+		mRenderRingTimeOrigin.store(
+			mStreamTime - (time)mRenderRing.getWritePosition() / (time)mSamplerate,
+			std::memory_order_release);
+		mMixingToRenderRing = false;
+		return notifyVoiceInactive;
+	}
+
 	void Soloud::renderRingTopUp_internal()
 	{
 		if (!mRenderRing.isInited() || mBufferSize == 0)
@@ -842,9 +932,347 @@ namespace SoLoud
 		while (mRenderRing.availableToRead() < mRenderAheadFrames &&
 			mRenderRing.availableToWrite() >= mBufferSize)
 		{
-			mix(mRenderRingStaging.mData, mBufferSize);
-			mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
+			lockAudioMutex_internal();
+			// deinit() clears mEngineReady and then takes the audio mutex
+			// once: no quantum may start after that.
+			if (mEngineReady.load(std::memory_order_acquire) == 0)
+			{
+				unlockAudioMutex_internal();
+				return;
+			}
+			const bool notifyVoiceInactive = renderRingMixQuantumLocked_internal();
+			unlockAudioMutex_internal();
+
+			auto voiceInactiveCallback =
+				_voiceInactiveCallback.load(std::memory_order_acquire);
+			if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
+				voiceInactiveCallback();
 		}
+	}
+
+	void Soloud::renderRingTopUpNoWait_internal(unsigned int aFrames)
+	{
+		if (!mRenderRing.isInited() || mBufferSize == 0)
+			return;
+		while (mRenderRing.availableToRead() < aFrames &&
+			mRenderRing.availableToWrite() >= mBufferSize)
+		{
+			if (!tryLockAudioMutex_internal())
+				return;
+			if (mEngineReady.load(std::memory_order_acquire) == 0)
+			{
+				unlockAudioMutex_internal();
+				return;
+			}
+			const bool notifyVoiceInactive = renderRingMixQuantumLocked_internal();
+			unlockAudioMutex_internal();
+
+			auto voiceInactiveCallback =
+				_voiceInactiveCallback.load(std::memory_order_acquire);
+			if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
+				voiceInactiveCallback();
+		}
+	}
+
+	// ###### flutter_soloud local patch (render-ahead worker) ######
+#if !defined(__EMSCRIPTEN__)
+
+	static void renderWorkerLoop(Soloud *aSoloud, RenderWorker *aWorker)
+	{
+		Thread::raiseCurrentThreadPriority();
+		while (!aWorker->mStop.load(std::memory_order_acquire))
+		{
+			aSoloud->renderRingTopUp_internal();
+			std::unique_lock<std::mutex> lock(aWorker->mMutex);
+			// Woken by the device callback after every read. The timeout is
+			// only a safety net (the ring is full while it waits).
+			aWorker->mCv.wait_for(lock, std::chrono::milliseconds(100), [aWorker] {
+				return aWorker->mStop.load(std::memory_order_acquire) ||
+					aWorker->mWake.exchange(false, std::memory_order_acq_rel);
+			});
+		}
+	}
+#endif
+
+	void Soloud::startRenderWorker_internal()
+	{
+#if !defined(__EMSCRIPTEN__)
+		if (!mRenderWorkerWanted || !isRenderAheadEnabled() || !mRenderRing.isInited() ||
+			mBufferSize == 0 || mSamplerate == 0)
+			return;
+		RenderWorker *w = mRenderWorker.load(std::memory_order_acquire);
+		if (w == NULL)
+		{
+			w = new RenderWorker();
+			mRenderWorker.store(w, std::memory_order_release);
+		}
+		if (w->mThread.joinable())
+			return;
+		w->mStop.store(false, std::memory_order_release);
+		w->mWake.store(false, std::memory_order_release);
+		try
+		{
+			w->mThread = std::thread(renderWorkerLoop, this, w);
+		}
+		catch (...)
+		{
+			// No thread: the device callback keeps mixing itself.
+			return;
+		}
+		w->mRunning.store(true, std::memory_order_release);
+#endif
+	}
+
+	void Soloud::stopRenderWorker_internal()
+	{
+#if !defined(__EMSCRIPTEN__)
+		RenderWorker *w = mRenderWorker.load(std::memory_order_acquire);
+		if (w == NULL || !w->mThread.joinable())
+			return;
+		// The device callback mixes for itself again from here on.
+		w->mRunning.store(false, std::memory_order_release);
+		w->mStop.store(true, std::memory_order_release);
+		{
+			std::lock_guard<std::mutex> lock(w->mMutex);
+		}
+		w->mCv.notify_all();
+		w->mThread.join();
+#endif
+	}
+
+	bool Soloud::isRenderWorkerRunning_internal() const
+	{
+#if !defined(__EMSCRIPTEN__)
+		RenderWorker *w = mRenderWorker.load(std::memory_order_acquire);
+		return w != NULL && w->mRunning.load(std::memory_order_acquire);
+#else
+		return false;
+#endif
+	}
+
+	void Soloud::wakeRenderWorker_internal()
+	{
+#if !defined(__EMSCRIPTEN__)
+		RenderWorker *w = mRenderWorker.load(std::memory_order_acquire);
+		if (w == NULL || !w->mRunning.load(std::memory_order_acquire))
+			return;
+		w->mWake.store(true, std::memory_order_seq_cst);
+		// Passing through the mutex orders this wake with the worker's check
+		// of mWake: it either sees the flag or is already waiting and gets
+		// the notification. The worker only holds the mutex to check the
+		// flag, so a few attempts are enough; never block on it.
+		int attempt;
+		for (attempt = 0; attempt < 64; attempt++)
+		{
+			if (w->mMutex.try_lock())
+			{
+				w->mMutex.unlock();
+				break;
+			}
+		}
+		w->mCv.notify_one();
+#endif
+	}
+
+	bool Soloud::tryLockAudioMutex_internal()
+	{
+		if (mAudioThreadMutex && Thread::tryLockMutex(mAudioThreadMutex) != 0)
+			return false;
+		SOLOUD_ASSERT(!mInsideAudioThreadMutex);
+		mInsideAudioThreadMutex = true;
+		return true;
+	}
+
+	void Soloud::lockGlobalFilters_internal()
+	{
+		mGlobalFilterMutex.lock();
+	}
+
+	void Soloud::unlockGlobalFilters_internal()
+	{
+		mGlobalFilterMutex.unlock();
+	}
+
+	void Soloud::audioThreadBarrier_internal()
+	{
+		lockAudioMutex_internal();
+		unlockAudioMutex_internal();
+		lockGlobalFilters_internal();
+		unlockGlobalFilters_internal();
+	}
+
+	unsigned int Soloud::readRenderRingForDevice_internal(float *aBuffer, unsigned int aFrames)
+	{
+		const bool worker = isRenderWorkerRunning_internal();
+		if (!worker)
+		{
+			// No worker (none wanted, or it could not be started): mix here.
+			renderRingTopUp_internal();
+		}
+		else if (mRenderRing.availableToRead() < aFrames)
+		{
+			// The worker fell behind: mix what this read needs, but only if
+			// the audio mutex is free right now.
+			renderRingTopUpNoWait_internal(aFrames);
+			// Some backends deliver callbacks in back-to-back bursts (AAudio's
+			// non-low-latency path fires several callbacks within a
+			// millisecond), which drains the whole render-ahead window faster
+			// than the worker can be scheduled. When the try-lock above lost
+			// to the worker, the worker is mixing exactly the frames this read
+			// needs: wait a bounded time for them (re-trying the lock in case
+			// the mutex frees up) rather than emitting silence. The bound
+			// keeps a long API-thread hold from stalling the device.
+			if (mRenderRing.availableToRead() < aFrames && mSamplerate > 0)
+			{
+				const long long budgetUs =
+					(long long)aFrames * 1000000LL / (2LL * (long long)mSamplerate);
+				const std::chrono::steady_clock::time_point deadline =
+					std::chrono::steady_clock::now() + std::chrono::microseconds(budgetUs);
+				do
+				{
+					wakeRenderWorker_internal();
+					std::this_thread::yield();
+					renderRingTopUpNoWait_internal(aFrames);
+				} while (mRenderRing.availableToRead() < aFrames &&
+					std::chrono::steady_clock::now() < deadline);
+			}
+		}
+		const unsigned int got = mRenderRing.read(aBuffer, aFrames);
+		if (worker)
+			wakeRenderWorker_internal();
+		if (got < aFrames)
+		{
+			const unsigned int channels = mRenderRing.getChannels();
+			memset(aBuffer + (size_t)got * channels, 0,
+				(size_t)(aFrames - got) * channels * sizeof(float));
+		}
+		postProcessRenderRing_internal(aBuffer, aFrames);
+		return got;
+	}
+
+	void Soloud::postProcessRenderRing_internal(float *aBuffer, unsigned int aSamples)
+	{
+		if (aSamples == 0 || mChannels == 0 || mScratchSize == 0 || mPostRingScratch.mData == NULL)
+			return;
+		// Runs in the device callback. The global filters have their own lock
+		// (see lockGlobalFilters_internal()): the render worker holds the
+		// audio mutex while it mixes, and the device must not wait for that.
+		// The clip below needs no lock (clip_internal() runs unlocked on the
+		// direct mix path too), so the lock is only taken when there is a
+		// filter to run.
+		const bool anyFilter = mGlobalFilterMask.load(std::memory_order_acquire) != 0;
+		unsigned int i;
+		time t = 0;
+		if (anyFilter)
+		{
+			lockGlobalFilters_internal();
+			// The device callback has already read aBuffer out of the ring:
+			// time its first frame from the ring position, not the mix clock
+			// (which needs the audio mutex).
+			const unsigned long long readPos = mRenderRing.getReadPosition();
+			const unsigned long long firstFrame = readPos > aSamples ? readPos - aSamples : 0;
+			if (mSamplerate > 0)
+				t = mRenderRingTimeOrigin.load(std::memory_order_acquire) +
+					(time)firstFrame / (time)mSamplerate;
+			if (t < 0)
+				t = 0;
+		}
+		unsigned int offset = 0;
+		unsigned int maxChunk = mScratchSize & ~0xfu;
+		if (maxChunk == 0)
+			maxChunk = mScratchSize;
+		while (offset < aSamples)
+		{
+			unsigned int chunk = aSamples - offset;
+			if (chunk > maxChunk)
+				chunk = maxChunk;
+			unsigned int stride = (chunk + 15) & ~0xfu;
+			if (stride > mScratchSize)
+				stride = mScratchSize;
+			float *planar = mPostRingScratch.mData;
+			const float *src = aBuffer + (size_t)offset * mChannels;
+			unsigned int c, j;
+			if (mChannels == 1)
+			{
+				memcpy(planar, src, sizeof(float) * chunk);
+				if (stride > chunk)
+					memset(planar + chunk, 0, sizeof(float) * (stride - chunk));
+			}
+			else if (mChannels == 2)
+			{
+				float *dstL = planar;
+				float *dstR = planar + stride;
+				j = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+				for (; j + 4 <= chunk; j += 4)
+				{
+					__m128 v0 = _mm_loadu_ps(src + j * 2);
+					__m128 v1 = _mm_loadu_ps(src + j * 2 + 4);
+					_mm_storeu_ps(dstL + j, _mm_shuffle_ps(v0, v1, _MM_SHUFFLE(2, 0, 2, 0)));
+					_mm_storeu_ps(dstR + j, _mm_shuffle_ps(v0, v1, _MM_SHUFFLE(3, 1, 3, 1)));
+				}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+				for (; j + 4 <= chunk; j += 4)
+				{
+					float32x4x2_t lr = vld2q_f32(src + j * 2);
+					vst1q_f32(dstL + j, lr.val[0]);
+					vst1q_f32(dstR + j, lr.val[1]);
+				}
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+				for (; j + 4 <= chunk; j += 4)
+				{
+					v128_t v0 = wasm_v128_load(src + j * 2);
+					v128_t v1 = wasm_v128_load(src + j * 2 + 4);
+					wasm_v128_store(dstL + j, wasm_i32x4_shuffle(v0, v1, 0, 2, 4, 6));
+					wasm_v128_store(dstR + j, wasm_i32x4_shuffle(v0, v1, 1, 3, 5, 7));
+				}
+#endif
+				for (; j < chunk; j++)
+				{
+					dstL[j] = src[j * 2];
+					dstR[j] = src[j * 2 + 1];
+				}
+				if (stride > chunk)
+				{
+					memset(dstL + chunk, 0, sizeof(float) * (stride - chunk));
+					memset(dstR + chunk, 0, sizeof(float) * (stride - chunk));
+				}
+			}
+			else
+			{
+				for (c = 0; c < mChannels; c++)
+				{
+					float *dstCh = planar + (size_t)c * stride;
+					for (j = 0; j < chunk; j++)
+					{
+						dstCh[j] = src[j * mChannels + c];
+					}
+					for (; j < stride; j++)
+					{
+						dstCh[j] = 0.0f;
+					}
+				}
+			}
+			if (anyFilter)
+			{
+				for (i = 0; i < FILTERS_PER_STREAM; i++)
+				{
+					if (mFilterInstance[i] != NULL)
+					{
+						mFilterInstance[i]->filter(planar, chunk, stride, mChannels, (float)mSamplerate, t);
+					}
+				}
+			}
+			// Final clip (global volume was applied when mixing into the
+			// ring). Covers the global filters' output too.
+			clip_internal(mPostRingScratch, mPostRingScratch, stride, 1.0f, 1.0f);
+			interlace_samples_float(planar, aBuffer + (size_t)offset * mChannels, chunk, mChannels, stride);
+			if (mSamplerate > 0)
+				t += (time)chunk / (time)mSamplerate;
+			offset += chunk;
+		}
+		if (anyFilter)
+			unlockGlobalFilters_internal();
 	}
 
 	const char * Soloud::getErrorString(result aErrorCode) const
@@ -910,6 +1338,30 @@ namespace SoLoud
 		}
 
 		return mFFTData;
+	}
+
+	// ###### flutter_soloud local patch (render-ahead ring) ######
+	void Soloud::applyGlobalVolume_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1)
+	{
+		// Same per-channel ramp and the same buffer extent (whole quads of
+		// aSamples per channel) as clip_internal().
+		const unsigned int samples = ((aSamples + 3) / 4) * 4;
+		const float vd = (aVolume1 - aVolume0) / aSamples;
+		unsigned int c = 0;
+		unsigned int i, j;
+		if (aVolume0 == 1.0f && aVolume1 == 1.0f)
+		{
+			if (&aBuffer != &aDestBuffer)
+				memcpy(aDestBuffer.mData, aBuffer.mData, sizeof(float) * samples * mChannels);
+			return;
+		}
+		for (j = 0; j < mChannels; j++)
+		{
+			for (i = 0; i < samples; i++, c++)
+			{
+				aDestBuffer.mData[c] = aBuffer.mData[c] * (aVolume0 + vd * (float)i);
+			}
+		}
 	}
 
 #if defined(SOLOUD_SSE_INTRINSICS)
@@ -1015,6 +1467,88 @@ namespace SoLoud
 					//aDestBuffer.mData[d] = f1 * mPostClipScaler; d++;
 					f = _mm_mul_ps(f, postscale);
 					_mm_store_ps(&aDestBuffer.mData[d], f);
+					d += 4;
+				}
+			}
+		}
+	}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+	void Soloud::clip_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1)
+	{
+		float vd = (aVolume1 - aVolume0) / aSamples;
+		float v = aVolume0;
+		unsigned int i, j, c, d;
+		unsigned int samplequads = (aSamples + 3) / 4; // rounded up
+		float postClipScaler = mPostClipScaler.load(std::memory_order_acquire);
+		float32x4_t postscale = vdupq_n_f32(postClipScaler);
+		TinyAlignedFloatBuffer volumes;
+		volumes.mData[0] = v;
+		volumes.mData[1] = v + vd;
+		volumes.mData[2] = v + vd + vd;
+		volumes.mData[3] = v + vd + vd + vd;
+		vd *= 4;
+		float32x4_t vdelta = vdupq_n_f32(vd);
+
+		// Clip
+		if (mFlags & CLIP_ROUNDOFF)
+		{
+			float32x4_t negbound = vdupq_n_f32(-1.65f);
+			float32x4_t posbound = vdupq_n_f32(1.65f);
+			float32x4_t linearscale = vdupq_n_f32(0.87f);
+			float32x4_t cubicscale = vdupq_n_f32(-0.1f);
+			float32x4_t negwall = vdupq_n_f32(-0.9862875f);
+			float32x4_t poswall = vdupq_n_f32(0.9862875f);
+			c = 0;
+			d = 0;
+			for (j = 0; j < mChannels; j++)
+			{
+				float32x4_t vol = vld1q_f32(volumes.mData);
+				for (i = 0; i < samplequads; i++)
+				{
+					float32x4_t f = vld1q_f32(&aBuffer.mData[c]);
+					c += 4;
+					f = vmulq_f32(f, vol);
+					vol = vaddq_f32(vol, vdelta);
+
+					uint32x4_t u = vcgtq_f32(f, negbound);
+					uint32x4_t o = vcltq_f32(f, posbound);
+
+					float32x4_t lin = vmulq_f32(f, linearscale);
+					float32x4_t cubic = vmulq_f32(f, f);
+					cubic = vmulq_f32(cubic, f);
+					cubic = vmulq_f32(cubic, cubicscale);
+					f = vaddq_f32(cubic, lin);
+
+					f = vbslq_f32(u, f, negwall);
+					f = vbslq_f32(o, f, poswall);
+
+					f = vmulq_f32(f, postscale);
+					vst1q_f32(&aDestBuffer.mData[d], f);
+					d += 4;
+				}
+			}
+		}
+		else
+		{
+			float32x4_t negbound = vdupq_n_f32(-1.0f);
+			float32x4_t posbound = vdupq_n_f32(1.0f);
+			c = 0;
+			d = 0;
+			for (j = 0; j < mChannels; j++)
+			{
+				float32x4_t vol = vld1q_f32(volumes.mData);
+				for (i = 0; i < samplequads; i++)
+				{
+					float32x4_t f = vld1q_f32(&aBuffer.mData[c]);
+					c += 4;
+					f = vmulq_f32(f, vol);
+					vol = vaddq_f32(vol, vdelta);
+
+					f = vmaxq_f32(f, negbound);
+					f = vminq_f32(f, posbound);
+
+					f = vmulq_f32(f, postscale);
+					vst1q_f32(&aDestBuffer.mData[d], f);
 					d += 4;
 				}
 			}
@@ -1207,6 +1741,15 @@ namespace SoLoud
 		SOLOUD_ASSERT(((size_t)aScratch & 0xf) == 0);
 		SOLOUD_ASSERT(((size_t)aBufferSize & 0xf) == 0);
 #endif
+		if (aSamplesToRead == 0)
+		{
+			unsigned int k;
+			for (k = 0; k < aChannels; k++)
+			{
+				aVoice->mCurrentChannelVolume[k] = aVoice->mChannelVolume[k] * aVoice->mOverallVolume;
+			}
+			return;
+		}
 		float pan[MAX_CHANNELS]; // current speaker volume
 		float pand[MAX_CHANNELS]; // destination speaker volume
 		float pani[MAX_CHANNELS]; // speaker volume increment per sample
@@ -1284,6 +1827,8 @@ namespace SoLoud
 #if defined(SOLOUD_SSE_INTRINSICS)
 				{
 					int c = 0;
+					const float step0 = pani[0];
+					const float step1 = pani[1];
 					//if ((aBufferSize & 3) == 0)
 					{
 						unsigned int samplequads = aSamplesToRead / 4; // rounded down
@@ -1323,6 +1868,67 @@ namespace SoLoud
 					}
 					
 					// If buffer size or samples to read are not divisible by 4, handle leftovers
+					pan[0] += step0 * c;
+					pan[1] += step1 * c;
+					pani[0] = step0;
+					pani[1] = step1;
+					for (j = c; j < aSamplesToRead; j++)
+					{
+						pan[0] += pani[0];
+						pan[1] += pani[1];
+						float s1 = aScratch[j];
+						float s2 = aScratch[aBufferSize + j];
+						aBuffer[j + 0] += s1 * pan[0];
+						aBuffer[j + aBufferSize] += s2 * pan[1];
+					}
+				}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+				{
+					int c = 0;
+					const float step0 = pani[0];
+					const float step1 = pani[1];
+					{
+						unsigned int samplequads = aSamplesToRead / 4; // rounded down
+						TinyAlignedFloatBuffer pan0;
+						pan0.mData[0] = pan[0] + pani[0];
+						pan0.mData[1] = pan[0] + pani[0] * 2;
+						pan0.mData[2] = pan[0] + pani[0] * 3;
+						pan0.mData[3] = pan[0] + pani[0] * 4;
+						TinyAlignedFloatBuffer pan1;
+						pan1.mData[0] = pan[1] + pani[1];
+						pan1.mData[1] = pan[1] + pani[1] * 2;
+						pan1.mData[2] = pan[1] + pani[1] * 3;
+						pan1.mData[3] = pan[1] + pani[1] * 4;
+						pani[0] *= 4;
+						pani[1] *= 4;
+						float32x4_t pan0delta = vdupq_n_f32(pani[0]);
+						float32x4_t pan1delta = vdupq_n_f32(pani[1]);
+						float32x4_t p0 = vld1q_f32(pan0.mData);
+						float32x4_t p1 = vld1q_f32(pan1.mData);
+
+						for (j = 0; j < samplequads; j++)
+						{
+							float32x4_t f0 = vld1q_f32(aScratch + c);
+							float32x4_t c0 = vmulq_f32(f0, p0);
+							float32x4_t f1 = vld1q_f32(aScratch + c + aBufferSize);
+							float32x4_t c1 = vmulq_f32(f1, p1);
+							float32x4_t o0 = vld1q_f32(aBuffer + c);
+							float32x4_t o1 = vld1q_f32(aBuffer + c + aBufferSize);
+							c0 = vaddq_f32(c0, o0);
+							c1 = vaddq_f32(c1, o1);
+							vst1q_f32(aBuffer + c, c0);
+							vst1q_f32(aBuffer + c + aBufferSize, c1);
+							p0 = vaddq_f32(p0, pan0delta);
+							p1 = vaddq_f32(p1, pan1delta);
+							c += 4;
+						}
+					}
+
+					// If buffer size or samples to read are not divisible by 4, handle leftovers
+					pan[0] += step0 * c;
+					pan[1] += step1 * c;
+					pani[0] = step0;
+					pani[1] = step1;
 					for (j = c; j < aSamplesToRead; j++)
 					{
 						pan[0] += pani[0];
@@ -1349,6 +1955,8 @@ namespace SoLoud
 #if defined(SOLOUD_SSE_INTRINSICS)
 				{
 					int c = 0;
+					const float step0 = pani[0];
+					const float step1 = pani[1];
 					//if ((aBufferSize & 3) == 0)
 					{
 						unsigned int samplequads = aSamplesToRead / 4; // rounded down
@@ -1386,6 +1994,64 @@ namespace SoLoud
 						}
 					}
 					// If buffer size or samples to read are not divisible by 4, handle leftovers
+					pan[0] += step0 * c;
+					pan[1] += step1 * c;
+					pani[0] = step0;
+					pani[1] = step1;
+					for (j = c; j < aSamplesToRead; j++)
+					{
+						pan[0] += pani[0];
+						pan[1] += pani[1];
+						float s = aScratch[j];
+						aBuffer[j + 0] += s * pan[0];
+						aBuffer[j + aBufferSize] += s * pan[1];
+					}
+				}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+				{
+					int c = 0;
+					const float step0 = pani[0];
+					const float step1 = pani[1];
+					{
+						unsigned int samplequads = aSamplesToRead / 4; // rounded down
+						TinyAlignedFloatBuffer pan0;
+						pan0.mData[0] = pan[0] + pani[0];
+						pan0.mData[1] = pan[0] + pani[0] * 2;
+						pan0.mData[2] = pan[0] + pani[0] * 3;
+						pan0.mData[3] = pan[0] + pani[0] * 4;
+						TinyAlignedFloatBuffer pan1;
+						pan1.mData[0] = pan[1] + pani[1];
+						pan1.mData[1] = pan[1] + pani[1] * 2;
+						pan1.mData[2] = pan[1] + pani[1] * 3;
+						pan1.mData[3] = pan[1] + pani[1] * 4;
+						pani[0] *= 4;
+						pani[1] *= 4;
+						float32x4_t pan0delta = vdupq_n_f32(pani[0]);
+						float32x4_t pan1delta = vdupq_n_f32(pani[1]);
+						float32x4_t p0 = vld1q_f32(pan0.mData);
+						float32x4_t p1 = vld1q_f32(pan1.mData);
+
+						for (j = 0; j < samplequads; j++)
+						{
+							float32x4_t f = vld1q_f32(aScratch + c);
+							float32x4_t c0 = vmulq_f32(f, p0);
+							float32x4_t c1 = vmulq_f32(f, p1);
+							float32x4_t o0 = vld1q_f32(aBuffer + c);
+							float32x4_t o1 = vld1q_f32(aBuffer + c + aBufferSize);
+							c0 = vaddq_f32(c0, o0);
+							c1 = vaddq_f32(c1, o1);
+							vst1q_f32(aBuffer + c, c0);
+							vst1q_f32(aBuffer + c + aBufferSize, c1);
+							p0 = vaddq_f32(p0, pan0delta);
+							p1 = vaddq_f32(p1, pan1delta);
+							c += 4;
+						}
+					}
+					// If buffer size or samples to read are not divisible by 4, handle leftovers
+					pan[0] += step0 * c;
+					pan[1] += step1 * c;
+					pani[0] = step0;
+					pani[1] = step1;
 					for (j = c; j < aSamplesToRead; j++)
 					{
 						pan[0] += pani[0];
@@ -1753,12 +2419,9 @@ namespace SoLoud
 	{
 		unsigned int i, j;
 		// Clear accumulation buffer
-		for (i = 0; i < aSamplesToRead; i++)
+		for (j = 0; j < aChannels; j++)
 		{
-			for (j = 0; j < aChannels; j++)
-			{
-				aBuffer[i + j * aBufferSize] = 0;
-			}
+			memset(aBuffer + j * aBufferSize, 0, sizeof(float) * aSamplesToRead);
 		}
 
 		// Accumulate sound sources		
@@ -1809,11 +2472,72 @@ namespace SoLoud
 					{
 						samplesToProduce = (unsigned int)voice->mStopSamplesLeft;
 						stopAfterProduce = true;
+						if (voice->mVolumeFader.mActive != 0 &&
+							voice->mVolumeFader.mTo <= 1e-5f)
+						{
+							voice->mOverallVolume = 0.0f;
+							bool hasResidual = false;
+							unsigned int ch;
+							for (ch = 0; ch < aChannels; ch++)
+							{
+								if (voice->mCurrentChannelVolume[ch] > 1e-5f)
+								{
+									hasResidual = true;
+									break;
+								}
+							}
+							if (hasResidual && samplesToProduce < 64)
+							{
+								samplesToProduce = aSamplesToRead < 64 ? aSamplesToRead : 64;
+							}
+						}
 					}
 					else
 					{
 						voice->mStopSamplesLeft -= aSamplesToRead;
 					}
+				}
+
+				if ((voice->mFlags & AudioSourceInstance::REALTIME_DIRECT) &&
+					step_fixed == FIXPOINT_FRAC_MUL &&
+					voice->mLeftoverSamples == 0 &&
+					voice->mSrcOffset == 0 &&
+					outofs < samplesToProduce)
+				{
+					unsigned int directSamples = samplesToProduce - outofs;
+					unsigned int readcount = 0;
+					if (!voice->hasEnded() || (voice->mFlags & AudioSourceInstance::LOOPING))
+					{
+						readcount = readSourceSamples_internal(
+							voice, aScratch + outofs, directSamples, aBufferSize);
+					}
+					//REALTIME_DIRECT writes directly into aScratch without
+					// mResampleData lookahead, so once the source ends everything it
+					// produced is already output in this pass.
+					voice->mSourceDrained = (readcount < directSamples) || voice->hasEnded();
+					if (readcount < directSamples)
+					{
+						unsigned int k;
+						for (k = 0; k < voice->mChannels; k++)
+						{
+							memset(aScratch + outofs + readcount + aBufferSize * k,
+								0, sizeof(float) * (directSamples - readcount));
+						}
+					}
+					for (j = 0; j < FILTERS_PER_STREAM; j++)
+					{
+						if (voice->mFilter[j])
+						{
+							voice->mFilter[j]->filter(
+								aScratch + outofs,
+								directSamples,
+								aBufferSize,
+								voice->mChannels,
+								voice->mSamplerate,
+								mStreamTime);
+						}
+					}
+					outofs = samplesToProduce;
 				}
 
 				while (step_fixed != 0 && outofs < samplesToProduce)
@@ -1959,6 +2683,19 @@ namespace SoLoud
 					voice->mSrcOffset += writesamples * step_fixed;
 				}
 				
+				// If the resampler loop exited early (e.g. no resample buffer),
+				// zero the unwritten region of aScratch so panAndExpand never
+				// mixes stale scratch memory.
+				if (outofs < samplesToProduce)
+				{
+					unsigned int k;
+					for (k = 0; k < voice->mChannels; k++)
+					{
+						memset(aScratch + k * aBufferSize + outofs, 0,
+							sizeof(float) * (samplesToProduce - outofs));
+					}
+				}
+
 				// Handle panning and channel expansion (and/or shrinking)
 				panAndExpand(voice, aBuffer, samplesToProduce, aBufferSize, aScratch, aChannels);
 
@@ -2121,9 +2858,13 @@ namespace SoLoud
 		unsigned int i, j;
 		for (i = 0; i < mMaxActiveVoices; i++)
 		{
-			for (j = 0; j < mMaxActiveVoices; j++)
+			if (!mResampleDataOwner[i])
+				continue;
+			for (j = 0; j < mActiveVoiceCount; j++)
 			{
-				if (mResampleDataOwner[i] && mResampleDataOwner[i] == mVoice[mActiveVoice[j]])
+				if (mResampleDataOwner[i] == mVoice[mActiveVoice[j]] &&
+					mResampleDataOwner[i]->mResampleData[0] != NULL &&
+					mResampleDataOwner[i]->mResampleData[1] != NULL)
 				{
 					live[i] |= 1; // Live channel
 					live[j] |= 2; // Live voice
@@ -2275,7 +3016,7 @@ namespace SoLoud
 	void Soloud::mixVoicesLocked_internal(unsigned int aSamples, unsigned int aStride)
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
-		float buffertime = aSamples / (float)mSamplerate;
+		time buffertime = (time)aSamples / (time)mSamplerate;
 
 		// Process faders. May change scratch size.
 		int i;
@@ -2336,7 +3077,41 @@ namespace SoLoud
 					if (mVoice[i]->mStopScheduler.mActive == -1)
 					{
 						mVoice[i]->mStopScheduler.mActive = 0;
-						stopVoice_internal(i);
+						// If the voice was fading to 0 on the same quantum tick,
+						// mVolumeFader just set mSetVolume = 0 above, but
+						// mCurrentChannelVolume still holds the previous quantum's
+						// end volume until mixBus_internal runs panAndExpand.
+						// Stopping before mixBus_internal would drop the final
+						// quantum ramp and leave a step discontinuity. Instead,
+						// let audible voices with non-zero channel volume ramp to
+						// 0 across this quantum and stop at the end of it.
+						bool hasResidualVolume = false;
+						if (!(mVoice[i]->mFlags & AudioSourceInstance::INAUDIBLE))
+						{
+							unsigned int ch;
+							for (ch = 0; ch < mChannels; ch++)
+							{
+								if (mVoice[i]->mCurrentChannelVolume[ch] > 1e-5f)
+								{
+									hasResidualVolume = true;
+									break;
+								}
+							}
+						}
+						if (hasResidualVolume)
+						{
+							mVoice[i]->mVolumeFader.mActive = 0;
+							setVoiceVolume_internal(i, 0.0f);
+							if (mVoice[i]->mStopSamplesLeft < 0 ||
+								mVoice[i]->mStopSamplesLeft > (long long)aSamples)
+							{
+								mVoice[i]->mStopSamplesLeft = aSamples;
+							}
+						}
+						else
+						{
+							stopVoice_internal(i);
+						}
 					}
 				}
 
@@ -2388,11 +3163,18 @@ namespace SoLoud
 
 		mixBus_internal(mOutputScratch.mData, aSamples, aStride, mScratch.mData, 0, (float)mSamplerate, mChannels, mResampler);
 
-		for (i = 0; i < FILTERS_PER_STREAM; i++)
+		// When mixing into mRenderRing (or re-mixing a rolled-back window),
+		// global filters are applied post-ring at the device playhead in
+		// postProcessRenderRing_internal() so stateful DSP (PitchShift,
+		// Freeverb, Echo, VST3, etc.) never processes rolled-back audio twice.
+		if (!mMixingToRenderRing && !mRemixing)
 		{
-			if (mFilterInstance[i])
+			for (i = 0; i < FILTERS_PER_STREAM; i++)
 			{
-				mFilterInstance[i]->filter(mOutputScratch.mData, aSamples, aStride, mChannels, (float)mSamplerate, mStreamTime);
+				if (mFilterInstance[i])
+				{
+					mFilterInstance[i]->filter(mOutputScratch.mData, aSamples, aStride, mChannels, (float)mSamplerate, mStreamTime);
+				}
 			}
 		}
 
@@ -2455,7 +3237,7 @@ namespace SoLoud
 		}
 #endif
 
-		float buffertime = aSamples / (float)mSamplerate;
+		time buffertime = (time)aSamples / (time)mSamplerate;
 		float globalVolume[2];
 
 		// Advance the mix clock under the same lock as the mix itself.
@@ -2566,7 +3348,7 @@ namespace SoLoud
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
 		SOLOUD_ASSERT(mRemixing);
 		unsigned int stride = (aSamples + 15) & ~0xf;
-		float buffertime = aSamples / (float)mSamplerate;
+		time buffertime = (time)aSamples / (time)mSamplerate;
 		float globalVolume[2];
 		mStreamTime += buffertime;
 
@@ -2579,9 +3361,9 @@ namespace SoLoud
 
 		mixVoicesLocked_internal(aSamples, stride);
 
-		// Note: clipping channels*aStride, not channels*aSamples, same as
-		// mix_internal().
-		clip_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+		// Global volume only, same as renderRingTopUp_internal(): the ring
+		// holds the unclipped mix and postProcessRenderRing_internal() clips.
+		applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
 		interlace_samples_float(mScratch.mData, aBuffer, aSamples, mChannels, stride);
 
 		// Re-capture the checkpoint for this boundary (see the comment above).
@@ -2592,6 +3374,48 @@ namespace SoLoud
 	{
 		// 111222 -> 121212
 		unsigned int i, j, c;
+		if (aChannels == 1)
+		{
+			memcpy(aDestBuffer, aSourceBuffer, sizeof(float) * aSamples);
+			return;
+		}
+		if (aChannels == 2)
+		{
+			const float *srcL = aSourceBuffer;
+			const float *srcR = aSourceBuffer + aStride;
+			i = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				__m128 l = _mm_loadu_ps(srcL + i);
+				__m128 r = _mm_loadu_ps(srcR + i);
+				_mm_storeu_ps(aDestBuffer + i * 2, _mm_unpacklo_ps(l, r));
+				_mm_storeu_ps(aDestBuffer + i * 2 + 4, _mm_unpackhi_ps(l, r));
+			}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				float32x4x2_t lr;
+				lr.val[0] = vld1q_f32(srcL + i);
+				lr.val[1] = vld1q_f32(srcR + i);
+				vst2q_f32(aDestBuffer + i * 2, lr);
+			}
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				v128_t l = wasm_v128_load(srcL + i);
+				v128_t r = wasm_v128_load(srcR + i);
+				wasm_v128_store(aDestBuffer + i * 2, wasm_i32x4_shuffle(l, r, 0, 4, 1, 5));
+				wasm_v128_store(aDestBuffer + i * 2 + 4, wasm_i32x4_shuffle(l, r, 2, 6, 3, 7));
+			}
+#endif
+			for (; i < aSamples; i++)
+			{
+				aDestBuffer[i * 2] = srcL[i];
+				aDestBuffer[i * 2 + 1] = srcR[i];
+			}
+			return;
+		}
 		c = 0;
 		for (j = 0; j < aChannels; j++)
 		{

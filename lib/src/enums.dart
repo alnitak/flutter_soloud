@@ -117,7 +117,10 @@ enum PlayerErrors {
   audioDeviceFailedToStart(34),
 
   /// SoLoud didn't return a valid voice handle when starting the playback.
-  failedToStartPlayback(35);
+  failedToStartPlayback(35),
+
+  /// Given hash doesn't belong to a realtime stream.
+  hashIsNotARealtimeStream(36);
 
   const PlayerErrors(this.value);
 
@@ -224,6 +227,8 @@ enum PlayerErrors {
       case PlayerErrors.failedToStartPlayback:
         return 'Failed to start the playback. The audio engine could not '
             'create a valid voice for this sound.';
+      case PlayerErrors.hashIsNotARealtimeStream:
+        return "Given hash doesn't belong to a realtime stream.";
     }
   }
 
@@ -495,7 +500,12 @@ enum BufferType {
 
   /// Auto detect the audio format (e.g. MP3, OGG Opus, OGG Vorbis, WAV, FLAC,
   /// AAC, AC-3, E-AC-3).
-  auto(4);
+  auto(4),
+
+  /// 32-bit floating point, little-endian, planar (contiguous channel0, then
+  /// channel1, ...).
+  @experimental
+  f32lePlanar(5);
 
   /// The integer value of the PCM type.
   final int value;
@@ -518,6 +528,8 @@ enum BufferType {
         return 'Little Endian Float 32-bit';
       case BufferType.auto:
         return 'Auto Detect Audio Format';
+      case BufferType.f32lePlanar:
+        return 'Little Endian Float 32-bit Planar';
     }
   }
 }
