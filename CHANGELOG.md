@@ -9,6 +9,9 @@
 - fix iOS: resume audio playback after returning from background on iOS 16+ where `wasSuspended` interruption reason is no longer sent #573
 - fix: `FreeverbFilter` no longer doubles the dry signal. At `wet` 0 the output now equals the input (it used to be +6 dB), and the dry part of any wet/dry mix is half as loud as in 5.2.x; mixes tuned against the old level will sound quieter
 
+##### 5.2.4 (X Xxx 2026)
+- fix: don't drop the end of a voice that doesn't loop. Thanks to @Colton127 #604
+
 ##### 5.2.3 (5 Nov 2026)
 - fix win arm64: include `<malloc.h>` on MSVC for Windows ARM64 compilation #603
 - fix: resampler skips up to one source sample per 512-sample block (solve hearing clicks when buffer size is 512). Thanks to @NomiAdam #602

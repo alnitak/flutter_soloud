@@ -103,6 +103,8 @@ namespace SoLoud
 		mResampleData[1] = 0;
 		mSrcOffset = 0;
 		mLeftoverSamples = 0;
+		// ###### flutter_soloud local patch (voice tail) ######
+		mSourceDrained = false;
 		mDelaySamples = 0;
 		mStopSamplesLeft = -1;
 		mOverallVolume = 0;
