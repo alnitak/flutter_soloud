@@ -181,8 +181,8 @@ bool Vst3PluginInstance::initialize(
   mScratchStride =
       (static_cast<size_t>(mMaxBlockSize) + 15u) & ~static_cast<size_t>(15);
   const size_t totalFloats = static_cast<size_t>(mMaxChannels) * mScratchStride;
-  mScratchInput = soloud_simd::alignedAllocFloats(totalFloats);
-  mScratchOutput = soloud_simd::alignedAllocFloats(totalFloats);
+  mScratchInput = soloud_simd::makeAlignedFloats(totalFloats);
+  mScratchOutput = soloud_simd::makeAlignedFloats(totalFloats);
   if (!mScratchInput || !mScratchOutput) {
     return false;
   }
