@@ -49,6 +49,8 @@ private:
     ogg_page og;
 
     bool vorbisInitialized;
+    bool headersInitialized;
+    bool syncInitialized;
     bool streamInitialized;
     bool headerParsed;
     bool firstPcmBlock;

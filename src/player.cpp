@@ -909,6 +909,7 @@ PlayerErrors Player::registerSound(PendingSound pending, unsigned int &hash)
     pending.sound->filters = std::make_unique<Filters>(&soloud, pending.sound.get(), nullptr);
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        mSoundByHash[newHash] = pending.sound.get();
         sounds.push_back(std::move(pending.sound));
     }
     hash = newHash;
@@ -983,43 +984,37 @@ Player::PendingSound Player::decodeJoinedSources(
         return pending;
     }
 
-    // Convert wav1 to mono
-    std::vector<float> mono1(samples1);
-    if (ch1 == 1)
-    {
-        std::memcpy(mono1.data(), wav1.mData, samples1 * sizeof(float));
-    }
-    else
-    {
-        for (unsigned int i = 0; i < samples1; ++i)
+    auto downmixPlanarToMono = [](const float *planarData, unsigned int stride,
+                                  unsigned int sampleCount, unsigned int channels,
+                                  std::vector<float> &monoOut) {
+        monoOut.resize(sampleCount);
+        if (sampleCount == 0)
+            return;
+        std::memcpy(monoOut.data(), planarData, sampleCount * sizeof(float));
+        if (channels == 1)
+            return;
+        float *dst = monoOut.data();
+        for (unsigned int c = 1; c < channels; ++c)
         {
-            float sum = 0.0f;
-            for (unsigned int c = 0; c < ch1; ++c)
+            const float *plane = planarData + static_cast<size_t>(c) * stride;
+            for (unsigned int i = 0; i < sampleCount; ++i)
             {
-                sum += wav1.mData[c * wav1.mSampleCount + i];
+                dst[i] += plane[i];
             }
-            mono1[i] = sum / static_cast<float>(ch1);
         }
-    }
+        const float invCh = 1.0f / static_cast<float>(channels);
+        for (unsigned int i = 0; i < sampleCount; ++i)
+        {
+            dst[i] *= invCh;
+        }
+    };
 
-    // Convert wav2 to mono
-    std::vector<float> mono2(samples2);
-    if (ch2 == 1)
-    {
-        std::memcpy(mono2.data(), wav2.mData, samples2 * sizeof(float));
-    }
-    else
-    {
-        for (unsigned int i = 0; i < samples2; ++i)
-        {
-            float sum = 0.0f;
-            for (unsigned int c = 0; c < ch2; ++c)
-            {
-                sum += wav2.mData[c * wav2.mSampleCount + i];
-            }
-            mono2[i] = sum / static_cast<float>(ch2);
-        }
-    }
+    // Convert wav1 and wav2 to mono (plane-contiguous for SIMD vectorization)
+    std::vector<float> mono1;
+    downmixPlanarToMono(wav1.mData, wav1.mSampleCount, samples1, ch1, mono1);
+
+    std::vector<float> mono2;
+    downmixPlanarToMono(wav2.mData, wav2.mSampleCount, samples2, ch2, mono2);
 
     // Resample both channels to the engine's sample rate if needed,
     // avoiding real-time resampling during playback in the mixer.
@@ -1115,6 +1110,11 @@ Player::PendingSound Player::decodeJoinedSources(
         false, // do not copy
         true   // take ownership
     );
+    if (loadRawRes != SoLoud::SO_NO_ERROR)
+    {
+        delete[] stereoData;
+        pending.sound.reset();
+    }
 
     pending.error = fromSoLoudError(loadRawRes);
     return pending;
@@ -1132,11 +1132,15 @@ PlayerErrors Player::setBufferStream(
     if (!mInited.load(std::memory_order_acquire))
         return backendNotInited;
 
+    hash = 0;
+
     std::random_device rd;
     std::mt19937 g(rd());
-    std::uniform_int_distribution<unsigned int> dist(0, INT32_MAX);
-
-    hash = dist(g);
+    std::uniform_int_distribution<unsigned int> dist(1, INT32_MAX);
+    do
+    {
+        hash = dist(g);
+    } while (findByHash(hash) != nullptr);
 
     auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = "";
@@ -1146,10 +1150,16 @@ PlayerErrors Player::setBufferStream(
 
     newSound.get()->soundType = SoundType::TYPE_BUFFER_STREAM;
     PlayerErrors e = static_cast<SoLoud::BufferStream *>(newSound.get()->sound.get())->setBufferStream(this, newSound.get(), static_cast<unsigned int>(maxBufferSize), bufferingType, bufferingTimeNeeds, pcmFormat, onBufferingCallback, onMetadataCallback);
+    if (e != PlayerErrors::noError)
+    {
+        hash = 0;
+        return e;
+    }
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        mSoundByHash[hash] = newSound.get();
         sounds.push_back(std::move(newSound));
     }
 
@@ -1172,11 +1182,15 @@ PlayerErrors Player::setPullBufferStream(
     if (!mInited)
         return backendNotInited;
 
+    hash = 0;
+
     std::random_device rd;
     std::mt19937 g(rd());
-    std::uniform_int_distribution<unsigned int> dist(0, INT32_MAX);
-
-    hash = dist(g);
+    std::uniform_int_distribution<unsigned int> dist(1, INT32_MAX);
+    do
+    {
+        hash = dist(g);
+    } while (findByHash(hash) != nullptr);
 
     auto newSound = std::make_unique<ActiveSound>();
     newSound.get()->completeFileName = "";
@@ -1191,10 +1205,16 @@ PlayerErrors Player::setPullBufferStream(
         sampleRate, channels, format, audioSizeBytes,
         onBufferingCallback, onMetadataCallback, onMoreDataIsNeededCallback,
         onAudioDurationCallback);
+    if (e != PlayerErrors::noError)
+    {
+        hash = 0;
+        return e;
+    }
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        mSoundByHash[hash] = newSound.get();
         sounds.push_back(std::move(newSound));
     }
 
@@ -1292,6 +1312,7 @@ PlayerErrors Player::setRealtimeStream(
     newSound->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        mSoundByHash[hash] = newSound.get();
         sounds.push_back(std::move(newSound));
     }
 
@@ -1455,6 +1476,7 @@ PlayerErrors Player::createCustomAudioSource(
 
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        mSoundByHash[hash] = newSound.get();
         sounds.push_back(std::move(newSound));
     }
 
@@ -1573,20 +1595,24 @@ PlayerErrors Player::loadWaveform(
 
     std::random_device rd;
     std::mt19937 g(rd());
-    std::uniform_int_distribution<unsigned int> dist(0, INT32_MAX);
-
-    hash = dist(g);
+    std::uniform_int_distribution<unsigned int> dist(1, INT32_MAX);
+    do
+    {
+        hash = dist(g);
+    } while (findByHash(hash) != nullptr);
 
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
         sounds.push_back(std::make_unique<ActiveSound>());
-        sounds.back().get()->completeFileName = "";
-        sounds.back().get()->soundHash = hash;
+        ActiveSound *added = sounds.back().get();
+        added->completeFileName = "";
+        added->soundHash = hash;
         auto basicWave = std::make_unique<Basicwave>((SoLoud::Soloud::WAVEFORM)waveform, superWave, detune, scale);
         basicWave->setSamplerate(mSampleRate);
-        sounds.back().get()->sound = std::move(basicWave);
-        sounds.back().get()->soundType = TYPE_SYNTH;
-        sounds.back().get()->filters = std::make_unique<Filters>(&soloud, sounds.back().get(), nullptr);
+        added->sound = std::move(basicWave);
+        added->soundType = TYPE_SYNTH;
+        added->filters = std::make_unique<Filters>(&soloud, added, nullptr);
+        mSoundByHash[hash] = added;
     }
 
     return noError;
@@ -2547,6 +2573,7 @@ PlayerErrors Player::play(
         // BufferStream buffering logic must not silently unpause it once
         // enough data has arrived.
         sound->handle.push_back({newHandle, MAX_DOUBLE, paused});
+        mSoundByHandle[newHandle] = sound;
     }
 
     if (scale != 1.0f && scale > 0.0f)
@@ -2666,7 +2693,11 @@ PlayerErrors Player::playClocked(
     if (newHandle == 0)
         return failedToStartPlayback;
 
-    sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        mSoundByHandle[newHandle] = sound;
+    }
     // Check if this buffer has enough data to be played
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
     {
@@ -2791,7 +2822,11 @@ PlayerErrors Player::playScheduled(
 
     if (soloud.isValidVoiceHandle(newHandle))
     {
-        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        {
+            std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+            sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+            mSoundByHandle[newHandle] = sound;
+        }
         if (duration > 0.0)
         {
             soloud.scheduleStopAt(newHandle, atTime + duration);
@@ -2878,12 +2913,8 @@ void Player::stopAudioSource(unsigned int soundHash)
 
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        auto it = std::find_if(sounds.begin(), sounds.end(),
-                               [soundHash](const std::unique_ptr<ActiveSound> &sound)
-                               {
-                                   return sound->soundHash == soundHash;
-                               });
-        if (it == sounds.end())
+        ActiveSound *sound = findByHashUnlocked(soundHash);
+        if (sound == nullptr || sound->sound == nullptr)
             return;
 
         // Stop every voice playing this source. SoLoud dispatches the
@@ -2891,7 +2922,7 @@ void Player::stopAudioSource(unsigned int soundHash)
         // Soloud::stopVoice_internal), which removes the handle from the
         // internal sounds list and notifies Dart. The sound itself stays
         // loaded.
-        soloud.stopAudioSource(*it->get()->sound);
+        soloud.stopAudioSource(*sound->sound);
     }
 
     // If no voices remain active, pause the audio device to allow the OS
@@ -2904,6 +2935,25 @@ void Player::removeHandle(unsigned int handle)
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     if (sounds.empty())
     {
+        return;
+    }
+
+    auto hit = mSoundByHandle.find(handle);
+    if (hit != mSoundByHandle.end())
+    {
+        ActiveSound *sound = hit->second;
+        mSoundByHandle.erase(hit);
+        if (sound != nullptr)
+        {
+            for (size_t n = 0; n < sound->handle.size(); ++n)
+            {
+                if (sound->handle[n].handle == handle)
+                {
+                    sound->handle.erase(sound->handle.begin() + n);
+                    return;
+                }
+            }
+        }
         return;
     }
 
@@ -2952,8 +3002,10 @@ void Player::disposeSound(unsigned int soundHash)
             // the audio thread from accessing filters during destruction.
             for (auto &handleInfo : it->get()->handle)
             {
+                mSoundByHandle.erase(handleInfo.handle);
                 soloud.stop(handleInfo.handle);
             }
+            mSoundByHash.erase(soundHash);
 
             // Mark BufferStream for destruction before removing it
             if (it->get()->soundType == SoundType::TYPE_BUFFER_STREAM)
@@ -3048,6 +3100,8 @@ void Player::stopDeviceAndDestroyAllSounds()
         }
 
         // Move all sounds out to destroy them after releasing the lock
+        mSoundByHandle.clear();
+        mSoundByHash.clear();
         soundsToDestroy = std::move(sounds);
         sounds.clear();
     }
@@ -3153,6 +3207,8 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
         activeSpeech->filters = std::make_unique<Filters>(
             &soloud, activeSpeech.get(), nullptr);
         activeSpeech->handle.push_back({newHandle, MAX_DOUBLE, false});
+        mSoundByHash[newHandle] = activeSpeech.get();
+        mSoundByHandle[newHandle] = activeSpeech.get();
         sounds.push_back(std::move(activeSpeech));
     }
 
@@ -3173,11 +3229,10 @@ bool Player::isVisualizationEnabled()
     return soloud.mFlags & SoLoud::Soloud::ENABLE_VISUALIZATION;
 }
 
-float fftData[256];
 float *Player::calcFFT(bool *isTheSameAsBefore)
 {
     float *currentWave = soloud.calcFFT();
-    if (memcmp(fftData, currentWave, sizeof(fftData)) != 0)
+    if (memcmp(mFftData, currentWave, sizeof(mFftData)) != 0)
     {
         *isTheSameAsBefore = false;
     }
@@ -3185,16 +3240,15 @@ float *Player::calcFFT(bool *isTheSameAsBefore)
     {
         *isTheSameAsBefore = true;
     }
-    memcpy(fftData, currentWave, sizeof(fftData));
+    memcpy(mFftData, currentWave, sizeof(mFftData));
 
-    return fftData;
+    return mFftData;
 }
 
-float waveData[256];
 float *Player::getWave(bool *isTheSameAsBefore)
 {
     float *currentWave = soloud.getWave();
-    if (memcmp(waveData, currentWave, sizeof(waveData)) != 0)
+    if (memcmp(mWaveData, currentWave, sizeof(mWaveData)) != 0)
     {
         *isTheSameAsBefore = false;
     }
@@ -3202,9 +3256,9 @@ float *Player::getWave(bool *isTheSameAsBefore)
     {
         *isTheSameAsBefore = true;
     }
-    memcpy(waveData, currentWave, sizeof(waveData));
+    memcpy(mWaveData, currentWave, sizeof(mWaveData));
 
-    return waveData;
+    return mWaveData;
 }
 
 // The length in seconds
@@ -3358,6 +3412,10 @@ void Player::setMaxActiveVoiceCount(unsigned int maxVoiceCount)
 ActiveSound *Player::findByHandle(SoLoud::handle handle)
 {
     std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    auto it = mSoundByHandle.find(handle);
+    if (it != mSoundByHandle.end())
+        return it->second;
+
     int i = 0;
     while (i < (int)sounds.size())
     {
@@ -3378,6 +3436,10 @@ ActiveSound *Player::findByHandle(SoLoud::handle handle)
 
 ActiveSound *Player::findByHashUnlocked(unsigned int soundHash)
 {
+    auto it = mSoundByHash.find(soundHash);
+    if (it != mSoundByHash.end())
+        return it->second;
+
     auto const &s = std::find_if(sounds.begin(), sounds.end(),
                                  [&](std::unique_ptr<ActiveSound> const &f)
                                  { return f->soundHash == soundHash; });
@@ -3587,6 +3649,7 @@ PlayerErrors Player::play3d(
         // BufferStream buffering logic must not silently unpause it once
         // enough data has arrived.
         sound->handle.push_back({newHandle, MAX_DOUBLE, paused});
+        mSoundByHandle[newHandle] = sound;
     }
 
     if (scale != 1.0f && scale > 0.0f)
@@ -3732,6 +3795,7 @@ PlayerErrors Player::play3dClocked(
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
         sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        mSoundByHandle[newHandle] = sound;
     }
     // Check if this buffer has enough data to be played
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
@@ -3847,6 +3911,7 @@ PlayerErrors Player::play3dScheduled(
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
         sound->handle.push_back({newHandle, MAX_DOUBLE, false});
+        mSoundByHandle[newHandle] = sound;
         if (duration > 0.0)
         {
             soloud.scheduleStopAt(newHandle, atTime + duration);

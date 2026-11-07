@@ -29,6 +29,7 @@ class OpusOutputEncoder : public MixerOutputEncoder {
 
   std::vector<float> m_inputBuffer;
   std::vector<uint8_t> m_outputAccumulator;
+  std::vector<uint8_t> m_packetScratch;
 
   void *m_encoder = nullptr;
 
@@ -41,6 +42,7 @@ class OpusOutputEncoder : public MixerOutputEncoder {
   double m_resamplerPhase = 0.0;
   std::vector<float> m_resamplerLastFrame;
   std::vector<float> m_resampledBuffer;
+  std::vector<float> m_combineScratch;
 
 #ifndef NO_XIPH_LIBS
   void flushPages(bool force = false);

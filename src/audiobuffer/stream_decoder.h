@@ -284,7 +284,7 @@ public:
         std::cout << "\t" << "Coupled Count: "
                   << static_cast<int16_t>(oggMetadata.opusInfo.coupled_count)
                   << std::endl;
-        for (int i = 0; i < oggMetadata.opusInfo.channel_mapping.size(); i++) {
+        for (size_t i = 0; i < oggMetadata.opusInfo.channel_mapping.size(); i++) {
           std::cout << "\t" << "Channel Mapping[" << i
                     << "]: " << oggMetadata.opusInfo.channel_mapping[i]
                     << std::endl;

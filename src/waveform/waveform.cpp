@@ -4,11 +4,14 @@
 #endif
 #include "soloud_common.h"
 #include "waveform.h"
+#include "../simd/simd_pcm.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
+#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -94,45 +97,117 @@ namespace Waveform
             return failedToSeekPcm;
         }
 
-        // Allocate temporary memory for all frames between startTime and endTime
-        size_t tempBufferSize = stepFrames * channels * sizeof(float);
-        float *tempBuffer = (float *)malloc(tempBufferSize);
-        if (tempBuffer == NULL)
+        // Keep the read chunk L1-cache-resident instead of allocating
+        // potentially megabytes when stepFrames is large.
+        const ma_uint64 kMaxChunkFrames = 4096;
+        const ma_uint64 chunkCapFrames = average
+            ? std::min<ma_uint64>(stepFrames, kMaxChunkFrames)
+            : std::min<ma_uint64>(stepFrames, kMaxChunkFrames);
+        std::vector<float> tempBuffer(static_cast<size_t>(chunkCapFrames) * channels);
+
+        if (!average && stepFrames > 1)
         {
-            printf("Failed to allocate tempBuffer (%zu bytes).\n", tempBufferSize);
-            return failedToReadPcmFrames;
+            // Point-sampling mode: read 1 frame per bar and seek directly to
+            // the next bar's start frame instead of decoding and discarding
+            // (stepFrames - 1) frames per bar.
+            bool seekSupported = true;
+            unsigned long id = 0;
+            for (ma_uint64 i = 0; i < totalFrames && id < numSamplesNeeded; i += stepFrames, id++)
+            {
+                if (id > 0)
+                {
+                    const ma_uint64 targetFrame = startFrame + i;
+                    if (seekSupported && ma_decoder_seek_to_pcm_frame(decoder, targetFrame) == MA_SUCCESS)
+                    {
+                        // Seek succeeded directly.
+                    }
+                    else
+                    {
+                        seekSupported = false;
+                        // Fallback for unseekable decoders: skip (stepFrames - 1) frames.
+                        ma_uint64 toSkip = stepFrames - 1;
+                        while (toSkip > 0)
+                        {
+                            ma_uint64 skipped = 0;
+                            const ma_uint64 req = std::min<ma_uint64>(toSkip, chunkCapFrames);
+                            ma_result skipRes = ma_decoder_read_pcm_frames(decoder, tempBuffer.data(), req, &skipped);
+                            if (skipRes != MA_SUCCESS && skipRes != MA_AT_END)
+                                return failedToReadPcmFrames;
+                            if (skipped == 0)
+                                break;
+                            toSkip -= skipped;
+                        }
+                    }
+                }
+
+                ma_uint64 framesRead = 0;
+                result = ma_decoder_read_pcm_frames(decoder, tempBuffer.data(), 1, &framesRead);
+                if (result != MA_SUCCESS && result != MA_AT_END)
+                {
+                    printf("Failed to read PCM frames.\n");
+                    return failedToReadPcmFrames;
+                }
+                if (framesRead == 0)
+                    break;
+                pSamples[id] = tempBuffer[0];
+            }
+            return readSamplesNoError;
         }
+
         // Read all PCM data between startFrame and endFrame
         unsigned long id = 0;
         for (ma_uint64 i = 0; i < totalFrames && id < numSamplesNeeded; i += stepFrames, id++)
         {
-            ma_uint64 framesRead;
-            result = ma_decoder_read_pcm_frames(decoder, tempBuffer, stepFrames, &framesRead);
-            if (result != MA_SUCCESS && result != MA_AT_END)
-            {
-                printf("Failed to read PCM frames.\n");
-                free(tempBuffer);
-                return failedToReadPcmFrames;
-            }
-
-            if (framesRead == 0)
-                break;
-            // Inside [tempBuffer] there are now all the samples between the values ​​of a stepFrame
             if (average)
             {
                 double sum = 0.0;
-                for (int j = 0; j < framesRead * channels; j++)
+                ma_uint64 remaining = stepFrames;
+                ma_uint64 totalBarFrames = 0;
+                while (remaining > 0)
                 {
-                    // Square the sample value
-                    sum += tempBuffer[j] * tempBuffer[j];
+                    const ma_uint64 req = std::min<ma_uint64>(remaining, chunkCapFrames);
+                    ma_uint64 framesRead = 0;
+                    result = ma_decoder_read_pcm_frames(decoder, tempBuffer.data(), req, &framesRead);
+                    if (result != MA_SUCCESS && result != MA_AT_END)
+                    {
+                        printf("Failed to read PCM frames.\n");
+                        return failedToReadPcmFrames;
+                    }
+                    if (framesRead == 0)
+                        break;
+                    const size_t sampleCount = static_cast<size_t>(framesRead) * channels;
+                    size_t done = 0;
+                    while (done < sampleCount)
+                    {
+                        const unsigned int chunk = static_cast<unsigned int>(
+                            (sampleCount - done) > 0x40000000u ? 0x40000000u : (sampleCount - done));
+                        sum += SoLoud::sumOfSquaresF32(tempBuffer.data() + done, chunk);
+                        done += chunk;
+                    }
+                    totalBarFrames += framesRead;
+                    remaining -= framesRead;
+                    if (result == MA_AT_END)
+                        break;
                 }
-                // Calculate RMS (Root Mean Square)
-                pSamples[id] = sqrtf(sum / (framesRead * channels));
+                if (totalBarFrames == 0)
+                    break;
+                pSamples[id] = sqrtf(static_cast<float>(sum / static_cast<double>(totalBarFrames * channels)));
             }
             else
+            {
+                // stepFrames == 1
+                ma_uint64 framesRead = 0;
+                result = ma_decoder_read_pcm_frames(decoder, tempBuffer.data(), 1, &framesRead);
+                if (result != MA_SUCCESS && result != MA_AT_END)
+                {
+                    printf("Failed to read PCM frames.\n");
+                    return failedToReadPcmFrames;
+                }
+                if (framesRead == 0)
+                    break;
                 pSamples[id] = tempBuffer[0];
+            }
         }
-        free(tempBuffer);
         return readSamplesNoError;
     }
 
@@ -167,7 +242,10 @@ namespace Waveform
         memset(pSamples, 0, numSamplesNeeded * sizeof(float));
 
         ma_decoder decoder;
-        ma_decoder_config decoderConfig = ma_decoder_config_init_default();
+        // Request f32 output directly on first init (channels=0, sampleRate=0
+        // preserves the file's native channel count and sample rate) so we do
+        // not open and parse the file/memory buffer twice.
+        ma_decoder_config decoderConfig = ma_decoder_config_init(ma_format_f32, 0, 0);
         ma_result result;
         bool isOgg = false;
 
@@ -223,7 +301,8 @@ namespace Waveform
         }
 #endif
         
-        // Init the decoder with file or memory
+        // Init the decoder with file or memory (always passing &decoderConfig
+        // so f32 output format is negotiated in a single initialization pass).
         if (filePath != NULL)
         {
 #ifdef _WIN32
@@ -234,15 +313,15 @@ namespace Waveform
                 printf("Failed to convert filename to wide string.\n");
                 return noBackend;
             }
-            result = ma_decoder_init_file_w(wideName, isOgg ? &decoderConfig : NULL, &decoder);
+            result = ma_decoder_init_file_w(wideName, &decoderConfig, &decoder);
             delete[] wideName;
 #else
-            result = ma_decoder_init_file(filePath, isOgg ? &decoderConfig : NULL, &decoder);
+            result = ma_decoder_init_file(filePath, &decoderConfig, &decoder);
 #endif
         }
         else
         {
-            result = ma_decoder_init_memory(buffer, dataSize, isOgg ? &decoderConfig : NULL, &decoder);
+            result = ma_decoder_init_memory(buffer, dataSize, &decoderConfig, &decoder);
         }
 
         if (result != MA_SUCCESS)
@@ -254,61 +333,13 @@ namespace Waveform
         ma_uint32 sampleRate;
         ma_uint32 channels;
         ma_format format;
-        // Get audio [sampleRate] and [channels]
+        // Validate audio [sampleRate] and [channels]
         result = ma_data_source_get_data_format(&decoder, &format, &channels, &sampleRate, NULL, 0);
         if (result != MA_SUCCESS)
         {
             printf("Failed to retrieve decoder data format.");
             ma_decoder_uninit(&decoder);
             return failedToGetDataFormat;
-        }
-
-        // Re-initialize decoder with f32 format
-        if (format != ma_format_f32)
-        {
-            ma_decoder_uninit(&decoder);
-            memset(&decoder, 0, sizeof(decoder));  // Zero out decoder struct before re-init
-            
-            // Update config with format settings
-            decoderConfig = ma_decoder_config_init_default();  // Reset config
-            decoderConfig.format = ma_format_f32;
-            decoderConfig.channels = channels;
-            decoderConfig.sampleRate = sampleRate;
-#if !defined(NO_XIPH_LIBS)
-            if (isOgg)
-            {
-                decoderConfig.ppCustomBackendVTables = pCustomBackendVTables;
-                decoderConfig.customBackendCount = sizeof(pCustomBackendVTables) / sizeof(pCustomBackendVTables[0]);
-            }
-#endif
-
-            // Re-init with updated config
-            if (filePath != NULL)
-            {
-#ifdef _WIN32
-                // On Windows, use wide string version for UTF-8 support
-                wchar_t* wideName = utf8ToWide(filePath);
-                if (!wideName)
-                {
-                    printf("Failed to convert filename to wide string.\n");
-                    return noBackend;
-                }
-                result = ma_decoder_init_file_w(wideName, &decoderConfig, &decoder);
-                delete[] wideName;
-#else
-                result = ma_decoder_init_file(filePath, &decoderConfig, &decoder);
-#endif
-            }
-            else
-            {
-                result = ma_decoder_init_memory(buffer, dataSize, &decoderConfig, &decoder);
-            }
-
-            if (result != MA_SUCCESS)
-            {
-                printf("Failed to initialize decoder forcing f32.\n");
-                return noBackend;
-            }
         }
 
         ReadSamplesErrors ret = readSamplesFromDecoder(&decoder, startTime, endTime, numSamplesNeeded, average, pSamples);

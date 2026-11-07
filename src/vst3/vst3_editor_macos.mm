@@ -496,6 +496,7 @@ public:
     }
 
     mHelperPid = pid;
+    mShmPath = shmPathStr;
 
     // Wait up to 3 seconds for the helper window to finish mounting.
     const auto deadline =
@@ -822,6 +823,10 @@ public:
         munmap(mShm, sizeof(SoLoudVst3EditorShm));
         mShm = nullptr;
       }
+      if (!mShmPath.empty()) {
+        unlink(mShmPath.c_str());
+        mShmPath.clear();
+      }
       mOnGuiParamEdit = nullptr;
       if (mDelegate != nil) {
         [[NSNotificationCenter defaultCenter] removeObserver:mDelegate];
@@ -1091,6 +1096,7 @@ private:
   SoLoudVst3Window *mWindow = nil;
   SoLoudVst3WindowDelegate *mDelegate = nil;
   SoLoudVst3EditorShm *mShm = nullptr;
+  std::string mShmPath;
   pid_t mHelperPid = 0;
   NSTimer *mPollTimer = nil;
   std::function<void(Steinberg::Vst::ParamID, Steinberg::Vst::ParamValue)>

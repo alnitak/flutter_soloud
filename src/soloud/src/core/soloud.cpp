@@ -33,6 +33,8 @@ freely, subject to the following restrictions:
 #include "soloud_internal.h"
 #include "soloud_thread.h"
 #include "soloud_fft.h"
+#include "../../../simd/soloud_simd.h"
+#include "../../../simd/simd_pcm.h"
 
 #if !defined(__EMSCRIPTEN__)
 #include <chrono>
@@ -80,23 +82,19 @@ namespace SoLoud
 		mBasePtr = 0;
 		mData = 0;
 		mFloats = aFloats;
-#if !defined(SOLOUD_SSE_INTRINSICS) && !defined(SOLOUD_NEON_INTRINSICS) && !defined(SOLOUD_WASM_SIMD_INTRINSICS)
-		mBasePtr = new unsigned char[aFloats * sizeof(float)];
+		if (aFloats == 0)
+			return SO_NO_ERROR;
+		mBasePtr = new unsigned char[(size_t)aFloats * sizeof(float) + 64];
 		if (mBasePtr == NULL)
 			return OUT_OF_MEMORY;
-		mData = (float*)mBasePtr;
-#else
-		mBasePtr = new unsigned char[aFloats * sizeof(float) + 16];
-		if (mBasePtr == NULL)
-			return OUT_OF_MEMORY;
-		mData = (float *)(((size_t)mBasePtr + 15)&~15);
-#endif
+		mData = (float *)(((uintptr_t)mBasePtr + 63u) & ~(uintptr_t)63u);
 		return SO_NO_ERROR;
 	}
 
 	void AlignedFloatBuffer::clear()
 	{
-		memset(mData, 0, sizeof(float) * mFloats);
+		if (mData != NULL && mFloats > 0)
+			memset(mData, 0, sizeof(float) * (size_t)mFloats);
 	}
 
 	AlignedFloatBuffer::~AlignedFloatBuffer()
@@ -107,7 +105,7 @@ namespace SoLoud
 	TinyAlignedFloatBuffer::TinyAlignedFloatBuffer()
 	{
 		unsigned char * basePtr = &mActualData[0];
-		mData = (float *)(((size_t)basePtr + 15)&~15);
+		mData = (float *)(((uintptr_t)basePtr + 63u) & ~(uintptr_t)63u);
 	}
 
 	// ###### flutter_soloud local patch (render-ahead worker) ######
@@ -121,7 +119,7 @@ namespace SoLoud
 		// Read by the device callback.
 		std::atomic<bool> mRunning;
 		std::atomic<bool> mStop;
-		std::atomic<bool> mWake;
+		alignas(64) std::atomic<bool> mWake;
 	};
 #else
 	// The web build mixes in the device callback (no render-ahead ring).
@@ -264,6 +262,10 @@ namespace SoLoud
 		// ring itself is released on the next postinit (AlignedFloatBuffer
 		// has no release), but the pool holds heap snapshots worth freeing.
 		releaseCheckpoints_internal();
+		delete[] mResampleData;
+		mResampleData = NULL;
+		delete[] mResampleDataOwner;
+		mResampleDataOwner = NULL;
 		if (mAudioThreadMutex)
 			Thread::destroyMutex(mAudioThreadMutex);
 		mAudioThreadMutex = NULL;
@@ -313,6 +315,19 @@ namespace SoLoud
 		mClockedLastTime = 0;
 
 		mAudioThreadMutex = Thread::createMutex();
+		struct InitFailGuard
+		{
+			Soloud *self;
+			bool ok = false;
+			~InitFailGuard()
+			{
+				if (!ok && self->mAudioThreadMutex)
+				{
+					Thread::destroyMutex(self->mAudioThreadMutex);
+					self->mAudioThreadMutex = NULL;
+				}
+			}
+		} initGuard{this};
 
 		mBackendID = 0;
 		mBackendString = 0;
@@ -669,6 +684,7 @@ namespace SoLoud
 			return NOT_IMPLEMENTED;
 		if (!inited)
 			return UNKNOWN_ERROR;
+		initGuard.ok = true;
 		// The engine is fully initialized; let the audio callback mix (see
 		// mEngineReady).
 		mEngineReady.store(1, std::memory_order_seq_cst);
@@ -708,6 +724,8 @@ namespace SoLoud
 		if (mScratchSize < 4096) mScratchSize = 4096;
 		mScratch.init(mScratchSize * MAX_CHANNELS);
 		mOutputScratch.init(mScratchSize * MAX_CHANNELS);
+		delete[] mResampleData;
+		delete[] mResampleDataOwner;
 		mResampleData = new float*[mMaxActiveVoices * 2];
 		mResampleDataOwner = new AudioSourceInstance*[mMaxActiveVoices];
 		mResampleDataBuffer.init(mMaxActiveVoices * 2 * SAMPLE_GRANULARITY * MAX_CHANNELS);
@@ -912,8 +930,15 @@ namespace SoLoud
 		// Global volume only: the ring holds the unclipped mix, and
 		// postProcessRenderRing_internal() clips after the global
 		// filters, as the direct mix path does.
-		applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
-		interlace_samples_float(mScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
+		if (globalVolume[0] == 1.0f && globalVolume[1] == 1.0f)
+		{
+			interlace_samples_float(mOutputScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
+		}
+		else
+		{
+			applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+			interlace_samples_float(mScratch.mData, mRenderRingStaging.mData, mBufferSize, mChannels, stride);
+		}
 		mRenderRing.write(mRenderRingStaging.mData, mBufferSize);
 		// Ring frames and the mix clock advance in lockstep (a re-mix puts
 		// mStreamTime back where it was), so this stays constant; publishing
@@ -980,6 +1005,8 @@ namespace SoLoud
 	static void renderWorkerLoop(Soloud *aSoloud, RenderWorker *aWorker)
 	{
 		Thread::raiseCurrentThreadPriority();
+		soloud_simd::ScopedFlushDenormals flushDenormals(
+			(aSoloud->mFlags & Soloud::NO_FPU_REGISTER_CHANGE) == 0);
 		while (!aWorker->mStop.load(std::memory_order_acquire))
 		{
 			aSoloud->renderRingTopUp_internal();
@@ -1154,6 +1181,8 @@ namespace SoLoud
 	{
 		if (aSamples == 0 || mChannels == 0 || mScratchSize == 0 || mPostRingScratch.mData == NULL)
 			return;
+		soloud_simd::ScopedFlushDenormals flushDenormals(
+			(mFlags & NO_FPU_REGISTER_CHANGE) == 0);
 		// Runs in the device callback. The global filters have their own lock
 		// (see lockGlobalFilters_internal()): the render worker holds the
 		// audio mutex while it mixes, and the device must not wait for that.
@@ -1161,22 +1190,31 @@ namespace SoLoud
 		// direct mix path too), so the lock is only taken when there is a
 		// filter to run.
 		const bool anyFilter = mGlobalFilterMask.load(std::memory_order_acquire) != 0;
+		if (!anyFilter)
+		{
+			// Fast path: clip interleaved ring samples directly in-place,
+			// skipping deinterleave -> mPostRingScratch -> re-interleave.
+			const float postClipScaler = mPostClipScaler.load(std::memory_order_acquire);
+			const size_t totalFloats = (size_t)aSamples * mChannels;
+			if (mFlags & CLIP_ROUNDOFF)
+				clipRoundoffInPlaceF32(aBuffer, totalFloats, postClipScaler);
+			else
+				clipHardInPlaceF32(aBuffer, totalFloats, -1.0f, 1.0f, postClipScaler);
+			return;
+		}
 		unsigned int i;
 		time t = 0;
-		if (anyFilter)
-		{
-			lockGlobalFilters_internal();
-			// The device callback has already read aBuffer out of the ring:
-			// time its first frame from the ring position, not the mix clock
-			// (which needs the audio mutex).
-			const unsigned long long readPos = mRenderRing.getReadPosition();
-			const unsigned long long firstFrame = readPos > aSamples ? readPos - aSamples : 0;
-			if (mSamplerate > 0)
-				t = mRenderRingTimeOrigin.load(std::memory_order_acquire) +
-					(time)firstFrame / (time)mSamplerate;
-			if (t < 0)
-				t = 0;
-		}
+		lockGlobalFilters_internal();
+		// The device callback has already read aBuffer out of the ring:
+		// time its first frame from the ring position, not the mix clock
+		// (which needs the audio mutex).
+		const unsigned long long readPos = mRenderRing.getReadPosition();
+		const unsigned long long firstFrame = readPos > aSamples ? readPos - aSamples : 0;
+		if (mSamplerate > 0)
+			t = mRenderRingTimeOrigin.load(std::memory_order_acquire) +
+				(time)firstFrame / (time)mSamplerate;
+		if (t < 0)
+			t = 0;
 		unsigned int offset = 0;
 		unsigned int maxChunk = mScratchSize & ~0xfu;
 		if (maxChunk == 0)
@@ -1191,76 +1229,20 @@ namespace SoLoud
 				stride = mScratchSize;
 			float *planar = mPostRingScratch.mData;
 			const float *src = aBuffer + (size_t)offset * mChannels;
-			unsigned int c, j;
-			if (mChannels == 1)
+			deinterleaveFloatsToPlanar(src, planar, stride, chunk, mChannels);
+			if (stride > chunk)
 			{
-				memcpy(planar, src, sizeof(float) * chunk);
-				if (stride > chunk)
-					memset(planar + chunk, 0, sizeof(float) * (stride - chunk));
-			}
-			else if (mChannels == 2)
-			{
-				float *dstL = planar;
-				float *dstR = planar + stride;
-				j = 0;
-#if defined(SOLOUD_SSE_INTRINSICS)
-				for (; j + 4 <= chunk; j += 4)
+				for (unsigned int c = 0; c < mChannels; c++)
 				{
-					__m128 v0 = _mm_loadu_ps(src + j * 2);
-					__m128 v1 = _mm_loadu_ps(src + j * 2 + 4);
-					_mm_storeu_ps(dstL + j, _mm_shuffle_ps(v0, v1, _MM_SHUFFLE(2, 0, 2, 0)));
-					_mm_storeu_ps(dstR + j, _mm_shuffle_ps(v0, v1, _MM_SHUFFLE(3, 1, 3, 1)));
-				}
-#elif defined(SOLOUD_NEON_INTRINSICS)
-				for (; j + 4 <= chunk; j += 4)
-				{
-					float32x4x2_t lr = vld2q_f32(src + j * 2);
-					vst1q_f32(dstL + j, lr.val[0]);
-					vst1q_f32(dstR + j, lr.val[1]);
-				}
-#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-				for (; j + 4 <= chunk; j += 4)
-				{
-					v128_t v0 = wasm_v128_load(src + j * 2);
-					v128_t v1 = wasm_v128_load(src + j * 2 + 4);
-					wasm_v128_store(dstL + j, wasm_i32x4_shuffle(v0, v1, 0, 2, 4, 6));
-					wasm_v128_store(dstR + j, wasm_i32x4_shuffle(v0, v1, 1, 3, 5, 7));
-				}
-#endif
-				for (; j < chunk; j++)
-				{
-					dstL[j] = src[j * 2];
-					dstR[j] = src[j * 2 + 1];
-				}
-				if (stride > chunk)
-				{
-					memset(dstL + chunk, 0, sizeof(float) * (stride - chunk));
-					memset(dstR + chunk, 0, sizeof(float) * (stride - chunk));
+					memset(planar + (size_t)c * stride + chunk, 0,
+						sizeof(float) * (stride - chunk));
 				}
 			}
-			else
+			for (i = 0; i < FILTERS_PER_STREAM; i++)
 			{
-				for (c = 0; c < mChannels; c++)
+				if (mFilterInstance[i] != NULL)
 				{
-					float *dstCh = planar + (size_t)c * stride;
-					for (j = 0; j < chunk; j++)
-					{
-						dstCh[j] = src[j * mChannels + c];
-					}
-					for (; j < stride; j++)
-					{
-						dstCh[j] = 0.0f;
-					}
-				}
-			}
-			if (anyFilter)
-			{
-				for (i = 0; i < FILTERS_PER_STREAM; i++)
-				{
-					if (mFilterInstance[i] != NULL)
-					{
-						mFilterInstance[i]->filter(planar, chunk, stride, mChannels, (float)mSamplerate, t);
-					}
+					mFilterInstance[i]->filter(planar, chunk, stride, mChannels, (float)mSamplerate, t);
 				}
 			}
 			// Final clip (global volume was applied when mixing into the
@@ -1271,8 +1253,7 @@ namespace SoLoud
 				t += (time)chunk / (time)mSamplerate;
 			offset += chunk;
 		}
-		if (anyFilter)
-			unlockGlobalFilters_internal();
+		unlockGlobalFilters_internal();
 	}
 
 	const char * Soloud::getErrorString(result aErrorCode) const
@@ -1317,7 +1298,7 @@ namespace SoLoud
 	float * Soloud::calcFFT()
 	{
 		lockAudioMutex_internal();
-		float temp[1024];
+		alignas(64) float temp[1024];
 		int i;
 		for (i = 0; i < 256; i++)
 		{
@@ -1334,7 +1315,7 @@ namespace SoLoud
 		{
 			float real = temp[i * 2];
 			float imag = temp[i * 2 + 1];
-			mFFTData[i] = (float)sqrt(real*real+imag*imag);
+			mFFTData[i] = sqrtf(real*real+imag*imag);
 		}
 
 		return mFFTData;
@@ -1345,21 +1326,40 @@ namespace SoLoud
 	{
 		// Same per-channel ramp and the same buffer extent (whole quads of
 		// aSamples per channel) as clip_internal().
-		const unsigned int samples = ((aSamples + 3) / 4) * 4;
-		const float vd = (aVolume1 - aVolume0) / aSamples;
-		unsigned int c = 0;
-		unsigned int i, j;
+		if (aSamples == 0)
+			return;
+		const unsigned int samplequads = (aSamples + 3) / 4;
+		const unsigned int samples = samplequads * 4;
 		if (aVolume0 == 1.0f && aVolume1 == 1.0f)
 		{
 			if (&aBuffer != &aDestBuffer)
 				memcpy(aDestBuffer.mData, aBuffer.mData, sizeof(float) * samples * mChannels);
 			return;
 		}
-		for (j = 0; j < mChannels; j++)
+		if (aVolume0 == aVolume1)
 		{
-			for (i = 0; i < samples; i++, c++)
+			const auto vVol = soloud_simd::f32x4::splat(aVolume0);
+			const unsigned int total = samples * mChannels;
+			for (unsigned int c = 0; c < total; c += 4)
 			{
-				aDestBuffer.mData[c] = aBuffer.mData[c] * (aVolume0 + vd * (float)i);
+				soloud_simd::mul(soloud_simd::f32x4::loadu(aBuffer.mData + c), vVol)
+					.storeu(aDestBuffer.mData + c);
+			}
+			return;
+		}
+		const float vd = (aVolume1 - aVolume0) / (float)aSamples;
+		const auto vInit = soloud_simd::f32x4::make(
+			aVolume0, aVolume0 + vd, aVolume0 + vd * 2.0f, aVolume0 + vd * 3.0f);
+		const auto vDelta = soloud_simd::f32x4::splat(vd * 4.0f);
+		unsigned int c = 0;
+		for (unsigned int j = 0; j < mChannels; j++)
+		{
+			auto vol = vInit;
+			for (unsigned int i = 0; i < samplequads; i++, c += 4)
+			{
+				soloud_simd::mul(soloud_simd::f32x4::loadu(aBuffer.mData + c), vol)
+					.storeu(aDestBuffer.mData + c);
+				vol = soloud_simd::add(vol, vDelta);
 			}
 		}
 	}
@@ -1399,7 +1399,7 @@ namespace SoLoud
 				for (i = 0; i < samplequads; i++)
 				{
 					//float f1 = origdata[c] * v;	c++; v += vd;
-					__m128 f = _mm_load_ps(&aBuffer.mData[c]);
+					__m128 f = _mm_loadu_ps(&aBuffer.mData[c]);
 					c += 4;
 					f = _mm_mul_ps(f, vol);
 					vol = _mm_add_ps(vol, vdelta);
@@ -1429,7 +1429,7 @@ namespace SoLoud
 
 					// outdata[d] = f1 * postclip; d++;
 					f = _mm_mul_ps(f, postscale);
-					_mm_store_ps(&aDestBuffer.mData[d], f);
+					_mm_storeu_ps(&aDestBuffer.mData[d], f);
 					d += 4;
 				}
 			}
@@ -1455,7 +1455,7 @@ namespace SoLoud
 				for (i = 0; i < samplequads; i++) 
 				{
 					//float f1 = aBuffer.mData[c] * v; c++; v += vd;
-					__m128 f = _mm_load_ps(&aBuffer.mData[c]);
+					__m128 f = _mm_loadu_ps(&aBuffer.mData[c]);
 					c += 4;
 					f = _mm_mul_ps(f, vol);
 					vol = _mm_add_ps(vol, vdelta);
@@ -1466,7 +1466,7 @@ namespace SoLoud
 
 					//aDestBuffer.mData[d] = f1 * mPostClipScaler; d++;
 					f = _mm_mul_ps(f, postscale);
-					_mm_store_ps(&aDestBuffer.mData[d], f);
+					_mm_storeu_ps(&aDestBuffer.mData[d], f);
 					d += 4;
 				}
 			}
@@ -1554,6 +1554,80 @@ namespace SoLoud
 			}
 		}
 	}
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+	void Soloud::clip_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1)
+	{
+		float vd = (aVolume1 - aVolume0) / aSamples;
+		float v = aVolume0;
+		unsigned int i, j, c, d;
+		unsigned int samplequads = (aSamples + 3) / 4;
+		float postClipScaler = mPostClipScaler.load(std::memory_order_acquire);
+		v128_t postscale = wasm_f32x4_splat(postClipScaler);
+		v128_t volInit = wasm_f32x4_make(v, v + vd, v + vd + vd, v + vd + vd + vd);
+		v128_t vdelta = wasm_f32x4_splat(vd * 4.0f);
+
+		if (mFlags & CLIP_ROUNDOFF)
+		{
+			v128_t negbound = wasm_f32x4_splat(-1.65f);
+			v128_t posbound = wasm_f32x4_splat(1.65f);
+			v128_t linearscale = wasm_f32x4_splat(0.87f);
+			v128_t cubicscale = wasm_f32x4_splat(-0.1f);
+			v128_t negwall = wasm_f32x4_splat(-0.9862875f);
+			v128_t poswall = wasm_f32x4_splat(0.9862875f);
+			c = 0;
+			d = 0;
+			for (j = 0; j < mChannels; j++)
+			{
+				v128_t vol = volInit;
+				for (i = 0; i < samplequads; i++)
+				{
+					v128_t f = wasm_v128_load(&aBuffer.mData[c]);
+					c += 4;
+					f = wasm_f32x4_mul(f, vol);
+					vol = wasm_f32x4_add(vol, vdelta);
+
+					v128_t u = wasm_f32x4_gt(f, negbound);
+					v128_t o = wasm_f32x4_lt(f, posbound);
+
+					v128_t lin = wasm_f32x4_mul(f, linearscale);
+					v128_t cubic = wasm_f32x4_mul(wasm_f32x4_mul(wasm_f32x4_mul(f, f), f), cubicscale);
+					f = wasm_f32x4_add(cubic, lin);
+
+					f = wasm_v128_bitselect(f, negwall, u);
+					f = wasm_v128_bitselect(f, poswall, o);
+
+					f = wasm_f32x4_mul(f, postscale);
+					wasm_v128_store(&aDestBuffer.mData[d], f);
+					d += 4;
+				}
+			}
+		}
+		else
+		{
+			v128_t negbound = wasm_f32x4_splat(-1.0f);
+			v128_t posbound = wasm_f32x4_splat(1.0f);
+			c = 0;
+			d = 0;
+			for (j = 0; j < mChannels; j++)
+			{
+				v128_t vol = volInit;
+				for (i = 0; i < samplequads; i++)
+				{
+					v128_t f = wasm_v128_load(&aBuffer.mData[c]);
+					c += 4;
+					f = wasm_f32x4_mul(f, vol);
+					vol = wasm_f32x4_add(vol, vdelta);
+
+					f = wasm_f32x4_pmax(negbound, f);
+					f = wasm_f32x4_pmin(posbound, f);
+
+					f = wasm_f32x4_mul(f, postscale);
+					wasm_v128_store(&aDestBuffer.mData[d], f);
+					d += 4;
+				}
+			}
+		}
+	}
 #else // fallback code
 	void Soloud::clip_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1)
 	{
@@ -1624,6 +1698,13 @@ namespace SoLoud
 #define FIXPOINT_FRAC_MUL (1 << FIXPOINT_FRAC_BITS)
 #define FIXPOINT_FRAC_MASK ((1 << FIXPOINT_FRAC_BITS) - 1)
 
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#elif defined(__GNUC__)
+#pragma GCC push_options
+#pragma GCC optimize("fp-contract=off")
+#endif
+
 	static float catmullrom(float t, float p0, float p1, float p2, float p3)
 	{
 		return 0.5f * (
@@ -1641,46 +1722,129 @@ namespace SoLoud
 		int aDstSampleCount,
 		int aStepFixed)
 	{
-		int i;
+		int i = 0;
 		int pos = aSrcOffset;
 
-		for (i = 0; i < aDstSampleCount; i++, pos += aStepFixed)
+		// Peel initial lookbehind boundary samples (p < 3) where aSrc1 is needed.
+		while (i < aDstSampleCount && (pos >> FIXPOINT_FRAC_BITS) < 3)
 		{
 			int p = pos >> FIXPOINT_FRAC_BITS;
 			int f = pos & FIXPOINT_FRAC_MASK;
 
-			float s0, s1, s2, s3;
-
-			if (p < 3)
-			{
-				s3 = aSrc1[512 + p - 3];
-			}
-			else
-			{
-				s3 = aSrc[p - 3];
-			}
-
-			if (p < 2)
-			{
-				s2 = aSrc1[512 + p - 2];
-			}
-			else
-			{
-				s2 = aSrc[p - 2];
-			}
-
-			if (p < 1)
-			{
-				s1 = aSrc1[512 + p - 1];
-			}
-			else
-			{
-				s1 = aSrc[p - 1];
-			}
-
-			s0 = aSrc[p];
+			float s3 = (p < 3) ? aSrc1[SAMPLE_GRANULARITY + p - 3] : aSrc[p - 3];
+			float s2 = (p < 2) ? aSrc1[SAMPLE_GRANULARITY + p - 2] : aSrc[p - 2];
+			float s1 = (p < 1) ? aSrc1[SAMPLE_GRANULARITY + p - 1] : aSrc[p - 1];
+			float s0 = aSrc[p];
 
 			aDst[i] = catmullrom(f / (float)FIXPOINT_FRAC_MUL, s3, s2, s1, s0);
+			i++;
+			pos += aStepFixed;
+		}
+
+		if (i >= aDstSampleCount)
+			return;
+
+		// Unit-rate fast paths (p >= 3 guaranteed for all remaining samples).
+		if (aStepFixed == FIXPOINT_FRAC_MUL)
+		{
+			const int f = pos & FIXPOINT_FRAC_MASK;
+			int p = pos >> FIXPOINT_FRAC_BITS;
+			if (f == 0)
+			{
+				memcpy(aDst + i, aSrc + p - 2, sizeof(float) * (size_t)(aDstSampleCount - i));
+				return;
+			}
+			const float tScalar = (float)f * (1.0f / (float)FIXPOINT_FRAC_MUL);
+			const auto vt = soloud_simd::f32x4::splat(tScalar);
+			const auto vHalf = soloud_simd::f32x4::splat(0.5f);
+			const auto v2 = soloud_simd::f32x4::splat(2.0f);
+			const auto v3 = soloud_simd::f32x4::splat(3.0f);
+			const auto v4 = soloud_simd::f32x4::splat(4.0f);
+			const auto v5 = soloud_simd::f32x4::splat(5.0f);
+			for (; i + 4 <= aDstSampleCount; i += 4, p += 4)
+			{
+				const auto vp0 = soloud_simd::f32x4::loadu(aSrc + p - 3);
+				const auto vp1 = soloud_simd::f32x4::loadu(aSrc + p - 2);
+				const auto vp2 = soloud_simd::f32x4::loadu(aSrc + p - 1);
+				const auto vp3 = soloud_simd::f32x4::loadu(aSrc + p);
+
+				const auto negP0 = soloud_simd::neg(vp0);
+				const auto term0 = soloud_simd::mul(v2, vp1);
+				const auto term1 = soloud_simd::mul(soloud_simd::add(negP0, vp2), vt);
+
+				const auto c2 = soloud_simd::sub(
+					soloud_simd::add(
+						soloud_simd::sub(soloud_simd::mul(v2, vp0), soloud_simd::mul(v5, vp1)),
+						soloud_simd::mul(v4, vp2)),
+					vp3);
+				const auto term2 = soloud_simd::mul(soloud_simd::mul(c2, vt), vt);
+
+				const auto c3 = soloud_simd::add(
+					soloud_simd::sub(
+						soloud_simd::add(negP0, soloud_simd::mul(v3, vp1)),
+						soloud_simd::mul(v3, vp2)),
+					vp3);
+				const auto term3 = soloud_simd::mul(soloud_simd::mul(soloud_simd::mul(c3, vt), vt), vt);
+
+				const auto sum = soloud_simd::add(soloud_simd::add(soloud_simd::add(term0, term1), term2), term3);
+				soloud_simd::mul(vHalf, sum).storeu(aDst + i);
+			}
+			for (; i < aDstSampleCount; i++, p++)
+			{
+				aDst[i] = catmullrom(tScalar, aSrc[p - 3], aSrc[p - 2], aSrc[p - 1], aSrc[p]);
+			}
+			return;
+		}
+
+		// General 4-wide SIMD path (all p >= 3, branchless).
+		const auto vInvFrac = soloud_simd::f32x4::splat(1.0f / (float)FIXPOINT_FRAC_MUL);
+		const auto vHalf = soloud_simd::f32x4::splat(0.5f);
+		const auto v2 = soloud_simd::f32x4::splat(2.0f);
+		const auto v3 = soloud_simd::f32x4::splat(3.0f);
+		const auto v4 = soloud_simd::f32x4::splat(4.0f);
+		const auto v5 = soloud_simd::f32x4::splat(5.0f);
+		for (; i + 4 <= aDstSampleCount; i += 4)
+		{
+			const int pa = pos >> FIXPOINT_FRAC_BITS; const int fa = pos & FIXPOINT_FRAC_MASK; pos += aStepFixed;
+			const int pb = pos >> FIXPOINT_FRAC_BITS; const int fb = pos & FIXPOINT_FRAC_MASK; pos += aStepFixed;
+			const int pc = pos >> FIXPOINT_FRAC_BITS; const int fc = pos & FIXPOINT_FRAC_MASK; pos += aStepFixed;
+			const int pd = pos >> FIXPOINT_FRAC_BITS; const int fd = pos & FIXPOINT_FRAC_MASK; pos += aStepFixed;
+
+			const auto vp0 = soloud_simd::f32x4::make(aSrc[pa - 3], aSrc[pb - 3], aSrc[pc - 3], aSrc[pd - 3]);
+			const auto vp1 = soloud_simd::f32x4::make(aSrc[pa - 2], aSrc[pb - 2], aSrc[pc - 2], aSrc[pd - 2]);
+			const auto vp2 = soloud_simd::f32x4::make(aSrc[pa - 1], aSrc[pb - 1], aSrc[pc - 1], aSrc[pd - 1]);
+			const auto vp3 = soloud_simd::f32x4::make(aSrc[pa],     aSrc[pb],     aSrc[pc],     aSrc[pd]);
+			const auto vt  = soloud_simd::mul(
+				soloud_simd::f32x4::make((float)fa, (float)fb, (float)fc, (float)fd),
+				vInvFrac);
+
+			const auto negP0 = soloud_simd::neg(vp0);
+			const auto term0 = soloud_simd::mul(v2, vp1);
+			const auto term1 = soloud_simd::mul(soloud_simd::add(negP0, vp2), vt);
+
+			const auto c2 = soloud_simd::sub(
+				soloud_simd::add(
+					soloud_simd::sub(soloud_simd::mul(v2, vp0), soloud_simd::mul(v5, vp1)),
+					soloud_simd::mul(v4, vp2)),
+				vp3);
+			const auto term2 = soloud_simd::mul(soloud_simd::mul(c2, vt), vt);
+
+			const auto c3 = soloud_simd::add(
+				soloud_simd::sub(
+					soloud_simd::add(negP0, soloud_simd::mul(v3, vp1)),
+					soloud_simd::mul(v3, vp2)),
+				vp3);
+			const auto term3 = soloud_simd::mul(soloud_simd::mul(soloud_simd::mul(c3, vt), vt), vt);
+
+			const auto sum = soloud_simd::add(soloud_simd::add(soloud_simd::add(term0, term1), term2), term3);
+			soloud_simd::mul(vHalf, sum).storeu(aDst + i);
+		}
+
+		for (; i < aDstSampleCount; i++, pos += aStepFixed)
+		{
+			const int p = pos >> FIXPOINT_FRAC_BITS;
+			const int f = pos & FIXPOINT_FRAC_MASK;
+			aDst[i] = catmullrom(f / (float)FIXPOINT_FRAC_MUL, aSrc[p - 3], aSrc[p - 2], aSrc[p - 1], aSrc[p]);
 		}
 	}
 
@@ -1691,44 +1855,117 @@ namespace SoLoud
 		int aDstSampleCount,
 		int aStepFixed)
 	{
-		int i;
+		int i = 0;
 		int pos = aSrcOffset;
 
-		for (i = 0; i < aDstSampleCount; i++, pos += aStepFixed)
+		// Peel initial boundary samples (p == 0) where aSrc1[SAMPLE_GRANULARITY - 1] is needed.
+		while (i < aDstSampleCount && (pos >> FIXPOINT_FRAC_BITS) < 1)
 		{
 			int p = pos >> FIXPOINT_FRAC_BITS;
 			int f = pos & FIXPOINT_FRAC_MASK;
 #ifdef _DEBUG
 			if (p >= SAMPLE_GRANULARITY || p < 0)
 			{
-				// This should never actually happen
 				p = SAMPLE_GRANULARITY - 1;
 			}
 #endif
-			float s1 = aSrc1[SAMPLE_GRANULARITY - 1];
+			float s1 = (p != 0) ? aSrc[p - 1] : aSrc1[SAMPLE_GRANULARITY - 1];
 			float s2 = aSrc[p];
-			if (p != 0)
+			aDst[i] = s1 + (s2 - s1) * f * (1 / (float)FIXPOINT_FRAC_MUL);
+			i++;
+			pos += aStepFixed;
+		}
+
+		if (i >= aDstSampleCount)
+			return;
+
+		// Unit-rate fast paths (p >= 1 guaranteed for all remaining samples).
+		if (aStepFixed == FIXPOINT_FRAC_MUL)
+		{
+			const int f = pos & FIXPOINT_FRAC_MASK;
+			int p = pos >> FIXPOINT_FRAC_BITS;
+			if (f == 0)
 			{
-				s1 = aSrc[p - 1];
+				memcpy(aDst + i, aSrc + p - 1, sizeof(float) * (size_t)(aDstSampleCount - i));
+				return;
 			}
+			const auto vf = soloud_simd::f32x4::splat((float)f);
+			const auto vInvFrac = soloud_simd::f32x4::splat(1.0f / (float)FIXPOINT_FRAC_MUL);
+			for (; i + 4 <= aDstSampleCount; i += 4, p += 4)
+			{
+				const auto vs1 = soloud_simd::f32x4::loadu(aSrc + p - 1);
+				const auto vs2 = soloud_simd::f32x4::loadu(aSrc + p);
+				const auto prod = soloud_simd::mul(soloud_simd::mul(soloud_simd::sub(vs2, vs1), vf), vInvFrac);
+				soloud_simd::add(vs1, prod).storeu(aDst + i);
+			}
+			for (; i < aDstSampleCount; i++, p++)
+			{
+				const float s1 = aSrc[p - 1];
+				const float s2 = aSrc[p];
+				aDst[i] = s1 + (s2 - s1) * f * (1 / (float)FIXPOINT_FRAC_MUL);
+			}
+			return;
+		}
+
+		// General 4-wide SIMD path (all p >= 1, branchless).
+		const auto vInvFrac = soloud_simd::f32x4::splat(1.0f / (float)FIXPOINT_FRAC_MUL);
+		for (; i + 4 <= aDstSampleCount; i += 4)
+		{
+			const int pa = pos >> FIXPOINT_FRAC_BITS; const int fa = pos & FIXPOINT_FRAC_MASK; pos += aStepFixed;
+			const int pb = pos >> FIXPOINT_FRAC_BITS; const int fb = pos & FIXPOINT_FRAC_MASK; pos += aStepFixed;
+			const int pc = pos >> FIXPOINT_FRAC_BITS; const int fc = pos & FIXPOINT_FRAC_MASK; pos += aStepFixed;
+			const int pd = pos >> FIXPOINT_FRAC_BITS; const int fd = pos & FIXPOINT_FRAC_MASK; pos += aStepFixed;
+			const auto vs1 = soloud_simd::f32x4::make(aSrc[pa - 1], aSrc[pb - 1], aSrc[pc - 1], aSrc[pd - 1]);
+			const auto vs2 = soloud_simd::f32x4::make(aSrc[pa],     aSrc[pb],     aSrc[pc],     aSrc[pd]);
+			const auto vf  = soloud_simd::f32x4::make((float)fa,    (float)fb,    (float)fc,    (float)fd);
+			const auto prod = soloud_simd::mul(soloud_simd::mul(soloud_simd::sub(vs2, vs1), vf), vInvFrac);
+			soloud_simd::add(vs1, prod).storeu(aDst + i);
+		}
+
+		for (; i < aDstSampleCount; i++, pos += aStepFixed)
+		{
+			const int p = pos >> FIXPOINT_FRAC_BITS;
+			const int f = pos & FIXPOINT_FRAC_MASK;
+			const float s1 = aSrc[p - 1];
+			const float s2 = aSrc[p];
 			aDst[i] = s1 + (s2 - s1) * f * (1 / (float)FIXPOINT_FRAC_MUL);
 		}
 	}
 
+#if defined(__clang__)
+#pragma clang fp contract(fast)
+#elif defined(__GNUC__)
+#pragma GCC pop_options
+#endif
+
 	static void resample_point(float* aSrc,
-		float* aSrc1,
+		float* /*aSrc1*/,
 		float* aDst,
 		int aSrcOffset,
 		int aDstSampleCount,
 		int aStepFixed)
 	{
-		int i;
-		int pos = aSrcOffset;
-
-		for (i = 0; i < aDstSampleCount; i++, pos += aStepFixed)
+		if (aStepFixed == FIXPOINT_FRAC_MUL && aDstSampleCount > 0)
 		{
-			int p = pos >> FIXPOINT_FRAC_BITS;
-			aDst[i] = aSrc[p];
+			memcpy(aDst, aSrc + (aSrcOffset >> FIXPOINT_FRAC_BITS), sizeof(float) * (size_t)aDstSampleCount);
+			return;
+		}
+		int i = 0;
+		int pos = aSrcOffset;
+		for (; i + 4 <= aDstSampleCount; i += 4)
+		{
+			const int p0 = pos >> FIXPOINT_FRAC_BITS; pos += aStepFixed;
+			const int p1 = pos >> FIXPOINT_FRAC_BITS; pos += aStepFixed;
+			const int p2 = pos >> FIXPOINT_FRAC_BITS; pos += aStepFixed;
+			const int p3 = pos >> FIXPOINT_FRAC_BITS; pos += aStepFixed;
+			aDst[i + 0] = aSrc[p0];
+			aDst[i + 1] = aSrc[p1];
+			aDst[i + 2] = aSrc[p2];
+			aDst[i + 3] = aSrc[p3];
+		}
+		for (; i < aDstSampleCount; i++, pos += aStepFixed)
+		{
+			aDst[i] = aSrc[pos >> FIXPOINT_FRAC_BITS];
 		}
 	}
 
@@ -1736,11 +1973,6 @@ namespace SoLoud
 
 	void panAndExpand(AudioSourceInstance *aVoice, float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize, float *aScratch, unsigned int aChannels)
 	{
-#ifdef SOLOUD_SSE_INTRINSICS
-		SOLOUD_ASSERT(((size_t)aBuffer & 0xf) == 0);
-		SOLOUD_ASSERT(((size_t)aScratch & 0xf) == 0);
-		SOLOUD_ASSERT(((size_t)aBufferSize & 0xf) == 0);
-#endif
 		if (aSamplesToRead == 0)
 		{
 			unsigned int k;
@@ -1754,11 +1986,22 @@ namespace SoLoud
 		float pand[MAX_CHANNELS]; // destination speaker volume
 		float pani[MAX_CHANNELS]; // speaker volume increment per sample
 		unsigned int j, k;
+		bool allSilent = true;
 		for (k = 0; k < aChannels; k++)
 		{
 			pan[k] = aVoice->mCurrentChannelVolume[k];
 			pand[k] = aVoice->mChannelVolume[k] * aVoice->mOverallVolume;
 			pani[k] = (pand[k] - pan[k]) / aSamplesToRead; // TODO: this is a bit inconsistent.. but it's a hack to begin with
+			if (pan[k] != 0.0f || pand[k] != 0.0f || pani[k] != 0.0f)
+			{
+				allSilent = false;
+			}
+		}
+		if (allSilent)
+		{
+			for (k = 0; k < aChannels; k++)
+				aVoice->mCurrentChannelVolume[k] = pand[k];
+			return;
 		}
 
 		int ofs = 0;
@@ -1768,9 +2011,35 @@ namespace SoLoud
 			for (j = 0, ofs = 0; j < aVoice->mChannels; j++, ofs += aBufferSize)
 			{
 				pan[0] = aVoice->mCurrentChannelVolume[0];
-				for (k = 0; k < aSamplesToRead; k++)
+				const float step0 = pani[0];
+				k = 0;
+				if (step0 == 0.0f)
 				{
-					pan[0] += pani[0];
+					const auto vPan = soloud_simd::f32x4::splat(pan[0]);
+					for (; k + 4 <= aSamplesToRead; k += 4)
+					{
+						const auto s = soloud_simd::f32x4::loadu(aScratch + ofs + k);
+						const auto o = soloud_simd::f32x4::loadu(aBuffer + k);
+						soloud_simd::add(o, soloud_simd::mul(s, vPan)).storeu(aBuffer + k);
+					}
+				}
+				else
+				{
+					auto p0 = soloud_simd::f32x4::make(
+						pan[0] + step0, pan[0] + step0 * 2.0f, pan[0] + step0 * 3.0f, pan[0] + step0 * 4.0f);
+					const auto d0 = soloud_simd::f32x4::splat(step0 * 4.0f);
+					for (; k + 4 <= aSamplesToRead; k += 4)
+					{
+						const auto s = soloud_simd::f32x4::loadu(aScratch + ofs + k);
+						const auto o = soloud_simd::f32x4::loadu(aBuffer + k);
+						soloud_simd::add(o, soloud_simd::mul(s, p0)).storeu(aBuffer + k);
+						p0 = soloud_simd::add(p0, d0);
+					}
+					pan[0] += step0 * (float)k;
+				}
+				for (; k < aSamplesToRead; k++)
+				{
+					pan[0] += step0;
 					aBuffer[k] += aScratch[ofs + k] * pan[0];
 				}
 			}
@@ -1811,266 +2080,195 @@ namespace SoLoud
 				}
 				break;
 			case 4: // 4->2, just sum lefties and righties
-				for (j = 0; j < aSamplesToRead; j++)
 				{
-					pan[0] += pani[0];
-					pan[1] += pani[1];
-					float s1 = aScratch[j];
-					float s2 = aScratch[aBufferSize + j];
-					float s3 = aScratch[aBufferSize * 2 + j];
-					float s4 = aScratch[aBufferSize * 3 + j];
-					aBuffer[j + 0] += 0.5f * (s1 + s3) * pan[0];
-					aBuffer[j + aBufferSize] += 0.5f * (s2 + s4) * pan[1];
+					const float step0 = pani[0];
+					const float step1 = pani[1];
+					const auto vHalf = soloud_simd::f32x4::splat(0.5f);
+					auto p0 = soloud_simd::f32x4::make(
+						pan[0] + step0, pan[0] + step0 * 2.0f, pan[0] + step0 * 3.0f, pan[0] + step0 * 4.0f);
+					auto p1 = soloud_simd::f32x4::make(
+						pan[1] + step1, pan[1] + step1 * 2.0f, pan[1] + step1 * 3.0f, pan[1] + step1 * 4.0f);
+					const auto d0 = soloud_simd::f32x4::splat(step0 * 4.0f);
+					const auto d1 = soloud_simd::f32x4::splat(step1 * 4.0f);
+					j = 0;
+					for (; j + 4 <= aSamplesToRead; j += 4)
+					{
+						const auto s1 = soloud_simd::f32x4::loadu(aScratch + j);
+						const auto s2 = soloud_simd::f32x4::loadu(aScratch + aBufferSize + j);
+						const auto s3 = soloud_simd::f32x4::loadu(aScratch + aBufferSize * 2 + j);
+						const auto s4 = soloud_simd::f32x4::loadu(aScratch + aBufferSize * 3 + j);
+						const auto o0 = soloud_simd::f32x4::loadu(aBuffer + j);
+						const auto o1 = soloud_simd::f32x4::loadu(aBuffer + aBufferSize + j);
+						soloud_simd::add(o0, soloud_simd::mul(soloud_simd::mul(vHalf, soloud_simd::add(s1, s3)), p0)).storeu(aBuffer + j);
+						soloud_simd::add(o1, soloud_simd::mul(soloud_simd::mul(vHalf, soloud_simd::add(s2, s4)), p1)).storeu(aBuffer + aBufferSize + j);
+						p0 = soloud_simd::add(p0, d0);
+						p1 = soloud_simd::add(p1, d1);
+					}
+					pan[0] += step0 * (float)j;
+					pan[1] += step1 * (float)j;
+					for (; j < aSamplesToRead; j++)
+					{
+						pan[0] += step0;
+						pan[1] += step1;
+						float s1 = aScratch[j];
+						float s2 = aScratch[aBufferSize + j];
+						float s3 = aScratch[aBufferSize * 2 + j];
+						float s4 = aScratch[aBufferSize * 3 + j];
+						aBuffer[j + 0] += 0.5f * (s1 + s3) * pan[0];
+						aBuffer[j + aBufferSize] += 0.5f * (s2 + s4) * pan[1];
+					}
 				}
 				break;
 			case 2: // 2->2
-#if defined(SOLOUD_SSE_INTRINSICS)
 				{
-					int c = 0;
 					const float step0 = pani[0];
 					const float step1 = pani[1];
-					//if ((aBufferSize & 3) == 0)
+					j = 0;
+					if (step0 == 0.0f && step1 == 0.0f)
 					{
-						unsigned int samplequads = aSamplesToRead / 4; // rounded down
-						TinyAlignedFloatBuffer pan0;
-						pan0.mData[0] = pan[0] + pani[0];
-						pan0.mData[1] = pan[0] + pani[0] * 2;
-						pan0.mData[2] = pan[0] + pani[0] * 3;
-						pan0.mData[3] = pan[0] + pani[0] * 4;
-						TinyAlignedFloatBuffer pan1;
-						pan1.mData[0] = pan[1] + pani[1];
-						pan1.mData[1] = pan[1] + pani[1] * 2;
-						pan1.mData[2] = pan[1] + pani[1] * 3;
-						pan1.mData[3] = pan[1] + pani[1] * 4;
-						pani[0] *= 4;
-						pani[1] *= 4;
-						__m128 pan0delta = _mm_load_ps1(&pani[0]);
-						__m128 pan1delta = _mm_load_ps1(&pani[1]);
-						__m128 p0 = _mm_load_ps(pan0.mData);
-						__m128 p1 = _mm_load_ps(pan1.mData);
-
-						for (j = 0; j < samplequads; j++)
+						const auto p0 = soloud_simd::f32x4::splat(pan[0]);
+						const auto p1 = soloud_simd::f32x4::splat(pan[1]);
+						if (pan[0] != 0.0f && pan[1] != 0.0f)
 						{
-							__m128 f0 = _mm_load_ps(aScratch + c);
-							__m128 c0 = _mm_mul_ps(f0, p0);
-							__m128 f1 = _mm_load_ps(aScratch + c + aBufferSize);
-							__m128 c1 = _mm_mul_ps(f1, p1);
-							__m128 o0 = _mm_load_ps(aBuffer + c);
-							__m128 o1 = _mm_load_ps(aBuffer + c + aBufferSize);
-							c0 = _mm_add_ps(c0, o0);
-							c1 = _mm_add_ps(c1, o1);
-							_mm_store_ps(aBuffer + c, c0);
-							_mm_store_ps(aBuffer + c + aBufferSize, c1);
-							p0 = _mm_add_ps(p0, pan0delta);
-							p1 = _mm_add_ps(p1, pan1delta);
-							c += 4;
+							for (; j + 4 <= aSamplesToRead; j += 4)
+							{
+								const auto f0 = soloud_simd::f32x4::loadu(aScratch + j);
+								const auto f1 = soloud_simd::f32x4::loadu(aScratch + j + aBufferSize);
+								const auto o0 = soloud_simd::f32x4::loadu(aBuffer + j);
+								const auto o1 = soloud_simd::f32x4::loadu(aBuffer + j + aBufferSize);
+								soloud_simd::add(soloud_simd::mul(f0, p0), o0).storeu(aBuffer + j);
+								soloud_simd::add(soloud_simd::mul(f1, p1), o1).storeu(aBuffer + j + aBufferSize);
+							}
+						}
+						else if (pan[0] != 0.0f)
+						{
+							for (; j + 4 <= aSamplesToRead; j += 4)
+							{
+								const auto f0 = soloud_simd::f32x4::loadu(aScratch + j);
+								const auto o0 = soloud_simd::f32x4::loadu(aBuffer + j);
+								soloud_simd::add(soloud_simd::mul(f0, p0), o0).storeu(aBuffer + j);
+							}
+						}
+						else if (pan[1] != 0.0f)
+						{
+							for (; j + 4 <= aSamplesToRead; j += 4)
+							{
+								const auto f1 = soloud_simd::f32x4::loadu(aScratch + j + aBufferSize);
+								const auto o1 = soloud_simd::f32x4::loadu(aBuffer + j + aBufferSize);
+								soloud_simd::add(soloud_simd::mul(f1, p1), o1).storeu(aBuffer + j + aBufferSize);
+							}
+						}
+						else
+						{
+							j = aSamplesToRead;
 						}
 					}
-					
-					// If buffer size or samples to read are not divisible by 4, handle leftovers
-					pan[0] += step0 * c;
-					pan[1] += step1 * c;
-					pani[0] = step0;
-					pani[1] = step1;
-					for (j = c; j < aSamplesToRead; j++)
+					else
 					{
-						pan[0] += pani[0];
-						pan[1] += pani[1];
+						auto p0 = soloud_simd::f32x4::make(
+							pan[0] + step0, pan[0] + step0 * 2.0f, pan[0] + step0 * 3.0f, pan[0] + step0 * 4.0f);
+						auto p1 = soloud_simd::f32x4::make(
+							pan[1] + step1, pan[1] + step1 * 2.0f, pan[1] + step1 * 3.0f, pan[1] + step1 * 4.0f);
+						const auto d0 = soloud_simd::f32x4::splat(step0 * 4.0f);
+						const auto d1 = soloud_simd::f32x4::splat(step1 * 4.0f);
+						for (; j + 4 <= aSamplesToRead; j += 4)
+						{
+							const auto f0 = soloud_simd::f32x4::loadu(aScratch + j);
+							const auto f1 = soloud_simd::f32x4::loadu(aScratch + j + aBufferSize);
+							const auto o0 = soloud_simd::f32x4::loadu(aBuffer + j);
+							const auto o1 = soloud_simd::f32x4::loadu(aBuffer + j + aBufferSize);
+							soloud_simd::add(soloud_simd::mul(f0, p0), o0).storeu(aBuffer + j);
+							soloud_simd::add(soloud_simd::mul(f1, p1), o1).storeu(aBuffer + j + aBufferSize);
+							p0 = soloud_simd::add(p0, d0);
+							p1 = soloud_simd::add(p1, d1);
+						}
+						pan[0] += step0 * (float)j;
+						pan[1] += step1 * (float)j;
+					}
+					for (; j < aSamplesToRead; j++)
+					{
+						pan[0] += step0;
+						pan[1] += step1;
 						float s1 = aScratch[j];
 						float s2 = aScratch[aBufferSize + j];
 						aBuffer[j + 0] += s1 * pan[0];
 						aBuffer[j + aBufferSize] += s2 * pan[1];
 					}
 				}
-#elif defined(SOLOUD_NEON_INTRINSICS)
-				{
-					int c = 0;
-					const float step0 = pani[0];
-					const float step1 = pani[1];
-					{
-						unsigned int samplequads = aSamplesToRead / 4; // rounded down
-						TinyAlignedFloatBuffer pan0;
-						pan0.mData[0] = pan[0] + pani[0];
-						pan0.mData[1] = pan[0] + pani[0] * 2;
-						pan0.mData[2] = pan[0] + pani[0] * 3;
-						pan0.mData[3] = pan[0] + pani[0] * 4;
-						TinyAlignedFloatBuffer pan1;
-						pan1.mData[0] = pan[1] + pani[1];
-						pan1.mData[1] = pan[1] + pani[1] * 2;
-						pan1.mData[2] = pan[1] + pani[1] * 3;
-						pan1.mData[3] = pan[1] + pani[1] * 4;
-						pani[0] *= 4;
-						pani[1] *= 4;
-						float32x4_t pan0delta = vdupq_n_f32(pani[0]);
-						float32x4_t pan1delta = vdupq_n_f32(pani[1]);
-						float32x4_t p0 = vld1q_f32(pan0.mData);
-						float32x4_t p1 = vld1q_f32(pan1.mData);
-
-						for (j = 0; j < samplequads; j++)
-						{
-							float32x4_t f0 = vld1q_f32(aScratch + c);
-							float32x4_t c0 = vmulq_f32(f0, p0);
-							float32x4_t f1 = vld1q_f32(aScratch + c + aBufferSize);
-							float32x4_t c1 = vmulq_f32(f1, p1);
-							float32x4_t o0 = vld1q_f32(aBuffer + c);
-							float32x4_t o1 = vld1q_f32(aBuffer + c + aBufferSize);
-							c0 = vaddq_f32(c0, o0);
-							c1 = vaddq_f32(c1, o1);
-							vst1q_f32(aBuffer + c, c0);
-							vst1q_f32(aBuffer + c + aBufferSize, c1);
-							p0 = vaddq_f32(p0, pan0delta);
-							p1 = vaddq_f32(p1, pan1delta);
-							c += 4;
-						}
-					}
-
-					// If buffer size or samples to read are not divisible by 4, handle leftovers
-					pan[0] += step0 * c;
-					pan[1] += step1 * c;
-					pani[0] = step0;
-					pani[1] = step1;
-					for (j = c; j < aSamplesToRead; j++)
-					{
-						pan[0] += pani[0];
-						pan[1] += pani[1];
-						float s1 = aScratch[j];
-						float s2 = aScratch[aBufferSize + j];
-						aBuffer[j + 0] += s1 * pan[0];
-						aBuffer[j + aBufferSize] += s2 * pan[1];
-					}
-				}
-#else // fallback
-				for (j = 0; j < aSamplesToRead; j++)
-				{
-					pan[0] += pani[0];
-					pan[1] += pani[1];
-					float s1 = aScratch[j];
-					float s2 = aScratch[aBufferSize + j];
-					aBuffer[j + 0] += s1 * pan[0];
-					aBuffer[j + aBufferSize] += s2 * pan[1];
-				}
-#endif
 				break;
 			case 1: // 1->2
-#if defined(SOLOUD_SSE_INTRINSICS)
 				{
-					int c = 0;
 					const float step0 = pani[0];
 					const float step1 = pani[1];
-					//if ((aBufferSize & 3) == 0)
+					j = 0;
+					if (step0 == 0.0f && step1 == 0.0f)
 					{
-						unsigned int samplequads = aSamplesToRead / 4; // rounded down
-						TinyAlignedFloatBuffer pan0;
-						pan0.mData[0] = pan[0] + pani[0];
-						pan0.mData[1] = pan[0] + pani[0] * 2;
-						pan0.mData[2] = pan[0] + pani[0] * 3;
-						pan0.mData[3] = pan[0] + pani[0] * 4;
-						TinyAlignedFloatBuffer pan1;
-						pan1.mData[0] = pan[1] + pani[1];
-						pan1.mData[1] = pan[1] + pani[1] * 2;
-						pan1.mData[2] = pan[1] + pani[1] * 3;
-						pan1.mData[3] = pan[1] + pani[1] * 4;
-						pani[0] *= 4;
-						pani[1] *= 4;
-						__m128 pan0delta = _mm_load_ps1(&pani[0]);
-						__m128 pan1delta = _mm_load_ps1(&pani[1]);
-						__m128 p0 = _mm_load_ps(pan0.mData);
-						__m128 p1 = _mm_load_ps(pan1.mData);
-
-						for (j = 0; j < samplequads; j++)
+						const auto p0 = soloud_simd::f32x4::splat(pan[0]);
+						const auto p1 = soloud_simd::f32x4::splat(pan[1]);
+						if (pan[0] != 0.0f && pan[1] != 0.0f)
 						{
-							__m128 f = _mm_load_ps(aScratch + c);
-							__m128 c0 = _mm_mul_ps(f, p0);
-							__m128 c1 = _mm_mul_ps(f, p1);
-							__m128 o0 = _mm_load_ps(aBuffer + c);
-							__m128 o1 = _mm_load_ps(aBuffer + c + aBufferSize);
-							c0 = _mm_add_ps(c0, o0);
-							c1 = _mm_add_ps(c1, o1);
-							_mm_store_ps(aBuffer + c, c0);
-							_mm_store_ps(aBuffer + c + aBufferSize, c1);
-							p0 = _mm_add_ps(p0, pan0delta);
-							p1 = _mm_add_ps(p1, pan1delta);
-							c += 4;
+							for (; j + 4 <= aSamplesToRead; j += 4)
+							{
+								const auto f = soloud_simd::f32x4::loadu(aScratch + j);
+								const auto o0 = soloud_simd::f32x4::loadu(aBuffer + j);
+								const auto o1 = soloud_simd::f32x4::loadu(aBuffer + j + aBufferSize);
+								soloud_simd::add(soloud_simd::mul(f, p0), o0).storeu(aBuffer + j);
+								soloud_simd::add(soloud_simd::mul(f, p1), o1).storeu(aBuffer + j + aBufferSize);
+							}
+						}
+						else if (pan[0] != 0.0f)
+						{
+							for (; j + 4 <= aSamplesToRead; j += 4)
+							{
+								const auto f = soloud_simd::f32x4::loadu(aScratch + j);
+								const auto o0 = soloud_simd::f32x4::loadu(aBuffer + j);
+								soloud_simd::add(soloud_simd::mul(f, p0), o0).storeu(aBuffer + j);
+							}
+						}
+						else if (pan[1] != 0.0f)
+						{
+							for (; j + 4 <= aSamplesToRead; j += 4)
+							{
+								const auto f = soloud_simd::f32x4::loadu(aScratch + j);
+								const auto o1 = soloud_simd::f32x4::loadu(aBuffer + j + aBufferSize);
+								soloud_simd::add(soloud_simd::mul(f, p1), o1).storeu(aBuffer + j + aBufferSize);
+							}
+						}
+						else
+						{
+							j = aSamplesToRead;
 						}
 					}
-					// If buffer size or samples to read are not divisible by 4, handle leftovers
-					pan[0] += step0 * c;
-					pan[1] += step1 * c;
-					pani[0] = step0;
-					pani[1] = step1;
-					for (j = c; j < aSamplesToRead; j++)
+					else
 					{
-						pan[0] += pani[0];
-						pan[1] += pani[1];
+						auto p0 = soloud_simd::f32x4::make(
+							pan[0] + step0, pan[0] + step0 * 2.0f, pan[0] + step0 * 3.0f, pan[0] + step0 * 4.0f);
+						auto p1 = soloud_simd::f32x4::make(
+							pan[1] + step1, pan[1] + step1 * 2.0f, pan[1] + step1 * 3.0f, pan[1] + step1 * 4.0f);
+						const auto d0 = soloud_simd::f32x4::splat(step0 * 4.0f);
+						const auto d1 = soloud_simd::f32x4::splat(step1 * 4.0f);
+						for (; j + 4 <= aSamplesToRead; j += 4)
+						{
+							const auto f = soloud_simd::f32x4::loadu(aScratch + j);
+							const auto o0 = soloud_simd::f32x4::loadu(aBuffer + j);
+							const auto o1 = soloud_simd::f32x4::loadu(aBuffer + j + aBufferSize);
+							soloud_simd::add(soloud_simd::mul(f, p0), o0).storeu(aBuffer + j);
+							soloud_simd::add(soloud_simd::mul(f, p1), o1).storeu(aBuffer + j + aBufferSize);
+							p0 = soloud_simd::add(p0, d0);
+							p1 = soloud_simd::add(p1, d1);
+						}
+						pan[0] += step0 * (float)j;
+						pan[1] += step1 * (float)j;
+					}
+					for (; j < aSamplesToRead; j++)
+					{
+						pan[0] += step0;
+						pan[1] += step1;
 						float s = aScratch[j];
 						aBuffer[j + 0] += s * pan[0];
 						aBuffer[j + aBufferSize] += s * pan[1];
 					}
 				}
-#elif defined(SOLOUD_NEON_INTRINSICS)
-				{
-					int c = 0;
-					const float step0 = pani[0];
-					const float step1 = pani[1];
-					{
-						unsigned int samplequads = aSamplesToRead / 4; // rounded down
-						TinyAlignedFloatBuffer pan0;
-						pan0.mData[0] = pan[0] + pani[0];
-						pan0.mData[1] = pan[0] + pani[0] * 2;
-						pan0.mData[2] = pan[0] + pani[0] * 3;
-						pan0.mData[3] = pan[0] + pani[0] * 4;
-						TinyAlignedFloatBuffer pan1;
-						pan1.mData[0] = pan[1] + pani[1];
-						pan1.mData[1] = pan[1] + pani[1] * 2;
-						pan1.mData[2] = pan[1] + pani[1] * 3;
-						pan1.mData[3] = pan[1] + pani[1] * 4;
-						pani[0] *= 4;
-						pani[1] *= 4;
-						float32x4_t pan0delta = vdupq_n_f32(pani[0]);
-						float32x4_t pan1delta = vdupq_n_f32(pani[1]);
-						float32x4_t p0 = vld1q_f32(pan0.mData);
-						float32x4_t p1 = vld1q_f32(pan1.mData);
-
-						for (j = 0; j < samplequads; j++)
-						{
-							float32x4_t f = vld1q_f32(aScratch + c);
-							float32x4_t c0 = vmulq_f32(f, p0);
-							float32x4_t c1 = vmulq_f32(f, p1);
-							float32x4_t o0 = vld1q_f32(aBuffer + c);
-							float32x4_t o1 = vld1q_f32(aBuffer + c + aBufferSize);
-							c0 = vaddq_f32(c0, o0);
-							c1 = vaddq_f32(c1, o1);
-							vst1q_f32(aBuffer + c, c0);
-							vst1q_f32(aBuffer + c + aBufferSize, c1);
-							p0 = vaddq_f32(p0, pan0delta);
-							p1 = vaddq_f32(p1, pan1delta);
-							c += 4;
-						}
-					}
-					// If buffer size or samples to read are not divisible by 4, handle leftovers
-					pan[0] += step0 * c;
-					pan[1] += step1 * c;
-					pani[0] = step0;
-					pani[1] = step1;
-					for (j = c; j < aSamplesToRead; j++)
-					{
-						pan[0] += pani[0];
-						pan[1] += pani[1];
-						float s = aScratch[j];
-						aBuffer[j + 0] += s * pan[0];
-						aBuffer[j + aBufferSize] += s * pan[1];
-					}
-				}
-#else // fallback
-				for (j = 0; j < aSamplesToRead; j++)
-				{
-					pan[0] += pani[0];
-					pan[1] += pani[1];
-					float s = aScratch[j];
-					aBuffer[j + 0] += s * pan[0];
-					aBuffer[j + aBufferSize] += s * pan[1];
-				}
-#endif
 				break;
 			}
 			break;
@@ -2120,49 +2318,115 @@ namespace SoLoud
 				}
 				break;
 			case 4: // 4->4
-				for (j = 0; j < aSamplesToRead; j++)
 				{
-					pan[0] += pani[0];
-					pan[1] += pani[1];
-					pan[2] += pani[2];
-					pan[3] += pani[3];
-					float s1 = aScratch[j];
-					float s2 = aScratch[aBufferSize + j];
-					float s3 = aScratch[aBufferSize * 2 + j];
-					float s4 = aScratch[aBufferSize * 3 + j];
-					aBuffer[j + 0] += s1 * pan[0];
-					aBuffer[j + aBufferSize] += s2 * pan[1];
-					aBuffer[j + aBufferSize * 2] += s3 * pan[2];
-					aBuffer[j + aBufferSize * 3] += s4 * pan[3];
+					const float step[4] = { pani[0], pani[1], pani[2], pani[3] };
+					soloud_simd::f32x4 p[4], d[4];
+					for (unsigned int ch = 0; ch < 4; ch++)
+					{
+						p[ch] = soloud_simd::f32x4::make(
+							pan[ch] + step[ch], pan[ch] + step[ch] * 2.0f, pan[ch] + step[ch] * 3.0f, pan[ch] + step[ch] * 4.0f);
+						d[ch] = soloud_simd::f32x4::splat(step[ch] * 4.0f);
+					}
+					j = 0;
+					for (; j + 4 <= aSamplesToRead; j += 4)
+					{
+						for (unsigned int ch = 0; ch < 4; ch++)
+						{
+							const auto s = soloud_simd::f32x4::loadu(aScratch + aBufferSize * ch + j);
+							const auto o = soloud_simd::f32x4::loadu(aBuffer + aBufferSize * ch + j);
+							soloud_simd::add(soloud_simd::mul(s, p[ch]), o).storeu(aBuffer + aBufferSize * ch + j);
+							p[ch] = soloud_simd::add(p[ch], d[ch]);
+						}
+					}
+					for (unsigned int ch = 0; ch < 4; ch++)
+						pan[ch] += step[ch] * (float)j;
+					for (; j < aSamplesToRead; j++)
+					{
+						pan[0] += step[0];
+						pan[1] += step[1];
+						pan[2] += step[2];
+						pan[3] += step[3];
+						aBuffer[j + 0]               += aScratch[j]                   * pan[0];
+						aBuffer[j + aBufferSize]     += aScratch[aBufferSize + j]     * pan[1];
+						aBuffer[j + aBufferSize * 2] += aScratch[aBufferSize * 2 + j] * pan[2];
+						aBuffer[j + aBufferSize * 3] += aScratch[aBufferSize * 3 + j] * pan[3];
+					}
 				}
 				break;
 			case 2: // 2->4
-				for (j = 0; j < aSamplesToRead; j++)
 				{
-					pan[0] += pani[0];
-					pan[1] += pani[1];
-					pan[2] += pani[2];
-					pan[3] += pani[3];
-					float s1 = aScratch[j];
-					float s2 = aScratch[aBufferSize + j];
-					aBuffer[j + 0] += s1 * pan[0];
-					aBuffer[j + aBufferSize] += s2 * pan[1];
-					aBuffer[j + aBufferSize * 2] += s1 * pan[2];
-					aBuffer[j + aBufferSize * 3] += s2 * pan[3];
+					const float step[4] = { pani[0], pani[1], pani[2], pani[3] };
+					soloud_simd::f32x4 p[4], d[4];
+					for (unsigned int ch = 0; ch < 4; ch++)
+					{
+						p[ch] = soloud_simd::f32x4::make(
+							pan[ch] + step[ch], pan[ch] + step[ch] * 2.0f, pan[ch] + step[ch] * 3.0f, pan[ch] + step[ch] * 4.0f);
+						d[ch] = soloud_simd::f32x4::splat(step[ch] * 4.0f);
+					}
+					j = 0;
+					for (; j + 4 <= aSamplesToRead; j += 4)
+					{
+						const auto s1 = soloud_simd::f32x4::loadu(aScratch + j);
+						const auto s2 = soloud_simd::f32x4::loadu(aScratch + aBufferSize + j);
+						soloud_simd::add(soloud_simd::mul(s1, p[0]), soloud_simd::f32x4::loadu(aBuffer + j)).storeu(aBuffer + j);
+						soloud_simd::add(soloud_simd::mul(s2, p[1]), soloud_simd::f32x4::loadu(aBuffer + aBufferSize + j)).storeu(aBuffer + aBufferSize + j);
+						soloud_simd::add(soloud_simd::mul(s1, p[2]), soloud_simd::f32x4::loadu(aBuffer + aBufferSize * 2 + j)).storeu(aBuffer + aBufferSize * 2 + j);
+						soloud_simd::add(soloud_simd::mul(s2, p[3]), soloud_simd::f32x4::loadu(aBuffer + aBufferSize * 3 + j)).storeu(aBuffer + aBufferSize * 3 + j);
+						for (unsigned int ch = 0; ch < 4; ch++)
+							p[ch] = soloud_simd::add(p[ch], d[ch]);
+					}
+					for (unsigned int ch = 0; ch < 4; ch++)
+						pan[ch] += step[ch] * (float)j;
+					for (; j < aSamplesToRead; j++)
+					{
+						pan[0] += step[0];
+						pan[1] += step[1];
+						pan[2] += step[2];
+						pan[3] += step[3];
+						float s1 = aScratch[j];
+						float s2 = aScratch[aBufferSize + j];
+						aBuffer[j + 0]               += s1 * pan[0];
+						aBuffer[j + aBufferSize]     += s2 * pan[1];
+						aBuffer[j + aBufferSize * 2] += s1 * pan[2];
+						aBuffer[j + aBufferSize * 3] += s2 * pan[3];
+					}
 				}
 				break;
 			case 1: // 1->4
-				for (j = 0; j < aSamplesToRead; j++)
 				{
-					pan[0] += pani[0];
-					pan[1] += pani[1];
-					pan[2] += pani[2];
-					pan[3] += pani[3];
-					float s = aScratch[j];
-					aBuffer[j + 0] += s * pan[0];
-					aBuffer[j + aBufferSize] += s * pan[1];
-					aBuffer[j + aBufferSize * 2] += s * pan[2];
-					aBuffer[j + aBufferSize * 3] += s * pan[3];
+					const float step[4] = { pani[0], pani[1], pani[2], pani[3] };
+					soloud_simd::f32x4 p[4], d[4];
+					for (unsigned int ch = 0; ch < 4; ch++)
+					{
+						p[ch] = soloud_simd::f32x4::make(
+							pan[ch] + step[ch], pan[ch] + step[ch] * 2.0f, pan[ch] + step[ch] * 3.0f, pan[ch] + step[ch] * 4.0f);
+						d[ch] = soloud_simd::f32x4::splat(step[ch] * 4.0f);
+					}
+					j = 0;
+					for (; j + 4 <= aSamplesToRead; j += 4)
+					{
+						const auto s = soloud_simd::f32x4::loadu(aScratch + j);
+						for (unsigned int ch = 0; ch < 4; ch++)
+						{
+							const auto o = soloud_simd::f32x4::loadu(aBuffer + aBufferSize * ch + j);
+							soloud_simd::add(soloud_simd::mul(s, p[ch]), o).storeu(aBuffer + aBufferSize * ch + j);
+							p[ch] = soloud_simd::add(p[ch], d[ch]);
+						}
+					}
+					for (unsigned int ch = 0; ch < 4; ch++)
+						pan[ch] += step[ch] * (float)j;
+					for (; j < aSamplesToRead; j++)
+					{
+						pan[0] += step[0];
+						pan[1] += step[1];
+						pan[2] += step[2];
+						pan[3] += step[3];
+						float s = aScratch[j];
+						aBuffer[j + 0]               += s * pan[0];
+						aBuffer[j + aBufferSize]     += s * pan[1];
+						aBuffer[j + aBufferSize * 2] += s * pan[2];
+						aBuffer[j + aBufferSize * 3] += s * pan[3];
+					}
 				}
 				break;
 			}
@@ -2499,9 +2763,11 @@ namespace SoLoud
 				}
 
 				if ((voice->mFlags & AudioSourceInstance::REALTIME_DIRECT) &&
+					!(voice->mFlags & AudioSourceInstance::LOOPING) &&
 					step_fixed == FIXPOINT_FRAC_MUL &&
 					voice->mLeftoverSamples == 0 &&
 					voice->mSrcOffset == 0 &&
+					(outofs & 3u) == 0 &&
 					outofs < samplesToProduce)
 				{
 					unsigned int directSamples = samplesToProduce - outofs;
@@ -2899,8 +3165,9 @@ namespace SoLoud
 				mResampleDataOwner[found] = mVoice[mActiveVoice[i]];
 				mResampleDataOwner[found]->mResampleData[0] = mResampleData[found * 2 + 0];
 				mResampleDataOwner[found]->mResampleData[1] = mResampleData[found * 2 + 1];
-				memset(mResampleDataOwner[found]->mResampleData[0], 0, sizeof(float) * SAMPLE_GRANULARITY * MAX_CHANNELS);
-				memset(mResampleDataOwner[found]->mResampleData[1], 0, sizeof(float) * SAMPLE_GRANULARITY * MAX_CHANNELS);
+				const unsigned int ownerCh = mResampleDataOwner[found]->mChannels;
+				memset(mResampleDataOwner[found]->mResampleData[0], 0, sizeof(float) * SAMPLE_GRANULARITY * ownerCh);
+				memset(mResampleDataOwner[found]->mResampleData[1], 0, sizeof(float) * SAMPLE_GRANULARITY * ownerCh);
 				latestfree = found + 1;
 			}
 		}
@@ -2993,16 +3260,33 @@ namespace SoLoud
 		// 	len = stack[--pos];          
 		// }
 		// // https://github.com/jarikomppa/soloud/issues/298
-		auto comp = [this](const unsigned int & a, const unsigned int & b)
+		// Pack original candidate rank into upper 16 bits so std::partial_sort
+		// preserves exact stable tie-breaking in O(N log K) with zero heap allocations.
+		for (unsigned int k = mustlive; k < candidates; k++)
 		{
-			// Test a>b
-			if((mVoice[a]->mFlags & AudioSourceInstance::PROTECTED) && !(mVoice[b]->mFlags & AudioSourceInstance::PROTECTED))
+			mActiveVoice[k] |= ((k - mustlive) << 16);
+		}
+		auto comp = [this](const unsigned int aPacked, const unsigned int bPacked)
+		{
+			const unsigned int a = aPacked & 0xffffu;
+			const unsigned int b = bPacked & 0xffffu;
+			const unsigned int aProt = mVoice[a]->mFlags & AudioSourceInstance::PROTECTED;
+			const unsigned int bProt = mVoice[b]->mFlags & AudioSourceInstance::PROTECTED;
+			if (aProt != bProt)
+				return aProt != 0;
+			const float va = mVoice[a]->mOverallVolume;
+			const float vb = mVoice[b]->mOverallVolume;
+			if (va > vb)
 				return true;
-			if((mVoice[b]->mFlags & AudioSourceInstance::PROTECTED) && !(mVoice[a]->mFlags & AudioSourceInstance::PROTECTED))
+			if (vb > va)
 				return false;
-			return mVoice[a]->mOverallVolume > mVoice[b]->mOverallVolume;
+			return (aPacked >> 16) < (bPacked >> 16);
 		};
-		std::stable_sort(&mActiveVoice[0+mustlive], &mActiveVoice[candidates], comp);
+		std::partial_sort(&mActiveVoice[mustlive], &mActiveVoice[mMaxActiveVoices], &mActiveVoice[candidates], comp);
+		for (unsigned int k = mustlive; k < candidates; k++)
+		{
+			mActiveVoice[k] &= 0xffffu;
+		}
 		// TODO: should the rest of the voices be flagged INAUDIBLE?
 		mapResampleBuffers_internal();
 	}
@@ -3205,37 +3489,7 @@ namespace SoLoud
 		}
 #endif
 
-#ifdef _MCW_DN
-		{
-			static bool once = false;
-			if (!once)
-			{
-				once = true;
-				if (!(mFlags & NO_FPU_REGISTER_CHANGE))
-				{
-					_controlfp(_DN_FLUSH, _MCW_DN);
-				}
-			}
-		}
-#endif
-
-#ifdef SOLOUD_SSE_INTRINSICS
-		{
-			static bool once = false;
-			if (!once)
-			{
-				once = true;
-				// Set denorm clear to zero (CTZ) and denorms are zero (DAZ) flags on.
-				// This causes all math to consider really tiny values as zero, which
-				// helps performance. I'd rather use constants from the sse headers,
-				// but for some reason the DAZ value is not defined there(!)
-				if (!(mFlags & NO_FPU_REGISTER_CHANGE))
-				{
-					_mm_setcsr(_mm_getcsr() | 0x8040);
-				}
-			}
-		}
-#endif
+		soloud_simd::ScopedFlushDenormals scopedFtz((mFlags & NO_FPU_REGISTER_CHANGE) == 0);
 
 		time buffertime = (time)aSamples / (time)mSamplerate;
 		float globalVolume[2];
@@ -3275,21 +3529,45 @@ namespace SoLoud
 		// momentarily show up twice (plan §4.6).
 		if ((mFlags & ENABLE_VISUALIZATION) && !mRemixing)
 		{
-			int i;
-			for (i = 0; i < MAX_CHANNELS; i++)
+			for (int i = 0; i < MAX_CHANNELS; i++)
 			{
 				mVisualizationChannelVolume[i] = 0;
 			}
 			if (aSamples > 255)
 			{
-				for (i = 0; i < 256; i++)
+				if (mChannels == 0)
 				{
-					int j;
-					mVisualizationWaveData[i] = 0;
-					for (j = 0; j < (signed)mChannels; j++)
+					memset(mVisualizationWaveData, 0, sizeof(float) * 256);
+				}
+				else
+				{
+					const float *ch0 = mScratch.mData;
+					mVisualizationChannelVolume[0] = peakAbsF32(ch0, 256);
+					memcpy(mVisualizationWaveData, ch0, sizeof(float) * 256);
+					for (unsigned int j = 1; j < mChannels; j++)
 					{
-						float sample = mScratch.mData[i + j * aStride];
-						float absvol = (float)fabs(sample);
+						const float *chPtr = mScratch.mData + j * aStride;
+						mVisualizationChannelVolume[j] = peakAbsF32(chPtr, 256);
+						for (unsigned int i = 0; i < 256; i += 4)
+						{
+							soloud_simd::add(
+								soloud_simd::f32x4::loadu(mVisualizationWaveData + i),
+								soloud_simd::f32x4::loadu(chPtr + i))
+								.storeu(mVisualizationWaveData + i);
+						}
+					}
+				}
+			}
+			else if (aSamples > 0)
+			{
+				// Very unlikely failsafe branch
+				for (int i = 0; i < 256; i++)
+				{
+					mVisualizationWaveData[i] = 0;
+					for (int j = 0; j < (signed)mChannels; j++)
+					{
+						float sample = mScratch.mData[(i % aSamples) + j * aStride];
+						float absvol = fabsf(sample);
 						if (mVisualizationChannelVolume[j] < absvol)
 							mVisualizationChannelVolume[j] = absvol;
 						mVisualizationWaveData[i] += sample;
@@ -3298,20 +3576,7 @@ namespace SoLoud
 			}
 			else
 			{
-				// Very unlikely failsafe branch
-				for (i = 0; i < 256; i++)
-				{
-					int j;
-					mVisualizationWaveData[i] = 0;
-					for (j = 0; j < (signed)mChannels; j++)
-					{
-						float sample = mScratch.mData[(i % aSamples) + j * aStride];
-						float absvol = (float)fabs(sample);
-						if (mVisualizationChannelVolume[j] < absvol)
-							mVisualizationChannelVolume[j] = absvol;
-						mVisualizationWaveData[i] += sample;
-					}
-				}
+				memset(mVisualizationWaveData, 0, sizeof(float) * 256);
 			}
 		}
 	}
@@ -3363,8 +3628,15 @@ namespace SoLoud
 
 		// Global volume only, same as renderRingTopUp_internal(): the ring
 		// holds the unclipped mix and postProcessRenderRing_internal() clips.
-		applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
-		interlace_samples_float(mScratch.mData, aBuffer, aSamples, mChannels, stride);
+		if (globalVolume[0] == 1.0f && globalVolume[1] == 1.0f)
+		{
+			interlace_samples_float(mOutputScratch.mData, aBuffer, aSamples, mChannels, stride);
+		}
+		else
+		{
+			applyGlobalVolume_internal(mOutputScratch, mScratch, stride, globalVolume[0], globalVolume[1]);
+			interlace_samples_float(mScratch.mData, aBuffer, aSamples, mChannels, stride);
+		}
 
 		// Re-capture the checkpoint for this boundary (see the comment above).
 		captureMixCheckpoint_internal();
@@ -3416,6 +3688,62 @@ namespace SoLoud
 			}
 			return;
 		}
+		if (aChannels == 4)
+		{
+			const float *c0 = aSourceBuffer;
+			const float *c1 = aSourceBuffer + aStride;
+			const float *c2 = aSourceBuffer + aStride * 2;
+			const float *c3 = aSourceBuffer + aStride * 3;
+			i = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				__m128 r0 = _mm_loadu_ps(c0 + i);
+				__m128 r1 = _mm_loadu_ps(c1 + i);
+				__m128 r2 = _mm_loadu_ps(c2 + i);
+				__m128 r3 = _mm_loadu_ps(c3 + i);
+				_MM_TRANSPOSE4_PS(r0, r1, r2, r3);
+				_mm_storeu_ps(aDestBuffer + i * 4 + 0, r0);
+				_mm_storeu_ps(aDestBuffer + i * 4 + 4, r1);
+				_mm_storeu_ps(aDestBuffer + i * 4 + 8, r2);
+				_mm_storeu_ps(aDestBuffer + i * 4 + 12, r3);
+			}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				float32x4x4_t q;
+				q.val[0] = vld1q_f32(c0 + i);
+				q.val[1] = vld1q_f32(c1 + i);
+				q.val[2] = vld1q_f32(c2 + i);
+				q.val[3] = vld1q_f32(c3 + i);
+				vst4q_f32(aDestBuffer + i * 4, q);
+			}
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				v128_t r0 = wasm_v128_load(c0 + i);
+				v128_t r1 = wasm_v128_load(c1 + i);
+				v128_t r2 = wasm_v128_load(c2 + i);
+				v128_t r3 = wasm_v128_load(c3 + i);
+				v128_t t0 = wasm_i32x4_shuffle(r0, r1, 0, 4, 1, 5);
+				v128_t t1 = wasm_i32x4_shuffle(r2, r3, 0, 4, 1, 5);
+				v128_t t2 = wasm_i32x4_shuffle(r0, r1, 2, 6, 3, 7);
+				v128_t t3 = wasm_i32x4_shuffle(r2, r3, 2, 6, 3, 7);
+				wasm_v128_store(aDestBuffer + i * 4 + 0, wasm_i32x4_shuffle(t0, t1, 0, 1, 4, 5));
+				wasm_v128_store(aDestBuffer + i * 4 + 4, wasm_i32x4_shuffle(t0, t1, 2, 3, 6, 7));
+				wasm_v128_store(aDestBuffer + i * 4 + 8, wasm_i32x4_shuffle(t2, t3, 0, 1, 4, 5));
+				wasm_v128_store(aDestBuffer + i * 4 + 12, wasm_i32x4_shuffle(t2, t3, 2, 3, 6, 7));
+			}
+#endif
+			for (; i < aSamples; i++)
+			{
+				aDestBuffer[i * 4 + 0] = c0[i];
+				aDestBuffer[i * 4 + 1] = c1[i];
+				aDestBuffer[i * 4 + 2] = c2[i];
+				aDestBuffer[i * 4 + 3] = c3[i];
+			}
+			return;
+		}
 		c = 0;
 		for (j = 0; j < aChannels; j++)
 		{
@@ -3431,7 +3759,63 @@ namespace SoLoud
 	void interlace_samples_s16(const float *aSourceBuffer, short *aDestBuffer, unsigned int aSamples, unsigned int aChannels, unsigned int aStride)
 	{
 		// 111222 -> 121212
-		unsigned int i, j, c;
+		unsigned int i = 0, j, c;
+		if (aChannels == 1)
+		{
+#if defined(SOLOUD_SSE_INTRINSICS)
+			const __m128 scale = _mm_set1_ps(32767.0f);
+			for (; i + 8 <= aSamples; i += 8)
+			{
+				__m128i lo = _mm_cvttps_epi32(_mm_mul_ps(_mm_loadu_ps(aSourceBuffer + i), scale));
+				__m128i hi = _mm_cvttps_epi32(_mm_mul_ps(_mm_loadu_ps(aSourceBuffer + i + 4), scale));
+				_mm_storeu_si128(reinterpret_cast<__m128i *>(aDestBuffer + i), _mm_packs_epi32(lo, hi));
+			}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+			const float32x4_t scale = vdupq_n_f32(32767.0f);
+			for (; i + 8 <= aSamples; i += 8)
+			{
+				int16x4_t lo = vqmovn_s32(vcvtq_s32_f32(vmulq_f32(vld1q_f32(aSourceBuffer + i), scale)));
+				int16x4_t hi = vqmovn_s32(vcvtq_s32_f32(vmulq_f32(vld1q_f32(aSourceBuffer + i + 4), scale)));
+				vst1q_s16(reinterpret_cast<int16_t *>(aDestBuffer + i), vcombine_s16(lo, hi));
+			}
+#endif
+			for (; i < aSamples; i++)
+			{
+				aDestBuffer[i] = (short)(aSourceBuffer[i] * 0x7fff);
+			}
+			return;
+		}
+		if (aChannels == 2)
+		{
+			const float *srcL = aSourceBuffer;
+			const float *srcR = aSourceBuffer + aStride;
+#if defined(SOLOUD_SSE_INTRINSICS)
+			const __m128 scale = _mm_set1_ps(32767.0f);
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				__m128 l = _mm_loadu_ps(srcL + i);
+				__m128 r = _mm_loadu_ps(srcR + i);
+				__m128i lo = _mm_cvttps_epi32(_mm_mul_ps(_mm_unpacklo_ps(l, r), scale));
+				__m128i hi = _mm_cvttps_epi32(_mm_mul_ps(_mm_unpackhi_ps(l, r), scale));
+				_mm_storeu_si128(reinterpret_cast<__m128i *>(aDestBuffer + i * 2), _mm_packs_epi32(lo, hi));
+			}
+#elif defined(SOLOUD_NEON_INTRINSICS)
+			const float32x4_t scale = vdupq_n_f32(32767.0f);
+			for (; i + 4 <= aSamples; i += 4)
+			{
+				int16x4x2_t lr16;
+				lr16.val[0] = vqmovn_s32(vcvtq_s32_f32(vmulq_f32(vld1q_f32(srcL + i), scale)));
+				lr16.val[1] = vqmovn_s32(vcvtq_s32_f32(vmulq_f32(vld1q_f32(srcR + i), scale)));
+				vst2_s16(reinterpret_cast<int16_t *>(aDestBuffer + i * 2), lr16);
+			}
+#endif
+			for (; i < aSamples; i++)
+			{
+				aDestBuffer[i * 2] = (short)(srcL[i] * 0x7fff);
+				aDestBuffer[i * 2 + 1] = (short)(srcR[i] * 0x7fff);
+			}
+			return;
+		}
 		c = 0;
 		for (j = 0; j < aChannels; j++)
 		{

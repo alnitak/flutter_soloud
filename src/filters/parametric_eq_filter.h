@@ -27,7 +27,9 @@ class ParametricEqInstance : public SoLoud::FilterInstance {
   int mWinHalf = 0;
   int mWinTwice = 0;
   float mFFTScale = 0.0f;
+  bool mUseRealFFT = true;
   std::vector<float> mHannWindow;
+  std::vector<float> mLogBinIndex;
   std::vector<float> mBinGainTable;
   float mCachedSampleRate = 0.0f;
   bool mGainTableDirty = true;

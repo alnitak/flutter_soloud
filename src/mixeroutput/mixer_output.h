@@ -139,9 +139,9 @@ class MixerOutput {
   /// The callback side is lock-free and allocation-free, as a real-time
   /// callback must be.
   static constexpr uint64_t kNoCaptureSession = 0;
-  std::atomic<uint64_t> m_activeSession{kNoCaptureSession};
+  alignas(64) std::atomic<uint64_t> m_activeSession{kNoCaptureSession};
   std::atomic<uint64_t> m_nextSession{1};
-  std::atomic<int> m_audioCallbacksInFlight{0};
+  alignas(64) std::atomic<int> m_audioCallbacksInFlight{0};
 
   /// Admit the audio callback to the currently published session, if any.
   /// Returns [kNoCaptureSession] when there is nothing to capture into, in
@@ -190,8 +190,8 @@ class MixerOutput {
 
   std::vector<uint8_t> m_buffer;
   size_t m_bufferSize = 0;
-  std::atomic<size_t> m_writeOffset{0};
-  std::atomic<size_t> m_readOffset{0};
+  alignas(64) std::atomic<size_t> m_writeOffset{0};
+  alignas(64) std::atomic<size_t> m_readOffset{0};
 
   size_t m_notificationThreshold = 4096;
   std::atomic<bool> m_notified{false};

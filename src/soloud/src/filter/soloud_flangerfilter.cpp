@@ -61,26 +61,42 @@ namespace SoLoud
 			memset(mBuffer, 0, sizeof(float) * mBufferLength * aChannels);
 		}
 
-		unsigned int i, j;
+		const unsigned int len = mBufferLength;
+		if (len == 0 || aSamples == 0)
+			return;
 		int maxsamples = (int)ceil(mParam[FlangerFilter::DELAY] * aSamplerate);
-		double inc = mParam[FlangerFilter::FREQ] * M_PI * 2 / aSamplerate;
-		for (i = 0; i < aChannels; i++)
+		const double inc = mParam[FlangerFilter::FREQ] * M_PI * 2 / aSamplerate;
+		const double cosInc = cos(inc);
+		const double sinInc = sin(inc);
+		const float wetHalf = 0.5f * mParam[FlangerFilter::WET];
+		const unsigned int startOffset = mOffset % len;
+
+		for (unsigned int i = 0; i < aChannels; i++)
 		{
-			int mbofs = i * mBufferLength;
-			int abofs = i * aBufferSize;
-			for (j = 0; j < aSamples; j++, abofs++)
+			float *dBuf = mBuffer + (size_t)i * (size_t)len;
+			float *aBuf = aBuffer + (size_t)i * (size_t)aBufferSize;
+			unsigned int wrOfs = startOffset;
+			double c = cos(mIndex);
+			double s = sin(mIndex);
+			for (unsigned int j = 0; j < aSamples; j++)
 			{
-				int delay = (int)floor(maxsamples * (1 + cos(mIndex))) / 2;
-				mIndex += inc;
-				mBuffer[mbofs + mOffset % mBufferLength] = aBuffer[abofs];
-				float n = 0.5f * (aBuffer[abofs] + mBuffer[mbofs + (mBufferLength - delay + mOffset) % mBufferLength]);
-				mOffset++;
-				aBuffer[abofs] += (n - aBuffer[abofs]) * mParam[FlangerFilter::WET];
+				unsigned int delay = (unsigned int)((int)floor(maxsamples * (1.0 + c)) / 2);
+				if (delay >= len)
+					delay %= len;
+				const double nextC = c * cosInc - s * sinInc;
+				s = s * cosInc + c * sinInc;
+				c = nextC;
+
+				const float in = aBuf[j];
+				dBuf[wrOfs] = in;
+				const unsigned int rdOfs = (wrOfs >= delay) ? (wrOfs - delay) : (wrOfs + len - delay);
+				aBuf[j] = in + (dBuf[rdOfs] - in) * wetHalf;
+				if (++wrOfs >= len)
+					wrOfs = 0;
 			}
-			mOffset -= aSamples;
+			mIndex += inc * (double)aSamples;
 		}
-		mOffset += aSamples;
-		mOffset %= mBufferLength;
+		mOffset = (startOffset + aSamples) % len;
 	}
 
 	struct FlangerFilterSnapshot : public FilterStateSnapshot

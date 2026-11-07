@@ -8,6 +8,9 @@
 #include <cstring>
 #include <mutex>
 
+#include "../enums.h"
+#include "../simd/simd_pcm.h"
+
 enum BufferingType
 {
     PRESERVED,
@@ -23,7 +26,19 @@ public:
 private:
     size_t maxBytes; // Maximum capacity in bytes
     size_t readOffset; // Byte offset to active data (used in RELEASED mode)
-    std::vector<float> mConversionScratch; // Reusable scratch for PCM conversion
+
+    void compactLocked(size_t bytesNeeded) {
+        if (readOffset > 0 &&
+            ((buffer.size() - readOffset) < readOffset ||
+             buffer.size() + bytesNeeded > maxBytes)) {
+            const size_t remaining = buffer.size() - readOffset;
+            if (remaining > 0) {
+                std::memmove(buffer.data(), buffer.data() + readOffset, remaining);
+            }
+            buffer.resize(remaining);
+            readOffset = 0;
+        }
+    }
 
 public:
     std::recursive_mutex bufferMutex; // Add mutex for thread safety
@@ -56,83 +71,93 @@ public:
     // the buffer reached the [maxBytes] meaning the buffer is full.
     size_t addData(const BufferType format, const void* data, size_t numSamples, bool *allDataAdded) {
         *allDataAdded = false;
+        if (data == nullptr || numSamples == 0) {
+            *allDataAdded = (numSamples == 0);
+            return 0;
+        }
+
+        std::lock_guard<std::recursive_mutex> lock(bufferMutex);
+
+        const size_t bytesNeeded = numSamples * sizeof(float);
+        compactLocked(bytesNeeded);
+
+        if (buffer.size() >= maxBytes) {
+            return 0;
+        }
+
+        size_t newNumSamples = numSamples;
+        if (bytesNeeded > maxBytes - buffer.size()) {
+            newNumSamples = (maxBytes - buffer.size()) / sizeof(float);
+            if (newNumSamples == 0) {
+                return 0;
+            }
+        }
+
+        const size_t oldByteSize = buffer.size();
+        buffer.resize(oldByteSize + newNumSamples * sizeof(float));
+        float* dst = reinterpret_cast<float*>(buffer.data() + oldByteSize);
+
         switch (format)
         {
             case BufferType::AUTO:
             case BufferType::PCM_F32LE:
             case BufferType::PCM_F32LE_PLANAR:
             {
-                return addData(reinterpret_cast<const float*>(data), numSamples, allDataAdded);
+                std::memcpy(dst, data, newNumSamples * sizeof(float));
+                break;
             }
-            break;
             case BufferType::PCM_S8:
             {
-                const int8_t* data8 = reinterpret_cast<const int8_t*>(data);
-                mConversionScratch.resize(numSamples);
-                for (size_t i = 0; i < numSamples; ++i) {
-                    mConversionScratch[i] = data8[i] / 128.0f;
-                }
-                return addData(mConversionScratch.data(), numSamples, allDataAdded);
+                SoLoud::convertS8ToFloats(
+                    reinterpret_cast<const int8_t*>(data), dst,
+                    static_cast<unsigned int>(newNumSamples));
+                break;
             }
-            break;
             case BufferType::PCM_S16LE:
             {
-                const int16_t* data16 = reinterpret_cast<const int16_t*>(data);
-                mConversionScratch.resize(numSamples);
-                for (size_t i = 0; i < numSamples; ++i) {
-                    mConversionScratch[i] = data16[i] / 32768.0f;
+                if ((reinterpret_cast<uintptr_t>(data) & 1u) == 0) {
+                    SoLoud::convertInt16ToFloats(
+                        reinterpret_cast<const int16_t*>(data), dst,
+                        static_cast<unsigned int>(newNumSamples));
+                } else {
+                    const uint8_t* bytes = static_cast<const uint8_t*>(data);
+                    for (size_t i = 0; i < newNumSamples; ++i) {
+                        int16_t s = 0;
+                        std::memcpy(&s, bytes + i * 2, sizeof(int16_t));
+                        dst[i] = static_cast<float>(s) * (1.0f / 32768.0f);
+                    }
                 }
-                return addData(mConversionScratch.data(), numSamples, allDataAdded);
+                break;
             }
-            break;
             case BufferType::PCM_S32LE:
             {
-                const int32_t* data32 = reinterpret_cast<const int32_t*>(data);
-                mConversionScratch.resize(numSamples);
-                for (size_t i = 0; i < numSamples; ++i) {
-                    mConversionScratch[i] = data32[i] / 2147483648.0f;
+                if ((reinterpret_cast<uintptr_t>(data) & 3u) == 0) {
+                    SoLoud::convertInt32ToFloats(
+                        reinterpret_cast<const int32_t*>(data), dst,
+                        static_cast<unsigned int>(newNumSamples));
+                } else {
+                    const uint8_t* bytes = static_cast<const uint8_t*>(data);
+                    for (size_t i = 0; i < newNumSamples; ++i) {
+                        int32_t s = 0;
+                        std::memcpy(&s, bytes + i * 4, sizeof(int32_t));
+                        dst[i] = static_cast<float>(s) * (1.0f / 2147483648.0f);
+                    }
                 }
-                return addData(mConversionScratch.data(), numSamples, allDataAdded);
+                break;
             }
-            break;
+            default:
+                buffer.resize(oldByteSize);
+                return 0;
         }
-        return 0;
+
+        *allDataAdded = (newNumSamples == numSamples);
+        return newNumSamples;
     }
 
     // Overload for float data, directly adding its bytes to the buffer.
     // Return the number of floats written.
     size_t addData(const float* data, size_t numSamples, bool *allDataAdded) {
-        std::lock_guard<std::recursive_mutex> lock(bufferMutex); // Lock during modification
-
-        if (buffer.size() >= maxBytes) {
-            *allDataAdded = false;
-            return 0;
-        }
-
-        // Compact buffer when more than half has been consumed
-        if (readOffset > 0 && (buffer.size() - readOffset) < readOffset) {
-            size_t remaining = buffer.size() - readOffset;
-            if (remaining > 0) {
-                memmove(buffer.data(), buffer.data() + readOffset, remaining);
-            }
-            buffer.resize(remaining);
-            readOffset = 0;
-        }
-
-        size_t bytesNeeded = numSamples * sizeof(float);
-        size_t newNumSamples = numSamples;
-        if (bytesNeeded > maxBytes - buffer.size()) {
-            size_t bytesLeft = maxBytes - buffer.size();
-            newNumSamples = bytesLeft / sizeof(float);
-            if (newNumSamples == 0) {
-                *allDataAdded = false;
-                return 0;
-            }
-        }
-        const int8_t* data8 = reinterpret_cast<const int8_t*>(data);  // Convert float array to int8_t array
-        buffer.insert(buffer.end(), data8, data8 + newNumSamples * sizeof(float)); // Append directly
-        *allDataAdded = newNumSamples == numSamples;
-        return newNumSamples;
+        return addData(BufferType::PCM_F32LE, data, numSamples, allDataAdded);
     }
 
     // Remove data from the start of the buffer

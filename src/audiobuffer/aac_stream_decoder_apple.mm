@@ -134,18 +134,21 @@ public:
     }
 
     // 3. Decode queued packets through AudioConverter
+    constexpr UInt32 kFramesPerChunk = 1024;
+    const size_t chunkFloats = static_cast<size_t>(kFramesPerChunk) * mOutputFormat.mChannelsPerFrame;
+    if (mDecodeChunk.size() < chunkFloats) {
+      mDecodeChunk.resize(chunkFloats);
+    }
     while ((!mPacketQueue.empty() || (mDataEnded && !mDrained)) &&
            (maxOutputSamples == 0 || decodedData.size() < maxOutputSamples)) {
-      constexpr UInt32 kFramesPerChunk = 1024;
       UInt32 ioOutputFrames = kFramesPerChunk;
-      std::vector<float> chunk(ioOutputFrames * mOutputFormat.mChannelsPerFrame);
 
       AudioBufferList outputBufferList;
       outputBufferList.mNumberBuffers = 1;
       outputBufferList.mBuffers[0].mNumberChannels = mOutputFormat.mChannelsPerFrame;
       outputBufferList.mBuffers[0].mDataByteSize =
-          static_cast<UInt32>(chunk.size() * sizeof(float));
-      outputBufferList.mBuffers[0].mData = chunk.data();
+          static_cast<UInt32>(chunkFloats * sizeof(float));
+      outputBufferList.mBuffers[0].mData = mDecodeChunk.data();
 
       OSStatus convStatus = AudioConverterFillComplexBuffer(
           mConverter,
@@ -163,11 +166,11 @@ public:
                                     : samplesDecoded;
         size_t toAppend = std::min(samplesDecoded, availableSpace);
 
-        decodedData.insert(decodedData.end(), chunk.data(), chunk.data() + toAppend);
+        decodedData.insert(decodedData.end(), mDecodeChunk.data(), mDecodeChunk.data() + toAppend);
 
         // Buffer any excess samples into remainder queue
         for (size_t s = toAppend; s < samplesDecoded; ++s) {
-          mDecodedRemainder.push_back(chunk[s]);
+          mDecodedRemainder.push_back(mDecodeChunk[s]);
         }
       }
 
@@ -372,6 +375,7 @@ private:
   int mTargetSampleRate = 0;
   int mTargetChannels = 0;
   std::vector<uint8_t> mMagicCookie;
+  std::vector<float> mDecodeChunk;
   std::deque<QueuedPacket> mPacketQueue;
   std::deque<float> mDecodedRemainder;
   QueuedPacket mCurrentPacket;

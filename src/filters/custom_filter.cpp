@@ -4,13 +4,7 @@
 #include <cmath>
 #include <cstring>
 
-#if defined(SOLOUD_SSE_INTRINSICS)
-#include <emmintrin.h>
-#elif defined(SOLOUD_NEON_INTRINSICS)
-#include <arm_neon.h>
-#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-#include <wasm_simd128.h>
-#endif
+#include "../simd/soloud_simd.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -102,8 +96,8 @@ void CustomFilterInstance::invokeCallback(float *aBuffer, unsigned int aSamples,
     return;
   }
 
-  const std::string &jsFn = mParent->getWebJsCallbackName();
 #ifdef __EMSCRIPTEN__
+  const std::string &jsFn = mParent->getWebJsCallbackName();
   if (!jsFn.empty()) {
     const uint32_t maskLo = static_cast<uint32_t>(mParamChanged & 0xFFFFFFFFULL);
     const uint32_t maskHi = static_cast<uint32_t>(mParamChanged >> 32);
@@ -139,6 +133,8 @@ void CustomFilterInstance::filter(float *aBuffer, unsigned int aSamples,
     mParamChanged = 0;
     return;
   }
+
+  soloud_simd::ScopedFlushDenormals flushDenormals;
 
   // Branch 2: 100% wet (wet >= 1.0f) — process in-place with zero copies.
   if (wet >= 1.0f) {
@@ -187,34 +183,16 @@ void CustomFilterInstance::blendPartialWet(float *aBuffer, unsigned int aSamples
   invokeCallback(aBuffer, aSamples, aBufferSize, aChannels, aSamplerate, aTime);
 
   const float wet = aWet;
+  const soloud_simd::f32x4 vWet = soloud_simd::f32x4::splat(wet);
   for (unsigned int ch = 0; ch < aChannels; ++ch) {
     const float *dry = mDryScratch.data() + static_cast<size_t>(ch) * aSamples;
     float *out = aBuffer + static_cast<size_t>(ch) * aBufferSize;
     unsigned int i = 0;
-#if defined(SOLOUD_SSE_INTRINSICS)
-    const __m128 vWet = _mm_set1_ps(wet);
     for (; i + 4 <= aSamples; i += 4) {
-      const __m128 vDry = _mm_loadu_ps(dry + i);
-      const __m128 vOut = _mm_loadu_ps(out + i);
-      _mm_storeu_ps(out + i,
-                    _mm_add_ps(vDry, _mm_mul_ps(_mm_sub_ps(vOut, vDry), vWet)));
+      const soloud_simd::f32x4 vDry = soloud_simd::f32x4::loadu(dry + i);
+      const soloud_simd::f32x4 vOut = soloud_simd::f32x4::loadu(out + i);
+      soloud_simd::fma(vDry, soloud_simd::sub(vOut, vDry), vWet).storeu(out + i);
     }
-#elif defined(SOLOUD_NEON_INTRINSICS)
-    for (; i + 4 <= aSamples; i += 4) {
-      const float32x4_t vDry = vld1q_f32(dry + i);
-      const float32x4_t vOut = vld1q_f32(out + i);
-      vst1q_f32(out + i, vmlaq_n_f32(vDry, vsubq_f32(vOut, vDry), wet));
-    }
-#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-    const v128_t vWet = wasm_f32x4_splat(wet);
-    for (; i + 4 <= aSamples; i += 4) {
-      const v128_t vDry = wasm_v128_load(dry + i);
-      const v128_t vOut = wasm_v128_load(out + i);
-      wasm_v128_store(
-          out + i,
-          wasm_f32x4_add(vDry, wasm_f32x4_mul(wasm_f32x4_sub(vOut, vDry), vWet)));
-    }
-#endif
     for (; i < aSamples; ++i) {
       out[i] = dry[i] + (out[i] - dry[i]) * wet;
     }

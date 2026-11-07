@@ -97,7 +97,7 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
   // - mDataEnded is false (more data may come)
   // When mDataEnded is true and decoder is initialized, dr_wav may still have
   // data in its internal buffer that hasn't been decoded yet.
-  if (audioData.empty() && (!isInitialized || !mDataEnded)) {
+  if (m_read_pos >= audioData.size() && (!isInitialized || !mDataEnded)) {
     return {{}, DecoderError::NoError};
   }
 
@@ -213,27 +213,27 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
   // decode() call. When mDataEnded is true and we've consumed all data, clear
   // everything.
   if (m_read_pos > 0) {
-    if (mDataEnded && m_read_pos >= audioData.size()) {
+    if (m_read_pos >= audioData.size()) {
       audioData.clear();
       m_read_pos = 0;
-    } else {
+    } else if (m_read_pos >= 65536 && m_read_pos * 2 >= audioData.size()) {
       audioData.erase(audioData.begin(), audioData.begin() + m_read_pos);
       m_read_pos = 0;
     }
   }
 
-  if (mDataEnded && audioData.empty()) {
+  if (mDataEnded && m_read_pos >= audioData.size()) {
     mDrained = true;
   }
 
-  return {decodedData, DecoderError::NoError};
+  return {std::move(decodedData), DecoderError::NoError};
 }
 
 bool WavDecoderWrapper::hasPendingData() const {
   if (mDataEnded && mDrained) {
     return false;
   }
-  if (!audioData.empty()) {
+  if (m_read_pos < audioData.size()) {
     return true;
   }
   if (mDataEnded && !mDrained) {

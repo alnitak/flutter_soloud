@@ -38,30 +38,23 @@ void main() {
     });
 
     test(
-      'Loads and processes audio effect (flutter_reverb / Surge XT Effects)',
+      'Loads and processes audio effect when test bundle is available',
       () async {
-        const userReverb =
-            '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/flutter_reverb.vst3';
-        const userEcho =
-            '/Volumes/NVME/Users/deimos/Library/Audio/Plug-Ins/VST3/echo.vst3';
-        const systemFx = '/Library/Audio/Plug-Ins/VST3/Surge XT Effects.vst3';
-        const winBuiltReverb =
-            r'c:\workspace\flutter_vst3\vsts\flutter_reverb\build\VST3\Release\flutter_reverb.vst3';
-        const winBuiltEcho =
-            r'c:\workspace\flutter_vst3\vsts\echo\build\VST3\Release\echo.vst3';
-        final localApp = Platform.environment['LOCALAPPDATA'];
-        final winUserReverb = localApp != null
-            ? '$localApp\\Programs\\Common\\VST3\\flutter_reverb.vst3'
-            : '';
-
-        final candidatePaths = [
-          if (_bundleExists(userReverb)) userReverb,
-          if (_bundleExists(userEcho)) userEcho,
-          if (_bundleExists(systemFx)) systemFx,
-          if (_bundleExists(winBuiltReverb)) winBuiltReverb,
-          if (_bundleExists(winBuiltEcho)) winBuiltEcho,
-          if (winUserReverb.isNotEmpty && _bundleExists(winUserReverb))
-            winUserReverb,
+        final envBundle = Platform.environment['VST3_TEST_BUNDLE'];
+        const knownBundles = <String>[
+          'flutter_reverb.vst3',
+          'echo.vst3',
+          'Surge XT Effects.vst3',
+        ];
+        final candidatePaths = <String>[
+          if (envBundle != null &&
+              envBundle.isNotEmpty &&
+              _bundleExists(envBundle))
+            envBundle,
+          for (final searchDir in host.standardSearchPaths)
+            for (final name in knownBundles)
+              if (_bundleExists('$searchDir${Platform.pathSeparator}$name'))
+                '$searchDir${Platform.pathSeparator}$name',
         ];
 
         if (candidatePaths.isEmpty || !host.isSupported) {

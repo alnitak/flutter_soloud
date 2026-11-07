@@ -390,14 +390,15 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
   // to the window start, and m_audioDataBaseOffset tracks where the window
   // begins in the stream so seek-table entries stay absolute.
   constexpr size_t kKeepBehindBytes = 32 * 1024;
-  if (m_read_pos > kKeepBehindBytes) {
+  constexpr size_t kMinDiscardBytes = 64 * 1024;
+  if (m_read_pos > kKeepBehindBytes + kMinDiscardBytes) {
     const size_t toDiscard = m_read_pos - kKeepBehindBytes;
     audioData.erase(audioData.begin(), audioData.begin() + toDiscard);
     m_read_pos -= toDiscard;
     m_audioDataBaseOffset += toDiscard;
   }
 
-  return {decodedData, DecoderError::NoError};
+  return {std::move(decodedData), DecoderError::NoError};
 }
 
 bool MP3DecoderWrapper::hasPendingData() const {

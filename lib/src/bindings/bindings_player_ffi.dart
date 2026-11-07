@@ -1649,9 +1649,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     FilterType filterType,
   ) {
     final ffi.Pointer<ffi.Int> paramsCount = calloc(ffi.sizeOf<ffi.Int>());
-    final ffi.Pointer<ffi.Pointer<ffi.Char>> names = calloc(
-      ffi.sizeOf<ffi.Char>() * 30,
-    );
+    final ffi.Pointer<ffi.Pointer<ffi.Char>> names =
+        calloc<ffi.Pointer<ffi.Char>>(30);
     _log.fine(
       () =>
           'PARAMS NAME paramsCount: ${paramsCount.address.toRadixString(16)}  '

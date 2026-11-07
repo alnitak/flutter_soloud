@@ -29,8 +29,47 @@ namespace SoLoud
 {
 	namespace Misc
 	{
+		namespace
+		{
+			struct FourierWaveTables
+			{
+				static constexpr int kSize = 4096;
+				float fsquare[kSize + 1];
+				float fsaw[kSize + 1];
+
+				FourierWaveTables()
+				{
+					for (int idx = 0; idx <= kSize; ++idx)
+					{
+						const double phase = static_cast<double>(idx) / static_cast<double>(kSize);
+						double sq = 0.0;
+						for (int i = 1; i < 22; i += 2)
+						{
+							sq += (4.0 / (M_PI * i)) * sin(2.0 * M_PI * i * phase);
+						}
+						fsquare[idx] = static_cast<float>(sq * 0.5);
+
+						double sw = 0.0;
+						for (int i = 1; i < 15; ++i)
+						{
+							const double term = (1.0 / (M_PI * i)) * sin(2.0 * M_PI * i * phase);
+							sw += (i & 1) ? term : -term;
+						}
+						fsaw[idx] = static_cast<float>(sw);
+					}
+				}
+			};
+
+			const FourierWaveTables &getFourierWaveTables()
+			{
+				static const FourierWaveTables kTables;
+				return kTables;
+			}
+		}
+
 		float generateWaveform(int aWaveform, float p)
 		{
+			constexpr float kTwoPi = 6.2831853071795864769f;
 			switch (aWaveform)
 			{
 			default:
@@ -39,35 +78,35 @@ namespace SoLoud
 			case Soloud::WAVE_SAW:
 				return p - 0.5f;
 			case Soloud::WAVE_SIN:
-				return (float)sin(p * M_PI * 2.0f) * 0.5f;
+				return sinf(p * kTwoPi) * 0.5f;
 			case Soloud::WAVE_TRIANGLE:
-				return (p > 0.5f ? (1.0f - (p - 0.5f) * 2) : p * 2.0f) - 0.5f;
+				return (p > 0.5f ? (1.0f - (p - 0.5f) * 2.0f) : p * 2.0f) - 0.5f;
 			case Soloud::WAVE_BOUNCE:
-				return (p < 0.5f ? (float)sin(p * M_PI * 2.0f) * 0.5f : -(float)sin(p * M_PI * 2.0f) * 0.5f) - 0.5f;
+				{
+					const float s = sinf(p * kTwoPi) * 0.5f;
+					return (p < 0.5f ? s : -s) - 0.5f;
+				}
 			case Soloud::WAVE_JAWS:
-				return (p < 0.25f ? (float)sin(p * M_PI * 2.0f) * 0.5f : 0) - 0.5f;
+				return (p < 0.25f ? sinf(p * kTwoPi) * 0.5f : 0.0f) - 0.5f;
 			case Soloud::WAVE_HUMPS:
-				return (p < 0.5f ? (float)sin(p * M_PI * 2.0f) * 0.5f : 0) - 0.5f;
+				return (p < 0.5f ? sinf(p * kTwoPi) * 0.5f : 0.0f) - 0.5f;
 			case Soloud::WAVE_FSQUARE:
 				{
-					float f = 0;
-					for (int i = 1; i < 22; i += 2)
-					{
-						f += (float)(4.0f / (M_PI * i)) * (float)sin(2 * M_PI * i * p);
-					}
-					return f * 0.5f;
+					const FourierWaveTables &tbl = getFourierWaveTables();
+					const float wrapped = p - floorf(p);
+					const float pos = wrapped * static_cast<float>(FourierWaveTables::kSize);
+					const int idx = static_cast<int>(pos);
+					const float frac = pos - static_cast<float>(idx);
+					return tbl.fsquare[idx] + frac * (tbl.fsquare[idx + 1] - tbl.fsquare[idx]);
 				}
 			case Soloud::WAVE_FSAW:
 				{
-					float f = 0;
-					for (int i = 1; i < 15; i++)
-					{
-						if (i & 1)
-							f += (float)(1.0f / (M_PI * i)) * (float)sin(p * 2 * M_PI * i);
-						else
-							f -= (float)(1.0f / (M_PI * i)) * (float)sin(p * 2 * M_PI * i);
-					}
-					return f;
+					const FourierWaveTables &tbl = getFourierWaveTables();
+					const float wrapped = p - floorf(p);
+					const float pos = wrapped * static_cast<float>(FourierWaveTables::kSize);
+					const int idx = static_cast<int>(pos);
+					const float frac = pos - static_cast<float>(idx);
+					return tbl.fsaw[idx] + frac * (tbl.fsaw[idx + 1] - tbl.fsaw[idx]);
 				}
 			}
 		}

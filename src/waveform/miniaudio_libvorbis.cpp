@@ -4,6 +4,7 @@
 #define miniaudio_libvorbis_c
 
 #include "miniaudio_libvorbis.h"
+#include "../simd/simd_pcm.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -156,12 +157,14 @@ static ma_result ma_libvorbis_init_internal(const ma_decoding_backend_config* pC
             ma_data_source_uninit(&pVorbis->ds);
             return MA_OUT_OF_MEMORY;
         }
+        memset(pVorbis->vf, 0, sizeof(OggVorbis_File));
 
         return MA_SUCCESS;
     }
     #else
     {
         /* libvorbis is disabled. */
+        ma_data_source_uninit(&pVorbis->ds);
         (void)pAllocationCallbacks;
         return MA_NOT_IMPLEMENTED;
     }
@@ -172,14 +175,13 @@ MA_API ma_result ma_libvorbis_init(ma_read_proc onRead, ma_seek_proc onSeek, ma_
 {
     ma_result result;
 
-    (void)pAllocationCallbacks; /* Can't seem to find a way to configure memory allocations in libvorbis. */
-    
     result = ma_libvorbis_init_internal(pConfig, pAllocationCallbacks, pVorbis);
     if (result != MA_SUCCESS) {
         return result;
     }
 
     if (onRead == NULL || onSeek == NULL) {
+        ma_libvorbis_uninit(pVorbis, pAllocationCallbacks);
         return MA_INVALID_ARGS; /* onRead and onSeek are mandatory. */
     }
 
@@ -201,14 +203,17 @@ MA_API ma_result ma_libvorbis_init(ma_read_proc onRead, ma_seek_proc onSeek, ma_
 
         libvorbisResult = ov_open_callbacks(pVorbis, (OggVorbis_File*)pVorbis->vf, NULL, 0, libvorbisCallbacks);
         if (libvorbisResult < 0) {
+            ma_libvorbis_uninit(pVorbis, pAllocationCallbacks);
             return MA_INVALID_FILE;
         }
+        pVorbis->vfOpened = MA_TRUE;
 
         return MA_SUCCESS;
     }
     #else
     {
         /* libvorbis is disabled. */
+        ma_libvorbis_uninit(pVorbis, pAllocationCallbacks);
         return MA_NOT_IMPLEMENTED;
     }
     #endif
@@ -217,8 +222,6 @@ MA_API ma_result ma_libvorbis_init(ma_read_proc onRead, ma_seek_proc onSeek, ma_
 MA_API ma_result ma_libvorbis_init_file(const char* pFilePath, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_libvorbis* pVorbis)
 {
     ma_result result;
-
-    (void)pAllocationCallbacks; /* Can't seem to find a way to configure memory allocations in libvorbis. */
 
     result = ma_libvorbis_init_internal(pConfig, pAllocationCallbacks, pVorbis);
     if (result != MA_SUCCESS) {
@@ -231,8 +234,10 @@ MA_API ma_result ma_libvorbis_init_file(const char* pFilePath, const ma_decoding
 
         libvorbisResult = ov_fopen(pFilePath, (OggVorbis_File*)pVorbis->vf);
         if (libvorbisResult < 0) {
+            ma_libvorbis_uninit(pVorbis, pAllocationCallbacks);
             return MA_INVALID_FILE;
         }
+        pVorbis->vfOpened = MA_TRUE;
 
         return MA_SUCCESS;
     }
@@ -240,6 +245,7 @@ MA_API ma_result ma_libvorbis_init_file(const char* pFilePath, const ma_decoding
     {
         /* libvorbis is disabled. */
         (void)pFilePath;
+        ma_libvorbis_uninit(pVorbis, pAllocationCallbacks);
         return MA_NOT_IMPLEMENTED;
     }
     #endif
@@ -339,6 +345,7 @@ MA_API ma_result ma_libvorbis_init_memory(const void* pData, size_t dataSize, co
     pVorbis->onSeek = (ma_seek_proc)ma_memory_stream_seek;
     pVorbis->onTell = (ma_tell_proc)ma_memory_stream_tell;
     pVorbis->pReadSeekTellUserData = pStream;
+    pVorbis->ownsUserData = MA_TRUE;
 
     #if !defined(MA_NO_LIBVORBIS)
     {
@@ -352,16 +359,15 @@ MA_API ma_result ma_libvorbis_init_memory(const void* pData, size_t dataSize, co
 
         libvorbisResult = ov_open_callbacks(pVorbis, (OggVorbis_File*)pVorbis->vf, NULL, 0, libvorbisCallbacks);
         if (libvorbisResult < 0) {
-            ma_free(pStream, pAllocationCallbacks);
             ma_libvorbis_uninit(pVorbis, pAllocationCallbacks);
             return MA_INVALID_FILE;
         }
+        pVorbis->vfOpened = MA_TRUE;
 
         return MA_SUCCESS;
     }
     #else
     {
-        ma_free(pStream, pAllocationCallbacks);
         ma_libvorbis_uninit(pVorbis, pAllocationCallbacks);
         return MA_NOT_IMPLEMENTED;
     }
@@ -374,11 +380,12 @@ MA_API void ma_libvorbis_uninit(ma_libvorbis* pVorbis, const ma_allocation_callb
         return;
     }
 
-    (void)pAllocationCallbacks;
-
     #if !defined(MA_NO_LIBVORBIS)
     {
-        ov_clear((OggVorbis_File*)pVorbis->vf);
+        if (pVorbis->vf != NULL && pVorbis->vfOpened) {
+            ov_clear((OggVorbis_File*)pVorbis->vf);
+            pVorbis->vfOpened = MA_FALSE;
+        }
     }
     #else
     {
@@ -388,9 +395,15 @@ MA_API void ma_libvorbis_uninit(ma_libvorbis* pVorbis, const ma_allocation_callb
     #endif
 
     ma_data_source_uninit(&pVorbis->ds);
-    ma_free(pVorbis->vf, pAllocationCallbacks);
+    if (pVorbis->vf != NULL) {
+        ma_free(pVorbis->vf, pAllocationCallbacks);
+        pVorbis->vf = NULL;
+    }
 
-    /* Don't free pReadSeekTellUserData here - it will be freed by the decoding backend */
+    if (pVorbis->ownsUserData && pVorbis->pReadSeekTellUserData != NULL) {
+        ma_free(pVorbis->pReadSeekTellUserData, pAllocationCallbacks);
+        pVorbis->ownsUserData = MA_FALSE;
+    }
     pVorbis->pReadSeekTellUserData = NULL;
 }
 
@@ -438,14 +451,19 @@ MA_API ma_result ma_libvorbis_read_pcm_frames(ma_libvorbis* pVorbis, void* pFram
                     result = MA_ERROR;  /* Error while decoding. */
                     break;
                 } else {
-                    /* Frames need to be interleaved. */
-                    ma_interleave_pcm_frames(format, channels, libvorbisResult, (const void**)ppFramesF32, ma_offset_pcm_frames_ptr(pFramesOut, totalFramesRead, format, channels));
-                    totalFramesRead += libvorbisResult;
-
                     if (libvorbisResult == 0) {
                         result = MA_AT_END;
                         break;
                     }
+                    void* dstPtr = ma_offset_pcm_frames_ptr(pFramesOut, totalFramesRead, format, channels);
+                    if (channels == 1) {
+                        memcpy(dstPtr, ppFramesF32[0], (size_t)libvorbisResult * sizeof(float));
+                    } else if (channels == 2 && ((uintptr_t)dstPtr & 3u) == 0u) {
+                        SoLoud::interleaveStereoFloats(ppFramesF32[0], ppFramesF32[1], (float*)dstPtr, (unsigned int)libvorbisResult);
+                    } else {
+                        ma_interleave_pcm_frames(format, channels, libvorbisResult, (const void**)ppFramesF32, dstPtr);
+                    }
+                    totalFramesRead += libvorbisResult;
                 }
             } else {
                 libvorbisResult = ov_read((OggVorbis_File*)pVorbis->vf, (char*)ma_offset_pcm_frames_ptr(pFramesOut, totalFramesRead, format, channels), (int)(framesToRead * ma_get_bytes_per_frame(format, channels)), 0, 2, 1, NULL);

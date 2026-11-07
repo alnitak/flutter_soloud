@@ -22,6 +22,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace SoLoud {
@@ -1168,7 +1169,11 @@ public:
 
 private:
   std::mutex remove_handle_mutex;
-  mutable std::recursive_mutex sounds_mutex; // Protects the sounds vector (recursive to avoid deadlock in destructors)
+  mutable std::recursive_mutex sounds_mutex; // Protects sounds, mSoundByHash, and mSoundByHandle
+  std::unordered_map<unsigned int, ActiveSound *> mSoundByHash;
+  std::unordered_map<SoLoud::handle, ActiveSound *> mSoundByHandle;
+  alignas(64) float mFftData[256] = {};
+  alignas(64) float mWaveData[256] = {};
   unsigned int mBufferSize;
 
   std::map<unsigned int, BusData> busMap;

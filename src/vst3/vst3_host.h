@@ -4,6 +4,7 @@
 #ifdef SOLOUD_ENABLE_VST3
 
 #include "../enums.h"
+#include "../simd/soloud_simd.h"
 #include "vst3_component_handler.h"
 #include "vst3_editor_window.h"
 #include "vst3_param_changes.h"
@@ -145,9 +146,10 @@ private:
   mutable std::atomic<int> mHasEditorCached{-1};
   std::mutex mProcessMutex;
 
-  // Pre-allocated real-time audio buffers (zero heap allocation in process)
-  std::vector<float> mScratchInput;
-  std::vector<float> mScratchOutput;
+  // Pre-allocated 64-byte aligned real-time audio buffers
+  soloud_simd::AlignedFloatPtr mScratchInput;
+  soloud_simd::AlignedFloatPtr mScratchOutput;
+  size_t mScratchStride = 0;
   std::array<float *, 8> mInChannelPtrs{};
   std::array<float *, 8> mOutChannelPtrs{};
   Steinberg::Vst::AudioBusBuffers mInputBusBuffers{};

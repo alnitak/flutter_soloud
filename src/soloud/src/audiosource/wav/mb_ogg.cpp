@@ -2,6 +2,7 @@
 
 #if !defined(NO_XIPH_LIBS)
 
+#include "../../../../simd/simd_pcm.h"
 #include <cstdio>
 #include <iostream>
 #include <stdint.h>
@@ -225,6 +226,52 @@ bool MBOggDecoder::detectCodec() {
   return mCodecType != CODEC_UNKNOWN;
 }
 
+ogg_int64_t MBOggDecoder::scanLastGranule() {
+  const unsigned int savedPos = mDataSource.tell();
+  const unsigned int totalLen = mDataSource.length();
+
+  auto scanFrom = [&](unsigned int startOffset) -> ogg_int64_t {
+    if (!mDataSource.seek((int)startOffset))
+      return -1;
+    ogg_sync_state scanOy;
+    ogg_page scanOg;
+    ogg_sync_init(&scanOy);
+    ogg_int64_t lastGranule = -1;
+
+    while (true) {
+      int ret = ogg_sync_pageout(&scanOy, &scanOg);
+      if (ret == 1) {
+        ogg_int64_t granule = ogg_page_granulepos(&scanOg);
+        if (granule >= 0)
+          lastGranule = granule;
+      } else if (ret == 0) {
+        char *buf = ogg_sync_buffer(&scanOy, 8192);
+        unsigned int bytes = mDataSource.read((unsigned char *)buf, 8192);
+        if (bytes == 0)
+          break;
+        ogg_sync_wrote(&scanOy, bytes);
+      } else {
+        // Resyncing to first complete OggS page after mid-file seek
+        continue;
+      }
+    }
+    ogg_sync_clear(&scanOy);
+    return lastGranule;
+  };
+
+  constexpr unsigned int kTailScanBytes = 65536;
+  ogg_int64_t lastGranule = -1;
+  if (totalLen > kTailScanBytes) {
+    lastGranule = scanFrom(totalLen - kTailScanBytes);
+  }
+  if (lastGranule < 0) {
+    lastGranule = scanFrom(0);
+  }
+
+  mDataSource.seek((int)savedPos);
+  return lastGranule;
+}
+
 // ------------------------------------------------------------------
 // Vorbis
 // ------------------------------------------------------------------
@@ -322,6 +369,12 @@ bool MBOggDecoder::initOpus() {
   mChannels = 2;
   mOpusPreSkip = 0;
 
+  // Scan the final Ogg granule position first (O(1) 64 KB tail scan with
+  // full-file fallback) so headers only need to be parsed once without
+  // tearing down and recreating mOpusOs / mOpusDecoder.
+  const ogg_int64_t lastGranule = scanLastGranule();
+  mDataSource.seek(0);
+
   ogg_sync_init(&mOpusOy);
   mOpusStreamInit = false;
   mOpusHeaderParsed = false;
@@ -338,35 +391,18 @@ bool MBOggDecoder::initOpus() {
     if (!feedOpusData()) {
       printf(
           "[MBOggDecoder] initOpus: feedOpusData failed during header parse\n");
+      if (mOpusStreamInit) {
+        ogg_stream_clear(&mOpusOs);
+        mOpusStreamInit = false;
+      }
+      if (mOpusDecoder) {
+        opus_decoder_destroy(mOpusDecoder);
+        mOpusDecoder = nullptr;
+      }
       ogg_sync_clear(&mOpusOy);
       return false;
     }
   }
-
-  // Scan for total length from beginning
-  mDataSource.seek(0);
-  ogg_sync_state scanOy;
-  ogg_page scanOg;
-  ogg_sync_init(&scanOy);
-  ogg_int64_t lastGranule = -1;
-
-  while (true) {
-    int ret = ogg_sync_pageout(&scanOy, &scanOg);
-    if (ret == 1) {
-      ogg_int64_t granule = ogg_page_granulepos(&scanOg);
-      if (granule >= 0)
-        lastGranule = granule;
-    } else if (ret == 0) {
-      char *buf = ogg_sync_buffer(&scanOy, 4096);
-      unsigned int bytes = mDataSource.read((unsigned char *)buf, 4096);
-      if (bytes == 0)
-        break;
-      ogg_sync_wrote(&scanOy, bytes);
-    } else {
-      continue;
-    }
-  }
-  ogg_sync_clear(&scanOy);
 
   if (lastGranule >= 0) {
     int64_t trimmed = (int64_t)lastGranule - mOpusPreSkip;
@@ -375,32 +411,6 @@ bool MBOggDecoder::initOpus() {
     mLengthInSamples = (unsigned int)((trimmed * mSampleRate + 47999) / 48000);
   } else {
     mLengthInSamples = 0;
-  }
-
-  // Reset for actual decoding
-  mDataSource.seek(0);
-  ogg_sync_clear(&mOpusOy);
-  ogg_sync_init(&mOpusOy);
-  if (mOpusDecoder) {
-    opus_decoder_destroy(mOpusDecoder);
-    mOpusDecoder = nullptr;
-  }
-  mOpusStreamInit = false;
-  mOpusHeaderParsed = false;
-  mOpusPacketCount = 0;
-  mOpusSkipSamples = 0;
-  mOpusTotalOutputSamples = 0;
-  mOpusTotalSamplesExpected = -1;
-  mOpusPcmBuffer.clear();
-  mOpusPcmReadPos = 0;
-
-  // Re-parse headers
-  while (!mOpusHeaderParsed) {
-    if (!feedOpusData()) {
-      printf("[MBOggDecoder] initOpus: feedOpusData failed during re-parse\n");
-      ogg_sync_clear(&mOpusOy);
-      return false;
-    }
   }
 
   printf("[MBOggDecoder] initOpus: success - channels=%d, sampleRate=%d, "
@@ -532,10 +542,16 @@ unsigned int MBOggDecoder::readOpus(float *aBuffer, unsigned int aSamples,
     size_t avail = (mOpusPcmBuffer.size() - mOpusPcmReadPos) / mChannels;
     if (avail > 0) {
       size_t toCopy = std::min((size_t)(aSamples - samplesRead), avail);
-      for (int ch = 0; ch < outChannels; ch++) {
-        for (size_t i = 0; i < toCopy; i++) {
-          aBuffer[ch * aBufferSize + samplesRead + i] =
-              mOpusPcmBuffer[mOpusPcmReadPos + i * mChannels + ch];
+      if (mChannels == outChannels) {
+        deinterleaveFloatsToPlanar(mOpusPcmBuffer.data() + mOpusPcmReadPos,
+                                   aBuffer + samplesRead, aBufferSize, toCopy,
+                                   (uint32_t)outChannels);
+      } else {
+        for (int ch = 0; ch < outChannels; ch++) {
+          for (size_t i = 0; i < toCopy; i++) {
+            aBuffer[ch * aBufferSize + samplesRead + i] =
+                mOpusPcmBuffer[mOpusPcmReadPos + i * mChannels + ch];
+          }
         }
       }
       mOpusPcmReadPos += toCopy * mChannels;
@@ -599,32 +615,9 @@ bool MBOggDecoder::seekOpus(unsigned int aSample) {
 // ------------------------------------------------------------------
 bool MBOggDecoder::initFlac() {
   // For OGG/FLAC, STREAMINFO may report total_samples=0.
-  // Scan Ogg pages for the last granule position before initializing the
-  // decoder.
-  unsigned int savedPos = mDataSource.tell();
-  ogg_sync_state scanOy;
-  ogg_page scanOg;
-  ogg_sync_init(&scanOy);
-  ogg_int64_t lastGranule = -1;
-
-  while (true) {
-    int ret = ogg_sync_pageout(&scanOy, &scanOg);
-    if (ret == 1) {
-      ogg_int64_t granule = ogg_page_granulepos(&scanOg);
-      if (granule >= 0)
-        lastGranule = granule;
-    } else if (ret == 0) {
-      char *buf = ogg_sync_buffer(&scanOy, 4096);
-      unsigned int bytes = mDataSource.read((unsigned char *)buf, 4096);
-      if (bytes == 0)
-        break;
-      ogg_sync_wrote(&scanOy, bytes);
-    } else {
-      continue;
-    }
-  }
-  ogg_sync_clear(&scanOy);
-  mDataSource.seek(savedPos);
+  // Scan the tail Ogg pages (with full-scan fallback) for the last granule
+  // position before initializing the decoder.
+  const ogg_int64_t lastGranule = scanLastGranule();
 
   unsigned int scannedLength = 0;
   if (lastGranule >= 0) {
@@ -693,10 +686,16 @@ unsigned int MBOggDecoder::readFlac(float *aBuffer, unsigned int aSamples,
     size_t avail = (mFlacPcmBuffer.size() - mFlacPcmReadPos) / mChannels;
     if (avail > 0) {
       size_t toCopy = std::min((size_t)(aSamples - samplesRead), avail);
-      for (int ch = 0; ch < outChannels; ch++) {
-        for (size_t i = 0; i < toCopy; i++) {
-          aBuffer[ch * aBufferSize + samplesRead + i] =
-              mFlacPcmBuffer[mFlacPcmReadPos + i * mChannels + ch];
+      if (mChannels == outChannels) {
+        deinterleaveFloatsToPlanar(mFlacPcmBuffer.data() + mFlacPcmReadPos,
+                                   aBuffer + samplesRead, aBufferSize, toCopy,
+                                   (uint32_t)outChannels);
+      } else {
+        for (int ch = 0; ch < outChannels; ch++) {
+          for (size_t i = 0; i < toCopy; i++) {
+            aBuffer[ch * aBufferSize + samplesRead + i] =
+                mFlacPcmBuffer[mFlacPcmReadPos + i * mChannels + ch];
+          }
         }
       }
       mFlacPcmReadPos += toCopy * mChannels;
@@ -803,12 +802,13 @@ FLAC__StreamDecoderWriteStatus MBOggDecoder::flacWriteCb(
     divisor = 2147483648.0f;
   }
 
-  for (unsigned int i = 0; i < blocksize; i++) {
-    for (unsigned int ch = 0; ch < channels; ch++) {
-      self->mFlacPcmBuffer.push_back(static_cast<float>(buffer[ch][i]) /
-                                     divisor);
-    }
-  }
+  const float invScale = 1.0f / divisor;
+  const size_t oldSize = self->mFlacPcmBuffer.size();
+  const size_t addCount = (size_t)blocksize * channels;
+  self->mFlacPcmBuffer.resize(oldSize + addCount);
+  interleavePlanarInt32ToFloats(
+      reinterpret_cast<const int32_t *const *>(buffer),
+      self->mFlacPcmBuffer.data() + oldSize, blocksize, channels, invScale);
   return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
 }
 

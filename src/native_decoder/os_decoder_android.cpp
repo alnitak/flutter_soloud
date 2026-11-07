@@ -132,11 +132,26 @@ public:
 
     bool appendPcm16(const uint8_t *src, size_t frameCount, std::string &error) {
         if (!grow(frameCount, error)) return false;
+        if ((reinterpret_cast<uintptr_t>(src) & 1u) == 0u && frameCount <= UINT_MAX) {
+            const auto *s16 = reinterpret_cast<const int16_t *>(src);
+            if (mChannels == 1) {
+                SoLoud::convertInt16ToFloats(s16, mData + mFrames,
+                                             static_cast<unsigned int>(frameCount));
+                mFrames += frameCount;
+                return true;
+            } else if (mChannels == 2) {
+                SoLoud::deinterleaveStereoInt16ToFloats(
+                    s16, mData + mFrames, mData + mCapacity + mFrames,
+                    static_cast<unsigned int>(frameCount));
+                mFrames += frameCount;
+                return true;
+            }
+        }
         for (size_t i = 0; i < frameCount; ++i) {
             for (unsigned int c = 0; c < mChannels; ++c) {
                 int16_t s;
                 std::memcpy(&s, src + (i * mChannels + c) * sizeof(int16_t), sizeof(s));
-                mData[c * mCapacity + mFrames + i] = s / 32768.0f;
+                mData[c * mCapacity + mFrames + i] = s * (1.0f / 32768.0f);
             }
         }
         mFrames += frameCount;
@@ -145,6 +160,13 @@ public:
 
     bool appendFloat(const uint8_t *src, size_t frameCount, std::string &error) {
         if (!grow(frameCount, error)) return false;
+        if ((reinterpret_cast<uintptr_t>(src) & 3u) == 0u) {
+            SoLoud::deinterleaveFloatsToPlanar(
+                reinterpret_cast<const float *>(src), mData + mFrames,
+                mCapacity, frameCount, mChannels);
+            mFrames += frameCount;
+            return true;
+        }
         for (size_t i = 0; i < frameCount; ++i) {
             for (unsigned int c = 0; c < mChannels; ++c) {
                 std::memcpy(&mData[c * mCapacity + mFrames + i],

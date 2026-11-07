@@ -11,6 +11,7 @@ OpusDecoderWrapper::OpusDecoderWrapper()
       engineChannels(2),
       decodingSamplerate(48000),
       decodingChannels(2),
+      syncInitialized(false),
       streamInitialized(false),
       headerParsed(false),
       packetCount(0),
@@ -34,7 +35,10 @@ OpusDecoderWrapper::~OpusDecoderWrapper()
     {
         ogg_stream_clear(&os);
     }
-    ogg_sync_clear(&oy);
+    if (syncInitialized)
+    {
+        ogg_sync_clear(&oy);
+    }
 }
 
 bool OpusDecoderWrapper::ensureDecoder(int newSampleRate, int newChannels)
@@ -149,7 +153,17 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerateIn, int engineCha
         return false;
     }
 
-    streamInitialized = false;
+    if (streamInitialized)
+    {
+        ogg_stream_clear(&os);
+        streamInitialized = false;
+    }
+    if (syncInitialized)
+    {
+        ogg_sync_clear(&oy);
+        syncInitialized = false;
+    }
+
     headerParsed = false;
     packetCount = 0;
     skipSamplesPending = 0;
@@ -159,6 +173,7 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerateIn, int engineCha
     mDrained = false;
 
     ogg_sync_init(&oy);
+    syncInitialized = true;
     return true;
 }
 
@@ -193,7 +208,7 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
             {
                 *samplerate = decodingSamplerate;
                 *channels = decodingChannels;
-                return {decodedData, DecoderError::NoError};
+                return {std::move(decodedData), DecoderError::NoError};
             }
         }
     }
@@ -316,7 +331,7 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
         }
     }
 
-    return {decodedData, DecoderError::NoError};
+    return {std::move(decodedData), DecoderError::NoError};
 }
 
 OpusInfo OpusDecoderWrapper::parseOpusHead(ogg_packet* packet) {

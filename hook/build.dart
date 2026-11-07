@@ -211,7 +211,8 @@ void main(List<String> args) async {
           },
           flags: [
             if (os == OS.windows) ...[
-              '/Ox',
+              '/O2',
+              '/Zc:inline',
               '/EHsc',
             ] else ...[
               '-O3',
@@ -242,9 +243,16 @@ void main(List<String> args) async {
 
     final defines = <String, String?>{
       'FLUTTER_PLUGIN_IMPL': null,
-      'SIGNALSMITH_USE_PFFFT': null,
+      if (isApple)
+        'SIGNALSMITH_USE_ACCELERATE': null
+      else
+        'SIGNALSMITH_USE_PFFFT': null,
       'WITH_MINIAUDIO': null,
       'WITH_NULL': null,
+      'MA_NO_RESOURCE_MANAGER': null,
+      'MA_NO_NODE_GRAPH': null,
+      'MA_NO_ENGINE': null,
+      'MA_NO_GENERATION': null,
       // Force NDEBUG across all compilers (comment out for native debugging).
       'NDEBUG': null,
       if (os == OS.windows) ...{
@@ -258,21 +266,33 @@ void main(List<String> args) async {
     };
 
     final flags = <String>[
-      if (os != OS.windows) ...[
-        '-fvisibility=hidden',
-        '-Wno-unused-command-line-argument',
-      ],
       // Force maximum optimization regardless of Flutter build mode.
-      // For native debugging: comment out 'NDEBUG' above and replace the line
-      // below with: if (os == OS.windows) ...['/Od', '/Zi', '/EHsc'] else ...['-O0', '-g'],
-      if (os == OS.windows) ...['/Ox', '/EHsc'] else '-O3',
-      if (os == OS.android) ...[
-        '-Wl,--build-id=sha1',
-        '-ffast-math',
-        '-funroll-loops',
-        '-fomit-frame-pointer',
+      // For native debugging: comment out 'NDEBUG' above and replace the block
+      // below with:
+      // if (os == OS.windows) ...['/Od', '/Zi', '/EHsc'] else ...['-O0', '-g'],
+      if (os == OS.windows) ...[
+        '/O2',
+        '/Zc:inline',
+        '/fp:fast',
+        '/EHsc',
+      ] else ...[
+        '-O3',
+        '-fno-math-errno',
+        '-fno-trapping-math',
+        '-fno-signed-zeros',
+        '-ffp-contract=fast',
+        '-fvisibility=hidden',
         '-ffunction-sections',
         '-fdata-sections',
+        '-fsigned-char',
+        '-Wno-unused-command-line-argument',
+        '-Wno-vla',
+        '-Wno-vla-cxx-extension',
+      ],
+      if (os == OS.android) ...[
+        '-Wl,--build-id=sha1',
+        '-funroll-loops',
+        '-fomit-frame-pointer',
         '-Wl,--gc-sections',
         // Support Android 15 16k page size.
         '-Wl,-z,max-page-size=16384',
@@ -280,19 +300,19 @@ void main(List<String> args) async {
         // enable NEON explicitly (hard-float is the default on modern NDKs;
         // -mfloat=softfp was removed from NDK r25+ clang).
         if (arch == Architecture.arm) '-mfpu=neon',
-        if (arch == Architecture.ia32 || arch == Architecture.x64) ...[
+        if (arch == Architecture.ia32) ...['-msse2', '-msse3'],
+        if (arch == Architecture.x64) ...[
           '-msse2',
           '-msse3',
+          '-msse4.1',
+          '-mpopcnt',
         ],
       ],
-      if (os != OS.windows) ...[
-        '-fvisibility=hidden',
-        '-Wno-unused-command-line-argument',
-        '-fsigned-char',
-        '-Wno-vla',
-        '-Wno-vla-cxx-extension',
+      if (os == OS.linux) ...[
+        '-Wl,--gc-sections',
+        if (arch == Architecture.x64) ...['-msse2', '-msse3'],
       ],
-      if (os == OS.linux && arch == Architecture.x64) ...['-msse2', '-msse3'],
+      if (isApple && arch == Architecture.x64) '-msse4.1',
     ];
 
     final includes = [
@@ -355,6 +375,7 @@ void main(List<String> args) async {
       frameworks: isApple
           ? [
               'Foundation',
+              'Accelerate',
               'AudioToolbox',
               'AVFAudio',
               'CoreAudio',
@@ -1312,15 +1333,38 @@ final class XiphLink {
     const androidLinkerFlags =
         '-DCMAKE_SHARED_LINKER_FLAGS='
         '-Wl,-z,max-page-size=16384,--gc-sections -flto';
+    final androidAbiCFlags = switch (androidAbi) {
+      'armeabi-v7a' => ' -mfpu=neon',
+      'x86' => ' -msse2 -msse3',
+      'x86_64' => ' -msse2 -msse3 -msse4.1 -mpopcnt',
+      _ => '',
+    };
+    const baseFastCFlags =
+        '-O3 -fno-math-errno -fno-trapping-math -ffp-contract=fast';
+    final androidCFlags =
+        '-DCMAKE_C_FLAGS=$baseFastCFlags$androidAbiCFlags '
+        '-flto -ffunction-sections -fdata-sections';
     final androidFlags = [
       if (os == OS.android) ...[
         '-DCMAKE_TOOLCHAIN_FILE=$androidNdk/build/cmake/android.toolchain.cmake',
         '-DANDROID_ABI=$androidAbi',
         '-DANDROID_PLATFORM=android-$androidNdkApi',
-        '-DCMAKE_C_FLAGS=-Os -flto -ffunction-sections -fdata-sections',
+        androidCFlags,
         androidLinkerFlags,
       ],
     ];
+
+    final appleArchCFlags = arch == Architecture.x64 ? ' -msse4.1' : '';
+    final appleXiphCFlags =
+        '$baseFastCFlags$appleArchCFlags '
+        '-fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables';
+    final linuxArchCFlags = arch == Architecture.x64 ? ' -msse2 -msse3' : '';
+    final linuxCFlags =
+        '-DCMAKE_C_FLAGS=$baseFastCFlags$linuxArchCFlags '
+        '-flto -ffunction-sections -fdata-sections';
+    const winSharedLinkerFlags =
+        '-DCMAKE_SHARED_LINKER_FLAGS_RELEASE='
+        '/INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF';
 
     final commonCmakePlatformFlags = [
       if (isApple) ...[
@@ -1328,6 +1372,7 @@ final class XiphLink {
         '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
         '-DCMAKE_OSX_ARCHITECTURES=$archStr',
         '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+        '-DCMAKE_C_FLAGS=$appleXiphCFlags',
         if (os == OS.iOS) ...[
           '-DCMAKE_SYSTEM_NAME=iOS',
           '-DCMAKE_OSX_SYSROOT=$appleSysroot',
@@ -1335,6 +1380,8 @@ final class XiphLink {
       ] else if (os == OS.windows) ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+        '-DCMAKE_C_FLAGS_RELEASE=/O2 /Ob2 /Oi /Ot /GL /Gy /Zc:inline /DNDEBUG',
+        winSharedLinkerFlags,
         if (arch == Architecture.arm64) ...['-A', 'ARM64'],
       ] else if (os == OS.android) ...[
         '-DBUILD_SHARED_LIBS=ON',
@@ -1342,7 +1389,7 @@ final class XiphLink {
       ] else ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
-        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+        linuxCFlags,
         '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
         if (os == OS.linux &&
             arch == Architecture.arm64 &&
@@ -1388,9 +1435,6 @@ final class XiphLink {
     ]);
 
     // Build opus
-    const opusAppleFlags =
-        '-Os -fno-exceptions -fno-unwind-tables '
-        '-fno-asynchronous-unwind-tables';
     print('[flutter_soloud] Configuring opus with CMake ($archStr)...');
     prepareBuildDir('opus');
     await _runCmake([
@@ -1405,10 +1449,9 @@ final class XiphLink {
       '-DOPUS_BUILD_TESTING=OFF',
       '-DOPUS_STACK_PROTECTOR=OFF',
       '-DOPUS_CUSTOM_MODES=ON',
-      if (isApple) ...[
-        '-DOPUS_BUILD_SHARED_LIBRARY=OFF',
-        '-DCMAKE_C_FLAGS=$opusAppleFlags',
-      ],
+      if (isApple) '-DOPUS_BUILD_SHARED_LIBRARY=OFF',
+      if ((isApple || os == OS.android) && arch == Architecture.x64)
+        '-DOPUS_X86_PRESUME_SSE4_1=ON',
       ...commonCmakePlatformFlags,
     ]);
     print('[flutter_soloud] Compiling and installing opus...');

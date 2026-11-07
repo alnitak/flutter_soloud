@@ -151,6 +151,9 @@ struct LinuxGuiSymbols {
       gdkLib = dlopen("libgdk-3.so", RTLD_LAZY | RTLD_LOCAL);
     }
     if (x11Lib == nullptr || glibLib == nullptr) {
+      if (x11Lib != nullptr) { dlclose(x11Lib); x11Lib = nullptr; }
+      if (glibLib != nullptr) { dlclose(glibLib); glibLib = nullptr; }
+      if (gdkLib != nullptr) { dlclose(gdkLib); gdkLib = nullptr; }
       return false;
     }
 
@@ -201,10 +204,17 @@ struct LinuxGuiSymbols {
       gdk_x11_display_get_xdisplay = reinterpret_cast<FnGdkX11DisplayGetXdisplay>(dlsym(gdkLib, "gdk_x11_display_get_xdisplay"));
     }
 
-    return XOpenDisplay && XCloseDisplay && XDefaultScreen && XRootWindow &&
-           XCreateSimpleWindow && XStoreName && XMapWindow && XDestroyWindow &&
-           XResizeWindow && XFlush && g_timeout_add && g_unix_fd_add &&
-           g_source_remove;
+    const bool ok =
+        XOpenDisplay && XCloseDisplay && XDefaultScreen && XRootWindow &&
+        XCreateSimpleWindow && XStoreName && XMapWindow && XDestroyWindow &&
+        XResizeWindow && XFlush && g_timeout_add && g_unix_fd_add &&
+        g_source_remove;
+    if (!ok) {
+      if (x11Lib != nullptr) { dlclose(x11Lib); x11Lib = nullptr; }
+      if (glibLib != nullptr) { dlclose(glibLib); glibLib = nullptr; }
+      if (gdkLib != nullptr) { dlclose(gdkLib); gdkLib = nullptr; }
+    }
+    return ok;
   }
 };
 
@@ -372,9 +382,17 @@ public:
       ::munmap(mShm, sizeof(SoLoudVst3EditorShm));
       mShm = nullptr;
       ::unlink(shmPath.c_str());
+      mShmPath.clear();
       return false;
     }
     if (pid == 0) {
+      long maxFd = ::sysconf(_SC_OPEN_MAX);
+      if (maxFd <= 0 || maxFd > 4096) {
+        maxFd = 4096;
+      }
+      for (int d = 3; d < static_cast<int>(maxFd); ++d) {
+        ::close(d);
+      }
       const char *argv[] = {helperPath.c_str(),   ctx.bundlePath.c_str(),
                             ctx.classUid.c_str(), ctx.title.c_str(),
                             shmPath.c_str(),      parentPidStr.c_str(),
@@ -384,6 +402,7 @@ public:
     }
 
     mHelperPid = pid;
+    mShmPath = shmPath;
     mOnGuiParamEdit = ctx.onGuiParamEdit;
 
     bool ready = false;
@@ -417,6 +436,7 @@ public:
       ::munmap(mShm, sizeof(SoLoudVst3EditorShm));
       mShm = nullptr;
       ::unlink(shmPath.c_str());
+      mShmPath.clear();
       return false;
     }
 
@@ -658,6 +678,10 @@ public:
     if (mShm != nullptr) {
       ::munmap(mShm, sizeof(SoLoudVst3EditorShm));
       mShm = nullptr;
+    }
+    if (!mShmPath.empty()) {
+      ::unlink(mShmPath.c_str());
+      mShmPath.clear();
     }
     mOnGuiParamEdit = nullptr;
 
@@ -926,6 +950,10 @@ private:
       self->mHelperPid = 0;
       ::munmap(self->mShm, sizeof(SoLoudVst3EditorShm));
       self->mShm = nullptr;
+      if (!self->mShmPath.empty()) {
+        ::unlink(self->mShmPath.c_str());
+        self->mShmPath.clear();
+      }
       self->mIsOpen.store(false, std::memory_order_release);
       return 0; // G_SOURCE_REMOVE
     }
@@ -950,6 +978,7 @@ private:
   unsigned int mRemotePollTimerId = 0;
   pid_t mHelperPid = 0;
   SoLoudVst3EditorShm *mShm = nullptr;
+  std::string mShmPath;
   std::function<void(uint32_t, double)> mOnGuiParamEdit;
   std::map<Steinberg::Linux::IEventHandler *, FdEntry> mFdSources;
   std::map<Steinberg::Linux::ITimerHandler *, unsigned int> mTimerSources;

@@ -57,6 +57,7 @@ namespace SoLoud
 		virtual FilterStateSnapshot *captureState();
 		virtual void restoreState(FilterStateSnapshot *aSnapshot);
 		virtual bool captureStateInto(FilterStateSnapshot *aSnapshot);
+		virtual void filter(float *aBuffer, unsigned int aSamples, unsigned int aBufferSize, unsigned int aChannels, float aSamplerate, time aTime);
 		virtual void filterChannel(float *aBuffer, unsigned int aSamples, float aSamplerate, time aTime, unsigned int aChannel, unsigned int aChannels);
 		virtual ~BiquadResonantFilterInstance();
 		BiquadResonantFilterInstance(BiquadResonantFilter *aParent);

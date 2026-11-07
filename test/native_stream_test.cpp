@@ -1144,6 +1144,30 @@ void testGaplessParser() {
         EXPECT(msSince(start) < 1000, "parsing the crafted file took %.0f ms", msSince(start));
         std::remove(crafted.c_str());
     }
+    // A fast-start M4A (`moov` before `mdat`) truncated inside `mdat` must
+    // also be rejected rather than returning early once `moov` is parsed.
+    {
+        const std::string srcPath = gAssetDir + "/aac_lc_stereo_48000.m4a";
+        const std::string truncPath = std::string(tmp ? tmp : "/tmp") + "/native_stream_trunc.m4a";
+        if (FILE *in = std::fopen(srcPath.c_str(), "rb")) {
+            std::fseek(in, 0, SEEK_END);
+            const long len = std::ftell(in);
+            std::fseek(in, 0, SEEK_SET);
+            if (len > 0) {
+                std::vector<unsigned char> buf(static_cast<size_t>(len * 0.6));
+                if (std::fread(buf.data(), 1, buf.size(), in) == buf.size()) {
+                    if (FILE *out = std::fopen(truncPath.c_str(), "wb")) {
+                        std::fwrite(buf.data(), 1, buf.size(), out);
+                        std::fclose(out);
+                        EXPECT(!parseM4aGapless(truncPath, info),
+                               "fast-start M4A truncated mid-mdat must be rejected");
+                        std::remove(truncPath.c_str());
+                    }
+                }
+            }
+            std::fclose(in);
+        }
+    }
     EXPECT(!parseM4aGapless(gAssetDir + "/does-not-exist.m4a", info), "missing file");
 }
 

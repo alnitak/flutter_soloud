@@ -43,6 +43,7 @@ private:
 
     ogg_sync_state m_oy;
     ogg_stream_state m_os;
+    bool m_syncInitialized;
     bool m_streamInitialized;
     bool m_dataEnded;
     bool m_drained;

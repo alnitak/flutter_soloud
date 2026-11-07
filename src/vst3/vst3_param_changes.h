@@ -29,10 +29,14 @@ struct Vst3MidiNoteEvent {
 /// Single-Producer Single-Consumer (SPSC) lock-free ring buffer.
 template <typename T, size_t Capacity>
 class LockFreeSpscQueue {
+  static_assert((Capacity & (Capacity - 1)) == 0 && Capacity >= 2,
+                "Capacity must be a power of two >= 2");
+  static constexpr size_t kMask = Capacity - 1;
+
 public:
   bool push(const T &item) noexcept {
     const size_t w = mWriteIdx.load(std::memory_order_relaxed);
-    const size_t next = (w + 1) % Capacity;
+    const size_t next = (w + 1) & kMask;
     if (next == mReadIdx.load(std::memory_order_acquire)) {
       return false; // Full
     }
@@ -47,7 +51,7 @@ public:
       return false; // Empty
     }
     outItem = mStorage[r];
-    mReadIdx.store((r + 1) % Capacity, std::memory_order_release);
+    mReadIdx.store((r + 1) & kMask, std::memory_order_release);
     return true;
   }
 
@@ -58,8 +62,8 @@ public:
 
 private:
   std::array<T, Capacity> mStorage{};
-  std::atomic<size_t> mWriteIdx{0};
-  std::atomic<size_t> mReadIdx{0};
+  alignas(64) std::atomic<size_t> mWriteIdx{0};
+  alignas(64) std::atomic<size_t> mReadIdx{0};
 };
 
 /// Pre-allocated IParamValueQueue with up to kMaxPoints points per block.

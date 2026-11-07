@@ -3448,12 +3448,9 @@ extern "C"
     std::vector<std::string> pNames =
         player.get()->mFilters.getFilterParamNames(filterType);
     *paramsCount = static_cast<int>(pNames.size());
-    *names = (char *)malloc(sizeof(char *) * *paramsCount);
-    // printf("C  paramsCount: %p  **names: %p\n", paramsCount, names);
     for (int i = 0; i < *paramsCount; i++)
     {
       names[i] = strdup(pNames[i].c_str());
-      printf("C  i: %d  names[i]: %s  names[i]: %p\n", i, names[i], names[i]);
     }
     return noError;
   }

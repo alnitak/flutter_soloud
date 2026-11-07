@@ -51,6 +51,7 @@ namespace SoLoud
 		RenderRing() :
 			mChannels(0),
 			mCapacityFrames(0),
+			mCapacityMask(0),
 			mWritePos(0),
 			mReadPos(0),
 			mReadReserve(0),
@@ -65,6 +66,9 @@ namespace SoLoud
 			mBuffer.assign((size_t)aCapacityFrames * aChannels, 0.0f);
 			mChannels = aChannels;
 			mCapacityFrames = aCapacityFrames;
+			mCapacityMask = (aCapacityFrames != 0 && (aCapacityFrames & (aCapacityFrames - 1)) == 0)
+				? (aCapacityFrames - 1)
+				: 0;
 			mWritePos.store(0, std::memory_order_release);
 			mReadPos.store(0, std::memory_order_release);
 			mReadReserve.store(0, std::memory_order_release);
@@ -76,6 +80,7 @@ namespace SoLoud
 			mBuffer.clear();
 			mChannels = 0;
 			mCapacityFrames = 0;
+			mCapacityMask = 0;
 			mWritePos.store(0, std::memory_order_release);
 			mReadPos.store(0, std::memory_order_release);
 			mReadReserve.store(0, std::memory_order_release);
@@ -132,7 +137,7 @@ namespace SoLoud
 			if (aFrames == 0)
 				return 0;
 			unsigned long long w = mWritePos.load(std::memory_order_relaxed);
-			unsigned int offset = (unsigned int)(w % mCapacityFrames);
+			unsigned int offset = indexOf(w);
 			unsigned int first = mCapacityFrames - offset;
 			if (first > aFrames)
 				first = aFrames;
@@ -172,7 +177,7 @@ namespace SoLoud
 		// or after the position beginRewrite() returned.
 		void rewrite(unsigned long long aPos, const float *aSrc, unsigned int aFrames)
 		{
-			unsigned int offset = (unsigned int)(aPos % mCapacityFrames);
+			unsigned int offset = indexOf(aPos);
 			unsigned int first = mCapacityFrames - offset;
 			if (first > aFrames)
 				first = aFrames;
@@ -202,7 +207,7 @@ namespace SoLoud
 			{
 				while (f + 2 <= xfade)
 				{
-					const unsigned int ringFrame0 = (unsigned int)((aPos + f) % mCapacityFrames);
+					const unsigned int ringFrame0 = indexOf(aPos + f);
 					if (ringFrame0 + 2 > mCapacityFrames)
 						break;
 					const float a0 = (float)(f + 1) * invDenom;
@@ -222,7 +227,11 @@ namespace SoLoud
 					const float32x4_t invAlpha = vld1q_f32(invAlphaArr);
 					const float32x4_t oldV = vld1q_f32(dst);
 					const float32x4_t newV = vld1q_f32(src);
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+					vst1q_f32(dst, vfmaq_f32(vmulq_f32(oldV, invAlpha), newV, alpha));
+#else
 					vst1q_f32(dst, vmlaq_f32(vmulq_f32(oldV, invAlpha), newV, alpha));
+#endif
 #elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
 					const v128_t alpha = wasm_f32x4_make(a0, a0, a1, a1);
 					const v128_t invAlpha = wasm_f32x4_sub(wasm_f32x4_splat(1.0f), alpha);
@@ -238,7 +247,7 @@ namespace SoLoud
 			{
 				const float alpha = (float)(f + 1) * invDenom;
 				const float invAlpha = 1.0f - alpha;
-				const size_t ringIdx = (size_t)((aPos + f) % mCapacityFrames) * mChannels;
+				const size_t ringIdx = (size_t)indexOf(aPos + f) * mChannels;
 				const size_t srcIdx = (size_t)f * mChannels;
 				for (unsigned int c = 0; c < mChannels; c++)
 				{
@@ -314,9 +323,16 @@ namespace SoLoud
 		}
 
 	private:
+		unsigned int indexOf(unsigned long long aPos) const
+		{
+			return mCapacityMask != 0
+				? (unsigned int)(aPos & mCapacityMask)
+				: (unsigned int)(aPos % mCapacityFrames);
+		}
+
 		void copyOut(float *aDst, unsigned long long aPos, unsigned int aFrames) const
 		{
-			unsigned int offset = (unsigned int)(aPos % mCapacityFrames);
+			unsigned int offset = indexOf(aPos);
 			unsigned int first = mCapacityFrames - offset;
 			if (first > aFrames)
 				first = aFrames;
@@ -334,6 +350,8 @@ namespace SoLoud
 		{
 #if defined(SOLOUD_SSE_INTRINSICS)
 			_mm_pause();
+#elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM64EC) || defined(_M_ARM))
+			__yield();
 #elif defined(__aarch64__) || defined(__arm__)
 			__asm__ __volatile__("yield");
 #endif
@@ -342,12 +360,13 @@ namespace SoLoud
 		std::vector<float> mBuffer;
 		unsigned int mChannels;
 		unsigned int mCapacityFrames;
-		std::atomic<unsigned long long> mWritePos;
-		std::atomic<unsigned long long> mReadPos;
+		unsigned int mCapacityMask;
+		alignas(64) std::atomic<unsigned long long> mWritePos;
+		alignas(64) std::atomic<unsigned long long> mReadPos;
 		// Reader: end of the span it may be copying (== mReadPos when idle).
 		std::atomic<unsigned long long> mReadReserve;
 		// Writer: first frame a rewrite in progress may overwrite.
-		std::atomic<unsigned long long> mRewriteFence;
+		alignas(64) std::atomic<unsigned long long> mRewriteFence;
 	};
 };
 
