@@ -169,11 +169,13 @@ void main() {
           .toFilePath();
       String dartExe = Platform.executable;
       if (dartExe.contains('flutter_tester')) {
-        final flutterDart = File(
-          Platform.resolvedExecutable,
-        ).parent.parent.parent.parent.uri.resolve(
-          'dart-sdk/bin/dart${Platform.isWindows ? '.exe' : ''}',
-        );
+        final flutterDart = File(Platform.resolvedExecutable)
+            .parent
+            .parent
+            .parent
+            .parent
+            .uri
+            .resolve('dart-sdk/bin/dart${Platform.isWindows ? '.exe' : ''}');
         if (File.fromUri(flutterDart).existsSync()) {
           dartExe = flutterDart.toFilePath();
         } else {
