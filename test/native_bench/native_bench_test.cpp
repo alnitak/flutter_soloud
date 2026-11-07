@@ -442,13 +442,13 @@ void testAlignmentAndLeakRegressions() {
     SoLoud::Wav wav;
     wav.loadRawWave(rawZero, 0, 44100.0f, 2, false, true);
 
-    unsigned char *badMem1 = static_cast<unsigned char *>(std::malloc(32));
+    unsigned char *badMem1 = new unsigned char[32];
     std::memset(badMem1, 0xFF, 32);
     SoLoud::Wav wavBad;
     CHECK_TRUE(wavBad.loadMem(badMem1, 32, false, true) != SoLoud::SO_NO_ERROR,
                "Wav::loadMem invalid returns error and frees owned buffer");
 
-    unsigned char *badMem2 = static_cast<unsigned char *>(std::malloc(32));
+    unsigned char *badMem2 = new unsigned char[32];
     std::memset(badMem2, 0xFF, 32);
     SoLoud::WavStream streamBad;
     CHECK_TRUE(streamBad.loadMem(badMem2, 32, false, true) != SoLoud::SO_NO_ERROR,
