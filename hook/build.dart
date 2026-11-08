@@ -840,8 +840,9 @@ final class XiphLink {
       isZip: false,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File('${cacheDir.path}/$_prebuildVersionFileName')
-        .writeAsStringSync('$tagToWrite\n');
+    File(
+      '${cacheDir.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$tagToWrite\n');
 
     File.fromUri(
         packageRoot.resolve(
@@ -894,8 +895,9 @@ final class XiphLink {
       isZip: isZip,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File('${cacheDir.path}/$_prebuildVersionFileName')
-        .writeAsStringSync('$tagToWrite\n');
+    File(
+      '${cacheDir.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$tagToWrite\n');
 
     if (!validator(cacheDir)) {
       throw StateError(
@@ -990,8 +992,9 @@ final class XiphLink {
               tempFile.lengthSync() > 0) {
             downloadSuccess = true;
             final stdoutStr = curlRes.stdout.toString().trim();
-            final match = RegExp('/releases/download/([^/]+)/')
-                .firstMatch(stdoutStr);
+            final match = RegExp(
+              '/releases/download/([^/]+)/',
+            ).firstMatch(stdoutStr);
             if (match != null) {
               resolvedTag = match.group(1);
             }
@@ -1025,13 +1028,10 @@ final class XiphLink {
             ..userAgent = _browserUserAgent;
           try {
             final uri = Uri.parse(url);
-            final request = await client.getUrl(uri).timeout(
-              const Duration(seconds: 15),
-            );
-            request.headers.set(
-              HttpHeaders.acceptHeader,
-              _browserAcceptHeader,
-            );
+            final request = await client
+                .getUrl(uri)
+                .timeout(const Duration(seconds: 15));
+            request.headers.set(HttpHeaders.acceptHeader, _browserAcceptHeader);
             request.headers.set(
               HttpHeaders.acceptLanguageHeader,
               'en-US,en;q=0.9',
@@ -1048,8 +1048,9 @@ final class XiphLink {
             }
 
             for (final r in response.redirects) {
-              final match = RegExp('/releases/download/([^/]+)/')
-                  .firstMatch(r.location.toString());
+              final match = RegExp(
+                '/releases/download/([^/]+)/',
+              ).firstMatch(r.location.toString());
               if (match != null) {
                 resolvedTag = match.group(1);
                 break;
@@ -1801,8 +1802,9 @@ String? _findAndroidNdk(BuildInput input) {
       if (versions.isNotEmpty) {
         versions.sort((a, b) => a.path.compareTo(b.path));
         final candidate = versions.last.path;
-        if (File('$candidate/build/cmake/android.toolchain.cmake')
-            .existsSync()) {
+        if (File(
+          '$candidate/build/cmake/android.toolchain.cmake',
+        ).existsSync()) {
           return candidate;
         }
       }
@@ -1944,8 +1946,9 @@ Future<File> _resolveLinuxSoFile(Directory dir, String lib) async {
     final res = await Process.run('readelf', ['-d', unversioned.path]);
     if (res.exitCode == 0) {
       final out = res.stdout as String;
-      final match = RegExp(r'\(SONAME\)\s+Library soname:\s+\[([^\]]+)\]')
-          .firstMatch(out);
+      final match = RegExp(
+        r'\(SONAME\)\s+Library soname:\s+\[([^\]]+)\]',
+      ).firstMatch(out);
       if (match != null) {
         final sonameFile = File('${dir.path}/${match.group(1)}');
         if (sonameFile.existsSync()) {
@@ -2190,8 +2193,9 @@ final class Vst3Link {
         if (v != targetTag && 'v$v' != targetTag) return false;
       }
     }
-    return File('${dir.path}/pluginterfaces/vst/ivstaudioprocessor.h')
-            .existsSync() &&
+    return File(
+          '${dir.path}/pluginterfaces/vst/ivstaudioprocessor.h',
+        ).existsSync() &&
         File('${dir.path}/public.sdk/source/vst/hosting/module.h').existsSync();
   }
 
@@ -2217,8 +2221,9 @@ final class Vst3Link {
       isZip: false,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File('${cacheDir.path}/$_prebuildVersionFileName')
-        .writeAsStringSync('$tagToWrite\n');
+    File(
+      '${cacheDir.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$tagToWrite\n');
     return cacheDir;
   }
 
@@ -2259,8 +2264,9 @@ final class Vst3Link {
       isZip: isZip,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File('${cacheDir.path}/$_prebuildVersionFileName')
-        .writeAsStringSync('$tagToWrite\n');
+    File(
+      '${cacheDir.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$tagToWrite\n');
 
     if (!validator(cacheDir)) {
       throw StateError(
