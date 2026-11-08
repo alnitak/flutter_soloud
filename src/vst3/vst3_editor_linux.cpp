@@ -505,7 +505,7 @@ public:
           if (!guiSymbols().g_type_check_instance_is_a(
                   disp, guiSymbols().gdk_x11_display_get_type())) {
             fprintf(stderr,
-                    "flutter_soloud: VST3 plugin GUI embedding requires an X11 backend (GDK_BACKEND=x11).\n"
+                    "flutter_soloud: VST3 plugin GUI embedding requires an X11 backend (GDK_BACKEND=x11 flutter run).\n"
                     "The current process is running with Wayland GDK backend. Plugin GUI cannot be embedded.\n");
             return false;
           }
