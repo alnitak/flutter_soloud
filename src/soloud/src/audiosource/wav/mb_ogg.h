@@ -67,6 +67,7 @@ namespace SoLoud
         };
 
         bool detectCodec();
+        ogg_int64_t scanLastGranule();
         bool initVorbis();
         bool initOpus();
         bool initFlac();

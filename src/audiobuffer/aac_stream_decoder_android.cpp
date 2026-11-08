@@ -2,6 +2,7 @@
 
 #include "aac_stream_decoder.h"
 #include "../native_decoder/native_audio_decoder.h"
+#include "../simd/simd_pcm.h"
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaFormat.h>
 #include <android/log.h>
@@ -268,20 +269,37 @@ private:
                                              ? maxOutputSamples - decodedData.size()
                                              : 0);
     const size_t toAppend = std::min(count, availableSpace);
-    decodedData.reserve(decodedData.size() + toAppend);
-    for (size_t s = 0; s < count; ++s) {
-      float value;
-      if (mIsFloatOutput) {
-        std::memcpy(&value, src + s * sizeof(float), sizeof(float));
-      } else {
-        int16_t sample;
-        std::memcpy(&sample, src + s * sizeof(int16_t), sizeof(int16_t));
-        value = sample / 32768.0f;
+    if (mIsFloatOutput) {
+      if (toAppend > 0) {
+        const size_t oldSize = decodedData.size();
+        decodedData.resize(oldSize + toAppend);
+        std::memcpy(decodedData.data() + oldSize, src, toAppend * sizeof(float));
       }
-      if (s < toAppend) {
-        decodedData.push_back(value);
-      } else {
+      for (size_t s = toAppend; s < count; ++s) {
+        float value = 0.0f;
+        std::memcpy(&value, src + s * sizeof(float), sizeof(float));
         mDecodedRemainder.push_back(value);
+      }
+    } else {
+      const bool aligned16 = (reinterpret_cast<uintptr_t>(src) & 1u) == 0;
+      if (toAppend > 0 && aligned16) {
+        const size_t oldSize = decodedData.size();
+        decodedData.resize(oldSize + toAppend);
+        SoLoud::convertInt16ToFloats(reinterpret_cast<const int16_t *>(src),
+                                     decodedData.data() + oldSize,
+                                     static_cast<unsigned int>(toAppend));
+      } else if (toAppend > 0) {
+        decodedData.reserve(decodedData.size() + toAppend);
+        for (size_t s = 0; s < toAppend; ++s) {
+          int16_t sample = 0;
+          std::memcpy(&sample, src + s * sizeof(int16_t), sizeof(int16_t));
+          decodedData.push_back(sample * (1.0f / 32768.0f));
+        }
+      }
+      for (size_t s = toAppend; s < count; ++s) {
+        int16_t sample = 0;
+        std::memcpy(&sample, src + s * sizeof(int16_t), sizeof(int16_t));
+        mDecodedRemainder.push_back(sample * (1.0f / 32768.0f));
       }
     }
     return true;

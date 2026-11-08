@@ -8,6 +8,11 @@
 - example: added real-time PCM synth, isolate drum sequencer, custom DSP workbench, and VST3 plugin host examples
 - fix iOS: resume audio playback after returning from background on iOS 16+ where `wasSuspended` interruption reason is no longer sent #573
 - fix: `FreeverbFilter` no longer doubles the dry signal. At `wet` 0 the output now equals the input (it used to be +6 dB), and the dry part of any wet/dry mix is half as loud as in 5.2.x; mixes tuned against the old level will sound quieter
+- perf: multiplatform SIMD acceleration (ARM64/ARMv7 NEON, x86/x86_64 SSE2/AVX2, and WebAssembly SIMD128) across core mixing, linear/Catmull-Rom voice resampling, panning, clipping, and PCM format conversions
+- perf: accelerated DSP filters, FFT, and synthesis
+- perf: hardware subnormal/denormal flushing (`FTZ`/`DAZ`) on audio threads across ARM and x86, single-pass waveform extraction with SIMD RMS, `O(1)` stream buffer compaction, and `-O3` compiler/SIMD flags across native builds and Xiph prebuilds
+- perf: reduced real-time lock contention and memory traffic with `O(1)` active-sound/handle hash maps, event-driven `MixerOutput` capture wakeups, and chunked planar native decoding on all platforms
+- fix: resolved native memory leaks, 64-byte cache-line alignment and false-sharing issues, `PCM_S32LE` full-scale saturation wrap-around, and an FFI buffer overflow in `getFilterParamNames`
 
 ##### 5.2.4 (X Xxx 2026)
 - fix: don't drop the end of a voice that doesn't loop. Thanks to @Colton127 #604

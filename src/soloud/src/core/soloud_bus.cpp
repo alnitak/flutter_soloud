@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #include "soloud.h"
 #include "soloud_fft.h"
 #include "soloud_internal.h"
+#include "../../../simd/simd_pcm.h"
 
 namespace SoLoud
 {
@@ -46,9 +47,7 @@ namespace SoLoud
 		if (handle == 0) 
 		{
 			// Avoid reuse of scratch data if this bus hasn't played anything yet
-			unsigned int i;
-			for (i = 0; i < aBufferSize * mChannels; i++)
-				aBuffer[i] = 0;
+			memset(aBuffer, 0, sizeof(float) * (size_t)aBufferSize * mChannels);
 			// ###### flutter_soloud local patch (per-bus visualization) ######
 			tapAudio_internal(aBuffer, aSamplesToRead, aBufferSize);
 			return aSamplesToRead;
@@ -63,26 +62,24 @@ namespace SoLoud
 		int i;
 		if (mParent->mFlags & AudioSource::VISUALIZATION_DATA)
 		{
-			for (i = 0; i < MAX_CHANNELS; i++)
-				mVisualizationChannelVolume[i] = 0;
+			memset(mVisualizationChannelVolume, 0, sizeof(mVisualizationChannelVolume));
 
 			if (aSamplesToRead > 255)
 			{
-				for (i = 0; i < 256; i++)
+				memset(mVisualizationWaveData, 0, sizeof(mVisualizationWaveData));
+				for (int j = 0; j < (signed)mChannels; j++)
 				{
-					int j;
-					mVisualizationWaveData[i] = 0;
-					for (j = 0; j < (signed)mChannels; j++)
+					const float *chBuf = aBuffer + (size_t)aBufferSize * (size_t)j;
+					mVisualizationChannelVolume[j] = peakAbsF32(chBuf, 256);
+					for (i = 0; i < 256; i += 4)
 					{
-						float sample = aBuffer[i + aBufferSize * j];
-						float absvol = (float)fabs(sample);
-						if (absvol > mVisualizationChannelVolume[j])
-							mVisualizationChannelVolume[j] = absvol;
-						mVisualizationWaveData[i] += sample;
+						auto w = soloud_simd::f32x4::loadu(mVisualizationWaveData + i);
+						auto s = soloud_simd::f32x4::loadu(chBuf + i);
+						soloud_simd::add(w, s).storeu(mVisualizationWaveData + i);
 					}
 				}
 			}
-			else
+			else if (aSamplesToRead > 0)
 			{
 				// Very unlikely failsafe branch
 				for (i = 0; i < 256; i++)

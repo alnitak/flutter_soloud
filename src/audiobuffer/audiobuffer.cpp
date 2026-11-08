@@ -4,6 +4,7 @@
 #include <chrono>
 
 #include "../soloud_common.h"
+#include "../simd/simd_pcm.h"
 #include "audiobuffer.h"
 #include "metadata_ffi.h"
 
@@ -240,21 +241,9 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
     return 0;
   }
 
-  if (mChannels == 1) {
-    // Optimization: if we have a mono audio source, we can just copy all the
-    // data in one go.
-    memcpy(aBuffer, buffer + mOffset, sizeof(float) * samplesToRead);
-  } else {
-    // From SoLoud documentation:
-    // So, if 1024 samples are requested from a stereo audio source, the first
-    // 1024 floats should be for the first channel, and the next 1024 samples
-    // should be for the second channel.
-    for (unsigned int ch = 0; ch < mChannels; ++ch) {
-      for (int i = 0; i < samplesToRead; ++i) {
-        aBuffer[ch * aBufferSize + i] = buffer[mOffset + i * mChannels + ch];
-      }
-    }
-  }
+  deinterleaveFloatsToPlanar(buffer + mOffset, aBuffer, aBufferSize,
+                             static_cast<unsigned int>(samplesToRead),
+                             mChannels);
 
   const unsigned int totalBytesRead =
       samplesToRead * mChannels * sizeof(float);

@@ -250,6 +250,7 @@ bool parseTopLevel(uint64_t fileSize, ReadAt readAt, M4aGaplessInfo &out) {
     if (fileSize == 0) return false;
     uint64_t pos = 0;
     bool first = true;
+    bool sawMoov = false;
     while (pos + 8 <= fileSize) {
         unsigned char header[16];
         if (!readAt(pos, header, 8)) return false;
@@ -268,16 +269,17 @@ bool parseTopLevel(uint64_t fileSize, ReadAt readAt, M4aGaplessInfo &out) {
         }
         // Also guarantees pos + size can't overflow and always advances.
         if (size < headerSize || size > fileSize - pos) return false;
-        if (type == fourcc("moov")) {
+        if (type == fourcc("moov") && !sawMoov) {
             const uint64_t payload = size - headerSize;
             if (payload > kMaxMoovSize) return false;
             std::vector<unsigned char> moov(static_cast<size_t>(payload));
             if (!moov.empty() && !readAt(pos + headerSize, moov.data(), moov.size())) return false;
-            return parseM4aGaplessMoov(moov.data(), moov.size(), out);
+            if (!parseM4aGaplessMoov(moov.data(), moov.size(), out)) return false;
+            sawMoov = true;
         }
         pos += size;
     }
-    return false;
+    return sawMoov && pos == fileSize;
 }
 
 } // namespace

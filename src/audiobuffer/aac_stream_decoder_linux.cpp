@@ -2,6 +2,7 @@
 
 #include "aac_stream_decoder.h"
 #include "../native_decoder/native_audio_decoder.h"
+#include "../simd/simd_pcm.h"
 #include <dlfcn.h>
 #include <vector>
 #include <deque>
@@ -90,7 +91,7 @@ struct LinuxFFmpegCodecLoader {
 
         #define LOAD_SYM(name) \
             name = reinterpret_cast<pfn_##name>(dlsym(hCodec, #name)); \
-            if (!name) return false;
+            if (!name) { dlclose(hCodec); hCodec = nullptr; return false; }
 
         LOAD_SYM(avcodec_find_decoder_by_name);
         LOAD_SYM(avcodec_alloc_context3);
@@ -227,6 +228,11 @@ public:
 
         mPkt = gLinuxFFmpeg.av_packet_alloc();
         mFrame = gLinuxFFmpeg.av_frame_alloc();
+        if (!mPkt || !mFrame) {
+            std::cerr << "[flutter_soloud] av_packet_alloc/av_frame_alloc failed." << std::endl;
+            cleanup();
+            return false;
+        }
 
         mInitialized = true;
         mCodecPreConfigured = true;
@@ -236,7 +242,7 @@ public:
     std::pair<std::vector<float>, DecoderError>
     decode(std::vector<unsigned char> &buffer, int *samplerate,
            int *channels, size_t maxOutputSamples) override {
-        if (!mInitialized || !mCodecCtx || !mParser) {
+        if (!mInitialized || !mCodecCtx || !mParser || !mPkt || !mFrame) {
             return {{}, DecoderError::FailedToCreateDecoder};
         }
 
@@ -280,16 +286,15 @@ public:
         if (mFormatInitialized && !mPrebufferComplete) {
             // Count available complete frames that can be parsed from buffer
             size_t frameCount = 0;
-            std::vector<unsigned char> tempBuffer = buffer;
             size_t offset = 0;
 
-            while (offset < tempBuffer.size()) {
+            while (offset < buffer.size()) {
                 uint8_t *poutbuf = nullptr;
                 int poutbuf_size = 0;
                 int consumed = gLinuxFFmpeg.av_parser_parse2(
                     mParser, mCodecCtx,
                     &poutbuf, &poutbuf_size,
-                    tempBuffer.data() + offset, static_cast<int>(tempBuffer.size() - offset),
+                    buffer.data() + offset, static_cast<int>(buffer.size() - offset),
                     0, 0, 0
                 );
 
@@ -512,10 +517,19 @@ private:
         frameSamples.reserve(totalNewSamples);
 
         if (fmt == AV_SAMPLE_FMT_FLTP) {
-            for (int s = 0; s < nbSamples; s++) {
-                for (int c = 0; c < ch && c < 8; c++) {
-                    const float *plane = reinterpret_cast<const float *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
-                    frameSamples.push_back(plane ? plane[s] : 0.0f);
+            const float *p0 = reinterpret_cast<const float *>(dFrame->extended_data ? dFrame->extended_data[0] : dFrame->data[0]);
+            const float *p1 = (ch >= 2) ? reinterpret_cast<const float *>(dFrame->extended_data ? dFrame->extended_data[1] : dFrame->data[1]) : nullptr;
+            if (ch == 1 && p0) {
+                frameSamples.assign(p0, p0 + nbSamples);
+            } else if (ch == 2 && p0 && p1) {
+                frameSamples.resize(totalNewSamples);
+                SoLoud::interleaveStereoFloats(p0, p1, frameSamples.data(), static_cast<unsigned int>(nbSamples));
+            } else {
+                for (int s = 0; s < nbSamples; s++) {
+                    for (int c = 0; c < ch && c < 8; c++) {
+                        const float *plane = reinterpret_cast<const float *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
+                        frameSamples.push_back(plane ? plane[s] : 0.0f);
+                    }
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_FLT) {
@@ -527,29 +541,27 @@ private:
             for (int s = 0; s < nbSamples; s++) {
                 for (int c = 0; c < ch && c < 8; c++) {
                     const int16_t *plane = reinterpret_cast<const int16_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
-                    frameSamples.push_back(plane ? (plane[s] / 32768.0f) : 0.0f);
+                    frameSamples.push_back(plane ? (plane[s] * (1.0f / 32768.0f)) : 0.0f);
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_S16) {
             const int16_t *src = reinterpret_cast<const int16_t *>(dFrame->data[0]);
             if (src) {
-                for (size_t i = 0; i < totalNewSamples; i++) {
-                    frameSamples.push_back(src[i] / 32768.0f);
-                }
+                frameSamples.resize(totalNewSamples);
+                SoLoud::convertInt16ToFloats(src, frameSamples.data(), static_cast<unsigned int>(totalNewSamples));
             }
         } else if (fmt == AV_SAMPLE_FMT_S32P) {
             for (int s = 0; s < nbSamples; s++) {
                 for (int c = 0; c < ch && c < 8; c++) {
                     const int32_t *plane = reinterpret_cast<const int32_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
-                    frameSamples.push_back(plane ? (plane[s] / 2147483648.0f) : 0.0f);
+                    frameSamples.push_back(plane ? (plane[s] * (1.0f / 2147483648.0f)) : 0.0f);
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_S32) {
             const int32_t *src = reinterpret_cast<const int32_t *>(dFrame->data[0]);
             if (src) {
-                for (size_t i = 0; i < totalNewSamples; i++) {
-                    frameSamples.push_back(src[i] / 2147483648.0f);
-                }
+                frameSamples.resize(totalNewSamples);
+                SoLoud::convertInt32ToFloats(src, frameSamples.data(), static_cast<unsigned int>(totalNewSamples));
             }
         } else if (fmt == AV_SAMPLE_FMT_DBLP) {
             for (int s = 0; s < nbSamples; s++) {

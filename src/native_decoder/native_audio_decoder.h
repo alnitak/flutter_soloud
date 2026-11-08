@@ -1,10 +1,13 @@
 #ifndef NATIVE_AUDIO_DECODER_H
 #define NATIVE_AUDIO_DECODER_H
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
+
+#include "../simd/simd_pcm.h"
 
 struct DecodedAudioData {
     float *samples = nullptr;        // Planar float PCM data (channel 0, channel 1, ...)
@@ -117,15 +120,8 @@ public:
     static inline void interleavedToPlanar(const float *interleaved, float *planar,
                                           size_t frameCount, unsigned int channels) {
         if (!interleaved || !planar || channels == 0 || frameCount == 0) return;
-        if (channels == 1) {
-            std::memcpy(planar, interleaved, frameCount * sizeof(float));
-            return;
-        }
-        for (size_t i = 0; i < frameCount; i++) {
-            for (unsigned int c = 0; c < channels; c++) {
-                planar[c * frameCount + i] = interleaved[i * channels + c];
-            }
-        }
+        SoLoud::deinterleaveFloatsToPlanar(
+            interleaved, planar, frameCount, frameCount, channels);
     }
 };
 

@@ -18,6 +18,11 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 # The analyzer the device callback feeds uses pffft, which is C.
 cc -std=gnu99 -O2 -c -I src/pffft -o "$WORK_DIR/pffft.o" src/pffft/pffft.c
 
+EXTRA_LDFLAGS=()
+if [ "$(uname -s)" = "Darwin" ]; then
+    EXTRA_LDFLAGS+=(-framework AudioToolbox -framework CoreFoundation -framework CoreAudio -framework Foundation)
+fi
+
 c++ -std=c++17 -O2 -Wall -Wextra -pthread \
     -DWITH_MINIAUDIO \
     -DNO_XIPH_LIBS \
@@ -31,6 +36,7 @@ c++ -std=c++17 -O2 -Wall -Wextra -pthread \
     src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp \
     src/mixeroutput/*.cpp \
     "$WORK_DIR/pffft.o" \
-    -ldl -lm
+    -ldl -lm \
+    "${EXTRA_LDFLAGS[@]}"
 
 "$OUT"

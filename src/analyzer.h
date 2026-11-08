@@ -220,14 +220,16 @@ class Analyzer : public SoLoud::BusAudioTap {
   // samples are relaxed atomics: plain loads and stores on every target.
   std::atomic<float> *m_ring{nullptr};
   size_t m_ringFrames{0};
-  std::atomic<size_t> m_writeIndex{0};
+  alignas(64) std::atomic<size_t> m_writeIndex{0};
   // Where the capture in progress will have written up to, announced before
   // it writes, so a torn copy of the window can be detected.
   std::atomic<size_t> m_writeReserve{0};
   // Channel count of the latest capture, for downmixing.
   std::atomic<int> m_capturedChannels{0};
   // End of the latest analyzed window. Only touched by the thread analyzing.
-  size_t m_readIndex{0};
+  alignas(64) size_t m_readIndex{0};
+  // Aligned scratch lane buffer for contiguous ring reads / peak detection.
+  float *m_laneScratch{nullptr};
 
   // PFFFT setup, precomputed window table and SIMD aligned work buffers.
   PFFFT_Setup *m_pffftSetup{nullptr};

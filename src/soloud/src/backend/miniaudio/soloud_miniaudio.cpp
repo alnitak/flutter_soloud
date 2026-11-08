@@ -1280,6 +1280,15 @@ namespace SoLoud
         // ended-voice queue is drained with correct bookkeeping.
         soloud->unlockAudioMutex_internal();
 #else
+        if (soloud == nullptr ||
+            soloud != gSoloud.load(std::memory_order_acquire) ||
+            soloud->mEngineReady.load(std::memory_order_acquire) == 0)
+        {
+            std::memset(pOutput, 0,
+                        (size_t)frameCount * (outChannels != 0 ? outChannels : 1) *
+                            sizeof(float));
+            return;
+        }
         if (soloud->isRenderAheadEnabled())
         {
             // Render-ahead ring path: the render worker keeps
@@ -1578,6 +1587,8 @@ namespace SoLoud
         deviceConfig.sampleRate         = aSamplerate;
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData          = (void *)aSoloud;
+        deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
+        deviceConfig.noClip             = MA_TRUE;
 
         // deviceConfig.aaudio.usage       = ma_aaudio_usage_default;
         // deviceConfig.aaudio.contentType = ma_aaudio_content_type_default;
@@ -1878,6 +1889,8 @@ namespace SoLoud
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData          = (void *)currentSoloud;
         deviceConfig.notificationCallback = on_notification;
+        deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
+        deviceConfig.noClip             = MA_TRUE;
 
         // Preserve the performance profile chosen at init across device changes,
         // otherwise switching the output device would silently revert to the
@@ -1973,6 +1986,8 @@ namespace SoLoud
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData          = (void *)currentSoloud;
         deviceConfig.notificationCallback = on_notification;
+        deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
+        deviceConfig.noClip             = MA_TRUE;
 
         deviceConfig.performanceProfile = gMiniaudioLowLatency.load(std::memory_order_acquire)
             ? ma_performance_profile_low_latency

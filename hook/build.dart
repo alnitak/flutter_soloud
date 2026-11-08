@@ -18,6 +18,7 @@
 
 // ignore_for_file: avoid_print
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
@@ -211,7 +212,8 @@ void main(List<String> args) async {
           },
           flags: [
             if (os == OS.windows) ...[
-              '/Ox',
+              '/O2',
+              '/Zc:inline',
               '/EHsc',
             ] else ...[
               '-O3',
@@ -242,9 +244,16 @@ void main(List<String> args) async {
 
     final defines = <String, String?>{
       'FLUTTER_PLUGIN_IMPL': null,
-      'SIGNALSMITH_USE_PFFFT': null,
+      if (isApple)
+        'SIGNALSMITH_USE_ACCELERATE': null
+      else
+        'SIGNALSMITH_USE_PFFFT': null,
       'WITH_MINIAUDIO': null,
       'WITH_NULL': null,
+      'MA_NO_RESOURCE_MANAGER': null,
+      'MA_NO_NODE_GRAPH': null,
+      'MA_NO_ENGINE': null,
+      'MA_NO_GENERATION': null,
       // Force NDEBUG across all compilers (comment out for native debugging).
       'NDEBUG': null,
       if (os == OS.windows) ...{
@@ -258,21 +267,33 @@ void main(List<String> args) async {
     };
 
     final flags = <String>[
-      if (os != OS.windows) ...[
-        '-fvisibility=hidden',
-        '-Wno-unused-command-line-argument',
-      ],
       // Force maximum optimization regardless of Flutter build mode.
-      // For native debugging: comment out 'NDEBUG' above and replace the line
-      // below with: if (os == OS.windows) ...['/Od', '/Zi', '/EHsc'] else ...['-O0', '-g'],
-      if (os == OS.windows) ...['/Ox', '/EHsc'] else '-O3',
-      if (os == OS.android) ...[
-        '-Wl,--build-id=sha1',
-        '-ffast-math',
-        '-funroll-loops',
-        '-fomit-frame-pointer',
+      // For native debugging: comment out 'NDEBUG' above and replace the block
+      // below with:
+      // if (os == OS.windows) ...['/Od', '/Zi', '/EHsc'] else ...['-O0', '-g'],
+      if (os == OS.windows) ...[
+        '/O2',
+        '/Zc:inline',
+        '/fp:fast',
+        '/EHsc',
+      ] else ...[
+        '-O3',
+        '-fno-math-errno',
+        '-fno-trapping-math',
+        '-fno-signed-zeros',
+        '-ffp-contract=fast',
+        '-fvisibility=hidden',
         '-ffunction-sections',
         '-fdata-sections',
+        '-fsigned-char',
+        '-Wno-unused-command-line-argument',
+        '-Wno-vla',
+        '-Wno-vla-cxx-extension',
+      ],
+      if (os == OS.android) ...[
+        '-Wl,--build-id=sha1',
+        '-funroll-loops',
+        '-fomit-frame-pointer',
         '-Wl,--gc-sections',
         // Support Android 15 16k page size.
         '-Wl,-z,max-page-size=16384',
@@ -280,19 +301,19 @@ void main(List<String> args) async {
         // enable NEON explicitly (hard-float is the default on modern NDKs;
         // -mfloat=softfp was removed from NDK r25+ clang).
         if (arch == Architecture.arm) '-mfpu=neon',
-        if (arch == Architecture.ia32 || arch == Architecture.x64) ...[
+        if (arch == Architecture.ia32) ...['-msse2', '-msse3'],
+        if (arch == Architecture.x64) ...[
           '-msse2',
           '-msse3',
+          '-msse4.1',
+          '-mpopcnt',
         ],
       ],
-      if (os != OS.windows) ...[
-        '-fvisibility=hidden',
-        '-Wno-unused-command-line-argument',
-        '-fsigned-char',
-        '-Wno-vla',
-        '-Wno-vla-cxx-extension',
+      if (os == OS.linux) ...[
+        '-Wl,--gc-sections',
+        if (arch == Architecture.x64) ...['-msse2', '-msse3'],
       ],
-      if (os == OS.linux && arch == Architecture.x64) ...['-msse2', '-msse3'],
+      if (isApple && arch == Architecture.x64) '-msse4.1',
     ];
 
     final includes = [
@@ -355,6 +376,7 @@ void main(List<String> args) async {
       frameworks: isApple
           ? [
               'Foundation',
+              'Accelerate',
               'AudioToolbox',
               'AVFAudio',
               'CoreAudio',
@@ -818,9 +840,8 @@ final class XiphLink {
       isZip: false,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
+    File('${cacheDir.path}/$_prebuildVersionFileName')
+        .writeAsStringSync('$tagToWrite\n');
 
     File.fromUri(
         packageRoot.resolve(
@@ -873,9 +894,8 @@ final class XiphLink {
       isZip: isZip,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
+    File('${cacheDir.path}/$_prebuildVersionFileName')
+        .writeAsStringSync('$tagToWrite\n');
 
     if (!validator(cacheDir)) {
       throw StateError(
@@ -885,6 +905,23 @@ final class XiphLink {
       );
     }
     return cacheDir;
+  }
+
+  static const String _browserUserAgent =
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const String _browserAcceptHeader =
+      'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+
+  static bool? _cachedHasCurl;
+  static Future<bool> _hasSystemCurl() async {
+    if (_cachedHasCurl != null) return _cachedHasCurl!;
+    try {
+      final res = await Process.run('curl', ['--version']);
+      return _cachedHasCurl = (res.exitCode == 0);
+    } catch (_) {
+      return _cachedHasCurl = false;
+    }
   }
 
   static Future<String?> _downloadAndExtract(
@@ -897,35 +934,166 @@ final class XiphLink {
       '${destination.path}/dl_${DateTime.now().millisecondsSinceEpoch}.${isZip ? 'zip' : 'tar.gz'}',
     );
 
+    const maxAttempts = 4;
     String? resolvedTag;
-    final client = HttpClient();
-    try {
-      final uri = Uri.parse(url);
-      final request = await client.getUrl(uri);
-      final response = await request.close();
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException(
-          'Failed to download prebuilt libraries from $url '
-          '(HTTP ${response.statusCode}). Ensure you have an internet '
-          'connection or build from source using '
-          '`<platform>_force_build_libs: true`.',
-          uri: uri,
-        );
+    dynamic lastError;
+    var downloadSuccess = false;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (tempFile.existsSync()) {
+        try {
+          tempFile.deleteSync();
+        } catch (_) {}
       }
-      for (final r in response.redirects) {
-        final match = RegExp(
-          '/releases/download/([^/]+)/',
-        ).firstMatch(r.location.toString());
-        if (match != null) {
-          resolvedTag = match.group(1);
-          break;
+
+      if (attempt == 1) {
+        print('[flutter_soloud] Downloading prebuild archive: $url');
+      } else {
+        final backoffSeconds = 2 * (1 << (attempt - 2)); // 2s, 4s, 8s...
+        print(
+          '[flutter_soloud] Retrying prebuild download (attempt $attempt/$maxAttempts) '
+          'in ${backoffSeconds}s after previous error: $lastError',
+        );
+        await Future<void>.delayed(Duration(seconds: backoffSeconds));
+        print('[flutter_soloud] Downloading prebuild archive: $url');
+      }
+
+      // 1. Try system curl first if available (supports HTTP/2 & built-in retries)
+      if (await _hasSystemCurl()) {
+        try {
+          final curlRes = await Process.run('curl', [
+            '-f',
+            '-s',
+            '-S',
+            '-L',
+            '--retry',
+            '3',
+            '--retry-delay',
+            '2',
+            '--connect-timeout',
+            '15',
+            '-m',
+            '60',
+            '-A',
+            _browserUserAgent,
+            '-H',
+            'Accept: $_browserAcceptHeader',
+            '-w',
+            '\n%{url_effective}',
+            '-o',
+            tempFile.path,
+            url,
+          ]);
+
+          if (curlRes.exitCode == 0 &&
+              tempFile.existsSync() &&
+              tempFile.lengthSync() > 0) {
+            downloadSuccess = true;
+            final stdoutStr = curlRes.stdout.toString().trim();
+            final match = RegExp('/releases/download/([^/]+)/')
+                .firstMatch(stdoutStr);
+            if (match != null) {
+              resolvedTag = match.group(1);
+            }
+            print(
+              '[flutter_soloud] Download completed successfully via curl '
+              '(${tempFile.lengthSync()} bytes).',
+            );
+            break;
+          } else {
+            final err = curlRes.stderr.toString().trim();
+            lastError = 'curl failed (exit ${curlRes.exitCode}): $err';
+            print('[flutter_soloud] curl download failed: $lastError');
+          }
+        } catch (curlEx) {
+          lastError = curlEx;
+          print('[flutter_soloud] Failed to execute curl process: $curlEx');
         }
       }
-      await response.pipe(tempFile.openWrite());
-    } finally {
-      client.close();
+
+      // 2. Fall back to Dart HttpClient if curl was unavailable or failed
+      if (!downloadSuccess) {
+        if (tempFile.existsSync()) {
+          try {
+            tempFile.deleteSync();
+          } catch (_) {}
+        }
+        try {
+          print('[flutter_soloud] Trying Dart HttpClient download...');
+          final client = HttpClient()
+            ..connectionTimeout = const Duration(seconds: 15)
+            ..userAgent = _browserUserAgent;
+          try {
+            final uri = Uri.parse(url);
+            final request = await client.getUrl(uri).timeout(
+              const Duration(seconds: 15),
+            );
+            request.headers.set(
+              HttpHeaders.acceptHeader,
+              _browserAcceptHeader,
+            );
+            request.headers.set(
+              HttpHeaders.acceptLanguageHeader,
+              'en-US,en;q=0.9',
+            );
+            final response = await request.close().timeout(
+              const Duration(seconds: 20),
+            );
+
+            if (response.statusCode != HttpStatus.ok) {
+              throw HttpException(
+                'HTTP ${response.statusCode} (${response.reasonPhrase})',
+                uri: uri,
+              );
+            }
+
+            for (final r in response.redirects) {
+              final match = RegExp('/releases/download/([^/]+)/')
+                  .firstMatch(r.location.toString());
+              if (match != null) {
+                resolvedTag = match.group(1);
+                break;
+              }
+            }
+
+            final sink = tempFile.openWrite();
+            await response.pipe(sink);
+            if (tempFile.existsSync() && tempFile.lengthSync() > 0) {
+              downloadSuccess = true;
+              print(
+                '[flutter_soloud] Download completed successfully '
+                '(${tempFile.lengthSync()} bytes).',
+              );
+              break;
+            } else {
+              throw const FileSystemException('Downloaded file is empty');
+            }
+          } finally {
+            client.close();
+          }
+        } catch (e) {
+          lastError = e;
+          print('[flutter_soloud] Dart HttpClient download failed: $e');
+        }
+      }
     }
 
+    if (!downloadSuccess) {
+      if (tempFile.existsSync()) {
+        try {
+          tempFile.deleteSync();
+        } catch (_) {}
+      }
+      throw HttpException(
+        'Failed to download prebuilt libraries from $url after '
+        '$maxAttempts attempts (last error: $lastError). Ensure you have '
+        'an internet connection or build from source using '
+        '`<platform>_force_build_libs: true`.',
+        uri: Uri.parse(url),
+      );
+    }
+
+    print('[flutter_soloud] Extracting archive to ${destination.path}...');
     try {
       if (isZip && Platform.isWindows) {
         final tarRes = await Process.run('tar', [
@@ -968,6 +1136,7 @@ final class XiphLink {
           );
         }
       }
+      print('[flutter_soloud] Extraction completed successfully.');
     } finally {
       if (tempFile.existsSync()) {
         tempFile.deleteSync();
@@ -1312,15 +1481,38 @@ final class XiphLink {
     const androidLinkerFlags =
         '-DCMAKE_SHARED_LINKER_FLAGS='
         '-Wl,-z,max-page-size=16384,--gc-sections -flto';
+    final androidAbiCFlags = switch (androidAbi) {
+      'armeabi-v7a' => ' -mfpu=neon',
+      'x86' => ' -msse2 -msse3',
+      'x86_64' => ' -msse2 -msse3 -msse4.1 -mpopcnt',
+      _ => '',
+    };
+    const baseFastCFlags =
+        '-O3 -fno-math-errno -fno-trapping-math -ffp-contract=fast';
+    final androidCFlags =
+        '-DCMAKE_C_FLAGS=$baseFastCFlags$androidAbiCFlags '
+        '-flto -ffunction-sections -fdata-sections';
     final androidFlags = [
       if (os == OS.android) ...[
         '-DCMAKE_TOOLCHAIN_FILE=$androidNdk/build/cmake/android.toolchain.cmake',
         '-DANDROID_ABI=$androidAbi',
         '-DANDROID_PLATFORM=android-$androidNdkApi',
-        '-DCMAKE_C_FLAGS=-Os -flto -ffunction-sections -fdata-sections',
+        androidCFlags,
         androidLinkerFlags,
       ],
     ];
+
+    final appleArchCFlags = arch == Architecture.x64 ? ' -msse4.1' : '';
+    final appleXiphCFlags =
+        '$baseFastCFlags$appleArchCFlags '
+        '-fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables';
+    final linuxArchCFlags = arch == Architecture.x64 ? ' -msse2 -msse3' : '';
+    final linuxCFlags =
+        '-DCMAKE_C_FLAGS=$baseFastCFlags$linuxArchCFlags '
+        '-flto -ffunction-sections -fdata-sections';
+    const winSharedLinkerFlags =
+        '-DCMAKE_SHARED_LINKER_FLAGS_RELEASE='
+        '/INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF';
 
     final commonCmakePlatformFlags = [
       if (isApple) ...[
@@ -1328,6 +1520,7 @@ final class XiphLink {
         '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
         '-DCMAKE_OSX_ARCHITECTURES=$archStr',
         '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+        '-DCMAKE_C_FLAGS=$appleXiphCFlags',
         if (os == OS.iOS) ...[
           '-DCMAKE_SYSTEM_NAME=iOS',
           '-DCMAKE_OSX_SYSROOT=$appleSysroot',
@@ -1335,6 +1528,8 @@ final class XiphLink {
       ] else if (os == OS.windows) ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+        '-DCMAKE_C_FLAGS_RELEASE=/O2 /Ob2 /Oi /Ot /GL /Gy /Zc:inline /DNDEBUG',
+        winSharedLinkerFlags,
         if (arch == Architecture.arm64) ...['-A', 'ARM64'],
       ] else if (os == OS.android) ...[
         '-DBUILD_SHARED_LIBS=ON',
@@ -1342,7 +1537,7 @@ final class XiphLink {
       ] else ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
-        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+        linuxCFlags,
         '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
         if (os == OS.linux &&
             arch == Architecture.arm64 &&
@@ -1388,9 +1583,6 @@ final class XiphLink {
     ]);
 
     // Build opus
-    const opusAppleFlags =
-        '-Os -fno-exceptions -fno-unwind-tables '
-        '-fno-asynchronous-unwind-tables';
     print('[flutter_soloud] Configuring opus with CMake ($archStr)...');
     prepareBuildDir('opus');
     await _runCmake([
@@ -1405,10 +1597,9 @@ final class XiphLink {
       '-DOPUS_BUILD_TESTING=OFF',
       '-DOPUS_STACK_PROTECTOR=OFF',
       '-DOPUS_CUSTOM_MODES=ON',
-      if (isApple) ...[
-        '-DOPUS_BUILD_SHARED_LIBRARY=OFF',
-        '-DCMAKE_C_FLAGS=$opusAppleFlags',
-      ],
+      if (isApple) '-DOPUS_BUILD_SHARED_LIBRARY=OFF',
+      if ((isApple || os == OS.android) && arch == Architecture.x64)
+        '-DOPUS_X86_PRESUME_SSE4_1=ON',
       ...commonCmakePlatformFlags,
     ]);
     print('[flutter_soloud] Compiling and installing opus...');
@@ -1610,9 +1801,8 @@ String? _findAndroidNdk(BuildInput input) {
       if (versions.isNotEmpty) {
         versions.sort((a, b) => a.path.compareTo(b.path));
         final candidate = versions.last.path;
-        if (File(
-          '$candidate/build/cmake/android.toolchain.cmake',
-        ).existsSync()) {
+        if (File('$candidate/build/cmake/android.toolchain.cmake')
+            .existsSync()) {
           return candidate;
         }
       }
@@ -1754,9 +1944,8 @@ Future<File> _resolveLinuxSoFile(Directory dir, String lib) async {
     final res = await Process.run('readelf', ['-d', unversioned.path]);
     if (res.exitCode == 0) {
       final out = res.stdout as String;
-      final match = RegExp(
-        r'\(SONAME\)\s+Library soname:\s+\[([^\]]+)\]',
-      ).firstMatch(out);
+      final match = RegExp(r'\(SONAME\)\s+Library soname:\s+\[([^\]]+)\]')
+          .firstMatch(out);
       if (match != null) {
         final sonameFile = File('${dir.path}/${match.group(1)}');
         if (sonameFile.existsSync()) {
@@ -2001,9 +2190,8 @@ final class Vst3Link {
         if (v != targetTag && 'v$v' != targetTag) return false;
       }
     }
-    return File(
-          '${dir.path}/pluginterfaces/vst/ivstaudioprocessor.h',
-        ).existsSync() &&
+    return File('${dir.path}/pluginterfaces/vst/ivstaudioprocessor.h')
+            .existsSync() &&
         File('${dir.path}/public.sdk/source/vst/hosting/module.h').existsSync();
   }
 
@@ -2029,9 +2217,8 @@ final class Vst3Link {
       isZip: false,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
+    File('${cacheDir.path}/$_prebuildVersionFileName')
+        .writeAsStringSync('$tagToWrite\n');
     return cacheDir;
   }
 
@@ -2072,9 +2259,8 @@ final class Vst3Link {
       isZip: isZip,
     );
     final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
+    File('${cacheDir.path}/$_prebuildVersionFileName')
+        .writeAsStringSync('$tagToWrite\n');
 
     if (!validator(cacheDir)) {
       throw StateError(

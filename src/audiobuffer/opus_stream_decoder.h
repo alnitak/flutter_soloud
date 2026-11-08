@@ -65,6 +65,7 @@ private:
     ogg_stream_state os;
     ogg_page og;
     ogg_packet op;
+    bool syncInitialized;
     bool streamInitialized;
 
     // Header parsing state

@@ -501,6 +501,8 @@ namespace SoLoud
 	Vizsn::~Vizsn()
 	{
 		stop();
+		delete[] mText;
+		mText = 0;
 	}
 
 	AudioSourceInstance * Vizsn::createInstance()

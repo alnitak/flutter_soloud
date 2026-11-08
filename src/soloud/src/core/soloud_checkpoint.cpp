@@ -110,11 +110,18 @@ namespace SoLoud
 	static void pruneJournal(Soloud &aSoloud)
 	{
 		const time oldest = oldestRetainedCheckpointTime(aSoloud);
-		while (!aSoloud.mRetroJournal.empty() &&
-			aSoloud.mRetroJournal.front().mTime < oldest)
+		size_t dropCount = 0;
+		while (dropCount < aSoloud.mRetroJournal.size() &&
+			aSoloud.mRetroJournal[dropCount].mTime < oldest)
 		{
-			releaseJournalEntry(aSoloud, aSoloud.mRetroJournal.front());
-			aSoloud.mRetroJournal.erase(aSoloud.mRetroJournal.begin());
+			releaseJournalEntry(aSoloud, aSoloud.mRetroJournal[dropCount]);
+			dropCount++;
+		}
+		if (dropCount > 0)
+		{
+			aSoloud.mRetroJournal.erase(
+				aSoloud.mRetroJournal.begin(),
+				aSoloud.mRetroJournal.begin() + dropCount);
 		}
 	}
 
@@ -205,10 +212,24 @@ namespace SoLoud
 	// voice instance and filter slot out of aRecycle (ownership passes to the
 	// caller), or return NULL.
 	static FilterStateSnapshot *takeRecycledFilterState(std::vector<CheckpointVoice> *aRecycle,
-		unsigned int aSlot, unsigned int aPlayIndex, unsigned int aFilter)
+		const int *aRecycleIdxBySlot, unsigned int aSlot, unsigned int aPlayIndex, unsigned int aFilter)
 	{
 		if (aRecycle == NULL)
 			return NULL;
+		if (aRecycleIdxBySlot != NULL && aSlot < VOICE_COUNT)
+		{
+			const int idx = aRecycleIdxBySlot[aSlot];
+			if (idx < 0)
+				return NULL;
+			CheckpointVoice &old = (*aRecycle)[(size_t)idx];
+			if (old.mSlot == aSlot && old.mPlayIndex == aPlayIndex)
+			{
+				FilterStateSnapshot *s = old.mFilterState[aFilter];
+				old.mFilterState[aFilter] = NULL;
+				return s;
+			}
+			return NULL;
+		}
 		size_t v;
 		for (v = 0; v < aRecycle->size(); v++)
 		{
@@ -227,10 +248,24 @@ namespace SoLoud
 	// voice instance out of aRecycle (ownership passes to the caller), or
 	// return NULL.
 	static SourceStateSnapshot *takeRecycledSourceState(std::vector<CheckpointVoice> *aRecycle,
-		unsigned int aSlot, unsigned int aPlayIndex)
+		const int *aRecycleIdxBySlot, unsigned int aSlot, unsigned int aPlayIndex)
 	{
 		if (aRecycle == NULL)
 			return NULL;
+		if (aRecycleIdxBySlot != NULL && aSlot < VOICE_COUNT)
+		{
+			const int idx = aRecycleIdxBySlot[aSlot];
+			if (idx < 0)
+				return NULL;
+			CheckpointVoice &old = (*aRecycle)[(size_t)idx];
+			if (old.mSlot == aSlot && old.mPlayIndex == aPlayIndex)
+			{
+				SourceStateSnapshot *s = old.mSourceState;
+				old.mSourceState = NULL;
+				return s;
+			}
+			return NULL;
+		}
 		size_t v;
 		for (v = 0; v < aRecycle->size(); v++)
 		{
@@ -251,7 +286,7 @@ namespace SoLoud
 	// aRecycle (may be NULL) holds snapshots of an earlier capture to refill
 	// in place instead of allocating new ones.
 	static void fillCheckpointVoice(Soloud &aSoloud, CheckpointVoice &cv, unsigned int aSlot,
-		std::vector<CheckpointVoice> *aRecycle = NULL)
+		std::vector<CheckpointVoice> *aRecycle = NULL, const int *aRecycleIdxBySlot = NULL)
 	{
 		AudioSourceInstance *v = aSoloud.mVoice[aSlot];
 		unsigned int i;
@@ -313,7 +348,7 @@ namespace SoLoud
 			cv.mFilterId[i] = v->mFilter[i] != NULL ? v->mFilter[i]->mInstanceId : 0;
 			// Refill, in order of preference, the snapshot this same filter
 			// produced last time, a spare of the same type, or allocate.
-			FilterStateSnapshot *reuse = takeRecycledFilterState(aRecycle, aSlot, v->mPlayIndex, i);
+			FilterStateSnapshot *reuse = takeRecycledFilterState(aRecycle, aRecycleIdxBySlot, aSlot, v->mPlayIndex, i);
 			FilterInstance *filter = v->mFilter[i];
 			cv.mFilterState[i] = NULL;
 			if (filter != NULL)
@@ -333,7 +368,7 @@ namespace SoLoud
 			}
 			aSoloud.mFilterSnapshotSpares.give(reuse);
 		}
-		SourceStateSnapshot *reuse = takeRecycledSourceState(aRecycle, aSlot, v->mPlayIndex);
+		SourceStateSnapshot *reuse = takeRecycledSourceState(aRecycle, aRecycleIdxBySlot, aSlot, v->mPlayIndex);
 		if (reuse != NULL && v->captureSourceStateInto(reuse))
 		{
 			cv.mSourceState = reuse;
@@ -445,10 +480,10 @@ namespace SoLoud
 	// Snapshot one voice into aCheckpoint. Appends to mVoices; the caller
 	// guarantees capacity (no allocation on the audio path).
 	static void captureVoice(Soloud &aSoloud, MixCheckpoint &aCheckpoint, unsigned int aSlot,
-		std::vector<CheckpointVoice> *aRecycle)
+		std::vector<CheckpointVoice> *aRecycle, const int *aRecycleIdxBySlot)
 	{
 		CheckpointVoice cv;
-		fillCheckpointVoice(aSoloud, cv, aSlot, aRecycle);
+		fillCheckpointVoice(aSoloud, cv, aSlot, aRecycle, aRecycleIdxBySlot);
 		aCheckpoint.mVoices.push_back(cv);
 	}
 
@@ -487,6 +522,9 @@ namespace SoLoud
 		// ended since become spares right away, for voices started since.
 		mCheckpointRecycle.clear();
 		std::swap(cp.mVoices, mCheckpointRecycle);
+		int recycleIdxBySlot[VOICE_COUNT];
+		if (mHighestVoice > 0)
+			memset(recycleIdxBySlot, -1, sizeof(int) * mHighestVoice);
 		{
 			size_t r;
 			unsigned int f;
@@ -495,7 +533,10 @@ namespace SoLoud
 				CheckpointVoice &old = mCheckpointRecycle[r];
 				if (old.mSlot < mHighestVoice && mVoice[old.mSlot] != NULL &&
 					mVoice[old.mSlot]->mPlayIndex == old.mPlayIndex)
+				{
+					recycleIdxBySlot[old.mSlot] = (int)r;
 					continue;
+				}
 				mSourceSnapshotSpares.give(old.mSourceState);
 				old.mSourceState = NULL;
 				for (f = 0; f < FILTERS_PER_STREAM; f++)
@@ -536,7 +577,8 @@ namespace SoLoud
 		cp.mHighestVoice = mHighestVoice;
 		cp.mPlayIndex = mPlayIndex;
 		cp.mAudioSourceID = mAudioSourceID;
-		memcpy(cp.mActiveVoice, mActiveVoice, sizeof(mActiveVoice));
+		if (mActiveVoiceCount > 0)
+			memcpy(cp.mActiveVoice, mActiveVoice, sizeof(unsigned int) * mActiveVoiceCount);
 		cp.mActiveVoiceCount = mActiveVoiceCount;
 		cp.mActiveVoiceDirty = mActiveVoiceDirty;
 		cp.mClockedAnchorTime = mClockedAnchorTime;
@@ -558,29 +600,25 @@ namespace SoLoud
 		// capacity. Pass 2: the remaining live voices (paused, inaudible) in
 		// slot order, until capacity. Voices beyond capacity are treated as
 		// absent on restore and left running (see restoreMixCheckpoint).
+		unsigned char slotCaptured[VOICE_COUNT];
+		if (mHighestVoice > 0)
+			memset(slotCaptured, 0, mHighestVoice);
 		const size_t capacity = cp.mVoices.capacity();
 		for (i = 0; i < mActiveVoiceCount && cp.mVoices.size() < capacity; i++)
 		{
 			unsigned int slot = mActiveVoice[i];
-			if (slot < mHighestVoice && mVoice[slot] != NULL)
-				captureVoice(*this, cp, slot, &mCheckpointRecycle);
+			if (slot < mHighestVoice && mVoice[slot] != NULL && !slotCaptured[slot])
+			{
+				slotCaptured[slot] = 1;
+				captureVoice(*this, cp, slot, &mCheckpointRecycle, recycleIdxBySlot);
+			}
 		}
 		for (i = 0; i < mHighestVoice && cp.mVoices.size() < capacity; i++)
 		{
-			if (mVoice[i] == NULL)
+			if (mVoice[i] == NULL || slotCaptured[i])
 				continue;
-			size_t v;
-			bool already = false;
-			for (v = 0; v < cp.mVoices.size(); v++)
-			{
-				if (cp.mVoices[v].mSlot == i)
-				{
-					already = true;
-					break;
-				}
-			}
-			if (!already)
-				captureVoice(*this, cp, i, &mCheckpointRecycle);
+			slotCaptured[i] = 1;
+			captureVoice(*this, cp, i, &mCheckpointRecycle, recycleIdxBySlot);
 		}
 		// Park whatever the previous voices left unclaimed (voices beyond the
 		// capture capacity, removed filters) as spares.
@@ -605,21 +643,30 @@ namespace SoLoud
 		// mapResampleBuffers_internal). Only the live region (owner's
 		// channels * SAMPLE_GRANULARITY floats, stored channel-planar
 		// contiguously) is copied; the reserved blocks are reused in place.
+		int ownerSlotByIdx[VOICE_COUNT];
+		if (mMaxActiveVoices > 0)
+			memset(ownerSlotByIdx, -1, sizeof(int) * mMaxActiveVoices);
+		unsigned int liveVoices = 0;
+		for (i = 0; i < mHighestVoice; i++)
+		{
+			AudioSourceInstance *v = mVoice[i];
+			if (v == NULL)
+				continue;
+			liveVoices++;
+			if (v->mResampleData[0] != NULL && mResampleDataBuffer.mData != NULL)
+			{
+				size_t off = (size_t)(v->mResampleData[0] - mResampleDataBuffer.mData);
+				unsigned int pairIdx = (unsigned int)(off / (2 * SAMPLE_GRANULARITY * MAX_CHANNELS));
+				if (pairIdx < mMaxActiveVoices && mResampleDataOwner[pairIdx] == v)
+					ownerSlotByIdx[pairIdx] = (int)i;
+			}
+		}
 		unsigned int usedBlocks = 0;
 		for (i = 0; i < mMaxActiveVoices && usedBlocks < cp.mResampleBlocks.size(); i++)
 		{
 			if (mResampleDataOwner[i] == NULL)
 				continue;
-			unsigned int slot;
-			int ownerSlot = -1;
-			for (slot = 0; slot < mHighestVoice; slot++)
-			{
-				if (mVoice[slot] == mResampleDataOwner[i])
-				{
-					ownerSlot = (int)slot;
-					break;
-				}
-			}
+			int ownerSlot = ownerSlotByIdx[i];
 			if (ownerSlot < 0)
 				continue;
 			unsigned int k;
@@ -645,12 +692,6 @@ namespace SoLoud
 		// would keep its post-window state across the rollback and jump
 		// ahead in the re-mix), and no live global filter may be
 		// unrestorable (computed above).
-		unsigned int liveVoices = 0;
-		for (i = 0; i < mHighestVoice; i++)
-		{
-			if (mVoice[i] != NULL)
-				liveVoices++;
-		}
 		if ((size_t)liveVoices != cp.mVoices.size())
 			restorable = false;
 		size_t v;
@@ -837,7 +878,8 @@ namespace SoLoud
 		}
 		if (exact)
 		{
-			memcpy(mActiveVoice, cp.mActiveVoice, sizeof(mActiveVoice));
+			if (cp.mActiveVoiceCount > 0)
+				memcpy(mActiveVoice, cp.mActiveVoice, sizeof(unsigned int) * cp.mActiveVoiceCount);
 			mActiveVoiceCount = cp.mActiveVoiceCount;
 			mActiveVoiceDirty = cp.mActiveVoiceDirty;
 		}

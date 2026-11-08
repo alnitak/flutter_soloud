@@ -111,6 +111,11 @@ mFileHandle(fp)
 	{
 		if (!aFilename)
 			return INVALID_PARAMETER;
+		if (mFileHandle)
+		{
+			fclose(mFileHandle);
+			mFileHandle = 0;
+		}
 #ifdef _WIN32
 		// On Windows, convert UTF-8 to wide string and use _wfopen
 		int wideLen = MultiByteToWideChar(CP_UTF8, 0, aFilename, -1, NULL, 0);
@@ -157,6 +162,11 @@ mFileHandle(fp)
 
 	void MemoryFile::seek(int aOffset)
 	{
+		if (mDataLength == 0)
+		{
+			mOffset = 0;
+			return;
+		}
 		if (aOffset >= 0)
 			mOffset = aOffset;
 		else
@@ -192,7 +202,11 @@ mFileHandle(fp)
 	result MemoryFile::openMem(const unsigned char *aData, unsigned int aDataLength, bool aCopy, bool aTakeOwnership)
 	{
 		if (aData == NULL || aDataLength == 0)
+		{
+			if (aTakeOwnership && !aCopy && aData != NULL)
+				delete[] aData;
 			return INVALID_PARAMETER;
+		}
 
 		if (mDataOwned)
 			delete[] mDataPtr;

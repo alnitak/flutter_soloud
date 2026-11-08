@@ -95,6 +95,16 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
   }
   const size_t bytesPerFrame = bps * channels;
 
+  // For uncompressed PCM formats, keep the circular buffer an exact multiple
+  // of one interleaved PCM frame so buffer wrap-arounds never split multi-byte
+  // samples or swap stereo/multichannel alignment.
+  const size_t effectiveBufferSize =
+      isCompressed ? bufferSizeBytes
+                   : (bufferSizeBytes / bytesPerFrame) * bytesPerFrame;
+  if (effectiveBufferSize == 0) {
+    return invalidParameter;
+  }
+
   if (isCompressed && chunkPCMFrames > 0) {
     return invalidParameter;
   }
@@ -105,7 +115,7 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
     }
     const size_t chunkBytes =
         static_cast<size_t>(chunkPCMFrames) * bytesPerFrame;
-    if (chunkBytes == 0 || chunkBytes > bufferSizeBytes) {
+    if (chunkBytes == 0 || chunkBytes > effectiveBufferSize) {
       return invalidParameter;
     }
   }
@@ -113,8 +123,9 @@ PlayerErrors MixerOutput::start(MixerOutputFormat format, int sampleRate,
   m_format = format;
   m_sampleRate = sampleRate;
   m_channels = channels;
-  m_bufferSize = bufferSizeBytes;
-  m_notificationThreshold = notificationThresholdBytes;
+  m_bufferSize = effectiveBufferSize;
+  m_notificationThreshold =
+      std::min(notificationThresholdBytes, effectiveBufferSize);
   m_wavHeader.clear();
 
   // Increment the capture id so any in-flight callbacks from a previous
@@ -301,8 +312,14 @@ void MixerOutput::onAudioData(const float *data, unsigned int frames) {
 
   size_t freeSpace = m_bufferSize - available;
   if (bytesToWrite > freeSpace) {
-    const size_t drop = bytesToWrite - freeSpace;
-    readOffset = (readOffset + drop) % m_bufferSize;
+    size_t drop = bytesToWrite - freeSpace;
+    if (m_bytesPerFrame > 1) {
+      const size_t rem = drop % m_bytesPerFrame;
+      if (rem != 0) {
+        drop += m_bytesPerFrame - rem;
+      }
+    }
+    readOffset = (readOffset + std::min(drop, available)) % m_bufferSize;
     m_readOffset.store(readOffset, std::memory_order_release);
   }
 

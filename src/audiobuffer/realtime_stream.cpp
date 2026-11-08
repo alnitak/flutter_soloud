@@ -20,7 +20,7 @@ constexpr size_t kRampFrames = 64;
 constexpr unsigned int kSrcOffsetFracBits = 20;
 
 struct CosineDecayTable {
-  alignas(16) float values[kRampFrames];
+  alignas(64) float values[kRampFrames];
   CosineDecayTable() noexcept {
     for (size_t i = 0; i < kRampFrames; ++i) {
       values[i] =
@@ -129,27 +129,10 @@ void RealtimeStreamInstance::fadeToSilence(float *aBuffer,
       continue;
     }
     if (rampLen == kRampFrames) {
-      size_t i = 0;
-#if defined(SOLOUD_RT_SIMD_SSE2)
-      const __m128 vLast = _mm_set1_ps(last);
-      for (; i + 4 <= kRampFrames; i += 4) {
-        const __m128 d = _mm_load_ps(kCosineDecay64.values + i);
-        _mm_storeu_ps(dst + i, _mm_mul_ps(vLast, d));
-      }
-#elif defined(SOLOUD_RT_SIMD_NEON)
-      for (; i + 4 <= kRampFrames; i += 4) {
-        const float32x4_t d = vld1q_f32(kCosineDecay64.values + i);
-        vst1q_f32(dst + i, vmulq_n_f32(d, last));
-      }
-#elif defined(SOLOUD_RT_SIMD_WASM)
-      const v128_t vLast = wasm_f32x4_splat(last);
-      for (; i + 4 <= kRampFrames; i += 4) {
-        const v128_t d = wasm_v128_load(kCosineDecay64.values + i);
-        wasm_v128_store(dst + i, wasm_f32x4_mul(vLast, d));
-      }
-#endif
-      for (; i < kRampFrames; ++i) {
-        dst[i] = last * kCosineDecay64.values[i];
+      const soloud_simd::f32x4 vLast = soloud_simd::f32x4::splat(last);
+      for (size_t i = 0; i < kRampFrames; i += 4) {
+        const soloud_simd::f32x4 d = soloud_simd::f32x4::loadu(kCosineDecay64.values + i);
+        soloud_simd::mul(vLast, d).storeu(dst + i);
       }
     } else {
       for (size_t i = 0; i < rampLen; ++i) {
@@ -174,31 +157,11 @@ void RealtimeStreamInstance::rampInFromLastSample(float *aBuffer,
     }
     float *dst = aBuffer + ch * aBufferSize + aOffset;
     if (rampLen == kRampFrames) {
-      size_t i = 0;
-#if defined(SOLOUD_RT_SIMD_SSE2)
-      const __m128 vLast = _mm_set1_ps(last);
-      for (; i + 4 <= kRampFrames; i += 4) {
-        const __m128 d = _mm_load_ps(kCosineDecay64.values + i);
-        const __m128 cur = _mm_loadu_ps(dst + i);
-        _mm_storeu_ps(dst + i, _mm_add_ps(cur, _mm_mul_ps(vLast, d)));
-      }
-#elif defined(SOLOUD_RT_SIMD_NEON)
-      for (; i + 4 <= kRampFrames; i += 4) {
-        const float32x4_t d = vld1q_f32(kCosineDecay64.values + i);
-        const float32x4_t cur = vld1q_f32(dst + i);
-        vst1q_f32(dst + i, vmlaq_n_f32(cur, d, last));
-      }
-#elif defined(SOLOUD_RT_SIMD_WASM)
-      const v128_t vLast = wasm_f32x4_splat(last);
-      for (; i + 4 <= kRampFrames; i += 4) {
-        const v128_t d = wasm_v128_load(kCosineDecay64.values + i);
-        const v128_t cur = wasm_v128_load(dst + i);
-        wasm_v128_store(dst + i,
-                        wasm_f32x4_add(cur, wasm_f32x4_mul(vLast, d)));
-      }
-#endif
-      for (; i < kRampFrames; ++i) {
-        dst[i] += last * kCosineDecay64.values[i];
+      const soloud_simd::f32x4 vLast = soloud_simd::f32x4::splat(last);
+      for (size_t i = 0; i < kRampFrames; i += 4) {
+        const soloud_simd::f32x4 d = soloud_simd::f32x4::loadu(kCosineDecay64.values + i);
+        const soloud_simd::f32x4 cur = soloud_simd::f32x4::loadu(dst + i);
+        soloud_simd::fma(cur, vLast, d).storeu(dst + i);
       }
     } else {
       for (size_t i = 0; i < rampLen; ++i) {

@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include "soloud.h"
 #include "soloud_echofilter.h"
+#include "../../../simd/soloud_simd.h"
 
 namespace SoLoud
 {
@@ -79,26 +80,38 @@ namespace SoLoud
 			mBufferLength = 1;
 
 		mOffset %= mBufferLength;
+		if (aSamples == 0 || aChannels == 0)
+			return;
 
-		unsigned int i, j;
-		int prevofs = (mOffset + mBufferLength - 1) % mBufferLength;
-		for (i = 0; i < aSamples; i++)
+		soloud_simd::ScopedFlushDenormals flushDenormals;
+		const float filt = mParam[EchoFilter::FILTER];
+		const float oneMinusFilt = 1.0f - filt;
+		const float decay = mParam[EchoFilter::DECAY];
+		const float wet = mParam[EchoFilter::WET];
+		const int len = mBufferLength;
+		const int startOffset = mOffset;
+
+		// Channel-outer, sample-inner loop eliminates L1/L2 cache thrashing across
+		// multi-megabyte delay buffers and removes modulo division in the inner loop.
+		for (unsigned int j = 0; j < aChannels; j++)
 		{
-			for (j = 0; j < aChannels; j++)
+			float *dBuf = mBuffer + (size_t)j * (size_t)len;
+			float *aBuf = aBuffer + (size_t)j * (size_t)aBufferSize;
+			int ofs = startOffset;
+			int prevofs = (ofs > 0) ? (ofs - 1) : (len - 1);
+			for (unsigned int i = 0; i < aSamples; i++)
 			{
-				int chofs = j * mBufferLength;
-				int bchofs = j * aBufferSize;
-				
-				mBuffer[mOffset + chofs] = mParam[EchoFilter::FILTER] * mBuffer[prevofs + chofs] + (1 - mParam[EchoFilter::FILTER]) * mBuffer[mOffset + chofs];
-				
-				float n = aBuffer[i + bchofs] + mBuffer[mOffset + chofs] * mParam[EchoFilter::DECAY];
-				mBuffer[mOffset + chofs] = n;
-
-				aBuffer[i + bchofs] += (n - aBuffer[i + bchofs]) * mParam[EchoFilter::WET];
+				const float in = aBuf[i];
+				const float lp = filt * dBuf[prevofs] + oneMinusFilt * dBuf[ofs];
+				const float n = in + lp * decay;
+				dBuf[ofs] = n;
+				aBuf[i] = in + (n - in) * wet;
+				prevofs = ofs;
+				if (++ofs >= len)
+					ofs = 0;
 			}
-			prevofs = mOffset;
-			mOffset = (mOffset + 1) % mBufferLength;
 		}
+		mOffset = (startOffset + (int)aSamples) % len;
 	}
 
 	struct EchoFilterSnapshot : public FilterStateSnapshot

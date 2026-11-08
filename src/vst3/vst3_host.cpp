@@ -177,15 +177,22 @@ bool Vst3PluginInstance::initialize(
     return false;
   }
 
-  // Pre-allocate scratch buffers for real-time audio processing
-  mScratchInput.assign(static_cast<size_t>(mMaxChannels) * mMaxBlockSize, 0.0f);
-  mScratchOutput.assign(static_cast<size_t>(mMaxChannels) * mMaxBlockSize,
-                        0.0f);
+  // Pre-allocate 64-byte aligned scratch buffers for real-time audio processing
+  mScratchStride =
+      (static_cast<size_t>(mMaxBlockSize) + 15u) & ~static_cast<size_t>(15);
+  const size_t totalFloats = static_cast<size_t>(mMaxChannels) * mScratchStride;
+  mScratchInput = soloud_simd::makeAlignedFloats(totalFloats);
+  mScratchOutput = soloud_simd::makeAlignedFloats(totalFloats);
+  if (!mScratchInput || !mScratchOutput) {
+    return false;
+  }
+  std::memset(mScratchInput.get(), 0, totalFloats * sizeof(float));
+  std::memset(mScratchOutput.get(), 0, totalFloats * sizeof(float));
   for (unsigned int ch = 0; ch < mMaxChannels; ++ch) {
     mInChannelPtrs[ch] =
-        mScratchInput.data() + static_cast<size_t>(ch) * mMaxBlockSize;
+        mScratchInput.get() + static_cast<size_t>(ch) * mScratchStride;
     mOutChannelPtrs[ch] =
-        mScratchOutput.data() + static_cast<size_t>(ch) * mMaxBlockSize;
+        mScratchOutput.get() + static_cast<size_t>(ch) * mScratchStride;
   }
 
   mInputBusBuffers.numChannels = static_cast<Steinberg::int32>(mMaxChannels);
@@ -360,6 +367,8 @@ void Vst3PluginInstance::prepareAndProcessBlock(
     float *aBuffer, unsigned int aSamples, unsigned int aBufferSize,
     unsigned int numCh, float aSamplerate, double aTime,
     bool isInstrument) noexcept {
+  soloud_simd::ScopedFlushDenormals flushDenormals;
+
   unsigned int offset = 0;
   while (offset < aSamples) {
     const unsigned int chunkSamples =
@@ -382,22 +391,40 @@ void Vst3PluginInstance::prepareAndProcessBlock(
       }
     }
 
+    bool copyInstrumentFromScratch = false;
     for (unsigned int ch = 0; ch < numCh; ++ch) {
+      float *callerPtr =
+          aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
+      float *scratchIn =
+          mScratchInput.get() + (static_cast<size_t>(ch) * mScratchStride);
+      float *scratchOut =
+          mScratchOutput.get() + (static_cast<size_t>(ch) * mScratchStride);
+      const bool callerAligned =
+          (reinterpret_cast<uintptr_t>(callerPtr) & 31u) == 0u;
+
       if (isInstrument) {
-        // Instrument: silent scratch input, output directly to aBuffer
-        mInChannelPtrs[ch] =
-            mScratchInput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
-        std::memset(mInChannelPtrs[ch], 0, chunkSamples * sizeof(float));
-        mOutChannelPtrs[ch] =
-            aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
+        // Instrument: silent scratch input; output directly to callerPtr when
+        // 32-byte aligned, otherwise via 64B-aligned scratchOut.
+        mInChannelPtrs[ch] = scratchIn;
+        std::memset(scratchIn, 0, chunkSamples * sizeof(float));
+        if (callerAligned) {
+          mOutChannelPtrs[ch] = callerPtr;
+        } else {
+          mOutChannelPtrs[ch] = scratchOut;
+          copyInstrumentFromScratch = true;
+        }
         std::memset(mOutChannelPtrs[ch], 0, chunkSamples * sizeof(float));
       } else {
-        // Effect: read input from aBuffer, write to scratch output
-        mInChannelPtrs[ch] =
-            aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
-        mOutChannelPtrs[ch] =
-            mScratchOutput.data() + (static_cast<size_t>(ch) * mMaxBlockSize);
-        std::memset(mOutChannelPtrs[ch], 0, chunkSamples * sizeof(float));
+        // Effect: pass callerPtr directly when 32-byte aligned, otherwise stage
+        // into 64B-aligned scratchIn so AVX/SSE plugins never fault.
+        if (callerAligned) {
+          mInChannelPtrs[ch] = callerPtr;
+        } else {
+          std::memcpy(scratchIn, callerPtr, chunkSamples * sizeof(float));
+          mInChannelPtrs[ch] = scratchIn;
+        }
+        mOutChannelPtrs[ch] = scratchOut;
+        std::memset(scratchOut, 0, chunkSamples * sizeof(float));
       }
     }
 
@@ -423,7 +450,17 @@ void Vst3PluginInstance::prepareAndProcessBlock(
     mProcessData.processContext = &mProcessContext;
 
     if (isInstrument) {
-      mProcessor->process(mProcessData);
+      if (mProcessor->process(mProcessData) == Steinberg::kResultOk &&
+          copyInstrumentFromScratch) {
+        for (unsigned int ch = 0; ch < numCh; ++ch) {
+          float *callerPtr =
+              aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
+          if (mOutChannelPtrs[ch] != callerPtr) {
+            std::memcpy(callerPtr, mOutChannelPtrs[ch],
+                        chunkSamples * sizeof(float));
+          }
+        }
+      }
     } else {
       if (mProcessor->process(mProcessData) == Steinberg::kResultOk) {
         if (mEditorWindow) {

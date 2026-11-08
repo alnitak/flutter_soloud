@@ -93,7 +93,6 @@ PullBufferStreamInstance::PullBufferStreamInstance(PullBufferStream *aParent)
     mBaseSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
     mSamplerate = mBaseSamplerate;
     mChannels = mParent->mPCMformat.channels;
-    mReadScratch.reserve(SAMPLE_GRANULARITY * MAX_CHANNELS);
     mParent->mInstance = this;
   }
 }
@@ -135,15 +134,15 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   mParent->drainBacklog();
   mParent->tryDecodePendingData();
 
-  const size_t availableSamples = mParent->mCircularBuffer.available();
-  const unsigned int requestedSamples = aSamplesToRead * mChannels;
-  const size_t samplesToRead =
-      std::min(static_cast<size_t>(requestedSamples), availableSamples);
+  const size_t availableFrames =
+      mParent->mCircularBuffer.available() / mChannels;
+  const size_t framesToRequest =
+      std::min<size_t>(aSamplesToRead, availableFrames);
 
   // No decoded samples available: zero the whole output buffer and ask for
   // more data. Do not call checkBuffering here: it runs on the audio thread
   // and would deadlock when calling getPause/getPosition.
-  if (samplesToRead == 0) {
+  if (framesToRequest == 0) {
     for (unsigned int ch = 0; ch < mChannels; ++ch) {
       std::memset(aBuffer + ch * aBufferSize, 0, sizeof(float) * aSamplesToRead);
     }
@@ -151,18 +150,11 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
     return 0;
   }
 
-  // Pull interleaved samples from the circular buffer and de-interleave them
-  // into the planar layout the SoLoud mixer expects (each channel is a
-  // contiguous block of aBufferSize frames). The scratch buffer is reused
-  // across callbacks to avoid allocating on the audio thread.
-  mReadScratch.resize(samplesToRead);
-  const size_t readSamples =
-      mParent->mCircularBuffer.read(mReadScratch.data(), samplesToRead);
-  const size_t readFrames = readSamples / mChannels;
-  if (readFrames > 0) {
-    deinterleaveFloatsToPlanar(mReadScratch.data(), aBuffer, aBufferSize,
-                               readFrames, mChannels);
-  }
+  // Pull and de-interleave samples directly from the circular buffer into the
+  // planar layout the SoLoud mixer expects without an intermediate scratch copy.
+  const size_t readFrames = mParent->mCircularBuffer.readPlanar(
+      aBuffer, aBufferSize, framesToRequest, mChannels);
+  const size_t readSamples = readFrames * mChannels;
   mParent->mDecodedSamplesRead += readSamples;
 
   // Zero any frames that were not filled.
@@ -908,21 +900,32 @@ void PullBufferStream::decodePendingDataLocked() {
       std::memcpy(floatData, src, samples * sizeof(float));
       break;
     case BufferType::PCM_S8:
-      for (size_t i = 0; i < samples; ++i) {
-        floatData[i] = static_cast<float>(static_cast<int8_t>(src[i])) / 128.0f;
-      }
+      convertS8ToFloats(reinterpret_cast<const int8_t *>(src), floatData,
+                        static_cast<unsigned int>(samples));
       break;
     case BufferType::PCM_S16LE: {
-      const auto *src16 = reinterpret_cast<const int16_t *>(src);
-      for (size_t i = 0; i < samples; ++i) {
-        floatData[i] = static_cast<float>(src16[i]) / 32768.0f;
+      if ((reinterpret_cast<uintptr_t>(src) & 1u) == 0) {
+        convertInt16ToFloats(reinterpret_cast<const int16_t *>(src), floatData,
+                             static_cast<unsigned int>(samples));
+      } else {
+        for (size_t i = 0; i < samples; ++i) {
+          int16_t s = 0;
+          std::memcpy(&s, src + i * 2, sizeof(int16_t));
+          floatData[i] = static_cast<float>(s) * (1.0f / 32768.0f);
+        }
       }
       break;
     }
     case BufferType::PCM_S32LE: {
-      const auto *src32 = reinterpret_cast<const int32_t *>(src);
-      for (size_t i = 0; i < samples; ++i) {
-        floatData[i] = static_cast<float>(src32[i]) / 2147483648.0f;
+      if ((reinterpret_cast<uintptr_t>(src) & 3u) == 0) {
+        convertInt32ToFloats(reinterpret_cast<const int32_t *>(src), floatData,
+                             static_cast<unsigned int>(samples));
+      } else {
+        for (size_t i = 0; i < samples; ++i) {
+          int32_t s = 0;
+          std::memcpy(&s, src + i * 4, sizeof(int32_t));
+          floatData[i] = static_cast<float>(s) * (1.0f / 2147483648.0f);
+        }
       }
       break;
     }

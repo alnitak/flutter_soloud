@@ -15,6 +15,7 @@
 #if defined(__ANDROID__)
 
 #include "m4a_gapless.h"
+#include "../simd/simd_pcm.h"
 
 #include <android/log.h>
 #include <media/NdkMediaCodec.h>
@@ -93,20 +94,24 @@ public:
             return false;
         }
 
-        AMediaFormat *trackFormat = nullptr;
+        struct FormatDeleter {
+            void operator()(AMediaFormat *f) const {
+                if (f) AMediaFormat_delete(f);
+            }
+        };
+        std::unique_ptr<AMediaFormat, FormatDeleter> trackFormat;
         std::string mime;
         const size_t tracks = AMediaExtractor_getTrackCount(mExtractor);
         for (size_t i = 0; i < tracks && !trackFormat; i++) {
-            AMediaFormat *format = AMediaExtractor_getTrackFormat(mExtractor, i);
+            std::unique_ptr<AMediaFormat, FormatDeleter> format(
+                AMediaExtractor_getTrackFormat(mExtractor, i));
             const char *trackMime = nullptr;
-            if (format && AMediaFormat_getString(format, AMEDIAFORMAT_KEY_MIME, &trackMime) && trackMime &&
-                std::strncmp(trackMime, "audio/", 6) == 0) {
+            if (format && AMediaFormat_getString(format.get(), AMEDIAFORMAT_KEY_MIME, &trackMime) &&
+                trackMime && std::strncmp(trackMime, "audio/", 6) == 0) {
                 mime = trackMime;
-                trackFormat = format;
+                trackFormat = std::move(format);
                 mTrack = i;
                 AMediaExtractor_selectTrack(mExtractor, i);
-            } else if (format) {
-                AMediaFormat_delete(format);
             }
         }
         if (!trackFormat) {
@@ -114,21 +119,20 @@ public:
             return false;
         }
         int64_t durationUs = 0;
-        AMediaFormat_getInt64(trackFormat, AMEDIAFORMAT_KEY_DURATION, &durationUs);
+        AMediaFormat_getInt64(trackFormat.get(), AMEDIAFORMAT_KEY_DURATION, &durationUs);
         // Trimming is done here (see the top of the file).
-        AMediaFormat_setInt32(trackFormat, kKeyEncoderDelay, 0);
-        AMediaFormat_setInt32(trackFormat, kKeyEncoderPadding, 0);
+        AMediaFormat_setInt32(trackFormat.get(), kKeyEncoderDelay, 0);
+        AMediaFormat_setInt32(trackFormat.get(), kKeyEncoderPadding, 0);
         mFirstSampleUs = AMediaExtractor_getSampleTime(mExtractor);
         if (mFirstSampleUs < 0 && AMediaExtractor_getSampleTrackIndex(mExtractor) < 0) mFirstSampleUs = 0;
 
         mCodec = AMediaCodec_createDecoderByType(mime.c_str());
         if (!mCodec) {
-            AMediaFormat_delete(trackFormat);
             error = "No decoder for " + mime;
             return false;
         }
-        media_status_t status = AMediaCodec_configure(mCodec, trackFormat, nullptr, nullptr, 0);
-        AMediaFormat_delete(trackFormat);
+        media_status_t status = AMediaCodec_configure(mCodec, trackFormat.get(), nullptr, nullptr, 0);
+        trackFormat.reset();
         if (status != AMEDIA_OK || AMediaCodec_start(mCodec) != AMEDIA_OK) {
             error = "Failed to start the decoder for " + mime;
             return false;
@@ -348,11 +352,17 @@ private:
                     const uint8_t *src = buffer + info.offset;
                     if (mEncoding == kPcmEncodingFloat) {
                         std::memcpy(mPending.data(), src, samples * sizeof(float));
+                    } else if ((reinterpret_cast<uintptr_t>(src) & 1u) == 0u &&
+                               samples <= UINT_MAX) {
+                        SoLoud::convertInt16ToFloats(
+                            reinterpret_cast<const int16_t *>(src),
+                            mPending.data(),
+                            static_cast<unsigned int>(samples));
                     } else {
                         for (size_t i = 0; i < samples; i++) {
                             int16_t s;
                             std::memcpy(&s, src + i * sizeof(int16_t), sizeof(s));
-                            mPending[i] = s / 32768.0f;
+                            mPending[i] = s * (1.0f / 32768.0f);
                         }
                     }
                     mPendingFrames = frames;

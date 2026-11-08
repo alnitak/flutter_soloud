@@ -1,12 +1,5 @@
 #include "pitch_shift_filter.h"
-
-#if defined(SOLOUD_SSE_INTRINSICS)
-#include <emmintrin.h>
-#elif defined(SOLOUD_NEON_INTRINSICS)
-#include <arm_neon.h>
-#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-#include <wasm_simd128.h>
-#endif
+#include "../simd/soloud_simd.h"
 
 #include <cmath>
 #include <vector>
@@ -23,6 +16,7 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
                                 unsigned int aBufferSize,
                                 unsigned int aChannels, float aSamplerate,
                                 SoLoud::time aTime) {
+  soloud_simd::ScopedFlushDenormals flushDenormals;
   updateParams(aTime);
 
   const float wetRatio = mParam[PitchShift::WET];
@@ -37,11 +31,16 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
   if (mChannelCount != channels || mSampleRate != aSamplerate) {
     mChannelCount = channels;
     mSampleRate = aSamplerate;
+    mLastShift = -1.0f;
     mStretch.presetDefault(static_cast<int>(channels), aSamplerate);
   }
 
-  // Set the pitch shift factor
-  mStretch.setTransposeFactor(mParam[PitchShift::SHIFT]);
+  // Set the pitch shift factor only when it changes
+  const float shift = mParam[PitchShift::SHIFT];
+  if (shift != mLastShift) {
+    mLastShift = shift;
+    mStretch.setTransposeFactor(shift);
+  }
 
   const float dryRatio = 1.0f - wetRatio;
 
@@ -74,32 +73,15 @@ void PitchShiftInstance::filter(float *aBuffer, unsigned int aSamples,
 
       if (wetRatio < 1.0f) {
         unsigned int j = 0;
-#if defined(SOLOUD_SSE_INTRINSICS)
-        const __m128 vDry = _mm_set1_ps(dryRatio);
-        const __m128 vWet = _mm_set1_ps(wetRatio);
+#if defined(SOLOUD_SIMD_ENABLED)
+        const soloud_simd::f32x4 vDry = soloud_simd::f32x4::splat(dryRatio);
+        const soloud_simd::f32x4 vWet = soloud_simd::f32x4::splat(wetRatio);
         for (; j + 4 <= count; j += 4) {
-          const __m128 inV = _mm_loadu_ps(channelIn + j);
-          const __m128 outV = _mm_loadu_ps(channelOut + j);
-          _mm_storeu_ps(
-              channelIn + j,
-              _mm_add_ps(_mm_mul_ps(inV, vDry), _mm_mul_ps(outV, vWet)));
-        }
-#elif defined(SOLOUD_NEON_INTRINSICS)
-        for (; j + 4 <= count; j += 4) {
-          const float32x4_t inV = vld1q_f32(channelIn + j);
-          const float32x4_t outV = vld1q_f32(channelOut + j);
-          vst1q_f32(channelIn + j,
-                    vmlaq_n_f32(vmulq_n_f32(inV, dryRatio), outV, wetRatio));
-        }
-#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-        const v128_t vDry = wasm_f32x4_splat(dryRatio);
-        const v128_t vWet = wasm_f32x4_splat(wetRatio);
-        for (; j + 4 <= count; j += 4) {
-          const v128_t inV = wasm_v128_load(channelIn + j);
-          const v128_t outV = wasm_v128_load(channelOut + j);
-          wasm_v128_store(channelIn + j,
-                          wasm_f32x4_add(wasm_f32x4_mul(inV, vDry),
-                                         wasm_f32x4_mul(outV, vWet)));
+          const soloud_simd::f32x4 inV =
+              soloud_simd::f32x4::loadu(channelIn + j);
+          const soloud_simd::f32x4 outV =
+              soloud_simd::f32x4::loadu(channelOut + j);
+          soloud_simd::fma(outV, vWet, inV * vDry).storeu(channelIn + j);
         }
 #endif
         for (; j < count; j++) {

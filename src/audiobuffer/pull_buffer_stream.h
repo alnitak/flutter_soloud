@@ -46,9 +46,6 @@ public:
 
 private:
   PullBufferStream *mParent;
-  /// Scratch for the interleaved read in getAudio(), reused across callbacks
-  /// to avoid allocating on the audio thread.
-  std::vector<float> mReadScratch;
 };
 
 /// AudioSource that requests encoded data on demand and stores decoded floats

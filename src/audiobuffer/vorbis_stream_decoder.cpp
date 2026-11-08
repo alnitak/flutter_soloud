@@ -2,12 +2,15 @@
 
 #include "vorbis_stream_decoder.h"
 #include "../soloud_common.h"
+#include "../simd/simd_pcm.h"
 #include <stdexcept>
 #include <cstring>
 #include <cmath>
+#include <utility>
 
 VorbisDecoderWrapper::VorbisDecoderWrapper()
-    : vorbisInitialized(false), streamInitialized(false), headerParsed(false), firstPcmBlock(true), packetCount(0),
+    : vorbisInitialized(false), headersInitialized(false), syncInitialized(false),
+      streamInitialized(false), headerParsed(false), firstPcmBlock(true), packetCount(0),
       mDataEnded(false), mDrained(false)
 {
 }
@@ -17,17 +20,40 @@ VorbisDecoderWrapper::~VorbisDecoderWrapper() {
         vorbis_block_clear(&vb);
         vorbis_dsp_clear(&vd);
     }
-    vorbis_comment_clear(&vc);
-    vorbis_info_clear(&vi);
+    if (headersInitialized) {
+        vorbis_comment_clear(&vc);
+        vorbis_info_clear(&vi);
+    }
 
     if (streamInitialized) {
         ogg_stream_clear(&os);
     }
-    ogg_sync_clear(&oy);
+    if (syncInitialized) {
+        ogg_sync_clear(&oy);
+    }
 }
 
 bool VorbisDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
 {
+    if (vorbisInitialized) {
+        vorbis_block_clear(&vb);
+        vorbis_dsp_clear(&vd);
+        vorbisInitialized = false;
+    }
+    if (headersInitialized) {
+        vorbis_comment_clear(&vc);
+        vorbis_info_clear(&vi);
+        headersInitialized = false;
+    }
+    if (streamInitialized) {
+        ogg_stream_clear(&os);
+        streamInitialized = false;
+    }
+    if (syncInitialized) {
+        ogg_sync_clear(&oy);
+        syncInitialized = false;
+    }
+
     decodingChannels = engineChannels > 2 ? 2 : (engineChannels<=0 ? 1 : engineChannels);
     // Choose the best sample rate nearest to the engine samplerate
     if (engineSamplerate <= 8000) decodingSamplerate = 8000;
@@ -37,12 +63,17 @@ bool VorbisDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCha
     else if (engineSamplerate <= 48000) decodingSamplerate = 48000;
     else decodingSamplerate = 96000;
 
+    headerParsed = false;
+    firstPcmBlock = true;
+    packetCount = 0;
     mDataEnded = false;
     mDrained = false;
 
     vorbis_info_init(&vi);
     vorbis_comment_init(&vc);
+    headersInitialized = true;
     ogg_sync_init(&oy);
+    syncInitialized = true;
     return true;
 }
 
@@ -111,7 +142,7 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
                     *samplerate = static_cast<int>(vi.rate);
                     *channels   = static_cast<int>(vi.channels);
                 }
-                return {decodedData, DecoderError::NoError};
+                return {std::move(decodedData), DecoderError::NoError};
             }
         }
     }
@@ -251,7 +282,7 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
         *channels   = static_cast<int>(vi.channels);
     }
 
-    return {decodedData, DecoderError::NoError};
+    return {std::move(decodedData), DecoderError::NoError};
 }
 
 
@@ -304,6 +335,7 @@ void VorbisDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& 
                         getMetadata();
                     } else {
                         SOLOUD_DEBUG_LOG("Failed to initialize vorbis block: code %d\n", ret);
+                        vorbis_dsp_clear(&vd);
                         headerParsed = false;
                         packetCount = 0;
                     }
@@ -329,10 +361,23 @@ void VorbisDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& 
     float** pcm;
     int samples;
     while ((samples = vorbis_synthesis_pcmout(&vd, &pcm)) > 0) {
-        out.reserve(out.size() + static_cast<size_t>(samples) * vi.channels);
-        for (int i = 0; i < samples; i++) {
-            for (int ch = 0; ch < vi.channels; ch++) {
-                out.push_back(pcm[ch][i]);
+        const int chs = vi.channels;
+        if (chs > 0) {
+            const size_t oldSize = out.size();
+            const size_t addFloats = static_cast<size_t>(samples) * static_cast<size_t>(chs);
+            out.resize(oldSize + addFloats);
+            float *dst = out.data() + oldSize;
+            if (chs == 1) {
+                std::memcpy(dst, pcm[0], static_cast<size_t>(samples) * sizeof(float));
+            } else if (chs == 2) {
+                SoLoud::interleaveStereoFloats(pcm[0], pcm[1], dst, static_cast<unsigned int>(samples));
+            } else {
+                for (int i = 0; i < samples; i++) {
+                    float *frameDst = dst + static_cast<size_t>(i) * static_cast<size_t>(chs);
+                    for (int ch = 0; ch < chs; ch++) {
+                        frameDst[ch] = pcm[ch][i];
+                    }
+                }
             }
         }
         vorbis_synthesis_read(&vd, samples);

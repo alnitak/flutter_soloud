@@ -1,12 +1,5 @@
 #include "amplitude_modulator_filter.h"
-
-#if defined(SOLOUD_SSE_INTRINSICS)
-#include <emmintrin.h>
-#elif defined(SOLOUD_NEON_INTRINSICS)
-#include <arm_neon.h>
-#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-#include <wasm_simd128.h>
-#endif
+#include "../simd/soloud_simd.h"
 
 #include <cmath>
 
@@ -96,12 +89,12 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
   // oscillateFilterParameter() faders.
   updateParams(aTime);
 
-  if (!(aSamplerate > 0.0f) || !std::isfinite(aSamplerate))
+  if (!soloud_simd::isFiniteBits(aSamplerate) || !(aSamplerate > 0.0f))
     return;
 
   // Faders are not validated by setFilterParameter(), so sanitize here.
   float wet = mParam[AmplitudeModulator::WET];
-  if (!std::isfinite(wet))
+  if (!soloud_simd::isFiniteBits(wet))
     wet = 0.0f;
   else if (wet < 0.0f)
     wet = 0.0f;
@@ -114,9 +107,9 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
   // increment changes here; the accumulated phase is preserved so frequency
   // changes are click-free.
   const double sampleRate = (double)aSamplerate;
-  const double requested = (double)mParam[AmplitudeModulator::FREQUENCY];
-  if (std::isfinite(requested)) {
-    double freq = requested;
+  const float requestedF = mParam[AmplitudeModulator::FREQUENCY];
+  if (soloud_simd::isFiniteBits(requestedF)) {
+    double freq = (double)requestedF;
     const double minFreq =
         (double)mParent->getParamMin(AmplitudeModulator::FREQUENCY);
     const double maxFreq = sampleRate * AmplitudeModulator::MAX_NYQUIST_RATIO;
@@ -151,13 +144,8 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
   // dry * (1 - wet) + dry * carrier * wet == dry * ((1 - wet) + wet * carrier)
   const float dryGain = 1.0f - wet;
   const int waveform = (int)mParam[AmplitudeModulator::WAVEFORM];
-  if (aChannels <= 1) {
+  if (aChannels == 0) {
     for (unsigned int i = 0; i < aSamples; ++i) {
-      const float carrier = evaluateCarrier(waveform, phase, increment);
-      const float gain = dryGain + wet * carrier;
-      if (aChannels == 1) {
-        aBuffer[i] *= gain;
-      }
       phase += increment;
       if (phase >= TWO_PI)
         phase -= TWO_PI;
@@ -182,21 +170,11 @@ void AmplitudeModulatorInstance::filter(float *aBuffer, unsigned int aSamples,
       for (unsigned int ch = 0; ch < aChannels; ++ch) {
         float *chBuf = aBuffer + (size_t)ch * stride + base;
         unsigned int i = 0;
-#if defined(SOLOUD_SSE_INTRINSICS)
+#if defined(SOLOUD_SIMD_ENABLED)
         for (; i + 4 <= count; i += 4) {
-          _mm_storeu_ps(chBuf + i, _mm_mul_ps(_mm_loadu_ps(chBuf + i),
-                                              _mm_loadu_ps(gains + i)));
-        }
-#elif defined(SOLOUD_NEON_INTRINSICS)
-        for (; i + 4 <= count; i += 4) {
-          vst1q_f32(chBuf + i,
-                    vmulq_f32(vld1q_f32(chBuf + i), vld1q_f32(gains + i)));
-        }
-#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
-        for (; i + 4 <= count; i += 4) {
-          wasm_v128_store(chBuf + i,
-                          wasm_f32x4_mul(wasm_v128_load(chBuf + i),
-                                         wasm_v128_load(gains + i)));
+          (soloud_simd::f32x4::loadu(chBuf + i) *
+           soloud_simd::f32x4::loadu(gains + i))
+              .storeu(chBuf + i);
         }
 #endif
         for (; i < count; ++i) {

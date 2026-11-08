@@ -88,8 +88,9 @@ namespace SoLoud
 		if (mVoice[aVoice])
 		{
 			mVoice[aVoice]->mPan = aPan;
-			float l = (float)cos((aPan + 1) * M_PI / 4);
-			float r = (float)sin((aPan + 1) * M_PI / 4);
+			const float angle = (aPan + 1.0f) * 0.7853981633974483f; // M_PI / 4
+			const float l = cosf(angle);
+			const float r = sinf(angle);
 			mVoice[aVoice]->mChannelVolume[0] = l;
 			mVoice[aVoice]->mChannelVolume[1] = r;
 			if (mVoice[aVoice]->mChannels == 4)
@@ -99,14 +100,14 @@ namespace SoLoud
 			}
 			if (mVoice[aVoice]->mChannels == 6)
 			{
-				mVoice[aVoice]->mChannelVolume[2] = 1.0f / (float)sqrt(2.0f);
+				mVoice[aVoice]->mChannelVolume[2] = 0.7071067811865475f; // 1 / sqrt(2)
 				mVoice[aVoice]->mChannelVolume[3] = 1;
 				mVoice[aVoice]->mChannelVolume[4] = l;
 				mVoice[aVoice]->mChannelVolume[5] = r;
 			}
 			if (mVoice[aVoice]->mChannels == 8)
 			{
-				mVoice[aVoice]->mChannelVolume[2] = 1.0f / (float)sqrt(2.0f);
+				mVoice[aVoice]->mChannelVolume[2] = 0.7071067811865475f; // 1 / sqrt(2)
 				mVoice[aVoice]->mChannelVolume[3] = 1;
 				mVoice[aVoice]->mChannelVolume[4] = l;
 				mVoice[aVoice]->mChannelVolume[5] = r;

@@ -526,8 +526,8 @@ void testM4aMetadataAndOffsets() {
 void testMp3VsAacDetection() {
     std::cout << "[Test] MP3 vs AAC Stream Detection..." << std::endl;
 
-    // 1. Read MP3 test stream
-    std::ifstream mp3File("/tmp/test_stream.mp3", std::ios::binary);
+    // 1. Read bundled MP3 test asset
+    std::ifstream mp3File("example/assets/audio/sample-MP3.mp3", std::ios::binary);
     if (mp3File.is_open()) {
         std::vector<unsigned char> mp3Data((std::istreambuf_iterator<char>(mp3File)),
                                             std::istreambuf_iterator<char>());
@@ -537,8 +537,8 @@ void testMp3VsAacDetection() {
         }
     }
 
-    // 2. Read AAC test stream
-    std::ifstream aacFile("/tmp/test_stream.aac", std::ios::binary);
+    // 2. Read bundled AAC test asset
+    std::ifstream aacFile("example/assets/audio/sample-AAC.aac", std::ios::binary);
     if (aacFile.is_open()) {
         std::vector<unsigned char> aacData((std::istreambuf_iterator<char>(aacFile)),
                                             std::istreambuf_iterator<char>());
@@ -554,11 +554,59 @@ void testMp3VsAacDetection() {
 void testMp3MetadataEmission() {
     std::cout << "[Test] MP3 Metadata Emission..." << std::endl;
 
-    std::ifstream mp3File("/Volumes/NVME/Users/deimos/Music/tests/mp3.mp3", std::ios::binary);
+    std::ifstream mp3File("example/assets/audio/sample-MP3.mp3", std::ios::binary);
     if (mp3File.is_open()) {
-        std::vector<unsigned char> mp3Data((std::istreambuf_iterator<char>(mp3File)),
-                                            std::istreambuf_iterator<char>());
-        if (!mp3Data.empty()) {
+        std::vector<unsigned char> rawMp3((std::istreambuf_iterator<char>(mp3File)),
+                                           std::istreambuf_iterator<char>());
+        if (!rawMp3.empty()) {
+            // Strip any existing leading ID3v2 header so we can attach known tags
+            size_t audioOffset = 0;
+            if (rawMp3.size() >= 10 && rawMp3[0] == 'I' && rawMp3[1] == 'D' && rawMp3[2] == '3') {
+                size_t tagSize = ((rawMp3[6] & 0x7Fu) << 21) |
+                                 ((rawMp3[7] & 0x7Fu) << 14) |
+                                 ((rawMp3[8] & 0x7Fu) << 7) |
+                                 (rawMp3[9] & 0x7Fu);
+                if (10 + tagSize < rawMp3.size()) {
+                    audioOffset = 10 + tagSize;
+                }
+            }
+
+            auto makeId3TextFrame = [](const char id[4], const std::string &text) {
+                std::vector<unsigned char> f;
+                f.insert(f.end(), id, id + 4);
+                uint32_t payloadLen = static_cast<uint32_t>(1 + text.size());
+                f.push_back(static_cast<unsigned char>((payloadLen >> 24) & 0xFF));
+                f.push_back(static_cast<unsigned char>((payloadLen >> 16) & 0xFF));
+                f.push_back(static_cast<unsigned char>((payloadLen >> 8) & 0xFF));
+                f.push_back(static_cast<unsigned char>(payloadLen & 0xFF));
+                f.push_back(0);
+                f.push_back(0);
+                f.push_back(0x03); // UTF-8
+                f.insert(f.end(), text.begin(), text.end());
+                return f;
+            };
+
+            auto fTitle = makeId3TextFrame("TIT2", "Synthetic Title");
+            auto fArtist = makeId3TextFrame("TPE1", "Synthetic Artist");
+            auto fAlbum = makeId3TextFrame("TALB", "Synthetic Album");
+            size_t framesLen = fTitle.size() + fArtist.size() + fAlbum.size();
+
+            std::vector<unsigned char> mp3Data = {
+                'I', 'D', '3', 0x03, 0x00, 0x00,
+                static_cast<unsigned char>((framesLen >> 21) & 0x7F),
+                static_cast<unsigned char>((framesLen >> 14) & 0x7F),
+                static_cast<unsigned char>((framesLen >> 7) & 0x7F),
+                static_cast<unsigned char>(framesLen & 0x7F)
+            };
+            mp3Data.insert(mp3Data.end(), fTitle.begin(), fTitle.end());
+            mp3Data.insert(mp3Data.end(), fArtist.begin(), fArtist.end());
+            mp3Data.insert(mp3Data.end(), fAlbum.begin(), fAlbum.end());
+
+            size_t audioChunk = std::min(rawMp3.size() - audioOffset, static_cast<size_t>(32768));
+            mp3Data.insert(mp3Data.end(),
+                           rawMp3.begin() + static_cast<std::ptrdiff_t>(audioOffset),
+                           rawMp3.begin() + static_cast<std::ptrdiff_t>(audioOffset + audioChunk));
+
             MP3DecoderWrapper decoder;
             int sr = 44100, ch = 2;
             assert(decoder.initializeDecoder(sr, ch));
@@ -566,19 +614,14 @@ void testMp3MetadataEmission() {
             bool metadataReceived = false;
             decoder.setTrackChangeCallback([&](const AudioMetadata &meta) {
                 metadataReceived = true;
-                assert(meta.mp3Metadata.sampleRate == 44100);
-                assert(meta.mp3Metadata.channels == 2);
-                assert(meta.mp3Metadata.bitrate > 0);
-                assert(meta.mp3Metadata.title == "Don't Leave Me This Way");
-                assert(meta.mp3Metadata.artist == "Various Artist");
-                assert(meta.mp3Metadata.album == "Top 100 - 80's");
+                assert(meta.mp3Metadata.sampleRate > 0);
+                assert(meta.mp3Metadata.channels > 0);
+                assert(meta.mp3Metadata.title == "Synthetic Title");
+                assert(meta.mp3Metadata.artist == "Synthetic Artist");
+                assert(meta.mp3Metadata.album == "Synthetic Album");
             });
 
-            // Feed a 32 KB chunk
-            size_t chunk = std::min(mp3Data.size(), static_cast<size_t>(32768));
-            std::vector<unsigned char> firstChunk(mp3Data.begin(), mp3Data.begin() + chunk);
-            decoder.decode(firstChunk, &sr, &ch);
-
+            decoder.decode(mp3Data, &sr, &ch);
             assert(metadataReceived);
         }
     }

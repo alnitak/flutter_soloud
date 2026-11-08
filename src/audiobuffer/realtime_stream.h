@@ -199,7 +199,7 @@ private:
   /// True when the live voice ended its last mix starved (emitting underrun
   /// silence), so an immediate push must be placed under the audio mutex.
   /// Written by the mixer, read lock-free by the producer; see pushTimed().
-  std::atomic<bool> mVoiceStarved{true};
+  alignas(64) std::atomic<bool> mVoiceStarved{true};
 
   /// Pending gap/reset markers, sorted by frame. Audio mutex held.
   std::array<TimelineMarker, kMaxTimelineMarkers> mMarkers{};

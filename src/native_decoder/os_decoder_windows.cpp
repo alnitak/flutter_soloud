@@ -23,10 +23,14 @@
 namespace {
 
 struct MFInitScope {
+    bool comInitialized = false;
     bool initialized = false;
     MFInitScope() {
         HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-        if (SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE) {
+        if (SUCCEEDED(hr)) {
+            comInitialized = true;
+        }
+        if (comInitialized || hr == RPC_E_CHANGED_MODE) {
             hr = MFStartup(MF_VERSION);
             initialized = SUCCEEDED(hr);
         }
@@ -34,6 +38,8 @@ struct MFInitScope {
     ~MFInitScope() {
         if (initialized) {
             MFShutdown();
+        }
+        if (comInitialized) {
             CoUninitialize();
         }
     }
@@ -109,10 +115,6 @@ DecodedAudioData decodeFromReader(IMFSourceReader *pReader) {
             return result;
         }
 
-        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
-            break;
-        }
-
         if (pSample) {
             IMFMediaBuffer *pBuffer = nullptr;
             hr = pSample->ConvertToContiguousBuffer(&pBuffer);
@@ -129,6 +131,10 @@ DecodedAudioData decodeFromReader(IMFSourceReader *pReader) {
                 pBuffer->Release();
             }
             pSample->Release();
+        }
+
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+            break;
         }
     }
 
@@ -338,22 +344,26 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
             const wchar_t *ext = L".m4a";
             if (NativeAudioDecoder::isAacAdts(bytes, length)) ext = L".aac";
             std::wstring customTempFile = std::wstring(tempFile) + ext;
-            MoveFileW(tempFile, customTempFile.c_str());
+            const bool moved = (MoveFileW(tempFile, customTempFile.c_str()) != 0);
+            const std::wstring &targetTempFile = moved ? customTempFile : std::wstring(tempFile);
 
-            FILE *fp = _wfopen(customTempFile.c_str(), L"wb");
+            FILE *fp = _wfopen(targetTempFile.c_str(), L"wb");
             if (fp) {
-                fwrite(bytes, 1, length, fp);
+                const size_t written = fwrite(bytes, 1, length, fp);
                 fclose(fp);
 
-                int utf8Len = WideCharToMultiByte(CP_UTF8, 0, customTempFile.c_str(), -1, nullptr, 0, nullptr, nullptr);
-                if (utf8Len > 0) {
-                    std::vector<char> utf8Path(utf8Len);
-                    WideCharToMultiByte(CP_UTF8, 0, customTempFile.c_str(), -1, utf8Path.data(), utf8Len, nullptr, nullptr);
-                    result = decodeFile(utf8Path.data());
+                if (written == length) {
+                    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, targetTempFile.c_str(), -1, nullptr, 0, nullptr, nullptr);
+                    if (utf8Len > 0) {
+                        std::vector<char> utf8Path(utf8Len);
+                        WideCharToMultiByte(CP_UTF8, 0, targetTempFile.c_str(), -1, utf8Path.data(), utf8Len, nullptr, nullptr);
+                        result = decodeFile(utf8Path.data());
+                    }
                 }
-                DeleteFileW(customTempFile.c_str());
+                DeleteFileW(targetTempFile.c_str());
                 return result;
             }
+            DeleteFileW(targetTempFile.c_str());
         }
 
         result.errorMessage = "MFCreateSourceReaderFromByteStream failed: " + std::to_string(hr);

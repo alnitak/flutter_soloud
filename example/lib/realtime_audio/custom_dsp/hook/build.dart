@@ -12,17 +12,10 @@ void main(List<String> args) async {
     final builder = CBuilder.library(
       name: _libName,
       assetName: _assetName,
-      sources: [
-        'src/custom_dsp.c',
-      ],
-      includes: [
-        'src',
-      ],
+      sources: ['src/custom_dsp.c'],
+      includes: ['src'],
     );
 
-    await builder.run(
-      input: input,
-      output: output,
-    );
+    await builder.run(input: input, output: output);
   });
 }

@@ -26,6 +26,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include "soloud.h"
 #include "soloud_freeverbfilter.h"
+#include "../../../simd/soloud_simd.h"
 
 
 namespace SoLoud
@@ -377,42 +378,124 @@ namespace SoLoud
 
 		void Revmodel::process(float* aSampleData, long aNumSamples, long aStride)
 		{
-			float* inputL, * inputR;
-			inputL = aSampleData;
-			inputR = aSampleData + aStride;
+			if (aNumSamples <= 0)
+				return;
+			soloud_simd::ScopedFlushDenormals flushDenormals;
+
+			float* inputL = aSampleData;
+			float* inputR = aSampleData + aStride;
 
 			if (mDirty)
 				update();
 			mDirty = 0;
 
-			while (aNumSamples-- > 0)
-			{
-				float outL, outR, input;
-				outL = outR = 0;
-				input = (*inputL + *inputR) * mGain;
+			const auto vDamp1 = soloud_simd::f32x4::splat(mCombL[0].mDamp1);
+			const auto vDamp2 = soloud_simd::f32x4::splat(mCombL[0].mDamp2);
+			const auto vFeedback = soloud_simd::f32x4::splat(mCombL[0].mFeedback);
 
-				// Accumulate comb filters in parallel
+			auto fsL0 = soloud_simd::f32x4::make(
+				mCombL[0].mFilterstore, mCombL[1].mFilterstore, mCombL[2].mFilterstore, mCombL[3].mFilterstore);
+			auto fsL1 = soloud_simd::f32x4::make(
+				mCombL[4].mFilterstore, mCombL[5].mFilterstore, mCombL[6].mFilterstore, mCombL[7].mFilterstore);
+			auto fsR0 = soloud_simd::f32x4::make(
+				mCombR[0].mFilterstore, mCombR[1].mFilterstore, mCombR[2].mFilterstore, mCombR[3].mFilterstore);
+			auto fsR1 = soloud_simd::f32x4::make(
+				mCombR[4].mFilterstore, mCombR[5].mFilterstore, mCombR[6].mFilterstore, mCombR[7].mFilterstore);
+
+			long rem = aNumSamples;
+			while (rem > 0)
+			{
+				// Maximum contiguous span before any of the 16 comb delay lines wraps.
+				long chunk = rem;
 				for (int i = 0; i < gNumcombs; i++)
 				{
-					outL += mCombL[i].process(input);
-					outR += mCombR[i].process(input);
+					const long remL = mCombL[i].mBufsize - mCombL[i].mBufidx;
+					const long remR = mCombR[i].mBufsize - mCombR[i].mBufidx;
+					if (remL < chunk) chunk = remL;
+					if (remR < chunk) chunk = remR;
 				}
 
-				// Feed through allpasses in series
-				for (int i = 0; i < gNumallpasses; i++)
+				float* bL0 = mCombL[0].mBuffer + mCombL[0].mBufidx;
+				float* bL1 = mCombL[1].mBuffer + mCombL[1].mBufidx;
+				float* bL2 = mCombL[2].mBuffer + mCombL[2].mBufidx;
+				float* bL3 = mCombL[3].mBuffer + mCombL[3].mBufidx;
+				float* bL4 = mCombL[4].mBuffer + mCombL[4].mBufidx;
+				float* bL5 = mCombL[5].mBuffer + mCombL[5].mBufidx;
+				float* bL6 = mCombL[6].mBuffer + mCombL[6].mBufidx;
+				float* bL7 = mCombL[7].mBuffer + mCombL[7].mBufidx;
+
+				float* bR0 = mCombR[0].mBuffer + mCombR[0].mBufidx;
+				float* bR1 = mCombR[1].mBuffer + mCombR[1].mBufidx;
+				float* bR2 = mCombR[2].mBuffer + mCombR[2].mBufidx;
+				float* bR3 = mCombR[3].mBuffer + mCombR[3].mBufidx;
+				float* bR4 = mCombR[4].mBuffer + mCombR[4].mBufidx;
+				float* bR5 = mCombR[5].mBuffer + mCombR[5].mBufidx;
+				float* bR6 = mCombR[6].mBuffer + mCombR[6].mBufidx;
+				float* bR7 = mCombR[7].mBuffer + mCombR[7].mBufidx;
+
+				float wb[4];
+				for (long s = 0; s < chunk; s++)
 				{
-					outL = mAllpassL[i].process(outL);
-					outR = mAllpassR[i].process(outR);
+					const float inL = inputL[s];
+					const float inR = inputR[s];
+					const float input = (inL + inR) * mGain;
+					const auto vInput = soloud_simd::f32x4::splat(input);
+
+					const auto oL0 = soloud_simd::f32x4::make(bL0[s], bL1[s], bL2[s], bL3[s]);
+					const auto oL1 = soloud_simd::f32x4::make(bL4[s], bL5[s], bL6[s], bL7[s]);
+					const auto oR0 = soloud_simd::f32x4::make(bR0[s], bR1[s], bR2[s], bR3[s]);
+					const auto oR1 = soloud_simd::f32x4::make(bR4[s], bR5[s], bR6[s], bR7[s]);
+
+					fsL0 = soloud_simd::add(soloud_simd::mul(oL0, vDamp2), soloud_simd::mul(fsL0, vDamp1));
+					fsL1 = soloud_simd::add(soloud_simd::mul(oL1, vDamp2), soloud_simd::mul(fsL1, vDamp1));
+					fsR0 = soloud_simd::add(soloud_simd::mul(oR0, vDamp2), soloud_simd::mul(fsR0, vDamp1));
+					fsR1 = soloud_simd::add(soloud_simd::mul(oR1, vDamp2), soloud_simd::mul(fsR1, vDamp1));
+
+					soloud_simd::add(vInput, soloud_simd::mul(fsL0, vFeedback)).storeu(wb);
+					bL0[s] = wb[0]; bL1[s] = wb[1]; bL2[s] = wb[2]; bL3[s] = wb[3];
+					soloud_simd::add(vInput, soloud_simd::mul(fsL1, vFeedback)).storeu(wb);
+					bL4[s] = wb[0]; bL5[s] = wb[1]; bL6[s] = wb[2]; bL7[s] = wb[3];
+
+					soloud_simd::add(vInput, soloud_simd::mul(fsR0, vFeedback)).storeu(wb);
+					bR0[s] = wb[0]; bR1[s] = wb[1]; bR2[s] = wb[2]; bR3[s] = wb[3];
+					soloud_simd::add(vInput, soloud_simd::mul(fsR1, vFeedback)).storeu(wb);
+					bR4[s] = wb[0]; bR5[s] = wb[1]; bR6[s] = wb[2]; bR7[s] = wb[3];
+
+					float outL = soloud_simd::reduce_add(soloud_simd::add(oL0, oL1));
+					float outR = soloud_simd::reduce_add(soloud_simd::add(oR0, oR1));
+
+					for (int i = 0; i < gNumallpasses; i++)
+					{
+						outL = mAllpassL[i].process(outL);
+						outR = mAllpassR[i].process(outR);
+					}
+
+					inputL[s] = outL * mWet1 + outR * mWet2 + inL * mDry;
+					inputR[s] = outR * mWet1 + outL * mWet2 + inR * mDry;
 				}
 
-				// Calculate output REPLACING anything already there
-				*inputL = outL * mWet1 + outR * mWet2 + *inputL * mDry;
-				*inputR = outR * mWet1 + outL * mWet2 + *inputR * mDry;
+				for (int i = 0; i < gNumcombs; i++)
+				{
+					mCombL[i].mBufidx += (int)chunk;
+					if (mCombL[i].mBufidx >= mCombL[i].mBufsize) mCombL[i].mBufidx = 0;
+					mCombR[i].mBufidx += (int)chunk;
+					if (mCombR[i].mBufidx >= mCombR[i].mBufsize) mCombR[i].mBufidx = 0;
+				}
 
-				// Increment sample pointers, allowing for interleave (if any)
-				inputL++;
-				inputR++;
+				inputL += chunk;
+				inputR += chunk;
+				rem -= chunk;
 			}
+
+			float st[4];
+			fsL0.storeu(st);
+			for (int i = 0; i < 4; i++) mCombL[i].mFilterstore = st[i];
+			fsL1.storeu(st);
+			for (int i = 0; i < 4; i++) mCombL[4 + i].mFilterstore = st[i];
+			fsR0.storeu(st);
+			for (int i = 0; i < 4; i++) mCombR[i].mFilterstore = st[i];
+			fsR1.storeu(st);
+			for (int i = 0; i < 4; i++) mCombR[4 + i].mFilterstore = st[i];
 		}
 
 		void Revmodel::update()
@@ -543,9 +626,10 @@ namespace SoLoud
 		mParam[WET] = 1;
 	}
 
-	void FreeverbFilterInstance::filter(float* aBuffer, unsigned int aSamples, unsigned int aBufferSize, unsigned int aChannels, float aSamplerate, time aTime)
+	void FreeverbFilterInstance::filter(float* aBuffer, unsigned int aSamples, unsigned int aBufferSize, unsigned int aChannels, float /*aSamplerate*/, time aTime)
 	{
-		SOLOUD_ASSERT(aChannels == 2); // Only stereo supported at this time
+		if (aChannels == 0 || aSamples == 0)
+			return;
 		updateParams(aTime);
 		if (mParamChanged)
 		{
@@ -556,6 +640,30 @@ namespace SoLoud
 			mModel->setwet(mParam[WET]);
 			mModel->setdry(1 - mParam[WET]);
 			mParamChanged = 0;
+		}
+		if (aChannels == 1)
+		{
+			// Safe mono fallback: duplicate mono channel into stack scratch so
+			// Revmodel::process never reads/writes out of bounds past channel 0.
+			float scratchR[SAMPLE_GRANULARITY];
+			unsigned int offset = 0;
+			while (offset < aSamples)
+			{
+				const unsigned int chunk = (aSamples - offset > SAMPLE_GRANULARITY)
+					? SAMPLE_GRANULARITY : (aSamples - offset);
+				memcpy(scratchR, aBuffer + offset, sizeof(float) * chunk);
+				// Pass scratchR via stride? Instead process chunk with contiguous pair:
+				float pair[SAMPLE_GRANULARITY * 2];
+				memcpy(pair, aBuffer + offset, sizeof(float) * chunk);
+				memcpy(pair + SAMPLE_GRANULARITY, scratchR, sizeof(float) * chunk);
+				mModel->process(pair, (long)chunk, SAMPLE_GRANULARITY);
+				for (unsigned int i = 0; i < chunk; i++)
+				{
+					aBuffer[offset + i] = 0.5f * (pair[i] + pair[SAMPLE_GRANULARITY + i]);
+				}
+				offset += chunk;
+			}
+			return;
 		}
 		mModel->process(aBuffer, aSamples, aBufferSize);
 	}

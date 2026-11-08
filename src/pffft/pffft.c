@@ -103,8 +103,10 @@
 #  if (defined(__ppc__) || defined(__ppc64__) || defined(__powerpc__) || defined(__powerpc64__)) \
    && (defined(__VEC__) || defined(__ALTIVEC__))
 #    define PFFFT_SIMD_ALTIVEC
+#  elif defined(__wasm_simd128__)
+#    define PFFFT_SIMD_WASM
 #  elif defined(__ARM_NEON) || defined(__aarch64__) || defined(__arm64)  \
-   || defined(_M_ARM64) || defined(_M_ARM64EC) || defined(__wasm_simd128__)
+   || defined(_M_ARM64) || defined(_M_ARM64EC)
      // we test _M_ARM64EC before _M_X64 because when _M_ARM64EC is defined, the microsoft compiler also defines _M_X64
 #    define PFFFT_SIMD_NEON
 #  elif defined(__x86_64__) || defined(__SSE__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 1)
@@ -146,17 +148,26 @@ inline v4sf ld_ps1(const float *p) { v4sf v=vec_lde(0,p); return vec_splat(vec_p
 #  define VALIGNED(ptr) ((((size_t)(ptr)) & 0xF) == 0)
 
 /*
-  SSE1 support macros
+  SSE1 / FMA support macros
 */
 #elif defined(PFFFT_SIMD_SSE)
 
-#include <xmmintrin.h>
+#if defined(__FMA__)
+#  include <immintrin.h>
+#else
+#  include <xmmintrin.h>
+#endif
 typedef __m128 v4sf;
 #  define SIMD_SZ 4 // 4 floats by simd vector -- this is pretty much hardcoded in the preprocess/finalize functions anyway so you will have to work if you want to enable AVX with its 256-bit vectors.
 #  define VZERO() _mm_setzero_ps()
 #  define VMUL(a,b) _mm_mul_ps(a,b)
 #  define VADD(a,b) _mm_add_ps(a,b)
-#  define VMADD(a,b,c) _mm_add_ps(_mm_mul_ps(a,b), c)
+#  if defined(__FMA__)
+#    define VMADD(a,b,c) _mm_fmadd_ps(a,b,c)
+#    define VNMSUB(a,b,c) _mm_fnmadd_ps(a,b,c)
+#  else
+#    define VMADD(a,b,c) _mm_add_ps(_mm_mul_ps(a,b), c)
+#  endif
 #  define VSUB(a,b) _mm_sub_ps(a,b)
 #  define LD_PS1(p) _mm_set1_ps(p)
 #  define INTERLEAVE2(in1, in2, out1, out2) { v4sf tmp__ = _mm_unpacklo_ps(in1, in2); out2 = _mm_unpackhi_ps(in1, in2); out1 = tmp__; }
@@ -175,7 +186,13 @@ typedef float32x4_t v4sf;
 #  define VZERO() vdupq_n_f32(0)
 #  define VMUL(a,b) vmulq_f32(a,b)
 #  define VADD(a,b) vaddq_f32(a,b)
-#  define VMADD(a,b,c) vmlaq_f32(c,a,b)
+#  if defined(__aarch64__) || defined(__arm64) || defined(_M_ARM64) || defined(_M_ARM64EC)
+#    define VMADD(a,b,c) vfmaq_f32(c,a,b)
+#    define VNMSUB(a,b,c) vfmsq_f32(c,a,b)
+#  else
+#    define VMADD(a,b,c) vmlaq_f32(c,a,b)
+#    define VNMSUB(a,b,c) vmlsq_f32(c,a,b)
+#  endif
 #  define VSUB(a,b) vsubq_f32(a,b)
 #  define LD_PS1(p) vld1q_dup_f32(&(p))
 #  define INTERLEAVE2(in1, in2, out1, out2) { float32x4x2_t tmp__ = vzipq_f32(in1,in2); out1=tmp__.val[0]; out2=tmp__.val[1]; }
@@ -190,7 +207,43 @@ typedef float32x4_t v4sf;
 // marginally faster version
 //#  define VTRANSPOSE4(x0,x1,x2,x3) { asm("vtrn.32 %q0, %q1;\n vtrn.32 %q2,%q3\n vswp %f0,%e2\n vswp %f1,%e3" : "+w"(x0), "+w"(x1), "+w"(x2), "+w"(x3)::); }
 #  define VSWAPHL(a,b) vcombine_f32(vget_low_f32(b), vget_high_f32(a))
-#  define VALIGNED(ptr) ((((size_t)(ptr)) & 0x3) == 0)
+#  define VALIGNED(ptr) ((((size_t)(ptr)) & 0xF) == 0)
+
+/*
+  WebAssembly SIMD128 support macros
+*/
+#elif defined(PFFFT_SIMD_WASM)
+#  include <wasm_simd128.h>
+typedef v128_t v4sf;
+#  define SIMD_SZ 4
+#  define VZERO() wasm_f32x4_splat(0.0f)
+#  define VMUL(a,b) wasm_f32x4_mul(a,b)
+#  define VADD(a,b) wasm_f32x4_add(a,b)
+#  define VMADD(a,b,c) wasm_f32x4_add(wasm_f32x4_mul(a,b), c)
+#  define VSUB(a,b) wasm_f32x4_sub(a,b)
+#  define LD_PS1(p) wasm_f32x4_splat(p)
+#  define INTERLEAVE2(in1, in2, out1, out2) {                                \
+    v4sf tmp__ = wasm_i32x4_shuffle(in1, in2, 0, 4, 1, 5);                   \
+    out2 = wasm_i32x4_shuffle(in1, in2, 2, 6, 3, 7);                         \
+    out1 = tmp__;                                                            \
+  }
+#  define UNINTERLEAVE2(in1, in2, out1, out2) {                              \
+    v4sf tmp__ = wasm_i32x4_shuffle(in1, in2, 0, 2, 4, 6);                   \
+    out2 = wasm_i32x4_shuffle(in1, in2, 1, 3, 5, 7);                         \
+    out1 = tmp__;                                                            \
+  }
+#  define VTRANSPOSE4(x0,x1,x2,x3) {                                         \
+    v4sf y0_ = wasm_i32x4_shuffle(x0, x2, 0, 4, 1, 5);                       \
+    v4sf y1_ = wasm_i32x4_shuffle(x0, x2, 2, 6, 3, 7);                       \
+    v4sf y2_ = wasm_i32x4_shuffle(x1, x3, 0, 4, 1, 5);                       \
+    v4sf y3_ = wasm_i32x4_shuffle(x1, x3, 2, 6, 3, 7);                       \
+    x0 = wasm_i32x4_shuffle(y0_, y2_, 0, 4, 1, 5);                           \
+    x1 = wasm_i32x4_shuffle(y0_, y2_, 2, 6, 3, 7);                           \
+    x2 = wasm_i32x4_shuffle(y1_, y3_, 0, 4, 1, 5);                           \
+    x3 = wasm_i32x4_shuffle(y1_, y3_, 2, 6, 3, 7);                           \
+  }
+#  define VSWAPHL(a,b) wasm_i32x4_shuffle(b, a, 0, 1, 6, 7)
+#  define VALIGNED(ptr) ((((size_t)(ptr)) & 0xF) == 0)
 #else
 #  if !defined(PFFFT_SIMD_DISABLE)
 #    warning "building with simd disabled !\n";
@@ -211,9 +264,13 @@ typedef float v4sf;
 #  define VALIGNED(ptr) ((((size_t)(ptr)) & 0x3) == 0)
 #endif
 
+#ifndef VNMSUB
+#  define VNMSUB(a,b,c) VSUB(c, VMUL(a,b))
+#endif
+
 // shortcuts for complex multiplcations
-#define VCPLXMUL(ar,ai,br,bi) { v4sf tmp; tmp=VMUL(ar,bi); ar=VMUL(ar,br); ar=VSUB(ar,VMUL(ai,bi)); ai=VMUL(ai,br); ai=VADD(ai,tmp); }
-#define VCPLXMULCONJ(ar,ai,br,bi) { v4sf tmp; tmp=VMUL(ar,bi); ar=VMUL(ar,br); ar=VADD(ar,VMUL(ai,bi)); ai=VMUL(ai,br); ai=VSUB(ai,tmp); }
+#define VCPLXMUL(ar,ai,br,bi) { v4sf tmp = VMUL(ar,bi); ar = VNMSUB(ai,bi,VMUL(ar,br)); ai = VMADD(ai,br,tmp); }
+#define VCPLXMULCONJ(ar,ai,br,bi) { v4sf tmp = ar; ar = VMADD(ai,bi,VMUL(ar,br)); ai = VNMSUB(tmp,bi,VMUL(ai,br)); }
 #ifndef SVMUL
 // multiply a scalar with a vector
 #define SVMUL(f,v) VMUL(LD_PS1(f),v)
@@ -1241,6 +1298,9 @@ PFFFT_Setup *pffft_new_setup(int N, pffft_transform_t transform) {
   }
   PFFFT_Setup *s = (PFFFT_Setup*)malloc(sizeof(PFFFT_Setup));
   int k, m;
+  if (!s) {
+    return 0;
+  }
   /* unfortunately, the fft size must be a multiple of 16 for complex FFTs
      and 32 for real FFTs -- a lot of stuff would need to be rewritten to
      handle other cases (or maybe just switch to a scalar fft, I don't know..) */
@@ -1252,6 +1312,10 @@ PFFFT_Setup *pffft_new_setup(int N, pffft_transform_t transform) {
   /* nb of complex simd vectors */
   s->Ncvec = (transform == PFFFT_REAL ? N/2 : N)/SIMD_SZ;
   s->data = (v4sf*)pffft_aligned_malloc(2*s->Ncvec * sizeof(v4sf));
+  if (!s->data) {
+    free(s);
+    return 0;
+  }
   s->e = (float*)s->data;
   s->twiddle = (float*)(s->data + (2*s->Ncvec*(SIMD_SZ-1))/SIMD_SZ);
 
@@ -1282,6 +1346,9 @@ PFFFT_Setup *pffft_new_setup(int N, pffft_transform_t transform) {
 
 
 void pffft_destroy_setup(PFFFT_Setup *s) {
+  if (!s) {
+    return;
+  }
   pffft_aligned_free(s->data);
   free(s);
 }
@@ -1635,12 +1702,14 @@ void pffft_transform_internal(PFFFT_Setup *setup, const float *finput, float *fo
   int nf_odd = (setup->ifac[1] & 1);
 
   // temporary buffer is allocated on the stack if the scratch pointer is NULL
-  int stack_allocate = (scratch == 0 ? Ncvec*2 : 1);
+  int stack_allocate = (scratch == 0 ? Ncvec*2 + 2 : 2);
   VLA_ARRAY_ON_STACK(v4sf, scratch_on_stack, stack_allocate);
+  v4sf *aligned_stack_scratch =
+      (v4sf *)(((size_t)scratch_on_stack + 15u) & ~(size_t)15u);
 
   const v4sf *vinput = (const v4sf*)finput;
   v4sf *voutput      = (v4sf*)foutput;
-  v4sf *buff[2]      = { voutput, scratch ? scratch : scratch_on_stack };
+  v4sf *buff[2]      = { voutput, scratch ? scratch : aligned_stack_scratch };
   int ib = (nf_odd ^ ordered ? 1 : 0);
 
   assert(VALIGNED(finput) && VALIGNED(foutput));

@@ -118,6 +118,7 @@ namespace SoLoud
 			HANDLE h = CreateThread(NULL,0,threadfunc,d,0,NULL);
             if (0 == h)
             {
+                delete d;
                 return 0;
             }
             ThreadHandleData *threadHandle = new ThreadHandleData;
@@ -137,11 +138,15 @@ namespace SoLoud
 
         void wait(ThreadHandle aThreadHandle)
         {
+            if (!aThreadHandle)
+                return;
             WaitForSingleObject(aThreadHandle->thread, INFINITE);
         }
 
         void release(ThreadHandle aThreadHandle)
         {
+            if (!aThreadHandle)
+                return;
             CloseHandle(aThreadHandle->thread);
             delete aThreadHandle;
         }
@@ -281,6 +286,7 @@ namespace SoLoud
 #endif
 
 			pthread_mutex_init(mutex, &attr);
+			pthread_mutexattr_destroy(&attr);
 
 			return (void*)mutex;
 		}
@@ -346,8 +352,13 @@ namespace SoLoud
 			d->mParam = aParameter;
 
 			ThreadHandleData *threadHandle = new ThreadHandleData;
-			pthread_create(&threadHandle->thread, NULL, threadfunc, (void*)d);
-            return threadHandle;
+			if (pthread_create(&threadHandle->thread, NULL, threadfunc, (void*)d) != 0)
+			{
+				delete d;
+				delete threadHandle;
+				return 0;
+			}
+			return threadHandle;
 		}
 
 		void raiseCurrentThreadPriority()
@@ -365,7 +376,7 @@ namespace SoLoud
 		void sleep(int aMSec)
 		{
 			//usleep(aMSec * 1000);
-			struct timespec req = {0};
+			struct timespec req = {0, 0};
 			req.tv_sec = 0;
 			req.tv_nsec = aMSec * 1000000L;
 			nanosleep(&req, (struct timespec *)NULL);
@@ -373,11 +384,15 @@ namespace SoLoud
 
         void wait(ThreadHandle aThreadHandle)
         {
+            if (!aThreadHandle)
+                return;
             pthread_join(aThreadHandle->thread, 0);
         }
 
         void release(ThreadHandle aThreadHandle)
         {
+            if (!aThreadHandle)
+                return;
             delete aThreadHandle;
         }
 

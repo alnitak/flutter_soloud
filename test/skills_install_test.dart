@@ -167,9 +167,21 @@ void main() {
       final binScript = Directory.current.uri
           .resolve('bin/skills.dart')
           .toFilePath();
-      final dartExe = Platform.executable.contains('flutter_tester')
-          ? 'dart'
-          : Platform.executable;
+      String dartExe = Platform.executable;
+      if (dartExe.contains('flutter_tester')) {
+        final flutterDart = File(Platform.resolvedExecutable)
+            .parent
+            .parent
+            .parent
+            .parent
+            .uri
+            .resolve('dart-sdk/bin/dart${Platform.isWindows ? '.exe' : ''}');
+        if (File.fromUri(flutterDart).existsSync()) {
+          dartExe = flutterDart.toFilePath();
+        } else {
+          dartExe = 'dart';
+        }
+      }
 
       // Check on uninstalled tempDir -> exit code 1
       final resultBefore = Process.runSync(dartExe, [

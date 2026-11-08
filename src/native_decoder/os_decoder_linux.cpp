@@ -107,13 +107,25 @@ struct FFmpegLoader {
         hFormat = tryDlopen(formatNames);
         hCodec = tryDlopen(codecNames);
 
+        auto cleanupHandles = [&]() {
+            if (hFormat) {
+                dlclose(hFormat);
+                hFormat = nullptr;
+            }
+            if (hCodec) {
+                dlclose(hCodec);
+                hCodec = nullptr;
+            }
+        };
+
         if (!hFormat || !hCodec) {
+            cleanupHandles();
             return false;
         }
 
         #define LOAD_SYM(handle, name) \
             name = reinterpret_cast<pfn_##name>(dlsym(handle, #name)); \
-            if (!name) return false;
+            if (!name) { cleanupHandles(); return false; }
 
         LOAD_SYM(hFormat, avformat_open_input);
         LOAD_SYM(hFormat, avformat_find_stream_info);
@@ -224,6 +236,16 @@ struct DummyAVFrame {
     int nb_samples;
     int format;
     int key_frame;
+};
+
+struct DummyAVPacket {
+    void *buf;
+    int64_t pts;
+    int64_t dts;
+    uint8_t *data;
+    int size;
+    int stream_index;
+    int flags;
 };
 
 DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
@@ -389,14 +411,17 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
         planarChannelData[c].reserve(44100 * 5); // 5 sec initial reserve
     }
 
+    const int activeCh = std::min(channels, 8);
+
     auto processFrame = [&](AVFrame *f) {
         DummyAVFrame *dFrame = reinterpret_cast<DummyAVFrame*>(f);
         int nbSamples = dFrame->nb_samples;
         int fmt = dFrame->format;
-        if (nbSamples <= 0) return;
+        if (nbSamples <= 0 || activeCh <= 0) return;
+        const unsigned int uSamples = static_cast<unsigned int>(nbSamples);
 
         if (fmt == AV_SAMPLE_FMT_FLTP) {
-            for (int c = 0; c < channels && c < 8; c++) {
+            for (int c = 0; c < activeCh; c++) {
                 const float *src = reinterpret_cast<const float *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
                 if (src) {
                     planarChannelData[c].insert(planarChannelData[c].end(), src, src + nbSamples);
@@ -405,81 +430,134 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
         } else if (fmt == AV_SAMPLE_FMT_FLT) {
             const float *src = reinterpret_cast<const float *>(dFrame->data[0]);
             if (src) {
-                for (int s = 0; s < nbSamples; s++) {
-                    for (int c = 0; c < channels && c < 8; c++) {
-                        planarChannelData[c].push_back(src[s * channels + c]);
+                const size_t oldSize = planarChannelData[0].size();
+                for (int c = 0; c < activeCh; c++) {
+                    planarChannelData[c].resize(oldSize + uSamples);
+                }
+                if (activeCh == 1 && channels == 1) {
+                    std::memcpy(planarChannelData[0].data() + oldSize, src, uSamples * sizeof(float));
+                } else if (activeCh == 2 && channels == 2) {
+                    SoLoud::deinterleaveStereoFloats(
+                        src, planarChannelData[0].data() + oldSize,
+                        planarChannelData[1].data() + oldSize, uSamples);
+                } else if (activeCh == 4 && channels == 4) {
+                    SoLoud::deinterleaveQuadFloats(
+                        src, planarChannelData[0].data() + oldSize,
+                        planarChannelData[1].data() + oldSize,
+                        planarChannelData[2].data() + oldSize,
+                        planarChannelData[3].data() + oldSize, uSamples);
+                } else {
+                    for (int s = 0; s < nbSamples; s++) {
+                        for (int c = 0; c < activeCh; c++) {
+                            planarChannelData[c][oldSize + s] = src[s * channels + c];
+                        }
                     }
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_S16P) {
-            for (int c = 0; c < channels && c < 8; c++) {
+            for (int c = 0; c < activeCh; c++) {
                 const int16_t *src = reinterpret_cast<const int16_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
                 if (src) {
-                    for (int s = 0; s < nbSamples; s++) {
-                        planarChannelData[c].push_back(src[s] / 32768.0f);
-                    }
+                    const size_t oldSize = planarChannelData[c].size();
+                    planarChannelData[c].resize(oldSize + uSamples);
+                    SoLoud::convertInt16ToFloats(src, planarChannelData[c].data() + oldSize, uSamples);
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_S16) {
             const int16_t *src = reinterpret_cast<const int16_t *>(dFrame->data[0]);
             if (src) {
-                for (int s = 0; s < nbSamples; s++) {
-                    for (int c = 0; c < channels && c < 8; c++) {
-                        planarChannelData[c].push_back(src[s * channels + c] / 32768.0f);
+                const size_t oldSize = planarChannelData[0].size();
+                for (int c = 0; c < activeCh; c++) {
+                    planarChannelData[c].resize(oldSize + uSamples);
+                }
+                if (activeCh == 1 && channels == 1) {
+                    SoLoud::convertInt16ToFloats(src, planarChannelData[0].data() + oldSize, uSamples);
+                } else if (activeCh == 2 && channels == 2) {
+                    SoLoud::deinterleaveStereoInt16ToFloats(
+                        src, planarChannelData[0].data() + oldSize,
+                        planarChannelData[1].data() + oldSize, uSamples);
+                } else {
+                    for (int s = 0; s < nbSamples; s++) {
+                        for (int c = 0; c < activeCh; c++) {
+                            planarChannelData[c][oldSize + s] = src[s * channels + c] * (1.0f / 32768.0f);
+                        }
                     }
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_S32P) {
-            for (int c = 0; c < channels && c < 8; c++) {
+            for (int c = 0; c < activeCh; c++) {
                 const int32_t *src = reinterpret_cast<const int32_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
                 if (src) {
-                    for (int s = 0; s < nbSamples; s++) {
-                        planarChannelData[c].push_back(src[s] / 2147483648.0f);
-                    }
+                    const size_t oldSize = planarChannelData[c].size();
+                    planarChannelData[c].resize(oldSize + uSamples);
+                    SoLoud::convertInt32ToFloats(src, planarChannelData[c].data() + oldSize, uSamples);
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_S32) {
             const int32_t *src = reinterpret_cast<const int32_t *>(dFrame->data[0]);
             if (src) {
-                for (int s = 0; s < nbSamples; s++) {
-                    for (int c = 0; c < channels && c < 8; c++) {
-                        planarChannelData[c].push_back(src[s * channels + c] / 2147483648.0f);
+                const size_t oldSize = planarChannelData[0].size();
+                for (int c = 0; c < activeCh; c++) {
+                    planarChannelData[c].resize(oldSize + uSamples);
+                }
+                if (activeCh == 1 && channels == 1) {
+                    SoLoud::convertInt32ToFloats(src, planarChannelData[0].data() + oldSize, uSamples);
+                } else {
+                    for (int s = 0; s < nbSamples; s++) {
+                        for (int c = 0; c < activeCh; c++) {
+                            planarChannelData[c][oldSize + s] = src[s * channels + c] * (1.0f / 2147483648.0f);
+                        }
                     }
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_DBLP) {
-            for (int c = 0; c < channels && c < 8; c++) {
+            for (int c = 0; c < activeCh; c++) {
                 const double *src = reinterpret_cast<const double *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
                 if (src) {
+                    const size_t oldSize = planarChannelData[c].size();
+                    planarChannelData[c].resize(oldSize + uSamples);
+                    float *dst = planarChannelData[c].data() + oldSize;
                     for (int s = 0; s < nbSamples; s++) {
-                        planarChannelData[c].push_back(static_cast<float>(src[s]));
+                        dst[s] = static_cast<float>(src[s]);
                     }
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_DBL) {
             const double *src = reinterpret_cast<const double *>(dFrame->data[0]);
             if (src) {
+                const size_t oldSize = planarChannelData[0].size();
+                for (int c = 0; c < activeCh; c++) {
+                    planarChannelData[c].resize(oldSize + uSamples);
+                }
                 for (int s = 0; s < nbSamples; s++) {
-                    for (int c = 0; c < channels && c < 8; c++) {
-                        planarChannelData[c].push_back(static_cast<float>(src[s * channels + c]));
+                    for (int c = 0; c < activeCh; c++) {
+                        planarChannelData[c][oldSize + s] = static_cast<float>(src[s * channels + c]);
                     }
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_U8P) {
-            for (int c = 0; c < channels && c < 8; c++) {
+            for (int c = 0; c < activeCh; c++) {
                 const uint8_t *src = reinterpret_cast<const uint8_t *>(dFrame->extended_data ? dFrame->extended_data[c] : dFrame->data[c]);
                 if (src) {
+                    const size_t oldSize = planarChannelData[c].size();
+                    planarChannelData[c].resize(oldSize + uSamples);
+                    float *dst = planarChannelData[c].data() + oldSize;
                     for (int s = 0; s < nbSamples; s++) {
-                        planarChannelData[c].push_back((src[s] - 128) / 128.0f);
+                        dst[s] = (static_cast<int>(src[s]) - 128) * (1.0f / 128.0f);
                     }
                 }
             }
         } else if (fmt == AV_SAMPLE_FMT_U8) {
             const uint8_t *src = reinterpret_cast<const uint8_t *>(dFrame->data[0]);
             if (src) {
+                const size_t oldSize = planarChannelData[0].size();
+                for (int c = 0; c < activeCh; c++) {
+                    planarChannelData[c].resize(oldSize + uSamples);
+                }
                 for (int s = 0; s < nbSamples; s++) {
-                    for (int c = 0; c < channels && c < 8; c++) {
-                        planarChannelData[c].push_back((src[s * channels + c] - 128) / 128.0f);
+                    for (int c = 0; c < activeCh; c++) {
+                        planarChannelData[c][oldSize + s] =
+                            (static_cast<int>(src[s * channels + c]) - 128) * (1.0f / 128.0f);
                     }
                 }
             }
@@ -487,6 +565,11 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     };
 
     while (gFFmpeg.av_read_frame(fmtCtx, pkt) >= 0) {
+        const auto *dPkt = reinterpret_cast<const DummyAVPacket *>(pkt);
+        if (dPkt->stream_index != audioStreamIndex) {
+            gFFmpeg.av_packet_unref(pkt);
+            continue;
+        }
         int sendRes = gFFmpeg.avcodec_send_packet(codecCtx, pkt);
         gFFmpeg.av_packet_unref(pkt);
 
