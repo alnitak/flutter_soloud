@@ -919,7 +919,9 @@ final class XiphLink {
     );
 
     String? resolvedTag;
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30)
+      ..userAgent = 'flutter_soloud_builder/1.0';
     try {
       final uri = Uri.parse(url);
       final request = await client.getUrl(uri);
