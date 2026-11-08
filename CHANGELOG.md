@@ -1,8 +1,8 @@
 ##### 5.3.0 (XX Xxx 2026)
-- feat: real-time low-latency PCM audio streaming (`setRealtimeStream`) with background Isolate and Web feeding support
-- feat: procedural custom audio sources (`createCustomAudioSource`) with native and Web audio generation callbacks
-- feat: custom DSP filters (`customFilter`) supporting up to 8 programmable filter slots per scope (global, bus, single sound)
-- feat: desktop VST3 plugin hosting (`SoLoudVst3Host` on macOS, Windows, and Linux) for VST3 audio effects, virtual instruments, and native plugin GUI editors
+- feat: **real-time low-latency PCM audio streaming** (`setRealtimeStream`) with background Isolate and Web feeding support
+- feat: **procedural custom audio sources** (`createCustomAudioSource`) with native and Web audio generation callbacks
+- feat: *custom DSP filters* (`customFilter`) supporting up to 8 programmable filter slots per scope (global, bus, single sound)
+- feat: **desktop VST3 plugin hosting** (`SoLoudVst3Host` on macOS, Windows, and Linux) for VST3 audio effects, virtual instruments, and native plugin GUI editors
 - feat: added waveform support to `AmplitudeModulatorFilter` (`waveform`: Sine, Triangle, Square, Saw)
 - feat: added `renderAheadFrames` option to `init()` for low-latency retroactive voice mixing. The ring is mixed on a dedicated render thread, so the audio device callback never waits for the engine
 - example: added real-time PCM synth, isolate drum sequencer, custom DSP workbench, and VST3 plugin host examples
