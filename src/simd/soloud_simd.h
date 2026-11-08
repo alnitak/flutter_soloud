@@ -15,26 +15,30 @@
 // Multiplatform SIMD ISA Detection
 // IMPORTANT: On Windows ARM64EC, MSVC defines BOTH _M_X64 and _M_ARM64EC.
 // Always check ARM64 / ARM64EC BEFORE x86_64!
+// On WebAssembly / Emscripten, clang may define __SSE... flags when SSE
+// emulation is enabled, but the target is WASM, not x86. Always check WASM
+// BEFORE x86_64!
 // -----------------------------------------------------------------------------
 #if !defined(DISABLE_SIMD)
-#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) ||    \
+#if defined(__wasm_simd128__)
+#include <wasm_simd128.h>
+#define SOLOUD_SIMD_WASM 1
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) ||    \
     defined(_M_ARM64) || defined(_M_ARM64EC)
 #include <arm_neon.h>
 #define SOLOUD_SIMD_NEON 1
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
 #define SOLOUD_SIMD_NEON_AARCH64 1
 #endif
-#elif defined(__SSE2__) || defined(_M_X64) ||                                  \
-    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#elif (defined(__SSE2__) || defined(_M_X64) ||                                  \
+    (defined(_M_IX86_FP) && _M_IX86_FP >= 2)) &&                               \
+    !defined(__EMSCRIPTEN__) && !defined(__wasm__)
 #include <emmintrin.h>
 #include <xmmintrin.h>
 #if defined(__FMA__) || defined(__AVX2__)
 #include <immintrin.h>
 #endif
 #define SOLOUD_SIMD_SSE2 1
-#elif defined(__wasm_simd128__)
-#include <wasm_simd128.h>
-#define SOLOUD_SIMD_WASM 1
 #endif
 #endif
 
@@ -74,7 +78,7 @@ class ScopedFlushDenormals {
  public:
   explicit ScopedFlushDenormals(bool enabled = true) noexcept {
     if (!enabled) return;
-#if defined(SOLOUD_SIMD_SSE2)
+#if defined(SOLOUD_SIMD_SSE2) && !defined(__EMSCRIPTEN__) && !defined(__wasm__)
     mPrev = _mm_getcsr();
     constexpr unsigned int kFtzDaz = 0x8040u;  // FTZ (bit 15) | DAZ (bit 6)
     if ((mPrev & kFtzDaz) != kFtzDaz) {
@@ -126,7 +130,7 @@ class ScopedFlushDenormals {
 
   ~ScopedFlushDenormals() noexcept {
     if (!mChanged) return;
-#if defined(SOLOUD_SIMD_SSE2)
+#if defined(SOLOUD_SIMD_SSE2) && !defined(__EMSCRIPTEN__) && !defined(__wasm__)
     _mm_setcsr(static_cast<unsigned int>(mPrev));
 #elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM64EC))
 #if defined(ARM64_FPCR)

@@ -1136,6 +1136,7 @@ namespace SoLoud
 			// No worker (none wanted, or it could not be started): mix here.
 			renderRingTopUp_internal();
 		}
+#if !defined(__EMSCRIPTEN__)
 		else if (mRenderRing.availableToRead() < aFrames)
 		{
 			// The worker fell behind: mix what this read needs, but only if
@@ -1164,6 +1165,7 @@ namespace SoLoud
 					std::chrono::steady_clock::now() < deadline);
 			}
 		}
+#endif
 		const unsigned int got = mRenderRing.read(aBuffer, aFrames);
 		if (worker)
 			wakeRenderWorker_internal();

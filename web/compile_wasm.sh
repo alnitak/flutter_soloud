@@ -236,7 +236,7 @@ build_flavor() {
         ${SOURCES[@]} \
         ${LIBS[@]} \
         ${COMPILER_DEFINES} \
-        -msimd128 -msse3 \
+        -msimd128 \
         -std=c++17 \
         -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue','UTF8ToString','HEAPF32','HEAPU8']" \
         -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \
