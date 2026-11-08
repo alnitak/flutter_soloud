@@ -9,24 +9,10 @@
 - fix iOS: resume audio playback after returning from background on iOS 16+ where `wasSuspended` interruption reason is no longer sent #573
 - fix: `FreeverbFilter` no longer doubles the dry signal. At `wet` 0 the output now equals the input (it used to be +6 dB), and the dry part of any wet/dry mix is half as loud as in 5.2.x; mixes tuned against the old level will sound quieter
 - perf: multiplatform SIMD acceleration (ARM64/ARMv7 NEON, x86/x86_64 SSE2/AVX2, and WebAssembly SIMD128) across core mixing, linear/Catmull-Rom voice resampling, panning, clipping, and PCM format conversions
-- perf: accelerated DSP filters, FFT, and synthesis (`ParametricEq` switched to `PFFFT_REAL` with SIMD Gaussian gain tables, Apple `Accelerate` vDSP STFT for `PitchShift`, vectorized `Compressor`, `O(1)` monotonic-deque `Limiter`, SIMD `Freeverb`/`Biquad`, and band-limited synth wavetable LUTs)
+- perf: accelerated DSP filters, FFT, and synthesis
 - perf: hardware subnormal/denormal flushing (`FTZ`/`DAZ`) on audio threads across ARM and x86, single-pass waveform extraction with SIMD RMS, `O(1)` stream buffer compaction, and `-O3` compiler/SIMD flags across native builds and Xiph prebuilds
-- perf: reduced real-time lock contention and memory traffic with `O(1)` active-sound/handle hash maps, event-driven `MixerOutput` capture wakeups, and chunked planar native decoding on Apple, Android, Windows, and Linux
+- perf: reduced real-time lock contention and memory traffic with `O(1)` active-sound/handle hash maps, event-driven `MixerOutput` capture wakeups, and chunked planar native decoding on all platforms
 - fix: resolved native memory leaks, 64-byte cache-line alignment and false-sharing issues, `PCM_S32LE` full-scale saturation wrap-around, and an FFI buffer overflow in `getFilterParamNames`
-
-  Measured native throughput gains (macOS Apple Silicon `ARM64 NEON`, `-O3`, million samples/sec):
-
-  | Subsystem / Kernel | 5.2.x | 5.3.0 | Speedup |
-  |---|---:|---:|---:|
-  | Synth Fourier waveforms (`WAVE_FSAW` superwave) | 5.9 MS/s | 110.8 MS/s | **18.7x** |
-  | `BiquadResonantFilter` (stereo) | 248.4 MS/s | 980.8 MS/s | **3.95x** |
-  | 8-voice `Soloud::mix` (Linear @ 1.0x native rate) | 212.5 MS/s | 600.3 MS/s | **2.83x** |
-  | `ParametricEq` 8-band STFT (stereo) | 194.3 MS/s | 498.3 MS/s | **2.56x** |
-  | 8-voice `Soloud::mix` (Catmull-Rom @ 1.37x) | 95.2 MS/s | 157.0 MS/s | **1.65x** |
-  | `FreeverbFilter` (stereo) | 151.4 MS/s | 232.0 MS/s | **1.53x** |
-  | Look-ahead `Limiter` (active stereo) | 414.5 MS/s | 590.4 MS/s | **1.42x** |
-  | `EqFilter` / `FFTFilter` (stereo) | 140.5 MS/s | 192.7 MS/s | **1.37x** |
-  | `convertPcm` `F32 -> S16LE` (NaN-safe clamped) | 13,373 MS/s | 18,041 MS/s | **1.35x** |
 
 ##### 5.2.4 (X Xxx 2026)
 - fix: don't drop the end of a voice that doesn't loop. Thanks to @Colton127 #604
