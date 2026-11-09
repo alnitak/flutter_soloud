@@ -283,6 +283,44 @@ static size_t countAdtsFrames(const unsigned char *data, size_t size) {
     return frames;
 }
 
+static void testAdtsWithAc3LikeBytes() {
+    std::cout << "[Test] ADTS containing AC-3-like bytes decodes as AAC" << std::endl;
+    auto bytes = readFile(gDir + "/sample-AAC.aac");
+    const size_t aacBytes = bytes.size();
+    DecodedAudioData reference = NativeAudioDecoder::decodeMemory(bytes.data(), bytes.size());
+    CHECK(reference.success, "reference ADTS decode failed: " << reference.errorMessage);
+    if (!reference.success) {
+        reference.freeSamples();
+        return;
+    }
+
+    // A valid AC-3 sync candidate outside the ADTS frames must not change the
+    // detected format. Keeping it after all AAC frames leaves the PCM intact.
+    const unsigned char ac3Like[] = {0x0B, 0x77, 0x00, 0x00, 0x00, 0x40};
+    bytes.insert(bytes.end(), std::begin(ac3Like), std::end(ac3Like));
+    CHECK(NativeAudioDecoder::findAc3Syncword(bytes.data(), bytes.size()) ==
+              static_cast<int>(aacBytes),
+          "test fixture does not contain the expected AC-3-like suffix");
+
+    DecodedAudioData decoded = NativeAudioDecoder::decodeMemory(bytes.data(), bytes.size());
+    CHECK(decoded.success, "ADTS with AC-3-like bytes failed: " << decoded.errorMessage);
+    if (decoded.success) {
+        CHECK(decoded.sampleRate == reference.sampleRate && decoded.channels == reference.channels,
+              "ADTS with AC-3-like bytes changed the decoded format");
+        CHECK(decoded.sampleCount == reference.sampleCount,
+              "ADTS with AC-3-like bytes decoded " << decoded.sampleCount
+                                                   << " frames, expected " << reference.sampleCount);
+        if (decoded.sampleRate == reference.sampleRate && decoded.channels == reference.channels &&
+            decoded.sampleCount == reference.sampleCount) {
+            CHECK(std::memcmp(decoded.samples, reference.samples,
+                              reference.sampleCount * reference.channels * sizeof(float)) == 0,
+                  "ADTS with AC-3-like bytes changed the decoded PCM");
+        }
+    }
+    decoded.freeSamples();
+    reference.freeSamples();
+}
+
 static void testTruncatedAdts() {
     std::cout << "[Test] ADTS cut mid-frame decodes every complete frame" << std::endl;
     auto bytes = readFile(gDir + "/sample-AAC.aac");
@@ -423,6 +461,7 @@ int main(int argc, char **argv) {
     testFixtures();
     testMalformed();
     testElementaryStreams();
+    testAdtsWithAc3LikeBytes();
     testTruncatedAdts();
     testChunkedStreaming();
     testResourceCleanup();
