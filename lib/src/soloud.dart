@@ -2876,10 +2876,13 @@ interface class SoLoud {
   ///   (speakers, wired headphones, USB DAC, or Bluetooth).
   ///
   /// On Android (AAudio), this is computed using hardware presentation
-  /// timestamps (`AAudioStream_getTimestamp`) against the monotonic clock. On
-  /// iOS/macOS, this is derived from `AVAudioSession.outputLatency` or CoreAudio
-  /// device latency. On Windows, Linux, and Web, it queries WASAPI, ALSA, or
-  /// Web Audio context latencies respectively.
+  /// timestamps (`AAudioStream_getTimestamp`) against the monotonic clock. Note
+  /// that this reflects the presentation point reported by the audio HAL and
+  /// AudioFlinger; on some devices, vendor-specific post-HAL speaker DSP (e.g.
+  /// speaker limiters or Dolby Atmos) may introduce additional acoustic delay.
+  /// On iOS/macOS, this is derived from `AVAudioSession.outputLatency` or
+  /// CoreAudio device latency. On Windows and Web, it queries WASAPI or Web
+  /// Audio context latencies respectively.
   ///
   /// The total physical delay from an engine mix quantum to the listener's ear
   /// is approximately:

@@ -1605,10 +1605,9 @@ namespace SoLoud
             typedef int64_t (*pfn_AAudioStream_getFramesWritten)(void*);
             static pfn_AAudioStream_getTimestamp s_getTimestamp = nullptr;
             static pfn_AAudioStream_getFramesWritten s_getFramesWritten = nullptr;
-            static bool s_procsLoaded = false;
+            static std::once_flag s_procsLoaded;
 
-            if (!s_procsLoaded)
-            {
+            std::call_once(s_procsLoaded, []() {
                 if (context.aaudio.hAAudio != nullptr)
                 {
                     s_getTimestamp = (pfn_AAudioStream_getTimestamp)dlsym(context.aaudio.hAAudio, "AAudioStream_getTimestamp");
@@ -1622,8 +1621,7 @@ namespace SoLoud
                 {
                     s_getFramesWritten = (pfn_AAudioStream_getFramesWritten)dlsym(RTLD_DEFAULT, "AAudioStream_getFramesWritten");
                 }
-                s_procsLoaded = true;
-            }
+            });
 
             if (s_getTimestamp != nullptr && s_getFramesWritten != nullptr)
             {
@@ -1637,8 +1635,12 @@ namespace SoLoud
                     if (clock_gettime(CLOCK_MONOTONIC, &nowTs) == 0)
                     {
                         int64_t nowNanos = (int64_t)nowTs.tv_sec * 1000000000LL + nowTs.tv_nsec;
-                        double sampleRate = (double)gDevice.sampleRate;
-                        double latencySec = ((double)(framesWritten - framePosition) / sampleRate) -
+                        // Use internal stream sample rate since framePosition and framesWritten
+                        // count frames of the native AAudio stream, not the engine client rate.
+                        double streamSampleRate = (gDevice.playback.internalSampleRate > 0)
+                            ? (double)gDevice.playback.internalSampleRate
+                            : (double)gDevice.sampleRate;
+                        double latencySec = ((double)(framesWritten - framePosition) / streamSampleRate) -
                                             ((double)(nowNanos - timeNanos) / 1000000000.0);
                         if (latencySec > 0.0)
                             return latencySec;
@@ -1648,7 +1650,8 @@ namespace SoLoud
         }
 #endif
 
-#if defined(__APPLE__) && defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1
+#if defined(__APPLE__)
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1
         @try {
             AVAudioSession *session = [AVAudioSession sharedInstance];
             if (session != nil) {
@@ -1658,6 +1661,21 @@ namespace SoLoud
                 }
             }
         } @catch (id) {}
+#elif defined(MA_SUPPORT_COREAUDIO)
+        if (context.backend == ma_backend_coreaudio && gDevice.coreaudio.audioUnitPlayback != nullptr &&
+            context.coreaudio.AudioUnitGetProperty != nullptr)
+        {
+            Float64 unitLatency = 0.0;
+            UInt32 dataSize = sizeof(unitLatency);
+            // kAudioUnitProperty_Latency = 12, kAudioUnitScope_Global = 0
+            OSStatus status = ((ma_AudioUnitGetProperty_proc)context.coreaudio.AudioUnitGetProperty)(
+                (AudioUnit)gDevice.coreaudio.audioUnitPlayback, 12, 0, 0, &unitLatency, &dataSize);
+            if (status == noErr && unitLatency > 0.0)
+            {
+                return (double)unitLatency;
+            }
+        }
+#endif
 #endif
 
 #if (defined(_WIN32) || defined(_WIN64)) && defined(MA_SUPPORT_WASAPI)
@@ -1672,11 +1690,9 @@ namespace SoLoud
         }
 #endif
 
-        // Fallback: estimate from the device buffer size (periods * periodSizeInFrames)
-        // plus any resampling/conversion latency tracked by miniaudio.
-        double fallbackFrames = (double)(gDevice.playback.internalPeriodSizeInFrames * gDevice.playback.internalPeriods);
-        fallbackFrames += (double)ma_data_converter_get_output_latency(&gDevice.playback.converter);
-        return fallbackFrames / (double)gDevice.sampleRate;
+        // Return 0.0 when hardware presentation latency is not reported by the
+        // active backend or stream timestamps are not yet available during warm-up.
+        return 0.0;
     }
 
     // Engine mix quantum to hand to postinit_internal. With the render-ahead
