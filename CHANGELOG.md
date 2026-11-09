@@ -1,4 +1,5 @@
 ##### 5.3.0 (XX Xxx 2026)
+- feat: add **getHardwareOutputLatency** to measure OS/hardware presentation delay
 - feat: **real-time low-latency PCM audio streaming** (`setRealtimeStream`) with background Isolate and Web feeding support
 - feat: **procedural custom audio sources** (`createCustomAudioSource`) with native and Web audio generation callbacks
 - feat: *custom DSP filters* (`customFilter`) supporting up to 8 programmable filter slots per scope (global, bus, single sound)

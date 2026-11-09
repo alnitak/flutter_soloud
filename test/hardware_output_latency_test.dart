@@ -35,8 +35,9 @@ void main() {
             'src/soloud/include/soloud.h must declare getHardwareOutputLatency',
       );
 
-      final internalH =
-          File('src/soloud/include/soloud_internal.h').readAsStringSync();
+      final internalH = File(
+        'src/soloud/include/soloud_internal.h',
+      ).readAsStringSync();
       expect(
         internalH.contains('miniaudio_getHardwareOutputLatency()'),
         isTrue,
