@@ -2860,6 +2860,46 @@ interface class SoLoud {
     return _controller.soLoudFFI.getOutputLatency();
   }
 
+  /// Estimated hardware output latency: the presentation delay introduced
+  /// outside SoLoud by the operating system audio pipeline, audio server/HAL
+  /// buffers, DSP, and hardware DAC on the active audio route.
+  ///
+  /// ### Differences between [getOutputLatency] and [getHardwareOutputLatency]
+  /// * **[getOutputLatency]** measures SoLoud's **internal software mix
+  ///   cushion** (the render-ahead ring depth plus one device period). When the
+  ///   render-ahead ring is disabled (the default) or on web, it returns
+  ///   [Duration.zero]. It does not reflect when audio actually reaches the
+  ///   speaker.
+  /// * **[getHardwareOutputLatency]** measures the **external physical path**
+  ///   from the moment audio samples leave SoLoud's device callback to when
+  ///   they are converted by the DAC and physically leave the transducer
+  ///   (speakers, wired headphones, USB DAC, or Bluetooth).
+  ///
+  /// On Android (AAudio), this is computed using hardware presentation
+  /// timestamps (`AAudioStream_getTimestamp`) against the monotonic clock. On
+  /// iOS/macOS, this is derived from `AVAudioSession.outputLatency` or CoreAudio
+  /// device latency. On Windows, Linux, and Web, it queries WASAPI, ALSA, or
+  /// Web Audio context latencies respectively.
+  ///
+  /// The total physical delay from an engine mix quantum to the listener's ear
+  /// is approximately:
+  /// ```dart
+  /// final totalDelay = SoLoud.instance.getOutputLatency() +
+  ///     SoLoud.instance.getHardwareOutputLatency();
+  /// ```
+  ///
+  /// Returns [Duration.zero] if the active backend does not support
+  /// presentation timestamps, during initial stream warm-up before timestamps
+  /// become valid, or if the query fails.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration getHardwareOutputLatency() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getHardwareOutputLatency();
+  }
+
   /// Whether the render-ahead ring is active. Enabled at init time via the
   /// `renderAheadFrames` parameter of [init]. Always false on web.
   bool get isRenderAheadEnabled =>

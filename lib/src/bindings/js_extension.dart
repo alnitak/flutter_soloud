@@ -407,6 +407,9 @@ external void wasmResetStreamTime();
 @JS('Module_soloud._getEngineTime')
 external double wasmGetEngineTime();
 
+@JS('Module_soloud._getHardwareOutputLatency')
+external double wasmGetHardwareOutputLatency();
+
 @JS('Module_soloud._playScheduled')
 external int wasmPlayScheduled(
   int soundHash,

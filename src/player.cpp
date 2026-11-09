@@ -2747,6 +2747,11 @@ double Player::getOutputLatency()
     return soloud.getOutputLatency();
 }
 
+double Player::getHardwareOutputLatency()
+{
+    return soloud.getHardwareOutputLatency();
+}
+
 bool Player::isRenderAheadEnabled()
 {
     return soloud.isRenderAheadEnabled();

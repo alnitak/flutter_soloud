@@ -415,6 +415,9 @@ namespace SoLoud
 		// Estimated output latency in seconds: frames buffered ahead of the
 		// device plus one device period. 0 when the ring is disabled.
 		time getOutputLatency();
+		// Estimated hardware presentation latency in seconds (DAC, OS buffers,
+		// and route delay).
+		time getHardwareOutputLatency();
 		// Start playing a sound at an absolute engine time (see getEngineTime), with sample accuracy. Unlike playClocked there is no anchor and no re-anchor guard, so sounds can be scheduled arbitrarily far in the future. A time in the past plays as soon as possible. Negative volume means to use default.
 		// aLoopStartOffset / aLoopEndOffset: optional exact frame offsets (-1 = inactive / use aLoopPoint/aLoopEndPoint).
 		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0, long long aLoopStartOffset = -1, long long aLoopEndOffset = -1);

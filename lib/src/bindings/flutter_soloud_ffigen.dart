@@ -1147,6 +1147,11 @@ external double getPlayheadTime();
 @ffi.Native<ffi.Double Function()>()
 external double getOutputLatency();
 
+/// Estimated hardware output latency in seconds (DAC, OS buffers, audio route).
+/// 0 when not supported or during warm-up.
+@ffi.Native<ffi.Double Function()>()
+external double getHardwareOutputLatency();
+
 /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
 /// active. Enabled at init time via `initEngine`'s `renderAheadFrames`.
 @ffi.Native<ffi.UnsignedInt Function()>()

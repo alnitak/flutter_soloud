@@ -70,12 +70,17 @@ namespace SoLoud
 #include "miniaudio.h"
 #ifdef __ANDROID__
 #include <android/api-level.h>
+#include <dlfcn.h>
+#include <time.h>
 #endif
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1
 #import <AVFoundation/AVFoundation.h>
 #endif
+#endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
 #endif
 #include <math.h>
 #include <algorithm>
@@ -1549,6 +1554,129 @@ namespace SoLoud
         if (!gDeviceInitialized.load(std::memory_order_acquire))
             return ma_device_state_uninitialized;
         return (unsigned int)ma_device_get_state(&gDevice);
+    }
+
+    // Returns the estimated hardware presentation latency in seconds (external
+    // DAC, OS buffers, driver queues, and route delays).
+    double miniaudio_getHardwareOutputLatency()
+    {
+        if (!gDeviceInitialized.load(std::memory_order_acquire))
+            return 0.0;
+        if (ma_device_get_state(&gDevice) != ma_device_state_started)
+            return 0.0;
+        if (gDevice.sampleRate == 0)
+            return 0.0;
+
+#if defined(__EMSCRIPTEN__)
+        // Query the Web Audio AudioContext (outputLatency + baseLatency) via Emscripten EM_ASM
+        double webLatency = EM_ASM_DOUBLE({
+            try {
+                var ctx = null;
+                if (typeof window !== 'undefined' && window.miniaudio && window.miniaudio.get_device_by_index) {
+                    var dev = window.miniaudio.get_device_by_index($0);
+                    if (dev && dev.webaudio) {
+                        ctx = dev.webaudio;
+                    }
+                }
+                if (!ctx && typeof emscriptenGetAudioObject === 'function') {
+                    var worklet = emscriptenGetAudioObject($1);
+                    if (worklet && worklet.context) {
+                        ctx = worklet.context;
+                    }
+                }
+                if (ctx) {
+                    var outLat = ctx.outputLatency || 0;
+                    var baseLat = ctx.baseLatency || 0;
+                    return outLat + baseLat;
+                }
+            } catch (e) {
+            }
+            return 0.0;
+        }, gDevice.webaudio.deviceIndex, gDevice.webaudio.audioWorklet);
+
+        if (webLatency > 0.0)
+            return webLatency;
+#endif
+
+#if defined(__ANDROID__)
+        if (gDevice.backend == ma_backend_aaudio && gDevice.aaudio.pStreamPlayback != nullptr)
+        {
+            typedef int32_t (*pfn_AAudioStream_getTimestamp)(void*, clockid_t, int64_t*, int64_t*);
+            typedef int64_t (*pfn_AAudioStream_getFramesWritten)(void*);
+            static pfn_AAudioStream_getTimestamp s_getTimestamp = nullptr;
+            static pfn_AAudioStream_getFramesWritten s_getFramesWritten = nullptr;
+            static bool s_procsLoaded = false;
+
+            if (!s_procsLoaded)
+            {
+                if (context.aaudio.hAAudio != nullptr)
+                {
+                    s_getTimestamp = (pfn_AAudioStream_getTimestamp)dlsym(context.aaudio.hAAudio, "AAudioStream_getTimestamp");
+                    s_getFramesWritten = (pfn_AAudioStream_getFramesWritten)dlsym(context.aaudio.hAAudio, "AAudioStream_getFramesWritten");
+                }
+                if (s_getTimestamp == nullptr)
+                {
+                    s_getTimestamp = (pfn_AAudioStream_getTimestamp)dlsym(RTLD_DEFAULT, "AAudioStream_getTimestamp");
+                }
+                if (s_getFramesWritten == nullptr)
+                {
+                    s_getFramesWritten = (pfn_AAudioStream_getFramesWritten)dlsym(RTLD_DEFAULT, "AAudioStream_getFramesWritten");
+                }
+                s_procsLoaded = true;
+            }
+
+            if (s_getTimestamp != nullptr && s_getFramesWritten != nullptr)
+            {
+                int64_t framePosition = 0;
+                int64_t timeNanos = 0;
+                int32_t res = s_getTimestamp(gDevice.aaudio.pStreamPlayback, CLOCK_MONOTONIC, &framePosition, &timeNanos);
+                if (res == 0 && framePosition > 0 && timeNanos > 0)
+                {
+                    int64_t framesWritten = s_getFramesWritten(gDevice.aaudio.pStreamPlayback);
+                    struct timespec nowTs;
+                    if (clock_gettime(CLOCK_MONOTONIC, &nowTs) == 0)
+                    {
+                        int64_t nowNanos = (int64_t)nowTs.tv_sec * 1000000000LL + nowTs.tv_nsec;
+                        double sampleRate = (double)gDevice.sampleRate;
+                        double latencySec = ((double)(framesWritten - framePosition) / sampleRate) -
+                                            ((double)(nowNanos - timeNanos) / 1000000000.0);
+                        if (latencySec > 0.0)
+                            return latencySec;
+                    }
+                }
+            }
+        }
+#endif
+
+#if defined(__APPLE__) && defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1
+        @try {
+            AVAudioSession *session = [AVAudioSession sharedInstance];
+            if (session != nil) {
+                NSTimeInterval routeLatency = session.outputLatency + session.IOBufferDuration;
+                if (routeLatency > 0.0) {
+                    return (double)routeLatency;
+                }
+            }
+        } @catch (id) {}
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+        if (gDevice.backend == ma_backend_wasapi && gDevice.wasapi.pAudioClientPlayback != nullptr)
+        {
+            IAudioClient *pAudioClient = (IAudioClient*)gDevice.wasapi.pAudioClientPlayback;
+            REFERENCE_TIME hnsLatency = 0;
+            if (SUCCEEDED(pAudioClient->GetStreamLatency(&hnsLatency)) && hnsLatency > 0)
+            {
+                return (double)hnsLatency / 10000000.0;
+            }
+        }
+#endif
+
+        // Fallback: estimate from the device buffer size (periods * periodSizeInFrames)
+        // plus any resampling/conversion latency tracked by miniaudio.
+        double fallbackFrames = (double)(gDevice.playback.internalPeriodSizeInFrames * gDevice.playback.internalPeriods);
+        fallbackFrames += (double)ma_data_converter_get_output_latency(&gDevice.playback.converter);
+        return fallbackFrames / (double)gDevice.sampleRate;
     }
 
     // Engine mix quantum to hand to postinit_internal. With the render-ahead

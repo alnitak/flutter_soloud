@@ -603,6 +603,10 @@ public:
   /// period). 0 when the render-ahead ring is disabled.
   double getOutputLatency();
 
+  /// @brief Estimated hardware presentation latency in seconds (DAC, OS
+  /// buffers, driver queues, and route delays).
+  double getHardwareOutputLatency();
+
   /// @brief Whether the render-ahead ring (retroactive re-mix prerequisite)
   /// is active. Set at [init] time via `renderAheadFrames`.
   bool isRenderAheadEnabled();

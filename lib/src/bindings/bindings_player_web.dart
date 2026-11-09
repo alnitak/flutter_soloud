@@ -1186,6 +1186,15 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  Duration getHardwareOutputLatency() {
+    try {
+      return wasmGetHardwareOutputLatency().toDuration();
+    } catch (_) {
+      return Duration.zero;
+    }
+  }
+
+  @override
   bool isRenderAheadEnabled() {
     return false;
   }

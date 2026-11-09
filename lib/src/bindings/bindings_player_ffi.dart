@@ -1183,6 +1183,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
+  Duration getHardwareOutputLatency() {
+    try {
+      return native.getHardwareOutputLatency().toDuration();
+    } catch (_) {
+      return Duration.zero;
+    }
+  }
+
+  @override
   bool isRenderAheadEnabled() {
     return native.isRenderAheadEnabled() != 0;
   }
