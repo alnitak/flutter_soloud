@@ -1567,7 +1567,7 @@ namespace SoLoud
         if (gDevice.sampleRate == 0)
             return 0.0;
 
-#if defined(__EMSCRIPTEN__)
+#if defined(__EMSCRIPTEN__) && defined(MA_SUPPORT_WEBAUDIO)
         // Query the Web Audio AudioContext (outputLatency + baseLatency) via Emscripten EM_ASM
         double webLatency = EM_ASM_DOUBLE({
             try {
@@ -1598,8 +1598,8 @@ namespace SoLoud
             return webLatency;
 #endif
 
-#if defined(__ANDROID__)
-        if (gDevice.backend == ma_backend_aaudio && gDevice.aaudio.pStreamPlayback != nullptr)
+#if defined(__ANDROID__) && defined(MA_SUPPORT_AAUDIO)
+        if (context.backend == ma_backend_aaudio && gDevice.aaudio.pStreamPlayback != nullptr)
         {
             typedef int32_t (*pfn_AAudioStream_getTimestamp)(void*, clockid_t, int64_t*, int64_t*);
             typedef int64_t (*pfn_AAudioStream_getFramesWritten)(void*);
@@ -1660,8 +1660,8 @@ namespace SoLoud
         } @catch (id) {}
 #endif
 
-#if defined(_WIN32) || defined(_WIN64)
-        if (gDevice.backend == ma_backend_wasapi && gDevice.wasapi.pAudioClientPlayback != nullptr)
+#if (defined(_WIN32) || defined(_WIN64)) && defined(MA_SUPPORT_WASAPI)
+        if (context.backend == ma_backend_wasapi && gDevice.wasapi.pAudioClientPlayback != nullptr)
         {
             IAudioClient *pAudioClient = (IAudioClient*)gDevice.wasapi.pAudioClientPlayback;
             REFERENCE_TIME hnsLatency = 0;
