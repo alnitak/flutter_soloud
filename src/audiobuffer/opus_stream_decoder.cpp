@@ -1,3 +1,4 @@
+#include "metadata_bounds.h"
 #if !defined(NO_XIPH_LIBS)
 
 #include "opus_stream_decoder.h"
@@ -101,16 +102,16 @@ void OpusDecoderWrapper::getMetadata(ogg_packet* packet) {
     }
     
     size_t pos = 8;
-    if (pos + 4 > packet->bytes) return;
+    if (!metadataHasBytes(static_cast<size_t>(packet->bytes), pos, 4)) return;
     uint32_t vendor_len;
     memcpy(&vendor_len, packet->packet + pos, sizeof(vendor_len));
     pos += 4;
 
-    if (pos + vendor_len > packet->bytes) return;
+    if (!metadataHasBytes(static_cast<size_t>(packet->bytes), pos, vendor_len)) return;
     std::string vendor((const char*)(packet->packet + pos), vendor_len);
     pos += vendor_len;
 
-    if (pos + 4 > packet->bytes) return;
+    if (!metadataHasBytes(static_cast<size_t>(packet->bytes), pos, 4)) return;
     uint32_t comment_count;
     memcpy(&comment_count, packet->packet + pos, sizeof(comment_count));
     pos += 4;
@@ -118,11 +119,11 @@ void OpusDecoderWrapper::getMetadata(ogg_packet* packet) {
     metadata.oggMetadata.vendor = vendor;
     metadata.oggMetadata.commentsCount = comment_count;
 
-    for (uint32_t i = 0; i < comment_count && pos + 4 <= packet->bytes; i++) {
+    for (uint32_t i = 0; i < comment_count && metadataHasBytes(static_cast<size_t>(packet->bytes), pos, 4); i++) {
         uint32_t clen;
         memcpy(&clen, packet->packet + pos, sizeof(clen));
         pos += 4;
-        if (pos + clen > packet->bytes) return;
+        if (!metadataHasBytes(static_cast<size_t>(packet->bytes), pos, clen)) return;
         std::string comment((const char*)(packet->packet + pos), clen);
         pos += clen;
         metadata.oggMetadata.comments[comment.substr(0, comment.find('='))] = comment.substr(comment.find('=') + 1);
@@ -364,7 +365,7 @@ OpusInfo OpusDecoderWrapper::parseOpusHead(ogg_packet* packet) {
 
     if (head.mapping_family != 0) {
         // Must have at least 2 + channels more bytes
-        if (pos + 2 + head.channels > len) {
+        if (!metadataHasBytes(len, pos, static_cast<uint64_t>(head.channels) + 2)) {
             SOLOUD_DEBUG_LOG("Invalid OpusHead: truncated channel mapping\n");
             return head;
         }

@@ -1,3 +1,4 @@
+#include "metadata_bounds.h"
 #include "aac_stream_decoder.h"
 #include "../native_decoder/native_audio_decoder.h"
 #include <cstring>
@@ -193,7 +194,7 @@ bool AACDecoderWrapper::checkForValidFrames(const std::vector<unsigned char> &bu
 
     // Check chaining to the next frame if the buffer is large enough
     size_t nextOffset = i + static_cast<size_t>(frameLength);
-    if (nextOffset + 7 <= buffer.size()) {
+    if (metadataHasBytes(buffer.size(), i, static_cast<uint64_t>(frameLength) + 7)) {
       if (NativeAudioDecoder::isAacAdts(buffer.data() + nextOffset, buffer.size() - nextOffset)) {
         // Compare sample rate and channel config between frame 1 and frame 2
         uint8_t sf1 = (buffer[i + 2] >> 2) & 0x0F;
@@ -224,7 +225,7 @@ bool AACDecoderWrapper::checkForValidAc3Frames(const std::vector<unsigned char> 
 
 bool AACDecoderWrapper::parseAacAdtsMetadata(const unsigned char *data, size_t size, AacMetadata &out) {
   if (!data || size < 7) return false;
-  for (size_t i = 0; i + 7 <= size; ++i) {
+  for (size_t i = 0; metadataHasBytes(size, i, 7); ++i) {
     if (data[i] == 0xFF && (data[i + 1] & 0xF6) == 0xF0) {
       uint8_t profile = (data[i + 2] >> 6) & 0x03;
       uint8_t sf_index = (data[i + 2] >> 2) & 0x0F;
@@ -269,7 +270,7 @@ bool AACDecoderWrapper::parseAacAdtsMetadata(const unsigned char *data, size_t s
 
 bool AACDecoderWrapper::parseAc3Metadata(const unsigned char *data, size_t size, Ac3Metadata &out) {
   int syncIdx = NativeAudioDecoder::findAc3Syncword(data, size);
-  if (syncIdx < 0 || static_cast<size_t>(syncIdx) + 7 > size) return false;
+  if (syncIdx < 0 || !metadataHasBytes(size, static_cast<size_t>(syncIdx), 7)) return false;
 
   const unsigned char *h = data + syncIdx;
   bool byteSwapped = (h[0] == 0x77 && h[1] == 0x0B);
@@ -350,7 +351,7 @@ bool AACDecoderWrapper::parseAc3Metadata(const unsigned char *data, size_t size,
 
 bool AACDecoderWrapper::parseEac3Metadata(const unsigned char *data, size_t size, Eac3Metadata &out) {
   int syncIdx = NativeAudioDecoder::findAc3Syncword(data, size);
-  if (syncIdx < 0 || static_cast<size_t>(syncIdx) + 7 > size) return false;
+  if (syncIdx < 0 || !metadataHasBytes(size, static_cast<size_t>(syncIdx), 7)) return false;
 
   const unsigned char *h = data + syncIdx;
   bool byteSwapped = (h[0] == 0x77 && h[1] == 0x0B);
@@ -438,7 +439,7 @@ static std::string parseId3TextFrame(const unsigned char *data, size_t frameSize
       isLE = false; // UTF-16BE
     }
     std::string utf8;
-    for (size_t i = 0; i + 1 < textLen; i += 2) {
+    for (size_t i = 0; metadataHasBytes(textLen, i, 2); i += 2) {
       uint16_t ch = isLE ? (textData[i] | (textData[i + 1] << 8))
                          : ((textData[i] << 8) | textData[i + 1]);
       if (ch == 0) break;
@@ -479,7 +480,7 @@ bool AACDecoderWrapper::parseId3Tags(const unsigned char *data, size_t size, Aac
 
   size_t pos = 10;
   if (data[5] & 0x40) {
-    if (pos + 4 <= totalTagSize) {
+    if (metadataHasBytes(totalTagSize, pos, 4)) {
       uint32_t extSize = ((data[pos] & 0x7f) << 21) |
                          ((data[pos + 1] & 0x7f) << 14) |
                          ((data[pos + 2] & 0x7f) << 7) |
@@ -488,7 +489,7 @@ bool AACDecoderWrapper::parseId3Tags(const unsigned char *data, size_t size, Aac
     }
   }
 
-  while (pos + 10 <= totalTagSize) {
+  while (metadataHasBytes(totalTagSize, pos, 10)) {
     char frame_id[5] = {0};
     std::memcpy(frame_id, data + pos, 4);
     if (frame_id[0] == 0) {
@@ -509,12 +510,12 @@ bool AACDecoderWrapper::parseId3Tags(const unsigned char *data, size_t size, Aac
     }
 
     pos += 10;
-    if (pos + frame_size > totalTagSize) {
+    if (!metadataHasBytes(totalTagSize, pos, frame_size)) {
       break;
     }
 
     if (frame_id[0] == 'T') {
-      if (pos + frame_size <= totalTagSize) {
+      if (metadataHasBytes(totalTagSize, pos, frame_size)) {
         std::string value = parseId3TextFrame(data + pos, frame_size);
         if (std::strcmp(frame_id, "TIT2") == 0) {
           out.title = value;

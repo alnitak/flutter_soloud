@@ -9,9 +9,19 @@
 //   ./test/run_metadata_parsers_test.sh [--asan|--wasm32] [scenario]
 //
 // Scenarios:
-//   valid        well-formed tags still parse, for every parser below
-//   m4a-nested   4 MiB of nested 'moov' boxes, parsed on a thread with a
-//                1 MiB stack (the iOS main thread and Android's default)
+//   valid          well-formed tags still parse, for every parser below
+//   m4a-nested     4 MiB of nested 'moov' boxes, parsed on a thread with a
+//                  1 MiB stack (the iOS main thread and Android's default)
+//   m4a-wrap       a box size that wraps `offset + size` on a 32-bit size_t
+//   m4a-large-wrap an extended (64-bit) box size of UINT64_MAX
+//   mp3-id3-wrap   an ID3v2.3 frame size that wraps `pos + size` (MP3 stream)
+//   aac-id3-wrap   the same frame in front of an AAC stream
+//   opus-wrap      an OpusTags vendor length that wraps `pos + length`
+//
+// The *-wrap scenarios other than m4a-large-wrap can only fail with a 32-bit
+// size_t, as in the web build and on armeabi-v7a: run them with --wasm32. On
+// a 64-bit host the sums do not wrap and they pass either way. opus-wrap needs
+// the Xiph libraries, which the --wasm32 build leaves out.
 //
 // A scenario that can crash runs in a child process, so a crash is reported
 // as a failure of that scenario.
@@ -137,6 +147,32 @@ static void runM4aNested() {
     EXPECT(!job.found, "a file of empty containers has no metadata");
 }
 
+static void runM4aWrap() {
+    // ftyp (16 bytes), then a 'moov' that declares 2^32 - 16 bytes. With a
+    // 32-bit size_t, 16 + (2^32 - 16) wraps to 0 and passes the bound check;
+    // inside it a 1 GiB 'free' box moves the read offset far past the data.
+    Bytes file = ftyp();
+    putBe32(file, 0xFFFFFFF0u);
+    putText(file, "moov");
+    putBe32(file, 0x40000000u);
+    putText(file, "free");
+    file.resize(file.size() + 32, 0);
+
+    M4aMetadata meta;
+    EXPECT(!parseM4aMetadata(file.data(), file.size(), meta),
+           "a box larger than the data must stop the parse");
+}
+
+static void runM4aLargeWrap() {
+    // An extended-size box at offset 8 whose 64-bit size would wrap its end.
+    const Bytes file = {0, 0, 0, 8, 'f', 'r', 'e', 'e',
+                        0, 0, 0, 1, 'm', 'o', 'o', 'v',
+                        255, 255, 255, 255, 255, 255, 255, 255};
+    M4aMetadata meta;
+    EXPECT(!parseM4aMetadata(file.data(), file.size(), meta),
+           "an extended box larger than the data must stop the parse");
+}
+
 // ------------------------------------------------------------------ ID3
 // An ID3v2.3 tag (plain 32-bit frame sizes) holding one TIT2 frame. The tag
 // header's own size covers only what is really there.
@@ -162,6 +198,32 @@ static Bytes latin1Body(const char *text) {
     Bytes body = {0}; // ISO-8859-1
     putText(body, text);
     return body;
+}
+
+// A wrapping TIT2: 0xFFFFFFF0 bytes declared, 4 present. 20 + 0xFFFFFFF0
+// wraps to 16 with a 32-bit size_t.
+static Bytes wrappingId3Tag() { return id3Tag(0xFFFFFFF0u, latin1Body("abc")); }
+
+static void runMp3Id3Wrap() {
+    // The tag, then zeros: no MP3 or ADTS frames, so detection settles on
+    // "MP3 with ID3" once 512 bytes follow the tag. dr_mp3 reports the tag to
+    // the wrapper's metadata callback before it looks for frames.
+    Bytes stream = cat(wrappingId3Tag(), Bytes(1024, 0));
+    StreamDecoder decoder;
+    int sampleRate = 44100, channels = 2;
+    std::string title;
+    decoder.decode(stream, &sampleRate, &channels,
+                   [&](AudioMetadata meta) { title = meta.mp3Metadata.title; },
+                   0);
+    EXPECT(title.empty(), "a frame larger than the tag must not be read");
+}
+
+static void runAacId3Wrap() {
+    Bytes tag = wrappingId3Tag();
+    AacMetadata meta;
+    size_t id3Size = 0;
+    AACDecoderWrapper::parseId3Tags(tag.data(), tag.size(), meta, id3Size);
+    EXPECT(meta.title.empty(), "a frame larger than the tag must not be read");
 }
 
 #if !defined(NO_XIPH_LIBS)
@@ -222,6 +284,15 @@ static void decodeOpus(const Bytes &tags, std::vector<AudioMetadata> &reported) 
     int sampleRate = 48000, channels = 2;
     decoder.decode(stream, &sampleRate, &channels,
                    [&](AudioMetadata meta) { reported.push_back(meta); }, 0);
+}
+
+static void runOpusWrap() {
+    // 12 + 0xFFFFFFF8 wraps to 4 with a 32-bit size_t.
+    std::vector<AudioMetadata> reported;
+    decodeOpus(opusTags(0xFFFFFFF8u, "x", nullptr), reported);
+    for (const auto &meta : reported)
+        EXPECT(meta.oggMetadata.vendor.size() <= 1,
+               "a vendor string longer than its packet must not be read");
 }
 #endif // !defined(NO_XIPH_LIBS)
 
@@ -310,6 +381,18 @@ int main(int argc, char **argv) {
     if (want("valid")) testValid();
     if (want("m4a-nested"))
         isolated("m4a-nested", "4 MiB of nested boxes on a 1 MiB stack", runM4aNested);
+    if (want("m4a-wrap"))
+        isolated("m4a-wrap", "a box size that wraps a 32-bit offset", runM4aWrap);
+    if (want("m4a-large-wrap"))
+        isolated("m4a-large-wrap", "an extended box whose end wraps", runM4aLargeWrap);
+    if (want("mp3-id3-wrap"))
+        isolated("mp3-id3-wrap", "an ID3 frame size that wraps (MP3 stream)", runMp3Id3Wrap);
+    if (want("aac-id3-wrap"))
+        isolated("aac-id3-wrap", "an ID3 frame size that wraps (AAC stream)", runAacId3Wrap);
+#if !defined(NO_XIPH_LIBS)
+    if (want("opus-wrap"))
+        isolated("opus-wrap", "an OpusTags vendor length that wraps", runOpusWrap);
+#endif
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

@@ -1,3 +1,4 @@
+#include "metadata_bounds.h"
 #define DR_MP3_IMPLEMENTATION
 #define DR_MP3_NO_STDIO
 #define DR_MP3_FLOAT_OUTPUT
@@ -68,7 +69,7 @@ static std::string parseId3TextFrame(const unsigned char *data, size_t frameSize
       isLE = false; // UTF-16BE
     }
     std::string utf8;
-    for (size_t i = 0; i + 1 < textLen; i += 2) {
+    for (size_t i = 0; metadataHasBytes(textLen, i, 2); i += 2) {
       uint16_t ch = isLE ? (textData[i] | (textData[i + 1] << 8))
                          : ((textData[i] << 8) | textData[i + 1]);
       if (ch == 0) break;
@@ -112,7 +113,7 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
 
     size_t pos = 10; // Skip ID3v2 header
 
-    while (pos + 10 < totalTagSize) {
+    while (metadataHasBytes(totalTagSize, pos, 11)) {
       char frame_id[5] = {0};
       memcpy(frame_id, rawData + pos, 4);
 
@@ -136,11 +137,11 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
 
       pos += 10; // Move to frame content
 
-      if (pos + frame_size > totalTagSize)
+      if (!metadataHasBytes(totalTagSize, pos, frame_size))
         break; // Malformed tag
 
       if (frame_id[0] == 'T') {      // Common text frames
-        if (pos + frame_size <= totalTagSize) {
+        if (metadataHasBytes(totalTagSize, pos, frame_size)) {
           std::string value = parseId3TextFrame(rawData + pos, frame_size);
 
           if (strcmp(frame_id, "TIT2") == 0)
@@ -559,7 +560,7 @@ double MP3DecoderWrapper::estimateBitrateFromFirstFrame() const {
     if (pos >= audioData.size()) return 0.0;
   }
 
-  while (pos + 4 < audioData.size()) {
+  while (metadataHasBytes(audioData.size(), pos, 5)) {
     if (audioData[pos] == 0xff && (audioData[pos + 1] & 0xe0) == 0xe0) {
       const uint8_t byte1 = audioData[pos + 1];
       const uint8_t version = (byte1 >> 3) & 0x3;
@@ -617,7 +618,7 @@ double MP3DecoderWrapper::parseDurationFromXingVbri() const {
   }
 
   // Find first MP3 frame sync word.
-  while (pos + 4 < audioData.size()) {
+  while (metadataHasBytes(audioData.size(), pos, 5)) {
     if (audioData[pos] == 0xff && (audioData[pos + 1] & 0xe0) == 0xe0) {
       const uint8_t byte1 = audioData[pos + 1];
       const uint8_t version = (byte1 >> 3) & 0x3; // 3=MPEG1, 2=MPEG2, 0=MPEG2.5
@@ -649,13 +650,13 @@ double MP3DecoderWrapper::parseDurationFromXingVbri() const {
         }
       }
       const int headerOffset = 4 + sideInfoSize + (protection ? 0 : 2);
-      if (pos + headerOffset + 4 > audioData.size()) return -1.0;
+      if (!metadataHasBytes(audioData.size(), pos, static_cast<uint64_t>(headerOffset) + 4)) return -1.0;
 
       const size_t xingOffset = pos + headerOffset;
       // Check Xing/Info
       if (std::memcmp(audioData.data() + xingOffset, "Xing", 4) == 0 ||
           std::memcmp(audioData.data() + xingOffset, "Info", 4) == 0) {
-        if (xingOffset + 16 > audioData.size()) return -1.0;
+        if (!metadataHasBytes(audioData.size(), xingOffset, 16)) return -1.0;
         const uint32_t flags = (audioData[xingOffset + 4] << 24) |
                                (audioData[xingOffset + 5] << 16) |
                                (audioData[xingOffset + 6] << 8) |
@@ -681,10 +682,10 @@ double MP3DecoderWrapper::parseDurationFromXingVbri() const {
       }
 
       // Check VBRI (commonly placed at the end of the side info).
-      if (pos + headerOffset + 4 <= audioData.size()) {
+      if (metadataHasBytes(audioData.size(), pos, static_cast<uint64_t>(headerOffset) + 4)) {
         const size_t vbriOffset = pos + headerOffset;
         if (std::memcmp(audioData.data() + vbriOffset, "VBRI", 4) == 0) {
-          if (vbriOffset + 18 > audioData.size()) return -1.0;
+          if (!metadataHasBytes(audioData.size(), vbriOffset, 18)) return -1.0;
           const uint32_t frames = (audioData[vbriOffset + 14] << 24) |
                                   (audioData[vbriOffset + 15] << 16) |
                                   (audioData[vbriOffset + 16] << 8) |

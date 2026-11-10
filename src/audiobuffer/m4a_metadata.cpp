@@ -1,3 +1,4 @@
+#include "metadata_bounds.h"
 #include "m4a_metadata.h"
 #include <cstring>
 #include <vector>
@@ -35,9 +36,9 @@ static const size_t kNumId3v1Genres = sizeof(kId3v1Genres) / sizeof(kId3v1Genres
 static void parseIlstDataBox(const unsigned char *data, size_t size, std::string &outText,
                              uint16_t *outNum1 = nullptr, uint16_t *outNum2 = nullptr) {
     size_t offset = 0;
-    while (offset + 8 <= size) {
+    while (metadataHasBytes(size, offset, 8)) {
         uint32_t boxSize = readBe32(data + offset);
-        if (boxSize < 8 || offset + boxSize > size) break;
+        if (boxSize < 8 || !metadataHasBytes(size, offset, boxSize)) break;
         if (memcmp(data + offset + 4, "data", 4) == 0) {
             // 'data' box: 4 bytes size, 4 bytes 'data', 4 bytes type, 4 bytes locale, payload
             if (boxSize >= 16) {
@@ -67,9 +68,9 @@ static void parseIlstDataBox(const unsigned char *data, size_t size, std::string
 // Parses items inside an 'ilst' atom
 static void parseIlst(const unsigned char *data, size_t size, M4aMetadata &meta) {
     size_t offset = 0;
-    while (offset + 8 <= size) {
+    while (metadataHasBytes(size, offset, 8)) {
         uint32_t boxSize = readBe32(data + offset);
-        if (boxSize < 8 || offset + boxSize > size) break;
+        if (boxSize < 8 || !metadataHasBytes(size, offset, boxSize)) break;
 
         const char *fourcc = reinterpret_cast<const char *>(data + offset + 4);
         const unsigned char *boxPayload = data + offset + 8;
@@ -102,9 +103,9 @@ static void parseIlst(const unsigned char *data, size_t size, M4aMetadata &meta)
         } else if (memcmp(fourcc, "trkn", 4) == 0) {
             // trkn payload: 2 bytes reserved, 2 bytes track, 2 bytes total
             size_t sub = 0;
-            while (sub + 8 <= boxPayloadSize) {
+            while (metadataHasBytes(boxPayloadSize, sub, 8)) {
                 uint32_t dSize = readBe32(boxPayload + sub);
-                if (dSize < 8 || sub + dSize > boxPayloadSize) break;
+                if (dSize < 8 || !metadataHasBytes(boxPayloadSize, sub, dSize)) break;
                 if (memcmp(boxPayload + sub + 4, "data", 4) == 0 && dSize >= 16 + 4) {
                     const unsigned char *d = boxPayload + sub + 16;
                     uint16_t track = readBe16(d + 2);
@@ -120,9 +121,9 @@ static void parseIlst(const unsigned char *data, size_t size, M4aMetadata &meta)
         } else if (memcmp(fourcc, "disk", 4) == 0) {
             // disk payload: 2 bytes reserved, 2 bytes disc, 2 bytes total
             size_t sub = 0;
-            while (sub + 8 <= boxPayloadSize) {
+            while (metadataHasBytes(boxPayloadSize, sub, 8)) {
                 uint32_t dSize = readBe32(boxPayload + sub);
-                if (dSize < 8 || sub + dSize > boxPayloadSize) break;
+                if (dSize < 8 || !metadataHasBytes(boxPayloadSize, sub, dSize)) break;
                 if (memcmp(boxPayload + sub + 4, "data", 4) == 0 && dSize >= 16 + 4) {
                     const unsigned char *d = boxPayload + sub + 16;
                     uint16_t disc = readBe16(d + 2);
@@ -161,13 +162,13 @@ static void parseStsdEntry(const unsigned char *data, size_t size, M4aMetadata &
 
     // Inspect child boxes (e.g. 'esds' for bitrate)
     size_t subOffset = 36;
-    while (subOffset + 8 <= size) {
+    while (metadataHasBytes(size, subOffset, 8)) {
         uint32_t subBoxSize = readBe32(data + subOffset);
-        if (subBoxSize < 8 || subOffset + subBoxSize > size) break;
+        if (subBoxSize < 8 || !metadataHasBytes(size, subOffset, subBoxSize)) break;
         if (memcmp(data + subOffset + 4, "esds", 4) == 0) {
             // elementary stream descriptor
             // Scan for DecoderConfigDescr (tag 0x04) which contains avgBitrate & maxBitrate
-            for (size_t i = subOffset + 8; i + 13 <= subOffset + subBoxSize; ++i) {
+            for (size_t i = subOffset + 8; metadataHasBytes(subOffset + subBoxSize, i, 13); ++i) {
                 if (data[i] == 0x04) {
                     // DecoderConfigDescr tag
                     // Skip tag (1), length (1-4), objectTypeIndication (1), streamType (1), bufferSizeDB (3)
@@ -178,7 +179,7 @@ static void parseStsdEntry(const unsigned char *data, size_t size, M4aMetadata &
                     } else {
                         descOffset++;
                     }
-                    if (descOffset + 10 <= subOffset + subBoxSize) {
+                    if (metadataHasBytes(subOffset + subBoxSize, descOffset, 10)) {
                         uint32_t avgBitrate = readBe32(data + descOffset + 6);
                         if (avgBitrate > 0) {
                             meta.bitrate = avgBitrate;
@@ -202,22 +203,22 @@ static void scanBoxes(const unsigned char *data, size_t size, M4aMetadata &meta,
                       unsigned depth = 0) {
     if (depth > kMaxBoxDepth) return;
     size_t offset = 0;
-    while (offset + 8 <= size) {
+    while (metadataHasBytes(size, offset, 8)) {
         uint32_t boxSize = readBe32(data + offset);
         size_t headerSize = 8;
         if (boxSize == 1) {
             // 64-bit size
-            if (offset + 16 > size) break;
+            if (!metadataHasBytes(size, offset, 16)) break;
             uint64_t largeSize = (static_cast<uint64_t>(readBe32(data + offset + 8)) << 32) |
                                   readBe32(data + offset + 12);
-            if (largeSize < 16 || offset + largeSize > size) break;
+            if (largeSize < 16 || !metadataHasBytes(size, offset, largeSize)) break;
             boxSize = static_cast<uint32_t>(largeSize);
             headerSize = 16;
         } else if (boxSize == 0) {
             boxSize = size - offset;
         }
 
-        if (boxSize < headerSize || offset + boxSize > size) break;
+        if (boxSize < headerSize || !metadataHasBytes(size, offset, boxSize)) break;
 
         const char *fourcc = reinterpret_cast<const char *>(data + offset + 4);
         const unsigned char *payload = data + offset + headerSize;
@@ -248,9 +249,9 @@ static void scanBoxes(const unsigned char *data, size_t size, M4aMetadata &meta,
             if (payloadSize >= 8) {
                 uint32_t entryCount = readBe32(payload + 4);
                 size_t entryOffset = 8;
-                for (uint32_t i = 0; i < entryCount && entryOffset + 8 <= payloadSize; ++i) {
+                for (uint32_t i = 0; i < entryCount && metadataHasBytes(payloadSize, entryOffset, 8); ++i) {
                     uint32_t entrySize = readBe32(payload + entryOffset);
-                    if (entrySize < 8 || entryOffset + entrySize > payloadSize) break;
+                    if (entrySize < 8 || !metadataHasBytes(payloadSize, entryOffset, entrySize)) break;
                     parseStsdEntry(payload + entryOffset, entrySize, meta);
                     entryOffset += entrySize;
                 }
