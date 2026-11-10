@@ -265,7 +265,10 @@ namespace SoLoud
 						}
 					}
 					if (got < blockSize)
+					{
+						mStreamEnded = mFile->eof() != 0;
 						break;
+					}
 				}
 				mOffset += offset;
 				return offset;
@@ -302,7 +305,10 @@ namespace SoLoud
 						}
 					}
 					if (got < blockSize)
+					{
+						mStreamEnded = mFile->eof() != 0;
 						break;
+					}
 				}
 				mOffset += offset;
 				return offset;
@@ -357,7 +363,10 @@ namespace SoLoud
 						}
 					}
 					if (got < blockSize)
+					{
+						mStreamEnded = mFile->eof() != 0;
 						break;
+					}
 				}
 				mOffset += offset;
 				return offset;
@@ -372,6 +381,7 @@ namespace SoLoud
 		if (mCodec.mOgg)
 		{
 			int pos = (int)floor(mBaseSamplerate * aSeconds + 0.5);
+			mStreamEnded = false;
 
 			switch (mParent->mFiletype)
 			{
@@ -380,7 +390,6 @@ namespace SoLoud
 				mCodec.mOgg->seek(pos);
 				mOffset = pos;
 				mStreamPosition = float(pos / mBaseSamplerate);
-				mStreamEnded = false;
 				return 0;
 #endif
 			case WAVSTREAM_FLAC:
@@ -467,7 +476,13 @@ namespace SoLoud
 		// For OGG streams, use the stream ended flag since mSampleCount may not
 		// match actual decoded samples (empty final page in OGG), and for OGG/FLAC
 		// the STREAMINFO total_samples can be 0 so we must not check mOffset >= mSampleCount.
-		if (mParent->mFiletype == WAVSTREAM_OGG)
+		// ###### flutter_soloud local patch (wavstream end of file) ######
+		// The other formats set the flag too, when a read comes up short at
+		// the end of the file: the file was truncated while the voice played,
+		// or holds less than its header says, and mOffset would never reach
+		// mSampleCount. A short read before the end of the file, at a frame
+		// that does not decode, is not the end: the next read goes on after it.
+		if (mParent->mFiletype == WAVSTREAM_OGG || mStreamEnded)
 		{
 			return mStreamEnded;
 		}

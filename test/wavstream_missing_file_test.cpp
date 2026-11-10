@@ -22,6 +22,10 @@
 // file opens, but no decoder accepts it. A DiskFile without an open file
 // reads nothing, stays at 0 and is at its end, as on an empty file.
 //
+// A voice whose file is truncated while it plays ends once it has played
+// what was read ahead, and is reported ended once. A WAV, MP3 or FLAC voice
+// never ended: its position stopped short of the source's length.
+//
 // Null backend, no audio hardware. Build and run from the flutter_soloud
 // repository root with:
 //
@@ -77,6 +81,12 @@ bool reportedEnded(unsigned int handle)
 {
 	std::lock_guard<std::mutex> lock(gEndedMutex);
 	return std::find(gEnded.begin(), gEnded.end(), handle) != gEnded.end();
+}
+
+int endedReports(unsigned int handle)
+{
+	std::lock_guard<std::mutex> lock(gEndedMutex);
+	return (int)std::count(gEnded.begin(), gEnded.end(), handle);
 }
 
 std::vector<char> readAll(const std::string &path)
@@ -250,6 +260,28 @@ void checkPlays(SoLoud::WavStream &source, SoLoud::WavStream &backgroundSource,
 	check(peak > 0.0f, what + ": the voice is audible");
 }
 
+/// Truncates [source]'s file at [path] to nothing while a voice plays it, and
+/// checks the voice then ends, once.
+void checkTruncatedEnds(SoLoud::WavStream &source, SoLoud::WavStream &backgroundSource,
+						const std::string &path, const std::string &what)
+{
+	Rig rig(backgroundSource);
+	const SoLoud::handle voice = rig.soloud.play(source);
+	for (int i = 0; i < kBlocks; ++i)
+		rig.mix();
+	check(rig.soloud.isValidVoiceHandle(voice), what + ": the voice is playing");
+	check(truncate(path.c_str(), 0) == 0, what + ": the file is truncated");
+	// What the decoder read ahead plays out first: up to 64 KB of an MP3,
+	// 4 s of the sample. The sources are 15 s long.
+	int mixes = 0;
+	for (; mixes < (int)(6 * kRate / kBlock) && rig.soloud.isValidVoiceHandle(voice); ++mixes)
+		rig.mix();
+	std::printf("  ended %.2f s after the truncation\n", (double)mixes * kBlock / kRate);
+	check(!rig.soloud.isValidVoiceHandle(voice),
+		  what + ": the voice ends within 6 s of the file being truncated");
+	check(endedReports(voice) == 1, what + ": the voice is reported ended once");
+}
+
 void testFormat(const std::string &asset, const std::string &workDir,
 				SoLoud::WavStream &backgroundSource,
 				const std::vector<float> &reference)
@@ -267,6 +299,7 @@ void testFormat(const std::string &asset, const std::string &workDir,
 	check(source.load(path.c_str()) == SoLoud::SO_NO_ERROR,
 		  asset + " loads from disk");
 	checkPlays(source, backgroundSource, asset + " before it is deleted");
+	checkTruncatedEnds(source, backgroundSource, path, asset + " truncated mid-play");
 
 	// Deleted after loading.
 	check(std::remove(path.c_str()) == 0, "the copy of " + asset + " is deleted");
