@@ -1713,12 +1713,12 @@ namespace SoLoud
 #endif
 #endif
 
-#if (defined(_WIN32) || defined(_WIN64)) && defined(MA_SUPPORT_WASAPI)
+#if (defined(_WIN32) || defined(_WIN64)) && defined(MA_HAS_WASAPI)
         if (context.backend == ma_backend_wasapi && gDevice.wasapi.pAudioClientPlayback != nullptr)
         {
-            IAudioClient *pAudioClient = (IAudioClient*)gDevice.wasapi.pAudioClientPlayback;
-            REFERENCE_TIME hnsLatency = 0;
-            if (SUCCEEDED(pAudioClient->GetStreamLatency(&hnsLatency)) && hnsLatency > 0)
+            ma_IAudioClient *pAudioClient = (ma_IAudioClient*)gDevice.wasapi.pAudioClientPlayback;
+            MA_REFERENCE_TIME hnsLatency = 0;
+            if (SUCCEEDED(ma_IAudioClient_GetStreamLatency(pAudioClient, &hnsLatency)) && hnsLatency > 0)
             {
                 return (double)hnsLatency / 10000000.0;
             }
