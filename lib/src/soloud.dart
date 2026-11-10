@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/audio_visualization_data.dart';
+import 'package:flutter_soloud/src/bindings/android_engine_lifecycle.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
     if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
@@ -696,6 +697,20 @@ interface class SoLoud {
       );
       _controller.soLoudFFI.clearDartCallbackRegistrations();
       await _deinitAsync(invalidateInitialization: false);
+      if (initializationGeneration != _lifecycleGeneration) {
+        await _waitForInitializationTeardownAndThrow();
+      }
+    }
+
+    // Android only: tell the plugin this isolate uses the native library, so
+    // its engine-teardown hooks never skip the claim and the callbacks about
+    // to be created. Sent here: isInited() above has loaded the library, so
+    // the plugin's later load is a refcount bump, and nothing that a teardown
+    // must undo exists yet. Once acknowledged on this isolate, or found to
+    // have no plugin to go to (as under flutter test), it is not sent again,
+    // and off Android it never is, so none of those suspends here.
+    if (AndroidEngineLifecycle.isPending) {
+      await const AndroidEngineLifecycle().markNativeLibraryInUse();
       if (initializationGeneration != _lifecycleGeneration) {
         await _waitForInitializationTeardownAndThrow();
       }

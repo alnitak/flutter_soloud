@@ -51,6 +51,9 @@
 
 #if defined(__ANDROID__)
 #include <jni.h>
+#include <sys/mman.h>
+#include <sys/prctl.h>
+#include <unistd.h>
 #endif
 
 // Defined below with the other C-linkage globals. Declared here so the engine
@@ -610,6 +613,11 @@ extern "C"
     stateChangedCb(type);
   }
 
+#if defined(__ANDROID__)
+  // Defined with the loaded marker, next to the JNI entry points.
+  static void publishLoadedMarkerIfMissing();
+#endif
+
   /// Set a Dart functions to call when an event occurs.
   ///
   /// [owner_engine_id] is the FlutterEngine whose isolate created these
@@ -622,6 +630,11 @@ extern "C"
                        dartStateChangedCallback_t state_changed_callback,
                        int64_t owner_engine_id)
   {
+#if defined(__ANDROID__)
+    // Before the claim below, so the plugin can find the library loaded by
+    // the time there is a registration to retire.
+    publishLoadedMarkerIfMissing();
+#endif
     dart_callbacks::Registration registration;
     dartVoiceEndedCallback.store(voice_ended_callback,
                                  std::memory_order_release);
@@ -1669,6 +1682,11 @@ extern "C"
   /// still has to be able to tear down what it just built.
   FFI_PLUGIN_EXPORT void prepareEngineInit(int64_t owner_engine_id)
   {
+#if defined(__ANDROID__)
+    // Before the claim, and outside the lifecycle mutex, so the plugin can
+    // find the library loaded by the time there is a claim to tear down.
+    publishLoadedMarkerIfMissing();
+#endif
     std::lock_guard<std::mutex> guard(engine_lifecycle_mutex);
     // Lowered under the same mutex that publishes the claim, so a teardown for
     // the previous engine cannot raise it again after this point. See
@@ -1992,6 +2010,87 @@ extern "C"
 #endif
 
 #if defined(__ANDROID__)
+  /// Whether the loaded marker is in place. Set once, by whichever attempt
+  /// publishes it, and never cleared: the page is never unmapped.
+  ///
+  /// Constant-initialized, like loadedMarkerMutex, so both are valid when the
+  /// constructor below runs, whatever order dlopen() runs this library's
+  /// initializers in.
+  static std::atomic<bool> loadedMarkerPublished{false};
+
+  /// Serializes publishing attempts, so that two racing retries never map two
+  /// markers.
+  static std::mutex loadedMarkerMutex;
+
+  /// Maps one PROT_NONE page and names it. Returns false, leaving nothing
+  /// mapped, when either step fails: mmap() with ENOMEM or at
+  /// vm.max_map_count, prctl() when the kernel cannot allocate the name or
+  /// split the mapping it merged the page into.
+  ///
+  /// The name is a string literal because older Android kernels keep a
+  /// pointer to it rather than a copy.
+  static bool mapLoadedMarker()
+  {
+    const size_t page = static_cast<size_t>(sysconf(_SC_PAGESIZE));
+    void *marker = mmap(nullptr, page, PROT_NONE,
+                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (marker == MAP_FAILED)
+      return false;
+    if (prctl(PR_SET_VMA, PR_SET_VMA_ANON_NAME, marker, page,
+              "flutter_soloud_plugin") != 0)
+    {
+      munmap(marker, page);
+      return false;
+    }
+    return true;
+  }
+
+  /// Publishes the loaded marker unless it is already in place. Thread-safe,
+  /// and one atomic load once the marker exists.
+  ///
+  /// The constructor below is the first attempt. When it fails the library
+  /// stays loaded, unmarked, and Java's probe reads it as absent, so
+  /// prepareEngineInit() and setDartEventCallback() -- the two calls that
+  /// create state an engine teardown has to undo -- try again before they
+  /// create it. That covers a Dart isolate that cannot tell the plugin it uses
+  /// the library (one with no Flutter messaging); every other isolate has
+  /// already told it, and the plugin no longer consults the marker. A retry
+  /// that fails too costs a syscall or two, and is retried by the next call.
+  static void publishLoadedMarkerIfMissing()
+  {
+    if (loadedMarkerPublished.load(std::memory_order_acquire))
+      return;
+    std::lock_guard<std::mutex> guard(loadedMarkerMutex);
+    if (loadedMarkerPublished.load(std::memory_order_relaxed))
+      return;
+    if (mapLoadedMarker())
+      loadedMarkerPublished.store(true, std::memory_order_release);
+  }
+
+  /// Leaves a marker FlutterSoloudPlugin can find in /proc/self/maps, so Java
+  /// can tell this library is already loaded without loading it. The name
+  /// must match ProcessMapsProbe.MARKER_NAME.
+  ///
+  /// This runs inside dlopen() -- whether Dart's first @Native call or
+  /// System.loadLibrary caused it -- before any exported function can run, so
+  /// when it succeeds the marker is in place before Dart can create native
+  /// state that an engine teardown would have to undo. When it fails it is
+  /// retried at the points where Dart creates that state; see
+  /// publishLoadedMarkerIfMissing().
+  ///
+  /// A named mapping, not an environment variable: setenv() here would race
+  /// every other thread's getenv()/setenv(), since bionic's environment has no
+  /// lock and this runs on whichever Dart thread first calls in. The kernel
+  /// serializes the name against readers of /proc/self/maps.
+  ///
+  /// One PROT_NONE page: address space only, never touched and never unmapped.
+  /// A marker that outlived the library would only cost the plugin a load,
+  /// never a skipped teardown.
+  __attribute__((constructor)) static void publishLoadedMarker()
+  {
+    publishLoadedMarkerIfMissing();
+  }
+
   /// JNI entry points for FlutterSoloudPlugin. The names must match
   /// `flutter.soloud.flutter_soloud.FlutterSoloudPlugin` exactly (an underscore
   /// in a package or class name is escaped as `_1`); verify them with
