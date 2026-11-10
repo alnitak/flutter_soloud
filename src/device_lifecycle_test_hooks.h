@@ -60,6 +60,17 @@ namespace soloud_test
     /// released the gate, before it stops the mixer capture and the
     /// visualizations. A newer registration can be claimed in this window.
     retiredCaptureStopEntered,
+    /// In PullBufferStream::addAudioData(), after the delivered bytes have
+    /// been queued and before the delivering thread decodes them. While a
+    /// feeder is parked here the mixer can decode them itself.
+    pullDataQueued,
+    /// In PullBufferStream::applyPendingSeek(), right after decoded data at
+    /// the target has completed a pending seek. The mixer reaches it with the
+    /// audio mutex held when it decodes that data itself.
+    pullSeekCompleted,
+    /// At the top of PullBufferStream::checkBuffering(), which reads and sets
+    /// the voice's pause state.
+    pullBufferingCheckEntered,
     barrierCount
   };
 

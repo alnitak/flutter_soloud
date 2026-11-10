@@ -115,11 +115,22 @@ private:
     Done           ///< Duration has been reported.
   };
 
+  /// Pauses the voice when the decoded audio runs low and resumes it once
+  /// enough is buffered again.
+  ///
+  /// Runs only on a thread delivering data (addAudioData(), setDataIsEnded()),
+  /// never on the audio thread nor with mDecodeMutex held: it calls
+  /// Player::getPause()/setPause(), which take SoLoud's audio mutex. The mixer
+  /// holds that mutex while it mixes, and a seek holds it while it takes
+  /// mDecodeMutex.
   void checkBuffering();
   void requestMoreDataIfNeeded();
   void decodePendingData();
   void decodePendingDataLocked();
   void tryDecodePendingData();
+  /// Completes a pending seek once data at the target has been decoded. It
+  /// runs on the mixer too, so it leaves the buffering check to the delivery
+  /// that brought the data (see mSeekCompletedSinceCheck).
   void applyPendingSeek();
   void drainBacklog();
   void drainBacklogLocked();
@@ -182,6 +193,10 @@ private:
   std::atomic<bool> mPendingSeek{false};
   double mPendingSeekTime = 0.0;
   uint64_t mPendingSeekByteOffset = 0;
+  /// Set when applyPendingSeek() completes a seek, cleared by the buffering
+  /// check that follows. A delivery that only decodes (an empty one) runs the
+  /// check when it is set; any other delivery runs it anyway.
+  std::atomic<bool> mSeekCompletedSinceCheck{false};
 
   DurationProbeState mDurationProbeState = DurationProbeState::None;
   double mProbedDuration = 0.0; ///< Total duration in seconds, 0 if unknown.

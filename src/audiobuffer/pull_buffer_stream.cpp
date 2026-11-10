@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "../device_lifecycle_test_hooks.h"
 #include "../soloud_common.h"
 #include "metadata_ffi.h"
 #include "realtime_ring_buffer.h"
@@ -580,6 +581,9 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
   }
   if (aDataLen == 0) {
     decodePendingData();
+    // A seek this decode completed resumes playback through the check.
+    if (mSeekCompletedSinceCheck.load())
+      checkBuffering();
     return PlayerErrors::noError;
   }
 
@@ -642,6 +646,7 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
   if (mDurationProbeState == DurationProbeState::BuildingSeekTable) {
     ++mSeekTableBuildChunks;
   }
+  SOLOUD_TEST_BARRIER(pullDataQueued);
 
   // If the sequential feed has reached the declared end of the file, mark
   // the stream as ended so the decoder can flush its final frames and the
@@ -1001,17 +1006,18 @@ void PullBufferStream::applyPendingSeek() {
   }
 
   mPendingSeek.store(false);
+  SOLOUD_TEST_BARRIER(pullSeekCompleted);
   // The play head was already moved by seek() or by the offset-resolution block
-  // above; now that data is here we can resume normal playback.
-  checkBuffering();
+  // above; now that data is here, normal playback can resume. The buffering
+  // check that resumes it is left to the delivery that brought the data (see
+  // checkBuffering()): this can run on the mixer, and under mDecodeMutex.
+  mSeekCompletedSinceCheck.store(true);
 }
 
 void PullBufferStream::drainBacklog() {
-  // The audio thread calls this while the SoLoud mixer lock is held. The main
-  // thread may hold the decode mutex while calling back into the player (e.g.
-  // checkBuffering() -> setPause()). Use a try-lock to avoid a lock-order
-  // inversion deadlock; if the main thread is busy, the backlog will be drained
-  // on the next audio callback.
+  // The audio thread calls this while the SoLoud mixer lock is held, and must
+  // not wait for a delivery that is decoding. Use a try-lock; if the decode
+  // mutex is busy, the backlog will be drained on the next audio callback.
   std::unique_lock<std::mutex> lock(mDecodeMutex, std::try_to_lock);
   if (!lock.owns_lock()) return;
   drainBacklogLocked();
@@ -1119,6 +1125,8 @@ void PullBufferStream::requestMoreDataIfNeeded() {
 }
 
 void PullBufferStream::checkBuffering() {
+  SOLOUD_TEST_BARRIER(pullBufferingCheckEntered);
+  mSeekCompletedSinceCheck.store(false);
   if (mParent == nullptr || mParent->handle.empty()) return;
   if (mBaseSamplerate == 0.0f || mPCMformat.channels == 0) return;
 
