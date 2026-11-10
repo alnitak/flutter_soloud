@@ -98,18 +98,50 @@ void RealtimeStreamInstance::restoreSourceState(SourceStateSnapshot *aState) {
   if (snap == nullptr) {
     return;
   }
-  if (mParent != nullptr) {
-    mParent->mRingBuffer.setReadFrame(snap->mReadFrame);
-  }
   mSilentFramesSinceUnderrun = snap->mSilentFramesSinceUnderrun;
   mMarkerCursor = snap->mMarkerCursor;
   mSubQuantumDelayFrames = snap->mSubQuantumDelayFrames;
   mWasUnderrun = snap->mWasUnderrun;
   mLastSample = snap->mLastSample;
   if (mParent != nullptr) {
-    mParent->mVoiceStarved.store(mSilentFramesSinceUnderrun > 0,
-                                 std::memory_order_relaxed);
+    RealtimeStream &stream = *mParent;
+    uint64_t readFrame = snap->mReadFrame;
+    // canRestoreSourceState() lets a snapshot this old through only when a
+    // reset recorded at its read position skips the frames there. The
+    // producer may have overwritten them, and setReadFrame() would clamp the
+    // cursor into the discarded frames that follow: apply the reset now, as
+    // the voice's first read would.
+    if (readFrame < stream.oldestReplayableFrameLocked()) {
+      uint64_t cursor = mMarkerCursor;
+      if (stream.skipResetsLocked(readFrame, cursor)) {
+        mMarkerCursor = cursor;
+        mSubQuantumDelayFrames = 0;
+        mSilentFramesSinceUnderrun = 0;
+        mWasUnderrun = true;
+      }
+    }
+    stream.mRingBuffer.setReadFrame(readFrame);
+    stream.mVoiceStarved.store(mSilentFramesSinceUnderrun > 0,
+                               std::memory_order_relaxed);
   }
+}
+
+bool RealtimeStreamInstance::canRestoreSourceState(
+    SourceStateSnapshot *aState) {
+  const auto *snap = static_cast<const RealtimeStreamSnapshot *>(aState);
+  if (snap == nullptr || mParent == nullptr) {
+    return true;
+  }
+  const RealtimeStream &stream = *mParent;
+  // The first ring frame a replay from the snapshot reads. A reset recorded
+  // right at that point skips the frames it discarded unread.
+  uint64_t firstRead = snap->mReadFrame;
+  uint64_t cursor = snap->mMarkerCursor;
+  stream.skipResetsLocked(firstRead, cursor);
+  // The history covers the render-ahead window at the stream's base rate; a
+  // voice played faster consumes more stream frames per mixed frame, and its
+  // older snapshots point at frames that may hold newer audio already.
+  return firstRead >= stream.oldestReplayableFrameLocked();
 }
 
 void RealtimeStreamInstance::fadeToSilence(float *aBuffer,
@@ -286,6 +318,7 @@ unsigned int RealtimeStreamInstance::getAudio(float *aBuffer,
   if (!underran) {
     stream.mVoiceStarved.store(false, std::memory_order_relaxed);
   }
+  stream.mReadHighWater = std::max(stream.mReadHighWater, ring.getReadFrame());
   return aSamplesToRead;
 }
 
@@ -335,6 +368,7 @@ PlayerErrors RealtimeStream::init(Soloud *aEngine, unsigned int sampleRate,
   mChannels = channels;
   mUnderrunCount.store(0, std::memory_order_relaxed);
   mMarkerCount = 0;
+  mReadHighWater = 0;
 
   // The history window must cover every frame a retroactive re-mix can
   // rewind over. The render ring holds up to renderAhead + one quantum of
@@ -711,6 +745,7 @@ void RealtimeStream::discardUnreadLocked() {
   }
 
   mRingBuffer.reset();
+  mReadHighWater = std::max(mReadHighWater, mRingBuffer.getReadFrame());
   if (inst != nullptr) {
     inst->mSubQuantumDelayFrames = 0;
     inst->mSilentFramesSinceUnderrun = 0;
@@ -738,6 +773,18 @@ int RealtimeStream::findVoiceSlotLocked(
   return -1;
 }
 
+uint64_t RealtimeStream::oldestReplayableFrameLocked() const noexcept {
+  // The producer never writes more than capacityFrames() past the read
+  // cursor it last saw, so only frames more than historyFrames() behind the
+  // furthest read position can have been overwritten, or can be while a
+  // rollback rewinds the cursor. A re-mix can leave the cursor behind that
+  // position (a retroactive slowdown reads fewer frames).
+  const uint64_t newest =
+      std::max(mRingBuffer.getReadFrame(), mReadHighWater);
+  const uint64_t history = mRingBuffer.historyFrames();
+  return newest > history ? newest - history : 0;
+}
+
 size_t RealtimeStream::findPendingMarker(uint64_t readFrame,
                                          uint64_t cursor) const noexcept {
   // Markers are sorted by both seq and frame. One the voice already applied
@@ -748,6 +795,20 @@ size_t RealtimeStream::findPendingMarker(uint64_t readFrame,
     ++i;
   }
   return i;
+}
+
+bool RealtimeStream::skipResetsLocked(uint64_t &readFrame,
+                                      uint64_t &cursor) const noexcept {
+  bool skipped = false;
+  for (size_t mi = findPendingMarker(readFrame, cursor);
+       mi < mMarkerCount && mMarkers[mi].frame == readFrame &&
+       mMarkers[mi].reset;
+       mi = findPendingMarker(readFrame, cursor)) {
+    readFrame = std::max(readFrame, mMarkers[mi].skipTo);
+    cursor = mMarkers[mi].seq + 1;
+    skipped = true;
+  }
+  return skipped;
 }
 
 void RealtimeStream::pruneMarkersLocked() noexcept {
