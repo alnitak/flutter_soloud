@@ -1661,7 +1661,7 @@ namespace SoLoud
                 }
             }
         } @catch (id) {}
-#elif defined(MA_SUPPORT_COREAUDIO)
+#elif defined(MA_HAS_COREAUDIO)
         if (context.backend == ma_backend_coreaudio)
         {
             Float64 unitLatency = 0.0;
