@@ -9,6 +9,7 @@
 #include "vst3_editor_window.h"
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <dlfcn.h>
@@ -624,30 +625,7 @@ public:
       mShm->hostClosed.store(1, std::memory_order_release);
     }
     if (mHelperPid > 0) {
-      int st = 0;
-      bool reaped = false;
-      for (int i = 0; i < 30; ++i) {
-        if (::waitpid(mHelperPid, &st, WNOHANG) == mHelperPid) {
-          reaped = true;
-          break;
-        }
-        ::usleep(5000);
-      }
-      if (!reaped) {
-        ::kill(mHelperPid, SIGTERM);
-        for (int i = 0; i < 20; ++i) {
-          if (::waitpid(mHelperPid, &st, WNOHANG) == mHelperPid) {
-            reaped = true;
-            break;
-          }
-          ::usleep(5000);
-        }
-        if (!reaped) {
-          ::kill(mHelperPid, SIGKILL);
-          ::waitpid(mHelperPid, &st, 0);
-        }
-      }
-      mHelperPid = 0;
+      reapHelper();
     }
     if (mShm != nullptr) {
       retireRemoteShm();
@@ -909,18 +887,63 @@ private:
     return 1; // G_SOURCE_CONTINUE
   }
 
+  // True once the helper has been reaped, or once it is no longer a child
+  // of this process to reap (ECHILD: the app reaps children itself, with
+  // SIGCHLD ignored or a waitpid(-1) of its own).
+  static bool helperGone(pid_t pid) {
+    int st = 0;
+    pid_t r;
+    do {
+      r = ::waitpid(pid, &st, WNOHANG);
+    } while (r < 0 && errno == EINTR);
+    return r != 0;
+  }
+
+  // Waits for the helper to exit, sending SIGTERM after 150 ms and SIGKILL
+  // after 250 ms if it does not: it is always reaped. A signal only follows
+  // a check that the helper is still an unreaped child of this process.
+  void reapHelper() {
+    const pid_t pid = mHelperPid;
+    mHelperPid = 0;
+    if (pid <= 0) {
+      return;
+    }
+    for (int i = 0; i < 50; ++i) {
+      if (helperGone(pid)) {
+        return;
+      }
+      if (i == 30) {
+        ::kill(pid, SIGTERM);
+      }
+      ::usleep(5000);
+    }
+    if (helperGone(pid)) {
+      return;
+    }
+    ::kill(pid, SIGKILL);
+    int st = 0;
+    while (::waitpid(pid, &st, 0) < 0 && errno == EINTR) {
+    }
+  }
+
   static int onRemotePollStatic(void *userData) {
     auto *self = static_cast<Vst3EditorWindowLinux *>(userData);
     if (self == nullptr || self->mShm == nullptr || self->mHelperPid <= 0) {
       return 0; // G_SOURCE_REMOVE
     }
     int status = 0;
-    const pid_t wres = ::waitpid(self->mHelperPid, &status, WNOHANG);
-    if (wres == self->mHelperPid ||
+    pid_t wres;
+    do {
+      wres = ::waitpid(self->mHelperPid, &status, WNOHANG);
+    } while (wres < 0 && errno == EINTR);
+    // wres < 0: no longer a child to reap (ECHILD), so it has exited.
+    if (wres != 0 ||
         self->mShm->helperClosed.load(std::memory_order_acquire) != 0) {
       self->mRemotePollTimerId = 0;
-      if (wres != self->mHelperPid && self->mHelperPid > 0) {
-        ::waitpid(self->mHelperPid, &status, WNOHANG);
+      if (wres == 0) {
+        // It reported closing but has not exited yet: wait for it as
+        // close() does, or it is never reaped.
+        self->reapHelper();
       }
       self->mHelperPid = 0;
       self->retireRemoteShm();
