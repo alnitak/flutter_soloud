@@ -379,6 +379,12 @@ void PullBufferStreamInstance::rewindLocked() {
   // Rewind: discard the currently buffered decoded range without zeroing the
   // underlying memory so the circular buffer can continue from the start.
   mParent->resetBufferWindow(0, 0, 0.0, 0, 0);
+  // Rewinding discards even a completely delivered stream. Reopen the feed
+  // as an out-of-buffer seek does: otherwise hasEnded() sees an empty ended
+  // buffer, so the voice stops (or, looping, stays silent), and every later
+  // delivery is refused. This covers the mixer's rewind of a looping voice
+  // at its end too.
+  mParent->mDataIsEnded.store(false);
   mParent->mPendingSeek.store(false);
   mParent->mPendingSeekTime = 0.0;
   mParent->mPendingSeekByteOffset = 0;

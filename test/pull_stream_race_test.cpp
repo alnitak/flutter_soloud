@@ -50,6 +50,10 @@
 //                 Player's sounds_mutex must not wait for it, and a disposal
 //                 meanwhile waits for the delivery without holding that
 //                 mutex.
+//   replay        A short stream whose whole file has been delivered is sought
+//                 to 0, and a looping one wraps. Each must ask for its data
+//                 from 0 again, accept it and play it: through to its end, or
+//                 round to its next wrap.
 //   stress        A PCM stream and an MP3 stream
 //                 (example/assets/audio/8_bit_mentality.mp3) are fed, seeked
 //                 (to 0 too), reset and read by four threads at once while
@@ -543,6 +547,108 @@ void lockDuringDecode() {
     EXPECT(countAudioSource(hash) == 0, "the stream should be disposed");
 }
 
+/// The replayed file: 0.5 s, delivered in two halves.
+constexpr double kShortSeconds = 0.5;
+
+bool requestedFromStart() {
+    std::lock_guard<std::mutex> lock(gRequestMutex);
+    return std::find(gRequests.begin(), gRequests.end(), 0u) != gRequests.end();
+}
+
+bool waitForRequestFromStart(int ms) {
+    for (int i = 0; i < ms / 5 && !requestedFromStart(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    return requestedFromStart();
+}
+
+/// Delivers the whole short file, as two halves, and reports each result.
+void deliverShortFile(const Stream &s, PlayerErrors results[2]) {
+    const uint64_t half = offsetOf(kShortSeconds / 2);
+    for (int i = 0; i < 2; ++i)
+        results[i] = addPullBufferDataStream(s.hash, gChunk.data(),
+                                             static_cast<unsigned int>(half),
+                                             i * half);
+}
+
+/// A playing short stream holding its whole file. Requests made until then
+/// (the first, for offset 0, comes with the stream) are dropped.
+Stream startShortStream(bool looping) {
+    Stream s;
+    PlayerErrors err = setPullBufferStream(
+        &s.hash, 1u << 20, 0.5, kSampleRate, kChannels,
+        static_cast<int>(BufferType::PCM_S16LE), offsetOf(kShortSeconds),
+        nullptr, nullptr, onMoreData, nullptr);
+    EXPECT(err == PlayerErrors::noError, "setPullBufferStream: %d", (int)err);
+    PlayerErrors delivered[2];
+    deliverShortFile(s, delivered);
+    EXPECT(delivered[0] == PlayerErrors::noError &&
+               delivered[1] == PlayerErrors::noError,
+           "the file should be delivered: %d, %d", (int)delivered[0],
+           (int)delivered[1]);
+    {
+        std::lock_guard<std::mutex> lock(gRequestMutex);
+        gRequests.clear();
+    }
+    err = play(s.hash, 0, 0.05f, 0.0f, false, looping, 0.0, 0.0, -1, -1, 1.0f,
+               &s.voice);
+    EXPECT(err == PlayerErrors::noError && s.voice != 0, "play: %d", (int)err);
+    return s;
+}
+
+/// A stream whose whole file has been delivered is sought to 0, and then a
+/// looping one wraps. Each must ask for the file from 0 again and play it.
+void replayFullyDelivered() {
+    std::printf("replay: a fully delivered stream sought to 0, and looping\n");
+    {
+        const Stream s = startShortStream(/*looping*/ false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        EXPECT(!requestedFromStart(),
+               "the stream should not ask for data from 0 before the seek");
+        EXPECT(seek(s.voice, 0.0f) == PlayerErrors::noError, "seek to 0");
+        EXPECT(waitForRequestFromStart(500),
+               "the stream sought to 0 should ask for its data from 0");
+        EXPECT(getIsValidVoiceHandle(s.voice) == 1,
+               "the voice sought to 0 should wait for its data, not end");
+        PlayerErrors again[2];
+        deliverShortFile(s, again);
+        EXPECT(again[0] == PlayerErrors::noError &&
+                   again[1] == PlayerErrors::noError,
+               "the file should be accepted again from 0: %d, %d",
+               (int)again[0], (int)again[1]);
+        // It plays the 0.5 s through and ends, as it did the first time.
+        bool ended = false;
+        for (int i = 0; i < 400 && !ended; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            ended = getIsValidVoiceHandle(s.voice) == 0;
+        }
+        EXPECT(ended, "the replayed voice should play to its end and stop");
+        disposeSound(s.hash);
+    }
+    {
+        const Stream s = startShortStream(/*looping*/ true);
+        EXPECT(waitForRequestFromStart(1500),
+               "the looping stream should ask for its data from 0 when it "
+               "wraps");
+        PlayerErrors again[2];
+        deliverShortFile(s, again);
+        EXPECT(again[0] == PlayerErrors::noError &&
+                   again[1] == PlayerErrors::noError,
+               "the looping stream should accept its file again: %d, %d",
+               (int)again[0], (int)again[1]);
+        // It plays the file round to its next wrap. Requests made before the
+        // refill was decoded are dropped first.
+        {
+            std::lock_guard<std::mutex> lock(gRequestMutex);
+            gRequests.clear();
+        }
+        EXPECT(waitForRequestFromStart(1500),
+               "the looping stream should wrap again after its refill");
+        EXPECT(getIsValidVoiceHandle(s.voice) == 1,
+               "the looping voice should keep playing");
+        endStream(s);
+    }
+}
+
 // ------------------------------------------------------------------ stress
 std::vector<unsigned char> gMp3;
 std::mutex gStressMutex;
@@ -690,6 +796,7 @@ int main(int argc, char **argv) {
     if (want("dispose")) deliveryDuringDisposal("dispose", false);
     if (want("dispose-all")) deliveryDuringDisposal("dispose-all", true);
     if (want("lock-during-decode")) lockDuringDecode();
+    if (want("replay")) replayFullyDelivered();
     if (want("stress")) stress();
 
     dispose();
