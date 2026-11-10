@@ -11,6 +11,7 @@
 // Dart.
 #include "engine_lifecycle.h"
 #include "filters/custom_filter.h"
+#include "mixeroutput/dart_port.h"
 #include "mixeroutput/mixer_output.h"
 #include "mixeroutput/wav_output_encoder.h"
 #include "player.h"
@@ -85,6 +86,24 @@ namespace
   uint64_t mixerCallbackGeneration = dart_callbacks::kNoGeneration;
   uint64_t visualizationCallbackGeneration = dart_callbacks::kNoGeneration;
 
+#ifndef __EMSCRIPTEN__
+  /// Where the running capture's packets go: the native port of the isolate
+  /// whose start was admitted, and the VM's Dart_PostInteger to reach it.
+  /// Published by that start inside the Dart callback gate, and read under the
+  /// gate by dispatchMixerOutputToDart(). A port of 0 sends them to the
+  /// mixer-output callable instead, for a capture whose callable was published
+  /// with setMixerOutputCallbackForEngine().
+  std::atomic<mixer_output_port::PostInteger> mixerPostInteger{nullptr};
+  std::atomic<int64_t> mixerOutputPort{0};
+
+  /// The capture whose port refused a post: the isolate that started it has
+  /// ended, so nothing on the Dart side will stop it. The notification thread
+  /// cannot stop the capture it runs for, so the next start does, under
+  /// mixer_lifecycle_mutex. kNoOrphanedCapture otherwise.
+  constexpr uint64_t kNoOrphanedCapture = UINT64_MAX;
+  std::atomic<uint64_t> orphanedMixerCapture{kNoOrphanedCapture};
+#endif
+
   /// Which FlutterEngine currently claims the native engine, and a counter
   /// advanced by every prepareEngineInit(). Claimed at the *start* of an
   /// initialization rather than when callbacks register, so the engine has a
@@ -123,8 +142,9 @@ namespace
   /// mixer_lifecycle_mutex`. Never the reverse — startMixerCapture() holds a
   /// PlayerLease across this and never takes init_deinit_mutex, and teardown
   /// stops the capture before, not while, holding player_lifetime_mutex
-  /// exclusively. This lock is never held while acquiring the Dart callback
-  /// gate, which stays a leaf.
+  /// exclusively. The Dart callback gate stays a leaf below it: a start
+  /// publishes its listener under the gate while holding this lock, and
+  /// nothing takes this lock while holding the gate.
   std::mutex mixer_lifecycle_mutex;
 
   std::mutex engine_lifecycle_mutex;
@@ -672,6 +692,10 @@ extern "C"
     dartFileLoadedCallback.store(nullptr, std::memory_order_release);
     dartStateChangedCallback.store(nullptr, std::memory_order_release);
     dartMixerOutputDataCallback.store(nullptr, std::memory_order_release);
+#ifndef __EMSCRIPTEN__
+    mixerOutputPort.store(0, std::memory_order_release);
+    mixerPostInteger.store(nullptr, std::memory_order_release);
+#endif
     dartVisualizationCallback.store(nullptr, std::memory_order_release);
     // The packets in flight went to the callable just retired.
     Analyzer::abandonDartDispatches();
@@ -823,12 +847,27 @@ extern "C"
 
   // Mixer output capture exports.
 
-  FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCapture(
-      int format, int sampleRate, int channels,
-      int bufferSizeBytes,
-      int notificationThresholdBytes,
-      int chunkPCMFrames)
+  static void dispatchMixerOutputToDart(uint8_t *data, size_t length);
+
+  /// The isolate port a start delivers its packets to (native only).
+  struct MixerCapturePort
   {
+    mixer_output_port::PostInteger post;
+    int64_t port;
+    int64_t ownerEngineId;
+  };
+
+  /// Start the capture, and when [port] is given publish it as where the
+  /// capture's packets go -- only once the start is admitted, so a refused
+  /// start leaves the running capture's listener alone. [captureId], when
+  /// given, receives the id of the capture this call started.
+  static PlayerErrors startMixerCaptureFor(
+      int format, int sampleRate, int channels, int bufferSizeBytes,
+      int notificationThresholdBytes, int chunkPCMFrames,
+      const MixerCapturePort *port, unsigned int *captureId)
+  {
+    if (captureId != nullptr)
+      *captureId = 0;
     MixerOutputFormat outputFormat = static_cast<MixerOutputFormat>(format);
 
     // The capture copies the engine's own mix as the device callback hands it
@@ -873,12 +912,112 @@ extern "C"
     if (engine_shutdown_requested.load(std::memory_order_acquire))
       return backendNotInited;
 
-    return MixerOutput::instance().start(
+    MixerOutput &capture = MixerOutput::instance();
+#ifndef __EMSCRIPTEN__
+    if (capture.isRunning())
+    {
+      // A packet only finds out that the running capture's port has closed
+      // when one is due. Ask now: Dart ignores a 0, and a closed port refuses
+      // it.
+      const dart_callbacks::InvocationPass pass;
+      const int64_t runningPort =
+          mixerOutputPort.load(std::memory_order_acquire);
+      const auto post = mixerPostInteger.load(std::memory_order_acquire);
+      if (runningPort != 0 && post != nullptr &&
+          pass.isLive(mixerCallbackGeneration) && !post(runningPort, 0))
+        orphanedMixerCapture.store(capture.captureId(),
+                                   std::memory_order_release);
+    }
+    // The isolate that started this capture has ended without stopping it,
+    // and the notification thread cannot stop the capture it runs for.
+    if (capture.isRunning() &&
+        orphanedMixerCapture.load(std::memory_order_acquire) ==
+            capture.captureId())
+      capture.stop();
+#else
+    (void)port;
+#endif
+    // Before anything is published: a refused start must not take the
+    // running capture's packets over.
+    if (capture.isRunning())
+      return playerAlreadyInited;
+
+#ifndef __EMSCRIPTEN__
+    if (port != nullptr)
+    {
+      {
+        // Joins the live registration the way the mixer callable does, and
+        // dies with it.
+        dart_callbacks::Registration registration;
+        if (port->ownerEngineId != kNoEngineId
+                ? !registration.isOwnedBy(port->ownerEngineId)
+                : registration.generation() == dart_callbacks::kNoGeneration)
+          return backendNotInited;
+        // The packets in flight went to the listener this one replaces.
+        MixerOutput::discardPackets();
+        dartMixerOutputDataCallback.store(nullptr, std::memory_order_release);
+        mixerPostInteger.store(port->post, std::memory_order_release);
+        mixerOutputPort.store(port->port, std::memory_order_release);
+        orphanedMixerCapture.store(kNoOrphanedCapture,
+                                   std::memory_order_release);
+        mixerCallbackGeneration = registration.generation();
+      }
+      capture.setDataCallback(dispatchMixerOutputToDart);
+    }
+#endif
+
+    const PlayerErrors result = capture.start(
         outputFormat, sr, ch,
         static_cast<size_t>(bufferSizeBytes),
         static_cast<size_t>(notificationThresholdBytes),
         chunkPCMFrames);
+#ifndef __EMSCRIPTEN__
+    if (result != noError && port != nullptr)
+    {
+      // Nothing runs for this listener. Do not keep a port its isolate may
+      // close as soon as it sees the error.
+      dart_callbacks::Registration registration;
+      mixerOutputPort.store(0, std::memory_order_release);
+      mixerPostInteger.store(nullptr, std::memory_order_release);
+      mixerCallbackGeneration = dart_callbacks::kNoGeneration;
+    }
+#endif
+    // Read before the lifecycle lock is released: a later query could see a
+    // capture another isolate started meanwhile.
+    if (result == noError && captureId != nullptr)
+      *captureId = capture.captureId();
+    return result;
   }
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCapture(
+      int format, int sampleRate, int channels,
+      int bufferSizeBytes,
+      int notificationThresholdBytes,
+      int chunkPCMFrames)
+  {
+    return startMixerCaptureFor(format, sampleRate, channels, bufferSizeBytes,
+                                notificationThresholdBytes, chunkPCMFrames,
+                                nullptr, nullptr);
+  }
+
+#ifndef __EMSCRIPTEN__
+  FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCaptureOnPort(
+      int format, int sampleRate, int channels, int bufferSizeBytes,
+      int notificationThresholdBytes, int chunkPCMFrames,
+      unsigned int *captureId, void *apiData, int64_t port,
+      int64_t ownerEngineId)
+  {
+    if (captureId != nullptr)
+      *captureId = 0;
+    const MixerCapturePort listener{mixer_output_port::resolve(apiData), port,
+                                    ownerEngineId};
+    if (listener.post == nullptr || port == 0)
+      return invalidParameter;
+    return startMixerCaptureFor(format, sampleRate, channels, bufferSizeBytes,
+                                notificationThresholdBytes, chunkPCMFrames,
+                                &listener, captureId);
+  }
+#endif
 
   FFI_PLUGIN_EXPORT void stopMixerCapture()
   {
@@ -1003,6 +1142,17 @@ extern "C"
       MixerOutput::discardPacket(data);
       return;
     }
+    const int64_t port = mixerOutputPort.load(std::memory_order_acquire);
+    if (port != 0)
+    {
+      // A port outlives its isolate: once that isolate has ended the post is
+      // refused, where a callable of it would abort the VM.
+      if (!mixer_output_port::send(
+              mixerPostInteger.load(std::memory_order_acquire), port, data))
+        orphanedMixerCapture.store(MixerOutput::instance().captureId(),
+                                   std::memory_order_release);
+      return;
+    }
     auto cb = dartMixerOutputDataCallback.load(std::memory_order_acquire);
     if (cb != nullptr)
     {
@@ -1042,6 +1192,13 @@ extern "C"
       // The packets in flight went to the callable this one replaces.
       MixerOutput::discardPackets();
       dartMixerOutputDataCallback.store(callback, std::memory_order_release);
+#ifndef __EMSCRIPTEN__
+      // A callable replaces a port listener, and whatever capture it hears
+      // from has a listener again.
+      mixerOutputPort.store(0, std::memory_order_release);
+      mixerPostInteger.store(nullptr, std::memory_order_release);
+      orphanedMixerCapture.store(kNoOrphanedCapture, std::memory_order_release);
+#endif
       mixerCallbackGeneration = registration.generation();
     }
 

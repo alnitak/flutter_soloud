@@ -33,6 +33,10 @@
 //     worker dispatches through, so it cannot deadlock against a dispatch,
 //     and does not stop what a registration claimed meanwhile started;
 //   * a visualization has one packet in flight to Dart at a time;
+//   * a mixer capture posts to the port of the isolate whose start was
+//     admitted; a port that refuses (its isolate ended) leaves the capture to
+//     the next start, and a refused start leaves the running capture's port
+//     alone;
 //   * duplicate destroy/detach notifications tear down exactly once;
 //   * loadFile() decodes without the lifecycle locks, so disposing sounds or
 //     the engine never waits for a decode, and a sound decoded for an engine
@@ -57,7 +61,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -86,6 +92,12 @@ extern "C"
                                         int notificationThresholdBytes,
                                         int chunkPCMFrames);
     void stopMixerCapture();
+    enum PlayerErrors startMixerCaptureOnPort(
+        int format, int sampleRate, int channels, int bufferSizeBytes,
+        int notificationThresholdBytes, int chunkPCMFrames,
+        unsigned int *captureId, void *apiData, int64_t port,
+        int64_t ownerEngineId);
+    unsigned int getMixerCaptureId();
     unsigned char *takeMixerOutputPacket(unsigned char *token,
                                          unsigned int *captureId,
                                          size_t *length);
@@ -331,6 +343,108 @@ int mixerOutputDelta()
     const int before = gMixerOutputCalls.load();
     soloudTestInvokeMixerOutput();
     return gMixerOutputCalls.load() - before;
+}
+
+/// Stands in for the VM's Dart_PostInteger: records the packet tokens each
+/// native port is sent (a 0 is a probe, which Dart ignores), and refuses
+/// posts to a closed port, as the VM does once the isolate that owned the
+/// port has ended.
+std::mutex gPortMutex;
+std::map<int64_t, std::vector<int64_t>> gPortMessages;
+std::vector<int64_t> gRefusedMessages;
+std::set<int64_t> gClosedPorts;
+
+bool fakePostInteger(int64_t port, int64_t message)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    if (gClosedPorts.count(port) != 0)
+    {
+        if (message != 0)
+            gRefusedMessages.push_back(message);
+        return false;
+    }
+    if (message != 0)
+        gPortMessages[port].push_back(message);
+    return true;
+}
+
+/// The table NativeApi.initializeApiDLData points to (major version 2).
+struct FakeApiEntry
+{
+    const char *name;
+    void (*function)();
+};
+struct FakeApi
+{
+    int major;
+    int minor;
+    const FakeApiEntry *functions;
+};
+const FakeApiEntry kFakeApiEntries[] = {
+    {"Dart_PostCObject", nullptr},
+    {"Dart_PostInteger", reinterpret_cast<void (*)()>(fakePostInteger)},
+    {nullptr, nullptr},
+};
+FakeApi gFakeApi{2, 5, kFakeApiEntries};
+
+constexpr int64_t kPortA = 0x5150001;
+constexpr int64_t kPortB = 0x5150002;
+constexpr int64_t kPortC = 0x5150003;
+
+void resetPorts()
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    gPortMessages.clear();
+    gRefusedMessages.clear();
+    gClosedPorts.clear();
+}
+
+size_t messagesTo(int64_t port)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    return gPortMessages[port].size();
+}
+
+size_t refusedMessages()
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    return gRefusedMessages.size();
+}
+
+void closePort(int64_t port)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    gClosedPorts.insert(port);
+}
+
+/// Claims every packet [port] was sent, as the isolate behind it does.
+/// Returns how many held [bytes] bytes of capture [captureId], and sets
+/// [claimed] to how many could be claimed at all.
+size_t claimFromPort(int64_t port, unsigned int captureId, size_t bytes,
+                     size_t &claimed)
+{
+    std::vector<int64_t> messages;
+    {
+        std::lock_guard<std::mutex> lock(gPortMutex);
+        messages.swap(gPortMessages[port]);
+    }
+    size_t matching = 0;
+    claimed = 0;
+    for (int64_t message : messages)
+    {
+        unsigned int id = 0;
+        size_t length = 0;
+        unsigned char *packet = takeMixerOutputPacket(
+            reinterpret_cast<unsigned char *>(static_cast<uintptr_t>(message)),
+            &id, &length);
+        if (packet == nullptr)
+            continue;
+        ++claimed;
+        if (id == captureId && length == bytes)
+            ++matching;
+        nativeFree(packet);
+    }
+    return matching;
 }
 
 /// How many of a real PullBufferStream's four callables one dispatch reached.
@@ -881,6 +995,152 @@ void testCaptureRefusesAFormatTheMixDoesNotProduce()
            "a capture without an engine should be refused");
     EXPECT(isMixerCaptureRunning() == 0,
            "no capture should run without an engine");
+}
+
+/// A NativeCallable belongs to its isolate, and invoking one after that isolate
+/// has ended aborts the VM -- which is what a capture started by a worker
+/// isolate did as soon as the worker returned. A capture started on a port
+/// posts its packets there instead, and the VM refuses a post to a port whose
+/// isolate is gone. Nothing will stop that capture, so the next start does.
+void testCaptureDeliversToTheStartingPort()
+{
+    std::printf("a capture posts to its start's port, and a closed port gives "
+                "the capture up to the next start\n");
+    resetGlobalState();
+    resetPorts();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    constexpr size_t kChunkBytes = 2048 * 2 * sizeof(int16_t);
+
+    unsigned int first = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &first, &gFakeApi, kPortA,
+                                   kEngineA) == noError,
+           "a capture should start on a port");
+    EXPECT(first != 0 && first == getMixerCaptureId(),
+           "the start should report the id of the capture it started");
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }, 3000),
+           "the capture should post its packets to the starting port");
+    size_t claimed = 0;
+    const size_t matching =
+        claimFromPort(kPortA, first, kChunkBytes, claimed);
+    EXPECT(claimed >= 2 && matching == claimed,
+           "every posted token should claim one chunk of the capture "
+           "(%zu of %zu)",
+           matching, claimed);
+
+    // The isolate ends: from now on its port refuses every post.
+    closePort(kPortA);
+    EXPECT(waitFor([] { return refusedMessages() >= 1; }, 3000),
+           "posts to the closed port should be refused");
+    std::vector<int64_t> refused;
+    {
+        std::lock_guard<std::mutex> lock(gPortMutex);
+        refused = gRefusedMessages;
+    }
+    bool discarded = !refused.empty();
+    for (int64_t message : refused)
+    {
+        unsigned int id = 0;
+        unsigned char *packet = takeMixerOutputPacket(
+            reinterpret_cast<unsigned char *>(static_cast<uintptr_t>(message)),
+            &id, nullptr);
+        discarded = discarded && packet == nullptr;
+        nativeFree(packet);
+    }
+    EXPECT(discarded, "a refused packet should be discarded, not kept");
+
+    // Any isolate's next start takes over from the capture nobody can stop.
+    unsigned int second = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &second, &gFakeApi, kPortB,
+                                   kNoEngineId) == noError,
+           "a start should replace the capture whose port refused it");
+    EXPECT(second != 0 && second != first,
+           "the replacement should be a new capture");
+    EXPECT(waitFor([] { return messagesTo(kPortB) >= 1; }, 3000),
+           "the new capture should post to the new port");
+    claimFromPort(kPortB, second, kChunkBytes, claimed);
+
+    // A start right after the port closed, before a packet was due to find
+    // out, asks the port itself.
+    closePort(kPortB);
+    unsigned int third = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &third, &gFakeApi, kPortC,
+                                   kNoEngineId) == noError,
+           "a start should not wait for a packet to find the port closed");
+    EXPECT(third != 0 && third != second,
+           "that replacement should be a new capture too");
+    stopMixerCapture();
+    claimFromPort(kPortC, third, kChunkBytes, claimed);
+
+    resetGlobalState();
+}
+
+/// Only one capture runs at a time. A start that is refused because one is
+/// running must leave that capture's port alone, or the running capture's
+/// packets go to an isolate that did not start it -- one that may end next.
+void testRefusedStartLeavesTheRunningPortAlone()
+{
+    std::printf("a refused start leaves the running capture's port alone\n");
+    resetGlobalState();
+    resetPorts();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    constexpr size_t kChunkBytes = 2048 * 2 * sizeof(int16_t);
+
+    unsigned int id = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &id, &gFakeApi, kPortA,
+                                   kEngineA) == noError,
+           "the first capture should start");
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 1; }, 3000),
+           "the first capture should post to its port");
+
+    unsigned int refusedId = 77;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &refusedId, &gFakeApi, kPortB,
+                                   kNoEngineId) == playerAlreadyInited,
+           "a second start should be refused while a capture runs");
+    EXPECT(refusedId == 0, "a refused start should report no capture");
+    size_t claimed = 0;
+    claimFromPort(kPortA, id, kChunkBytes, claimed);
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }, 3000),
+           "the running capture should keep posting to its own port");
+    EXPECT(messagesTo(kPortB) == 0,
+           "the refused start's port should get nothing");
+    stopMixerCapture();
+    claimFromPort(kPortA, id, kChunkBytes, claimed);
+
+    // Refused before anything starts or is published.
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &gFakeApi, kPortB,
+                                   kEngineB) == backendNotInited,
+           "an engine that does not own the live registration cannot start");
+    FakeApi otherLayout{3, 0, kFakeApiEntries};
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &otherLayout, kPortB,
+                                   kEngineA) == invalidParameter,
+           "an API table of another major version should be refused");
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &gFakeApi, 0,
+                                   kEngineA) == invalidParameter,
+           "port 0 should be refused");
+    EXPECT(isMixerCaptureRunning() == 0, "none of those should start one");
+    EXPECT(messagesTo(kPortB) == 0, "and none should post anything");
+
+    resetGlobalState();
 }
 
 /// Retirement stops the visualizations, whose single worker thread invokes the
@@ -1815,6 +2075,8 @@ int main()
     testStaleWorkerMixerCallbackCannotBeRevived();
     testTeardownDuringActiveMixerCapture();
     testCaptureRefusesAFormatTheMixDoesNotProduce();
+    testCaptureDeliversToTheStartingPort();
+    testRefusedStartLeavesTheRunningPortAlone();
     testRetirementWhileVisualizationsDispatch();
     testRetirementSparesWhatANewerRegistrationStarted();
     testVisualizationSendsOnePacketAtATime();

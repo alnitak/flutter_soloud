@@ -100,8 +100,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   nativeFileLoadedCallable;
   ffi.NativeCallable<native.dartStateChangedCallback_tFunction>?
   nativeStateChangedCallable;
-  ffi.NativeCallable<native.dartMixerOutputDataCallback_tFunction>?
-  nativeMixerOutputDataCallable;
+
+  /// Receives this isolate's capture packet tokens. A port rather than a
+  /// NativeCallable: the capture can outlive this isolate, and posting to a
+  /// closed port fails where calling a deleted callable aborts the VM.
+  RawReceivePort? _mixerOutputPort;
+
   ffi.NativeCallable<native.dartVisualizationCallback_tFunction>?
   nativeVisualizationCallable;
 
@@ -177,15 +181,14 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     stateChangedController.add(s);
   }
 
-  /// [token] names a native packet, not memory to read: this listener runs
-  /// later than the notification, when the capture may have moved on to its
-  /// next chunk or been restarted. Claiming the packet hands over an owned
-  /// copy of its bytes, and acknowledges a threshold-mode packet's bytes in
-  /// the ring, so it is claimed even when nobody listens.
-  void _mixerOutputDataCallback(
-    ffi.Pointer<ffi.UnsignedChar> token,
-    int length,
-  ) {
+  /// [message] is a native packet token, not memory to read: this runs later
+  /// than the notification, when the capture may have moved on to its next
+  /// chunk or been restarted. Claiming the packet hands over an owned copy of
+  /// its bytes, and acknowledges a threshold-mode packet's bytes in the ring,
+  /// so it is claimed even when nobody listens.
+  void _mixerOutputPortMessage(Object? message) {
+    if (message is! int || message == 0) return;
+    final token = ffi.Pointer<ffi.UnsignedChar>.fromAddress(message);
     final captureId = calloc<ffi.UnsignedInt>();
     final claimed = calloc<ffi.Size>();
     final bytes = native.takeMixerOutputPacket(token, captureId, claimed);
@@ -291,8 +294,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeFileLoadedCallable = null;
     nativeStateChangedCallable?.close();
     nativeStateChangedCallable = null;
-    nativeMixerOutputDataCallable?.close();
-    nativeMixerOutputDataCallable = null;
+    _mixerOutputPort?.close();
+    _mixerOutputPort = null;
     nativeVisualizationCallable?.close();
     nativeVisualizationCallable = null;
   }
@@ -317,10 +320,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeCallable<native.dartStateChangedCallback_tFunction>.listener(
           _stateChangedCallback,
         );
-    nativeMixerOutputDataCallable ??=
-        ffi.NativeCallable<
-          native.dartMixerOutputDataCallback_tFunction
-        >.listener(_mixerOutputDataCallback);
     nativeVisualizationCallable ??=
         ffi.NativeCallable<native.dartVisualizationCallback_tFunction>.listener(
           _visualizationDataCallback,
@@ -330,10 +329,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       nativeVoiceEndedCallable!.nativeFunction,
       nativeFileLoadedCallable!.nativeFunction,
       nativeStateChangedCallable!.nativeFunction,
-      currentEngineId,
-    );
-    native.setMixerOutputCallbackForEngine(
-      nativeMixerOutputDataCallable!.nativeFunction,
       currentEngineId,
     );
     native.setVisualizationCallbackForEngine(
@@ -354,32 +349,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   void registerMixerOutputCallback() {
-    nativeMixerOutputDataCallable ??=
-        ffi.NativeCallable<
-          native.dartMixerOutputDataCallback_tFunction
-        >.listener(_mixerOutputDataCallback);
-    // Called from whichever isolate owns the capture, including a worker one
-    // via `SoLoudIsolate.startMixerOutputStream()`. On a worker,
-    // [currentEngineId] is the no-engine sentinel and native code joins this
-    // callable to whatever registration is live.
-    //
-    // A refusal means there is no live registration to join: the engine was
-    // never initialized, has been deinitialized, or its FlutterEngine is being
-    // destroyed. Publishing anyway would arm a callable belonging to an isolate
-    // that is going away, so the capture simply produces nothing -- worth a
-    // line in the log, since the stream stays silent rather than throwing.
-    final published = native.setMixerOutputCallbackForEngine(
-      nativeMixerOutputDataCallable!.nativeFunction,
-      currentEngineId,
+    // Only prepares this isolate's port. Native code publishes it when, and
+    // only if, this isolate's start is admitted: a start that is refused, or
+    // never made, must not take a running capture's packets over.
+    _mixerOutputPort ??= RawReceivePort(
+      _mixerOutputPortMessage,
+      'flutter_soloud mixer output',
     );
-    if (!published) {
-      _log.warning(
-        'The mixer output callback was refused: no live engine callback '
-        'registration to join. The capture stream will not receive chunks. '
-        'Initialize the engine before starting a mixer output capture, and '
-        'stop the capture before deinitializing it.',
-      );
-    }
   }
 
   late final ffi.NativeFinalizer _isolateFinalizer = ffi.NativeFinalizer(
@@ -403,24 +379,48 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int notificationThresholdBytes,
     int chunkPCMFrames,
   ) {
-    final ret = native.startMixerCapture(
-      format.value,
-      sampleRate,
-      channels,
-      bufferSizeBytes,
-      notificationThresholdBytes,
-      chunkPCMFrames,
-    );
-    if (ret == native.PlayerErrors.noError) {
-      _mixerCaptureId = native.getMixerCaptureId();
+    // Called from whichever isolate owns the capture, including a worker one
+    // via `SoLoudIsolate.startMixerOutputStream()`. On a worker,
+    // [currentEngineId] is the no-engine sentinel and native code joins the
+    // port to whatever registration is live; with none live (the engine was
+    // never initialized, has been deinitialized, or its FlutterEngine is
+    // being destroyed) the start is refused with backendNotInited.
+    registerMixerOutputCallback();
+    final captureId = calloc<ffi.UnsignedInt>();
+    try {
+      final ret = native.startMixerCaptureOnPort(
+        format.value,
+        sampleRate,
+        channels,
+        bufferSizeBytes,
+        notificationThresholdBytes,
+        chunkPCMFrames,
+        captureId,
+        ffi.NativeApi.initializeApiDLData,
+        ffi.NativePort(_mixerOutputPort!.sendPort).nativePort,
+        currentEngineId,
+      );
+      if (ret == native.PlayerErrors.noError) {
+        _mixerCaptureId = captureId.value;
+      } else if (_mixerCaptureId == null) {
+        _mixerOutputPort?.close();
+        _mixerOutputPort = null;
+      }
+      return PlayerErrors.values[ret.value];
+    } finally {
+      calloc.free(captureId);
     }
-    return PlayerErrors.values[ret.value];
   }
 
   @override
   void stopMixerOutputCapture() {
     _mixerCaptureId = null;
     native.stopMixerCapture();
+    // An open port keeps this isolate alive. Native code discards what is
+    // posted to it once closed, and the next start what it was sent but
+    // never handled.
+    _mixerOutputPort?.close();
+    _mixerOutputPort = null;
   }
 
   @override

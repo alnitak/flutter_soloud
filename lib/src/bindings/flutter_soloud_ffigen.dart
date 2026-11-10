@@ -107,6 +107,71 @@ PlayerErrors startMixerCapture(
   ),
 );
 
+/// Start capturing like [startMixerCapture], delivering each packet token
+/// to the Dart native [port] (a `RawReceivePort`'s) with Dart_PostInteger,
+/// which is resolved from [apiData], `NativeApi.initializeApiDLData`.
+/// Unlike a NativeCallable, a port can be posted to after its isolate has
+/// ended: the post is refused, and the next start stops that capture.
+///
+/// The port is published only once the start is admitted, so a refused
+/// start leaves a running capture's listener alone. [ownerEngineId] names
+/// the FlutterEngine of the calling isolate, or -1 to join the live
+/// registration. [captureId] receives the id of the capture started.
+/// Returns invalidParameter for an [apiData] without Dart_PostInteger or a
+/// port of 0, and otherwise what [startMixerCapture] returns.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Int64,
+  )
+>(symbol: 'startMixerCaptureOnPort')
+external int _startMixerCaptureOnPort(
+  int format,
+  int sampleRate,
+  int channels,
+  int bufferSizeBytes,
+  int notificationThresholdBytes,
+  int chunkPCMFrames,
+  ffi.Pointer<ffi.UnsignedInt> captureId,
+  ffi.Pointer<ffi.Void> apiData,
+  int port,
+  int ownerEngineId,
+);
+
+PlayerErrors startMixerCaptureOnPort(
+  int format,
+  int sampleRate,
+  int channels,
+  int bufferSizeBytes,
+  int notificationThresholdBytes,
+  int chunkPCMFrames,
+  ffi.Pointer<ffi.UnsignedInt> captureId,
+  ffi.Pointer<ffi.Void> apiData,
+  int port,
+  int ownerEngineId,
+) => PlayerErrors.fromValue(
+  _startMixerCaptureOnPort(
+    format,
+    sampleRate,
+    channels,
+    bufferSizeBytes,
+    notificationThresholdBytes,
+    chunkPCMFrames,
+    captureId,
+    apiData,
+    port,
+    ownerEngineId,
+  ),
+);
+
 /// Stop capturing the master mixer output.
 @ffi.Native<ffi.Void Function()>()
 external void stopMixerCapture();

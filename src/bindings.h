@@ -129,6 +129,26 @@ extern "C"
       int format, int sampleRate, int channels, int bufferSizeBytes,
       int notificationThresholdBytes, int chunkPCMFrames);
 
+#ifndef __EMSCRIPTEN__
+  /// Start capturing like [startMixerCapture], delivering each packet token
+  /// to the Dart native [port] (a `RawReceivePort`'s) with Dart_PostInteger,
+  /// which is resolved from [apiData], `NativeApi.initializeApiDLData`.
+  /// Unlike a NativeCallable, a port can be posted to after its isolate has
+  /// ended: the post is refused, and the next start stops that capture.
+  ///
+  /// The port is published only once the start is admitted, so a refused
+  /// start leaves a running capture's listener alone. [ownerEngineId] names
+  /// the FlutterEngine of the calling isolate, or -1 to join the live
+  /// registration. [captureId] receives the id of the capture started.
+  /// Returns invalidParameter for an [apiData] without Dart_PostInteger or a
+  /// port of 0, and otherwise what [startMixerCapture] returns.
+  FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCaptureOnPort(
+      int format, int sampleRate, int channels, int bufferSizeBytes,
+      int notificationThresholdBytes, int chunkPCMFrames,
+      unsigned int *captureId, void *apiData, int64_t port,
+      int64_t ownerEngineId);
+#endif
+
   /// Stop capturing the master mixer output.
   FFI_PLUGIN_EXPORT void stopMixerCapture();
 
