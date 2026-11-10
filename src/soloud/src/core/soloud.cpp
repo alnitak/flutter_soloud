@@ -1205,17 +1205,31 @@ namespace SoLoud
 	unsigned int Soloud::readRenderRingForDevice_internal(float *aBuffer, unsigned int aFrames)
 	{
 		const bool worker = isRenderWorkerRunning_internal();
+		const unsigned int channels = mRenderRing.getChannels();
+		// ###### flutter_soloud local patch (long device reads) ######
+		// Read in parts, mixing or waiting for more in between: a callback
+		// can ask for more frames than the render-ahead window or the whole
+		// ring holds, and only reading makes room for the rest.
+		unsigned int got = worker ? mRenderRing.read(aBuffer, aFrames) : 0;
 		if (!worker)
 		{
 			// No worker (none wanted, or it could not be started): mix here.
-			renderRingTopUp_internal();
+			do
+			{
+				renderRingTopUp_internal();
+				const unsigned int n = mRenderRing.read(aBuffer + (size_t)got * channels, aFrames - got);
+				if (n == 0)
+					break;
+				got += n;
+			} while (got < aFrames);
 		}
 #if !defined(__EMSCRIPTEN__)
-		else if (mRenderRing.availableToRead() < aFrames)
+		else if (got < aFrames)
 		{
-			// The worker fell behind: mix what this read needs, but only if
-			// the audio mutex is free right now.
-			renderRingTopUpNoWait_internal(aFrames);
+			// The worker fell behind: mix what the rest of this read needs,
+			// but only if the audio mutex is free right now.
+			renderRingTopUpNoWait_internal(aFrames - got);
+			got += mRenderRing.read(aBuffer + (size_t)got * channels, aFrames - got);
 			// Some backends deliver callbacks in back-to-back bursts (AAudio's
 			// non-low-latency path fires several callbacks within a
 			// millisecond), which drains the whole render-ahead window faster
@@ -1224,7 +1238,7 @@ namespace SoLoud
 			// needs: wait a bounded time for them (re-trying the lock in case
 			// the mutex frees up) rather than emitting silence. The bound
 			// keeps a long API-thread hold from stalling the device.
-			if (mRenderRing.availableToRead() < aFrames && mSamplerate > 0)
+			if (got < aFrames && mSamplerate > 0)
 			{
 				const long long budgetUs =
 					(long long)aFrames * 1000000LL / (2LL * (long long)mSamplerate);
@@ -1234,18 +1248,17 @@ namespace SoLoud
 				{
 					wakeRenderWorker_internal();
 					std::this_thread::yield();
-					renderRingTopUpNoWait_internal(aFrames);
-				} while (mRenderRing.availableToRead() < aFrames &&
+					renderRingTopUpNoWait_internal(aFrames - got);
+					got += mRenderRing.read(aBuffer + (size_t)got * channels, aFrames - got);
+				} while (got < aFrames &&
 					std::chrono::steady_clock::now() < deadline);
 			}
 		}
 #endif
-		const unsigned int got = mRenderRing.read(aBuffer, aFrames);
 		if (worker)
 			wakeRenderWorker_internal();
 		if (got < aFrames)
 		{
-			const unsigned int channels = mRenderRing.getChannels();
 			memset(aBuffer + (size_t)got * channels, 0,
 				(size_t)(aFrames - got) * channels * sizeof(float));
 		}

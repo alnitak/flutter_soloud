@@ -824,6 +824,61 @@ void testOutputLatencyStaysWithinTheRing()
     engine.deinit();
 }
 
+// A device callback can ask for more frames than the ring holds: with a
+// 2048-frame quantum, a 512-frame render-ahead and 256-frame periods the ring
+// holds 3584, and a backend that moves to 4096-frame callbacks asks for more.
+// The callback waited for the ring to hold all of them at once, which it
+// never does: with the render worker it spun for its whole wait budget, 46 ms,
+// and with or without the worker it played 2048 frames and then 2048 of
+// silence. It must play them all, reading in parts.
+void testDeviceReadsLongerThanTheRing()
+{
+    constexpr unsigned int kBigQuantum = 2048;
+    constexpr unsigned int kShortAhead = 512;
+    constexpr unsigned int kShortPeriod = 256;
+    constexpr unsigned int kLongRead = 4096;
+    for (int withWorker = 0; withWorker < 2; ++withWorker) {
+        const char* name = withWorker ? "with the worker" : "without the worker";
+        SoLoud::Soloud engine;
+        engine.setRenderAheadConfig(kShortPeriod, kShortAhead);
+        engine.mRenderWorkerWanted = withWorker != 0;
+        // Mono and no clipper, so the device gets the ramp as it is.
+        const SoLoud::result result =
+            engine.init(0, SoLoud::Soloud::NULLDRIVER, kSampleRate, kBigQuantum, 1);
+        EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+        EXPECT(engine.mRenderRing.getCapacity() < kLongRead,
+               "the ring holds %u frames", engine.mRenderRing.getCapacity());
+        EXPECT(engine.isRenderWorkerRunning_internal() == (withWorker != 0),
+               "%s: the worker is %srunning", name,
+               engine.isRenderWorkerRunning_internal() ? "" : "not ");
+        RampSource ramp;
+        engine.play(ramp);
+
+        std::vector<float> played;
+        std::vector<float> buf(kLongRead);
+        unsigned long long got = 0;
+        double longest = 0;
+        for (int read = 0; read < 4; ++read) {
+            // The worker tops up between callbacks.
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            const auto start = std::chrono::steady_clock::now();
+            got += engine.readRenderRingForDevice_internal(buf.data(), kLongRead);
+            longest = std::max(longest, std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - start).count());
+            played.insert(played.end(), buf.begin(), buf.end());
+        }
+        EXPECT(got == 4ull * kLongRead, "%s: %llu of %u frames came from the ring",
+               name, got, 4 * kLongRead);
+        const unsigned int jumps = rampJumps(played, kBigQuantum);
+        EXPECT(jumps == 0, "%s: %u jumps in the played sawtooth", name, jumps);
+        std::printf("  4096-frame device reads from a %u-frame ring, %s: the "
+                    "longest took %.2f ms\n",
+                    engine.mRenderRing.getCapacity(), name, longest);
+        engine.stopAll();
+        engine.deinit();
+    }
+}
+
 int main()
 {
     testRingRoundtrip();
@@ -838,6 +893,7 @@ int main()
     testWritersRecheckRoomUnderTheMutex();
     testDeviceTopUpLeavesCallbacksToTheWorker();
     testOutputLatencyStaysWithinTheRing();
+    testDeviceReadsLongerThanTheRing();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);
