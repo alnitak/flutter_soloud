@@ -330,4 +330,28 @@ void main() {
     expect(module.stops, 1);
     await subscription.cancel();
   });
+
+  test('a stream whose capture stopped elsewhere is replaced on the next '
+      'start', () async {
+    final module = CaptureModule();
+    final bindings = FlutterSoLoudWeb();
+    await bindings.setDartEventCallbacks();
+    final manager = MixerOutputStreamManager(
+      bindings: bindings,
+      isReady: () => true,
+    );
+    var closed = false;
+    final first = manager.start(chunkPCMFrames: 2048);
+    final subscription = first.listen((_) {}, onDone: () => closed = true);
+    // An engine teardown stops the capture without this manager.
+    module.running = false;
+
+    final second = manager.start(chunkPCMFrames: 2048);
+    expect(closed, isTrue, reason: 'the old stream is closed');
+    expect(second, isNot(first), reason: 'and a new one handed out');
+    expect(module.running, isTrue, reason: 'with a new capture behind it');
+    expect(module.captureId, 2);
+    manager.stop();
+    await subscription.cancel();
+  });
 }

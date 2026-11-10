@@ -34,6 +34,10 @@ class MixerOutputStreamManager {
   /// The broadcast stream of captured mixer output data.
   StreamController<Uint8List>? _streamController;
 
+  /// Whether this manager has a stream open, even one whose capture has
+  /// stopped.
+  bool get hasStream => _streamController != null;
+
   /// Captures the master mixer output as a [Stream] of [Uint8List] chunks.
   ///
   /// The signature mirrors SoLoud.startMixerOutputStream. See the public
@@ -63,7 +67,13 @@ class MixerOutputStreamManager {
     }
 
     if (_streamController != null) {
-      return _streamController!.stream;
+      if (bindings.isCurrentMixerOutputCapture()) {
+        return _streamController!.stream;
+      }
+      // The capture behind this stream was stopped without this manager, by
+      // an engine deinitialization in another isolate, say: end that stream
+      // first.
+      stop();
     }
 
     // The controller must be synchronous: [stop] flushes the captured tail

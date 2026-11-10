@@ -1091,6 +1091,13 @@ interface class SoLoud {
       _lifecycleGeneration++;
     }
     _nativeCallbacksInitialized = false;
+    // Ends this isolate's stream with what its capture still owed it.
+    if (_mixerOutputStreamManager.hasStream) {
+      _mixerOutputStreamManager.stop();
+    }
+    // A capture still running is another isolate's, or was started without
+    // the stream manager, and ends with the engine. Another isolate's stream
+    // closes when that isolate stops it or starts again.
     if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
       _controller.soLoudFFI.stopMixerOutputCapture();
     }

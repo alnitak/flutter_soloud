@@ -79,6 +79,12 @@ class SoLoudIsolate {
   ///
   /// [sampleRate] and [channels] must match the engine, or be -1 to follow
   /// it: capture does not resample or remix channels.
+  ///
+  /// Deinitializing the engine in the main isolate stops this capture, but
+  /// cannot close this isolate's stream: stop the stream here first to keep
+  /// all of its audio. Once the engine is initialized again, the next start
+  /// here closes the old stream and starts a new capture.
+  ///
   /// See [SoLoud.startMixerOutputStream] for parameter details.
   @experimental
   Stream<Uint8List> startMixerOutputStream({
