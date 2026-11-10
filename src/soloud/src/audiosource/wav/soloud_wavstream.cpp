@@ -141,7 +141,11 @@ namespace SoLoud
 			if (mParent->mFiletype == WAVSTREAM_OGG)
 			{
 				mCodec.mOgg = new MBOggDecoder();
-				if (!mCodec.mOgg->open(mFile))
+				// ###### flutter_soloud local patch (chained opus length) ######
+				// A voice never asks its decoder for the length, which
+				// WavStream::loadogg() got once: skip the scan that finds it,
+				// all of a chained Opus file, at every play().
+				if (!mCodec.mOgg->open(mFile, false))
 				{
 					delete mCodec.mOgg;
 					mCodec.mOgg = 0;

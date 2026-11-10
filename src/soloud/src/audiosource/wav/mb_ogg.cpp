@@ -123,7 +123,7 @@ void MBOggDecoder::close() {
 // ------------------------------------------------------------------
 // Open / Detection
 // ------------------------------------------------------------------
-bool MBOggDecoder::open(File *aFile) {
+bool MBOggDecoder::open(File *aFile, bool aScanLength) {
   close();
   mDataSource.file = aFile;
   mDataSource.mem = nullptr;
@@ -142,7 +142,7 @@ bool MBOggDecoder::open(File *aFile) {
     ok = initVorbis();
     break;
   case CODEC_OPUS:
-    ok = initOpus();
+    ok = initOpus(aScanLength);
     break;
   case CODEC_FLAC:
     ok = initFlac();
@@ -173,7 +173,7 @@ bool MBOggDecoder::open(const unsigned char *aData, unsigned int aLength) {
     ok = initVorbis();
     break;
   case CODEC_OPUS:
-    ok = initOpus();
+    ok = initOpus(true);
     break;
   case CODEC_FLAC:
     ok = initFlac();
@@ -226,7 +226,7 @@ bool MBOggDecoder::detectCodec() {
   return mCodecType != CODEC_UNKNOWN;
 }
 
-ogg_int64_t MBOggDecoder::scanLastGranule() {
+ogg_int64_t MBOggDecoder::scanLastGranule(int *aSerial) {
   const unsigned int savedPos = mDataSource.tell();
   const unsigned int totalLen = mDataSource.length();
 
@@ -242,8 +242,11 @@ ogg_int64_t MBOggDecoder::scanLastGranule() {
       int ret = ogg_sync_pageout(&scanOy, &scanOg);
       if (ret == 1) {
         ogg_int64_t granule = ogg_page_granulepos(&scanOg);
-        if (granule >= 0)
+        if (granule >= 0) {
           lastGranule = granule;
+          if (aSerial)
+            *aSerial = ogg_page_serialno(&scanOg);
+        }
       } else if (ret == 0) {
         char *buf = ogg_sync_buffer(&scanOy, 8192);
         unsigned int bytes = mDataSource.read((unsigned char *)buf, 8192);
@@ -270,6 +273,90 @@ ogg_int64_t MBOggDecoder::scanLastGranule() {
 
   mDataSource.seek((int)savedPos);
   return lastGranule;
+}
+
+// ###### flutter_soloud local patch (chained opus length) ######
+// The length of a chained Opus file in 48 kHz samples: the sum over the links
+// that play of the last granule position less the pre-skip, as each link
+// counts its granule positions from 0. A link starts at a page of a new
+// serial number, as in feedOpusData(), and plays when its headers, read
+// packet by packet as decodeOpusPacket() reads them, give an OpusHead it
+// decodes and then an OpusTags: the others are skipped when playing too. 0,
+// an unknown length, when a link that plays has no granule position past its
+// pre-skip: how much it plays is only known by decoding it. Reads the whole
+// file.
+int64_t MBOggDecoder::scanOpusChainLength() {
+  const unsigned int savedPos = mDataSource.tell();
+  mDataSource.seek(0);
+  ogg_sync_state oy;
+  ogg_sync_init(&oy);
+  ogg_stream_state os;
+  bool inLink = false;
+  bool headOk = false;
+  bool tagsSeen = false;
+  int preSkip = 0;
+  ogg_int64_t lastGranule = -1;
+  int64_t total = 0;
+  bool unknown = false;
+  auto endLink = [&]() {
+    if (!inLink || !headOk || !tagsSeen)
+      return;
+    if (lastGranule <= preSkip) {
+      unknown = true;
+      return;
+    }
+    const int64_t frames = lastGranule - preSkip;
+    total = frames > INT64_MAX - total ? INT64_MAX : total + frames;
+  };
+
+  while (true) {
+    ogg_page og;
+    const int ret = ogg_sync_pageout(&oy, &og);
+    if (ret == 0) {
+      char *buf = ogg_sync_buffer(&oy, 8192);
+      const unsigned int bytes = mDataSource.read((unsigned char *)buf, 8192);
+      if (bytes == 0)
+        break;
+      ogg_sync_wrote(&oy, bytes);
+      continue;
+    }
+    if (ret < 0)
+      continue; // skipped bytes up to the next page
+    if (!inLink || ogg_page_serialno(&og) != os.serialno) {
+      endLink();
+      if (inLink)
+        ogg_stream_clear(&os);
+      ogg_stream_init(&os, ogg_page_serialno(&og));
+      inLink = true;
+      headOk = false;
+      tagsSeen = false;
+      preSkip = 0;
+      lastGranule = -1;
+    }
+    if (!tagsSeen && ogg_stream_pagein(&os, &og) == 0) {
+      ogg_packet op;
+      while (!tagsSeen && ogg_stream_packetout(&os, &op) == 1) {
+        if (op.bytes >= 8 && memcmp(op.packet, "OpusHead", 8) == 0) {
+          const int channels = op.bytes >= 19 ? op.packet[9] : 0;
+          headOk = channels >= 1 && channels <= 2;
+          if (headOk)
+            preSkip = op.packet[10] | (op.packet[11] << 8);
+        } else if (op.bytes >= 8 && memcmp(op.packet, "OpusTags", 8) == 0) {
+          tagsSeen = true;
+        }
+      }
+    }
+    const ogg_int64_t granule = ogg_page_granulepos(&og);
+    if (granule >= 0)
+      lastGranule = granule;
+  }
+  endLink();
+
+  if (inLink)
+    ogg_stream_clear(&os);
+  ogg_sync_clear(&oy);
+  mDataSource.seek((int)savedPos);
+  return unknown ? 0 : total;
 }
 
 // ------------------------------------------------------------------
@@ -382,7 +469,7 @@ long MBOggDecoder::vorbisTellCb(void *datasource) {
 // ------------------------------------------------------------------
 // Opus
 // ------------------------------------------------------------------
-bool MBOggDecoder::initOpus() {
+bool MBOggDecoder::initOpus(bool aScanLength) {
   mSampleRate = 48000;
   // Set by the first link's OpusHead (see decodeOpusPacket()).
   mChannels = 0;
@@ -391,7 +478,9 @@ bool MBOggDecoder::initOpus() {
   // Scan the final Ogg granule position first (O(1) 64 KB tail scan with
   // full-file fallback) so headers only need to be parsed once without
   // tearing down and recreating mOpusOs / mOpusDecoder.
-  const ogg_int64_t lastGranule = scanLastGranule();
+  int lastSerial = 0;
+  const ogg_int64_t lastGranule =
+      aScanLength ? scanLastGranule(&lastSerial) : -1;
   mDataSource.seek(0);
 
   ogg_sync_init(&mOpusOy);
@@ -425,6 +514,12 @@ bool MBOggDecoder::initOpus() {
 
   if (lastGranule >= 0) {
     int64_t trimmed = (int64_t)lastGranule - mOpusPreSkip;
+    // ###### flutter_soloud local patch (chained opus length) ######
+    // The last page belongs to another link than the first, whose stream
+    // the headers just set up: a chained file. Its last granule position is
+    // the last link's length alone, so add up the links.
+    if (lastSerial != mOpusOs.serialno)
+      trimmed = scanOpusChainLength();
     if (trimmed < 0)
       trimmed = 0;
     mLengthInSamples = (unsigned int)((trimmed * mSampleRate + 47999) / 48000);

@@ -20,6 +20,13 @@
 // now repeats them, and a mono stream plays the mean of a stereo link's two
 // channels (it played the first), as it does for Opus.
 //
+// opus-length: each link counts its granule positions from 0, and the length
+// came from the last page's: the last link's alone. Wav decodes only that
+// many frames, so a 2 s link and a 1 s link loaded as 1 s. The length is now
+// the sum of the links that play (a link without OpusTags does not), or
+// unknown, 0, when one of them gives no granule position past its pre-skip:
+// Wav then decodes to the end of the file.
+//
 // The test builds its files with libopus, libvorbisenc and libogg, and reads
 // them through a WavStream voice instance the way the mixer does, through a
 // voice on the null backend, and through Wav (what LoadMode.memory uses).
@@ -28,7 +35,8 @@
 //
 //   ./test/run_ogg_chain_test.sh [--asan] [case or group...]
 //
-// Groups: opus-channels, vorbis-channels. With none, all cases run.
+// Groups: opus-channels, vorbis-channels, opus-length. With none, all cases
+// run.
 
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -49,6 +57,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -134,6 +143,9 @@ struct OpusLink
 	int headChannels; // declared in the OpusHead
 	int serial;
 	double seconds;
+	bool tags = true;          // an OpusTags packet follows the OpusHead
+	bool audioGranules = true; // audio pages carry granule positions
+	std::optional<ogg_int64_t> lastGranule; // the last page's, if not as encoded
 };
 
 // One Ogg Opus link: OpusHead and OpusTags pages, then 20 ms packets of a tone.
@@ -175,12 +187,15 @@ Bytes makeOpusLink(const OpusLink &link)
 	putLe32(tags, (unsigned int)vendor.size());
 	tags.insert(tags.end(), vendor.begin(), vendor.end());
 	putLe32(tags, 0); // no comments
-	op = {};
-	op.packet = tags.data();
-	op.bytes = (long)tags.size();
-	op.packetno = 1;
-	ogg_stream_packetin(&os, &op);
-	takePages(os, out, true);
+	if (link.tags)
+	{
+		op = {};
+		op.packet = tags.data();
+		op.bytes = (long)tags.size();
+		op.packetno = 1;
+		ogg_stream_packetin(&os, &op);
+		takePages(os, out, true);
+	}
 
 	// Encode the encoder's lookahead too, so all of the tone comes out.
 	const long frames = std::lround(link.seconds * kOpusRate);
@@ -211,8 +226,10 @@ Bytes makeOpusLink(const OpusLink &link)
 		op.packet = packet;
 		op.bytes = bytes;
 		op.packetno = packetNo++;
-		op.granulepos = std::min(done, total);
+		op.granulepos = link.audioGranules ? std::min(done, total) : -1;
 		op.e_o_s = done >= total ? 1 : 0;
+		if (op.e_o_s && link.lastGranule)
+			op.granulepos = *link.lastGranule;
 		ogg_stream_packetin(&os, &op);
 		takePages(os, out, false);
 	}
@@ -647,6 +664,171 @@ void testVorbisMonoThenStereo()
 			  std::to_string(wavMixDifference) + ")");
 }
 
+// Checks the length WavStream and Wav report for [file], and that Wav holds
+// every link: [links] are the seconds of each link that plays.
+void checkLength(const std::string &what, const Bytes &file, const std::vector<double> &links)
+{
+	double seconds = 0;
+	for (double s : links)
+		seconds += s;
+	const unsigned int frames = (unsigned int)std::lround(seconds * kOpusRate);
+
+	SoLoud::WavStream ws;
+	if (loadStream(ws, file, what))
+	{
+		check(ws.mSampleCount == frames,
+			  what + ": WavStream is " + std::to_string(frames) + " frames long, not " +
+				  std::to_string(ws.mSampleCount));
+		check(std::fabs(ws.getLength() - seconds) < 1e-9,
+			  what + ": WavStream::getLength() is " + std::to_string(seconds) + " s, not " +
+				  std::to_string(ws.getLength()));
+	}
+
+	SoLoud::Wav wav;
+	if (!loadWav(wav, file, what))
+		return;
+	check(wav.mSampleCount == frames, what + ": Wav is " + std::to_string(frames) +
+										  " frames long, not " +
+										  std::to_string(wav.mSampleCount));
+	check(std::fabs(wav.getLength() - seconds) < 1e-9,
+		  what + ": Wav::getLength() is " + std::to_string(seconds) + " s, not " +
+			  std::to_string(wav.getLength()));
+	const Planar loaded = wavAll(wav);
+	double start = 0;
+	for (size_t i = 0; i < links.size(); i++)
+	{
+		for (unsigned int ch = 0; ch < loaded.channels; ch++)
+			check(rms(loaded, ch, start + 0.1, start + links[i] - 0.1, kOpusRate) > kHeard,
+				  what + ": Wav channel " + std::to_string(ch) + " holds link " +
+					  std::to_string(i + 1) + " of those that play");
+		start += links[i];
+	}
+}
+
+void testOpusLengthTwoLinks()
+{
+	const std::string what = "2 s stereo Opus link, then a 1 s one";
+	std::printf("%s\n", what.c_str());
+	checkLength(what, chain({makeOpusLink({2, 2, 61, 2.0}), makeOpusLink({2, 2, 62, 1.0})}),
+				{2.0, 1.0});
+}
+
+void testOpusLengthThreeLinks()
+{
+	const std::string what = "1 s mono Opus link, a 0.5 s stereo one and a 1.5 s mono one";
+	std::printf("%s\n", what.c_str());
+	checkLength(what,
+				chain({makeOpusLink({1, 1, 71, 1.0}), makeOpusLink({2, 2, 72, 0.5}),
+					   makeOpusLink({1, 1, 73, 1.5})}),
+				{1.0, 0.5, 1.5});
+}
+
+void testOpusLengthSkippedLink()
+{
+	const std::string what =
+		"1.5 s stereo Opus link, then a 0.5 s link whose OpusHead says 0 channels";
+	std::printf("%s\n", what.c_str());
+	// The second link does not play, so it adds nothing.
+	checkLength(what, chain({makeOpusLink({2, 2, 81, 1.5}), makeOpusLink({2, 0, 82, 0.5})}),
+				{1.5});
+}
+
+void testOpusLengthSingleLink()
+{
+	const std::string what = "a single 2 s stereo Opus link";
+	std::printf("%s\n", what.c_str());
+	checkLength(what, makeOpusLink({2, 2, 91, 2.0}), {2.0});
+}
+
+// Checks that WavStream and Wav report [file]'s length as unknown, 0, and
+// that Wav, which then decodes the file to its end, holds every link:
+// [links] are the seconds of each link that plays.
+void checkUnknownLength(const std::string &what, const Bytes &file,
+						const std::vector<double> &links)
+{
+	double seconds = 0;
+	for (double s : links)
+		seconds += s;
+	const unsigned int frames = (unsigned int)std::lround(seconds * kOpusRate);
+
+	SoLoud::WavStream ws;
+	if (loadStream(ws, file, what))
+	{
+		check(ws.mSampleCount == 0, what + ": WavStream's length is unknown, 0 frames, not " +
+										std::to_string(ws.mSampleCount));
+		const Planar streamed = streamAll(ws, what, seconds + 1.0);
+		check(streamed.frames() >= frames, what + ": the stream plays " +
+											   std::to_string(frames) + " frames or more, not " +
+											   std::to_string(streamed.frames()));
+	}
+
+	SoLoud::Wav wav;
+	if (!loadWav(wav, file, what))
+		return;
+	check(wav.mSampleCount >= frames, what + ": Wav holds " + std::to_string(frames) +
+										  " frames or more, not " +
+										  std::to_string(wav.mSampleCount));
+	const Planar loaded = wavAll(wav);
+	double start = 0;
+	for (size_t i = 0; i < links.size(); i++)
+	{
+		for (unsigned int ch = 0; ch < loaded.channels; ch++)
+			check(rms(loaded, ch, start + 0.1, start + links[i] - 0.1, kOpusRate) > kHeard,
+				  what + ": Wav channel " + std::to_string(ch) + " holds link " +
+					  std::to_string(i + 1) + " of those that play");
+		start += links[i];
+	}
+}
+
+void testOpusLengthUntaggedLink()
+{
+	const std::string what = "2 s stereo Opus link, a 1 s one without OpusTags, a 0.5 s one";
+	std::printf("%s\n", what.c_str());
+	// The decoder takes the second link's packets for headers until the next
+	// link, so it does not play, and adds nothing.
+	OpusLink untagged{2, 2, 102, 1.0};
+	untagged.tags = false;
+	checkLength(what,
+				chain({makeOpusLink({2, 2, 101, 2.0}), makeOpusLink(untagged),
+					   makeOpusLink({2, 2, 103, 0.5})}),
+				{2.0, 0.5});
+}
+
+void testOpusLengthNoGranule()
+{
+	const std::string what =
+		"1 s stereo Opus link, then a 1 s one whose pages give no granule position";
+	std::printf("%s\n", what.c_str());
+	OpusLink second{2, 2, 112, 1.0};
+	second.audioGranules = false;
+	checkUnknownLength(what, chain({makeOpusLink({2, 2, 111, 1.0}), makeOpusLink(second)}),
+					   {1.0, 1.0});
+}
+
+void testOpusLengthGranuleBelowPreSkip()
+{
+	const std::string what =
+		"1 s stereo Opus link, then a 1 s one whose only granule position, 100, is below "
+		"its pre-skip";
+	std::printf("%s\n", what.c_str());
+	OpusLink second{2, 2, 122, 1.0};
+	second.audioGranules = false;
+	second.lastGranule = 100;
+	checkUnknownLength(what, chain({makeOpusLink({2, 2, 121, 1.0}), makeOpusLink(second)}),
+					   {1.0, 1.0});
+}
+
+void testOpusLengthSkippedLinkNoGranule()
+{
+	const std::string what = "1.5 s stereo Opus link, then a 0.5 s link whose OpusHead says 0 "
+							 "channels and whose pages give no granule position";
+	std::printf("%s\n", what.c_str());
+	// A link that does not play cannot make the length unknown.
+	OpusLink skipped{2, 0, 132, 0.5};
+	skipped.audioGranules = false;
+	checkLength(what, chain({makeOpusLink({2, 2, 131, 1.5}), makeOpusLink(skipped)}), {1.5});
+}
+
 // A case runs when no argument is given, or when an argument names it or its
 // group ("opus-channels" runs "opus-channels/zero").
 bool wanted(int argc, char **argv, const std::string &name)
@@ -674,6 +856,14 @@ const Case kCases[] = {
 	{"opus-channels/stereo-mono", testOpusStereoThenMono},
 	{"vorbis-channels/stereo-mono", testVorbisStereoThenMono},
 	{"vorbis-channels/mono-stereo", testVorbisMonoThenStereo},
+	{"opus-length/two-links", testOpusLengthTwoLinks},
+	{"opus-length/three-links", testOpusLengthThreeLinks},
+	{"opus-length/skipped-link", testOpusLengthSkippedLink},
+	{"opus-length/single-link", testOpusLengthSingleLink},
+	{"opus-length/untagged-link", testOpusLengthUntaggedLink},
+	{"opus-length/no-granule", testOpusLengthNoGranule},
+	{"opus-length/granule-below-pre-skip", testOpusLengthGranuleBelowPreSkip},
+	{"opus-length/skipped-link-no-granule", testOpusLengthSkippedLinkNoGranule},
 };
 
 } // namespace
