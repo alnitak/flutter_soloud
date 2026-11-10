@@ -110,6 +110,26 @@ namespace SoLoud
 			return (unsigned int)(w - r);
 		}
 
+		// ###### flutter_soloud local patch (ring depth for observers) ######
+		// availableToRead() for a thread that owns neither counter (the
+		// output latency query). Between its two loads the writer can append
+		// and the reader consume past the write position it loaded, and the
+		// difference wraps to about 2^32 frames. Retry until the write
+		// position is the same on both sides of the read-position load: the
+		// difference is then the depth the ring had at that load.
+		unsigned int availableToReadForObserver() const
+		{
+			unsigned long long w = mWritePos.load(std::memory_order_acquire);
+			for (;;)
+			{
+				const unsigned long long r = mReadPos.load(std::memory_order_acquire);
+				const unsigned long long after = mWritePos.load(std::memory_order_acquire);
+				if (after == w)
+					return (unsigned int)(w - r);
+				w = after;
+			}
+		}
+
 		// Frames the writer may still append without overwriting unread data.
 		unsigned int availableToWrite() const
 		{

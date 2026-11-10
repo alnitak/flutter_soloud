@@ -900,8 +900,9 @@ namespace SoLoud
 		if (!isRenderAheadEnabled() || !mRenderRing.isInited() || mSamplerate == 0)
 			return 0;
 		// Frames mixed ahead of the device read head right now, plus one
-		// device period of cushion inside the backend.
-		unsigned long long buffered = mRenderRing.availableToRead();
+		// device period of cushion inside the backend. This thread owns
+		// neither ring counter (no audio mutex either).
+		unsigned long long buffered = mRenderRing.availableToReadForObserver();
 		return (time)(buffered + mDevicePeriodFrames) / (time)mSamplerate;
 	}
 

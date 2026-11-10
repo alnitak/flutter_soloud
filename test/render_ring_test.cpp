@@ -756,6 +756,74 @@ void testDeviceTopUpLeavesCallbacksToTheWorker()
     engine.deinit();
 }
 
+// getOutputLatency() runs on an API thread, which owns neither ring counter
+// and takes no lock. It loaded the write position, then the read position;
+// when the worker appended and the device read past the loaded write
+// position in between, the unsigned depth wrapped to about 2^32 frames (27
+// hours at 44.1 kHz). A device that reads as fast as it can keeps the read
+// head right behind the write head, which makes that a matter of
+// milliseconds.
+void testOutputLatencyStaysWithinTheRing()
+{
+    constexpr unsigned int kShortQuantum = 512;
+    constexpr unsigned int kShortAhead = 512;
+    constexpr unsigned int kTinyPeriod = 64;
+    SoLoud::Soloud engine;
+    engine.setRenderAheadConfig(kTinyPeriod, kShortAhead);
+    engine.mRenderWorkerWanted = true;
+    const SoLoud::result result =
+        engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER,
+                    kSampleRate, kShortQuantum, 2);
+    EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+    EXPECT(engine.isRenderWorkerRunning_internal(), "the render worker did not start");
+    DcSource source;
+    engine.play(source);
+    const double maximum =
+        double(engine.mRenderRing.getCapacity() + kTinyPeriod) / kSampleRate;
+
+    std::atomic<bool> stop{false};
+    std::thread device([&] {
+        std::vector<float> buf(kTinyPeriod * 2);
+        while (!stop.load())
+            engine.readRenderRingForDevice_internal(buf.data(), kTinyPeriod);
+    });
+    std::atomic<unsigned long long> queries{0}, impossible{0};
+    std::atomic<double> worst{0};
+    std::vector<std::thread> observers;
+    for (int t = 0; t < 4; ++t)
+        observers.emplace_back([&] {
+            unsigned long long n = 0, bad = 0;
+            double w = 0;
+            while (!stop.load()) {
+                const double latency = engine.getOutputLatency();
+                ++n;
+                if (latency > maximum) {
+                    ++bad;
+                    w = std::max(w, latency);
+                }
+            }
+            queries += n;
+            impossible += bad;
+            double seen = worst.load();
+            while (w > seen && !worst.compare_exchange_weak(seen, w)) {
+            }
+        });
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    stop.store(true);
+    for (auto& o : observers)
+        o.join();
+    device.join();
+
+    EXPECT(engine.mRenderRing.getReadPosition() > 100 * kShortQuantum,
+           "the device read only %llu frames", engine.mRenderRing.getReadPosition());
+    EXPECT(impossible.load() == 0,
+           "%llu of %llu latency readings exceed what the ring can hold "
+           "(worst %.0f s, at most %.6f s)",
+           impossible.load(), queries.load(), worst.load(), maximum);
+    engine.stopAll();
+    engine.deinit();
+}
+
 int main()
 {
     testRingRoundtrip();
@@ -769,6 +837,7 @@ int main()
     testRenderWorkerKeepsDeviceFed();
     testWritersRecheckRoomUnderTheMutex();
     testDeviceTopUpLeavesCallbacksToTheWorker();
+    testOutputLatencyStaysWithinTheRing();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);
