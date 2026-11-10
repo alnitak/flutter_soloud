@@ -9,7 +9,10 @@
 //   * after a seek, a seek back must still request the offset the whole
 //     file's seek map gives, not one from a table built from the data that
 //     started at the earlier seek (on a variable bit rate file the two
-//     differ).
+//     differ);
+//   * the table can cover only the start of the file. A seek past it must be
+//     estimated from the duration, also once all the data has been
+//     delivered, not mapped to the table's last entry.
 //
 // The stream is driven through the exports Dart uses, on a real engine (the
 // null backend), with a buffer of about one second so that the seeks leave
@@ -17,10 +20,11 @@
 // does, and the test mixes the engine itself as well, so playback runs
 // faster than real time.
 //
-//   ./test/run_pull_mp3_seek_test.sh [--asan] [vbr.mp3]
+//   ./test/run_pull_mp3_seek_test.sh [--asan] [vbr.mp3 cbr.mp3]
 //
-// The runner encodes the fixture with ffmpeg: five seconds of silence, then
-// ten of independent noise per channel, at VBR quality 0.
+// The runner encodes the fixtures with ffmpeg: five seconds of silence, then
+// ten of independent noise per channel, at VBR quality 0; and twelve seconds
+// of a sine at 128 kbps without a Xing header.
 #include "bindings.h"
 #include "player.h"
 #include "audiobuffer/mp3_stream_decoder.h"
@@ -287,6 +291,33 @@ void seekBackUsesTheFileMap(const char *path) {
     endStream(voice);
 }
 
+/// Play a file to the end of its data, then seek back to 6 s, past what the
+/// seek table built from the first data covers: the seek must request about
+/// the whole file's offset for 6 s.
+void seekPastTheTableAfterTheEnd(const char *path) {
+    std::printf("seek past the seek table after the end of data (%s)\n",
+                path);
+    const unsigned int voice = startStream(path);
+    double start = 0, end = 0;
+    const bool atTail = waitFor([&] {
+        getPullBufferTimeRange(gHash, &start, &end);
+        return end > 11.3;
+    }, 15000);
+    std::printf("  at the end of data: buffered [%.2f, %.2f]\n", start, end);
+    EXPECT(atTail, "the stream should play to the end of the data, buffered "
+                   "[%.2f, %.2f]", start, end);
+    const uint64_t expected = fileOffsetOf(6.0);
+    const uint64_t requested =
+        seekAndGetRequestBelow(voice, 6.0f, gFile.size() / 2 + 32768);
+    std::printf("  seek(6) requested %llu, the file map says %llu\n",
+                (unsigned long long)requested, (unsigned long long)expected);
+    EXPECT(expected != 0 && requested != UINT64_MAX &&
+               distance(requested, expected) <= 4 * kMaxFrameBytes,
+           "the seek to 6 s requested byte %llu; the file map has it at %llu",
+           (unsigned long long)requested, (unsigned long long)expected);
+    endStream(voice);
+}
+
 bool loadFile(const char *path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     ++gAssertions;
@@ -304,8 +335,8 @@ bool loadFile(const char *path) {
 } // namespace
 
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        std::printf("usage: %s vbr.mp3\n", argv[0]);
+    if (argc < 3) {
+        std::printf("usage: %s vbr.mp3 cbr.mp3\n", argv[0]);
         return 2;
     }
     setAudioDeviceIdleTimeout(600000);
@@ -321,6 +352,8 @@ int main(int argc, char **argv) {
         seekMapSurvivesASeek();
         seekBackUsesTheFileMap(argv[1]);
     }
+    if (loadFile(argv[2]))
+        seekPastTheTableAfterTheEnd(argv[2]);
 
     gStop.store(true);
     feed.join();

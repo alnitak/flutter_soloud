@@ -459,7 +459,13 @@ void MP3DecoderWrapper::prepareForSeek(uint64_t targetSample,
 }
 
 bool MP3DecoderWrapper::canSeekToTime(double seconds) const {
-  return !mSeekPoints.empty() && m_seekTableSampleRate != 0 && seconds > 0.0;
+  if (mSeekPoints.empty() || m_seekTableSampleRate == 0 || !(seconds > 0.0))
+    return false;
+  // The table can cover only the start of the file: it is built from the
+  // first data, and never again after a seek.
+  const double frame = seconds * m_seekTableSampleRate;
+  return frame >= static_cast<double>(mSeekPoints.front().pcmFrameIndex) &&
+         frame <= static_cast<double>(mSeekPoints.back().pcmFrameIndex);
 }
 
 uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
@@ -467,6 +473,13 @@ uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
     buildSeekTable();
   }
   if (mSeekPoints.empty()) {
+    return 0;
+  }
+
+  // A target past the table stays unmapped even once all the data has been
+  // delivered: the end of the data does not extend a table built from its
+  // start. The pull stream then estimates the offset from the duration.
+  if (!canSeekToTime(seconds)) {
     return 0;
   }
 
@@ -484,12 +497,6 @@ uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
     return 0;
   }
   const drmp3_seek_point &best = *(it - 1);
-
-  // Block out-of-buffer seeks until the table covers the target.
-  if (targetFrame > mSeekPoints.back().pcmFrameIndex && !mDataEnded) {
-    return 0;
-  }
-
   return m_seekTableBaseOffset + best.seekPosInBytes;
 }
 

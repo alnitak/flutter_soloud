@@ -10,7 +10,7 @@
 # no audio hardware is used. The fixture is encoded with ffmpeg (libmp3lame);
 # without it the test is skipped.
 #
-#   ./test/run_pull_mp3_seek_test.sh [--asan] [vbr.mp3]
+#   ./test/run_pull_mp3_seek_test.sh [--asan] [vbr.mp3 cbr.mp3]
 #
 # --asan builds with AddressSanitizer and UndefinedBehaviorSanitizer.
 
@@ -45,22 +45,30 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 # A variable bit rate file: five seconds of silence, then ten of independent
-# noise per channel, so the bit rate changes a lot along the file.
-if [ $# -gt 0 ]; then
+# noise per channel, so the bit rate changes a lot along the file. And twelve
+# seconds at a constant bit rate without a Xing header, so the duration is
+# estimated and the seek table covers only what has been decoded.
+if [ $# -gt 1 ]; then
     VBR="$1"
-    shift
+    CBR="$2"
+    shift 2
 else
     if ! command -v ffmpeg > /dev/null; then
         echo "SKIP: ffmpeg is not installed"
         exit 0
     fi
     VBR="$WORK_DIR/vbr.mp3"
+    CBR="$WORK_DIR/cbr-no-xing.mp3"
     if ! ffmpeg -y -hide_banner -loglevel error \
         -f lavfi -i 'anullsrc=r=44100:cl=stereo:d=5' \
         -f lavfi -i 'anoisesrc=r=44100:d=10:seed=47' \
         -f lavfi -i 'anoisesrc=r=44100:d=10:seed=73' \
         -filter_complex '[1:a][2:a]join=inputs=2:channel_layout=stereo[n];[0:a][n]concat=n=2:v=0:a=1[out]' \
-        -map '[out]' -c:a libmp3lame -q:a 0 "$VBR" 2> "$WORK_DIR/ffmpeg.log"; then
+        -map '[out]' -c:a libmp3lame -q:a 0 "$VBR" 2> "$WORK_DIR/ffmpeg.log" ||
+       ! ffmpeg -y -hide_banner -loglevel error -f lavfi \
+        -i 'sine=frequency=440:sample_rate=44100:duration=12' \
+        -ac 2 -c:a libmp3lame -b:a 128k -write_xing 0 -id3v2_version 0 \
+        "$CBR" 2>> "$WORK_DIR/ffmpeg.log"; then
         if grep -qi 'libmp3lame' "$WORK_DIR/ffmpeg.log"; then
             echo "SKIP: ffmpeg has no libmp3lame encoder"
             exit 0
@@ -134,4 +142,4 @@ c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     "${PLATFORM_LIBS[@]}" \
     -ldl -lm
 
-"$OUT" "$VBR" "$@"
+"$OUT" "$VBR" "$CBR" "$@"
