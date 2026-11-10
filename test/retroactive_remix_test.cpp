@@ -949,6 +949,68 @@ void testGroupFadesStartFromEachVoice()
     }
 }
 
+// A fade the retroactive re-mix places at the playhead starts from the
+// voice's value there. The re-mix restores the checkpoint at or before the
+// playhead, and the fade used to start from the value restored with it,
+// leaving out what changed the voice since: a setVolume() earlier in the
+// same quantum, or the part of a running fade between the checkpoint and
+// the playhead.
+void testRetroactiveFadeStartsFromTheLiveValue()
+{
+    // setVolume(0), then a fade in before the next checkpoint: the fade
+    // started from the volume before the setVolume(), and the voice was
+    // back at full volume at once.
+    {
+        Rig rig;
+        PulseSource a(1 << 20, 1.0f);
+        const SoLoud::handle h = rig.engine.play(a);
+        rig.topUp();
+        rig.discard(2100);  // playhead mid-quantum (checkpoints at 2048 and 3072)
+        rig.engine.setVolume(h, 0.0f);
+        rig.discard(200);
+        rig.engine.fadeVolume(h, 1.0f, 1.0);
+
+        const int slot = rig.engine.getVoiceFromHandle_internal(h);
+        EXPECT(slot >= 0, "the voice is gone");
+        if (slot >= 0) {
+            const SoLoud::Fader& fader = rig.engine.mVoice[slot]->mVolumeFader;
+            EXPECT(fader.mActive > 0 && std::fabs(fader.mFrom) < 1e-4f,
+                   "the fade in after setVolume(0) starts from %f (active %d), want 0",
+                   fader.mFrom, fader.mActive);
+        }
+        // Past the quantum holding the playhead (window frame 3072 - 2300 =
+        // 772) the voice is a few hundredths into its fade in.
+        const std::vector<float> out = rig.readAll();
+        float peak = 0;
+        for (size_t i = 800; i < 1000 && i * 2 < out.size(); ++i)
+            peak = std::max(peak, std::fabs(out[i * 2]));
+        EXPECT(out.size() >= 2000 && peak < 0.05f,
+               "%f just after a 1 s fade in from silence started", peak);
+    }
+    // A fade on top of one running since before the checkpoint: the voice
+    // jumped back to where that fade was at the checkpoint.
+    {
+        Rig rig;
+        PulseSource a(1 << 20, 1.0f);
+        const SoLoud::handle h = rig.engine.play(a);
+        const double fade = 8192.0 / kSampleRate;
+        rig.engine.fadeVolume(h, 0.0f, fade);  // nothing mixed yet: from the write head
+        rig.topUp();
+        rig.discard(2500);
+        rig.engine.fadeVolume(h, 1.0f, 1.0);   // retroactive, at the playhead
+
+        const int slot = rig.engine.getVoiceFromHandle_internal(h);
+        EXPECT(slot >= 0, "the voice is gone");
+        if (slot >= 0) {
+            const SoLoud::Fader& fader = rig.engine.mVoice[slot]->mVolumeFader;
+            const double atPlayhead = 1.0 - (2500.0 / kSampleRate) / fade;
+            EXPECT(fader.mActive > 0 && std::fabs(fader.mFrom - atPlayhead) < 1e-3,
+                   "the new fade starts from %f (active %d), the voice is at %f "
+                   "at the playhead", fader.mFrom, fader.mActive, atPlayhead);
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -973,6 +1035,7 @@ int main()
     testRepeatedRollbacksDoNotDoubleExtendStopSamplesLeft();
     testLongIdleNoStreamTimeOrRingDrift();
     testGroupFadesStartFromEachVoice();
+    testRetroactiveFadeStartsFromTheLiveValue();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);
