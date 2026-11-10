@@ -3,6 +3,7 @@
 #if !defined(NO_XIPH_LIBS)
 
 #include "../../../../simd/simd_pcm.h"
+#include <climits>
 #include <cstdio>
 #include <iostream>
 #include <stdint.h>
@@ -226,6 +227,22 @@ bool MBOggDecoder::detectCodec() {
   return mCodecType != CODEC_UNKNOWN;
 }
 
+// ###### flutter_soloud local patch (ogg length bound) ######
+// [aFrames], what a granule position or STREAMINFO says the length is, if
+// the file can hold that many frames: a damaged or crafted file can say
+// 2^62, and Wav sizes its buffer from the length. More frames than the
+// file's bytes can decode to, at [aMaxFramesPerByte] (the most a packet of
+// the codec decodes to, as every packet takes a byte at least), or than
+// getLengthInSamples() returns, are no length: 0, unknown, and Wav decodes
+// to the end of the file instead.
+unsigned int MBOggDecoder::plausibleLength(int64_t aFrames,
+                                           int64_t aMaxFramesPerByte) const {
+  if (aFrames <= 0 || aFrames > UINT_MAX ||
+      aFrames > (int64_t)mDataSource.length() * aMaxFramesPerByte)
+    return 0;
+  return (unsigned int)aFrames;
+}
+
 ogg_int64_t MBOggDecoder::scanLastGranule(int *aSerial) {
   const unsigned int savedPos = mDataSource.tell();
   const unsigned int totalLen = mDataSource.length();
@@ -381,8 +398,8 @@ bool MBOggDecoder::initVorbis() {
 
   mChannels = info->channels;
   mSampleRate = (int)info->rate;
-  ogg_int64_t total = ov_pcm_total(&mVorbisFile, -1);
-  mLengthInSamples = (total >= 0) ? (unsigned int)total : 0;
+  // A Vorbis packet decodes to at most half its largest block, 4096 frames.
+  mLengthInSamples = plausibleLength(ov_pcm_total(&mVorbisFile, -1), 4096);
   return true;
 }
 
@@ -520,8 +537,9 @@ bool MBOggDecoder::initOpus(bool aScanLength) {
     // the last link's length alone, so add up the links.
     if (lastSerial != mOpusOs.serialno)
       trimmed = scanOpusChainLength();
-    if (trimmed < 0)
-      trimmed = 0;
+    // An Opus packet decodes to at most 120 ms, 5760 frames. Bounded, the
+    // length cannot overflow the conversion below either.
+    trimmed = plausibleLength(trimmed, 5760);
     mLengthInSamples = (unsigned int)((trimmed * mSampleRate + 47999) / 48000);
   } else {
     mLengthInSamples = 0;
@@ -747,10 +765,8 @@ bool MBOggDecoder::initFlac() {
   // position before initializing the decoder.
   const ogg_int64_t lastGranule = scanLastGranule();
 
-  unsigned int scannedLength = 0;
-  if (lastGranule >= 0) {
-    scannedLength = (unsigned int)lastGranule;
-  }
+  // A FLAC block is 65535 samples per channel at most.
+  const unsigned int scannedLength = plausibleLength(lastGranule, 65535);
 
   mFlacDecoder = FLAC__stream_decoder_new();
   if (!mFlacDecoder) {
@@ -949,8 +965,8 @@ void MBOggDecoder::flacMetadataCb(const FLAC__StreamDecoder *decoder,
     self->mSampleRate = metadata->data.stream_info.sample_rate;
     self->mChannels = metadata->data.stream_info.channels;
     self->mFlacBitsPerSample = metadata->data.stream_info.bits_per_sample;
-    self->mLengthInSamples =
-        (unsigned int)metadata->data.stream_info.total_samples;
+    self->mLengthInSamples = self->plausibleLength(
+        (int64_t)metadata->data.stream_info.total_samples, 65535);
   }
 }
 

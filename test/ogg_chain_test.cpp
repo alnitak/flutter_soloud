@@ -27,16 +27,25 @@
 // unknown, 0, when one of them gives no granule position past its pre-skip:
 // Wav then decodes to the end of the file.
 //
-// The test builds its files with libopus, libvorbisenc and libogg, and reads
-// them through a WavStream voice instance the way the mixer does, through a
-// voice on the null backend, and through Wav (what LoadMode.memory uses).
+// implausible-length: the length was whatever the last granule position, or
+// an Ogg FLAC file's STREAMINFO, said. Wav read it into an int and sized its
+// buffer from it, so a damaged or crafted file that said 2^40 frames asked
+// for an allocation of nearly 2^64 bytes, and 2^50 overflowed the conversion
+// to the output rate. A length of more frames than the file's bytes can
+// decode to, or than 32 bits hold, is now unknown, and Wav decodes to the
+// end; Wav does so too for a length past INT_MAX, which WavStream keeps.
+//
+// The test builds its files with libopus, libvorbisenc, libFLAC and libogg,
+// and reads them through a WavStream voice instance the way the mixer does,
+// through a voice on the null backend, and through Wav (what LoadMode.memory
+// uses).
 //
 // Build and run from the flutter_soloud repository root with:
 //
 //   ./test/run_ogg_chain_test.sh [--asan] [case or group...]
 //
-// Groups: opus-channels, vorbis-channels, opus-length. With none, all cases
-// run.
+// Groups: opus-channels, vorbis-channels, opus-length, implausible-length.
+// With none, all cases run.
 
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -44,6 +53,7 @@
 
 #include "native_audio_decoder.h"
 
+#include <FLAC/stream_encoder.h>
 #include <ogg/ogg.h>
 #include <vorbis/vorbisenc.h>
 #if __has_include(<opus/opus.h>)
@@ -53,7 +63,9 @@
 #endif
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -96,6 +108,7 @@ void check(bool ok, const std::string &what)
 
 constexpr unsigned int kOpusRate = 48000;
 constexpr unsigned int kVorbisRate = 44100;
+constexpr unsigned int kFlacRate = 44100;
 constexpr unsigned int kBlock = 512;
 // Never a decoded sample: marks what a read did not write.
 constexpr float kUnwritten = 1000.0f;
@@ -309,6 +322,90 @@ Bytes makeVorbisLink(int channels, int serial, double seconds)
 	vorbis_comment_clear(&vc);
 	vorbis_info_clear(&vi);
 	return out;
+}
+
+// One Ogg FLAC link of a 16-bit tone at 44.1 kHz whose STREAMINFO says
+// [totalSamples] frames, 0 for unknown: libFLAC writes the real count there
+// only when it can seek back to the start, and it gets no seek callback.
+Bytes makeOggFlacLink(int channels, int serial, double seconds, FLAC__uint64 totalSamples)
+{
+	FLAC__StreamEncoder *enc = FLAC__stream_encoder_new();
+	if (enc == nullptr)
+	{
+		std::printf("FLAC__stream_encoder_new failed\n");
+		std::exit(1);
+	}
+	FLAC__stream_encoder_set_channels(enc, (uint32_t)channels);
+	FLAC__stream_encoder_set_bits_per_sample(enc, 16);
+	FLAC__stream_encoder_set_sample_rate(enc, kFlacRate);
+	FLAC__stream_encoder_set_ogg_serial_number(enc, serial);
+	FLAC__stream_encoder_set_total_samples_estimate(enc, totalSamples);
+	Bytes out;
+	const FLAC__StreamEncoderWriteCallback write =
+		[](const FLAC__StreamEncoder *, const FLAC__byte buffer[], size_t bytes, uint32_t,
+		   uint32_t, void *data) {
+			Bytes *file = static_cast<Bytes *>(data);
+			file->insert(file->end(), buffer, buffer + bytes);
+			return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
+		};
+	const FLAC__StreamEncoderInitStatus status =
+		FLAC__stream_encoder_init_ogg_stream(enc, nullptr, write, nullptr, nullptr, nullptr, &out);
+	if (status != FLAC__STREAM_ENCODER_INIT_STATUS_OK)
+	{
+		std::printf("FLAC__stream_encoder_init_ogg_stream failed: %s\n",
+					FLAC__StreamEncoderInitStatusString[status]);
+		std::exit(1);
+	}
+
+	const long frames = std::lround(seconds * kFlacRate);
+	std::vector<FLAC__int32> pcm(1024 * channels);
+	for (long done = 0; done < frames;)
+	{
+		const long n = std::min(1024L, frames - done);
+		for (long i = 0; i < n; i++)
+		{
+			for (int ch = 0; ch < channels; ch++)
+				pcm[i * channels + ch] =
+					(FLAC__int32)std::lround(32767 * tone(serial, ch, done + i, kFlacRate));
+		}
+		if (!FLAC__stream_encoder_process_interleaved(enc, pcm.data(), (uint32_t)n))
+		{
+			std::printf("FLAC__stream_encoder_process_interleaved failed\n");
+			std::exit(1);
+		}
+		done += n;
+	}
+	FLAC__stream_encoder_finish(enc);
+	FLAC__stream_encoder_delete(enc);
+	return out;
+}
+
+// Sets the granule position of [file]'s last page to [granule], as a damaged
+// or crafted file can have it, and the page's checksum to match.
+void setLastGranule(Bytes &file, ogg_int64_t granule)
+{
+	size_t last = 0;
+	long headerLen = 0;
+	long bodyLen = 0;
+	for (size_t at = 0; at + 27 <= file.size();)
+	{
+		const int segments = file[at + 26];
+		long body = 0;
+		for (int i = 0; i < segments; i++)
+			body += file[at + 27 + i];
+		last = at;
+		headerLen = 27 + segments;
+		bodyLen = body;
+		at += headerLen + body;
+	}
+	for (int i = 0; i < 8; i++)
+		file[last + 6 + i] = (unsigned char)((uint64_t)granule >> (8 * i));
+	ogg_page og;
+	og.header = file.data() + last;
+	og.header_len = headerLen;
+	og.body = file.data() + last + headerLen;
+	og.body_len = bodyLen;
+	ogg_page_checksum_set(&og);
 }
 
 Bytes chain(const std::vector<Bytes> &links)
@@ -665,13 +762,14 @@ void testVorbisMonoThenStereo()
 }
 
 // Checks the length WavStream and Wav report for [file], and that Wav holds
-// every link: [links] are the seconds of each link that plays.
-void checkLength(const std::string &what, const Bytes &file, const std::vector<double> &links)
+// every link: [links] are the seconds of each link that plays, at [rate].
+void checkLength(const std::string &what, const Bytes &file, const std::vector<double> &links,
+				 unsigned int rate = kOpusRate)
 {
 	double seconds = 0;
 	for (double s : links)
 		seconds += s;
-	const unsigned int frames = (unsigned int)std::lround(seconds * kOpusRate);
+	const unsigned int frames = (unsigned int)std::lround(seconds * rate);
 
 	SoLoud::WavStream ws;
 	if (loadStream(ws, file, what))
@@ -698,7 +796,7 @@ void checkLength(const std::string &what, const Bytes &file, const std::vector<d
 	for (size_t i = 0; i < links.size(); i++)
 	{
 		for (unsigned int ch = 0; ch < loaded.channels; ch++)
-			check(rms(loaded, ch, start + 0.1, start + links[i] - 0.1, kOpusRate) > kHeard,
+			check(rms(loaded, ch, start + 0.1, start + links[i] - 0.1, rate) > kHeard,
 				  what + ": Wav channel " + std::to_string(ch) + " holds link " +
 					  std::to_string(i + 1) + " of those that play");
 		start += links[i];
@@ -742,14 +840,14 @@ void testOpusLengthSingleLink()
 
 // Checks that WavStream and Wav report [file]'s length as unknown, 0, and
 // that Wav, which then decodes the file to its end, holds every link:
-// [links] are the seconds of each link that plays.
+// [links] are the seconds of each link that plays, at [rate].
 void checkUnknownLength(const std::string &what, const Bytes &file,
-						const std::vector<double> &links)
+						const std::vector<double> &links, unsigned int rate = kOpusRate)
 {
 	double seconds = 0;
 	for (double s : links)
 		seconds += s;
-	const unsigned int frames = (unsigned int)std::lround(seconds * kOpusRate);
+	const unsigned int frames = (unsigned int)std::lround(seconds * rate);
 
 	SoLoud::WavStream ws;
 	if (loadStream(ws, file, what))
@@ -773,7 +871,7 @@ void checkUnknownLength(const std::string &what, const Bytes &file,
 	for (size_t i = 0; i < links.size(); i++)
 	{
 		for (unsigned int ch = 0; ch < loaded.channels; ch++)
-			check(rms(loaded, ch, start + 0.1, start + links[i] - 0.1, kOpusRate) > kHeard,
+			check(rms(loaded, ch, start + 0.1, start + links[i] - 0.1, rate) > kHeard,
 				  what + ": Wav channel " + std::to_string(ch) + " holds link " +
 					  std::to_string(i + 1) + " of those that play");
 		start += links[i];
@@ -829,6 +927,110 @@ void testOpusLengthSkippedLinkNoGranule()
 	checkLength(what, chain({makeOpusLink({2, 2, 131, 1.5}), makeOpusLink(skipped)}), {1.5});
 }
 
+void testImplausibleOpusPast32Bits()
+{
+	const std::string what = "1 s stereo Opus link whose last granule position is 2^40";
+	std::printf("%s\n", what.c_str());
+	// Cut to 32 bits, the length was 2^32 - 312: a negative int to Wav.
+	Bytes file = makeOpusLink({2, 2, 141, 1.0});
+	setLastGranule(file, (ogg_int64_t)1 << 40);
+	checkUnknownLength(what, file, {1.0});
+}
+
+void testImplausibleOpusOverflow()
+{
+	const std::string what = "1 s stereo Opus link whose last granule position is 2^50";
+	std::printf("%s\n", what.c_str());
+	// Times the output rate, this many frames overflowed an int64_t.
+	Bytes file = makeOpusLink({2, 2, 142, 1.0});
+	setLastGranule(file, (ogg_int64_t)1 << 50);
+	checkUnknownLength(what, file, {1.0});
+}
+
+void testImplausibleOpusPastFileSize()
+{
+	const std::string what = "1 s mono Opus link whose last granule position is past its size";
+	std::printf("%s\n", what.c_str());
+	// An int holds this many frames, but the file's bytes cannot decode to
+	// them: an Opus packet takes a byte at least and decodes to 120 ms at most,
+	// 5760 frames.
+	Bytes file = makeOpusLink({1, 1, 143, 1.0});
+	setLastGranule(file, (ogg_int64_t)file.size() * 5760 + kOpusRate);
+	checkUnknownLength(what, file, {1.0});
+}
+
+void testImplausibleOpusChain()
+{
+	const std::string what =
+		"two 1 s stereo Opus links, the second's last granule position INT64_MAX - 10";
+	std::printf("%s\n", what.c_str());
+	// The links' lengths add up past INT64_MAX.
+	Bytes file = chain({makeOpusLink({2, 2, 144, 1.0}), makeOpusLink({2, 2, 145, 1.0})});
+	setLastGranule(file, INT64_MAX - 10);
+	checkUnknownLength(what, file, {1.0, 1.0});
+}
+
+void testImplausibleVorbis()
+{
+	const std::string what = "1 s stereo Vorbis link whose last granule position is 2^63 - 16";
+	std::printf("%s\n", what.c_str());
+	Bytes file = makeVorbisLink(2, 146, 1.0);
+	setLastGranule(file, INT64_MAX - 15);
+	checkUnknownLength(what, file, {1.0}, kVorbisRate);
+}
+
+void testImplausibleFlacGranule()
+{
+	const std::string what = "1 s stereo Ogg FLAC link of unknown length whose last granule "
+							 "position is 2^63 - 16";
+	std::printf("%s\n", what.c_str());
+	Bytes file = makeOggFlacLink(2, 147, 1.0, 0);
+	setLastGranule(file, INT64_MAX - 15);
+	checkUnknownLength(what, file, {1.0}, kFlacRate);
+}
+
+void testImplausibleFlacStreamInfo()
+{
+	const std::string what = "1 s stereo Ogg FLAC link whose STREAMINFO says 2^36 - 2^31 frames";
+	std::printf("%s\n", what.c_str());
+	// Cut to 32 bits, the count was 2^31, a negative int to Wav. The last
+	// granule position, which is right, gives the length instead.
+	checkLength(what, makeOggFlacLink(2, 148, 1.0, 0xF80000000), {1.0}, kFlacRate);
+}
+
+void testImplausibleWavPastInt()
+{
+	const std::string what = "40 s stereo Opus link whose last granule position is INT_MAX + 48000";
+	std::printf("%s\n", what.c_str());
+	// As a 12-hour file's would, the length fits in 32 bits and in what the
+	// file's bytes can decode to, so WavStream keeps it. Wav, which counts
+	// frames in an int, decodes to the end of the file instead.
+	Bytes file = makeOpusLink({2, 2, 149, 40.0});
+	const ogg_int64_t granule = (ogg_int64_t)INT_MAX + kOpusRate;
+	check((ogg_int64_t)file.size() * 5760 > granule,
+		  what + ": the file's " + std::to_string(file.size()) +
+			  " bytes can decode to that many frames");
+	setLastGranule(file, granule);
+
+	SoLoud::WavStream ws;
+	if (loadStream(ws, file, what))
+		check(ws.mSampleCount > (unsigned int)INT_MAX,
+			  what + ": WavStream keeps the length past INT_MAX, not " +
+				  std::to_string(ws.mSampleCount) + " frames");
+
+	SoLoud::Wav wav;
+	if (!loadWav(wav, file, what))
+		return;
+	const unsigned int frames = 40 * kOpusRate;
+	check(wav.mSampleCount >= frames && wav.mSampleCount < frames + kOpusRate,
+		  what + ": Wav holds the link's " + std::to_string(frames) + " frames, not " +
+			  std::to_string(wav.mSampleCount));
+	const Planar loaded = wavAll(wav);
+	for (unsigned int ch = 0; ch < loaded.channels; ch++)
+		check(rms(loaded, ch, 0.1, 39.9, kOpusRate) > kHeard,
+			  what + ": Wav channel " + std::to_string(ch) + " holds the link");
+}
+
 // A case runs when no argument is given, or when an argument names it or its
 // group ("opus-channels" runs "opus-channels/zero").
 bool wanted(int argc, char **argv, const std::string &name)
@@ -864,6 +1066,14 @@ const Case kCases[] = {
 	{"opus-length/no-granule", testOpusLengthNoGranule},
 	{"opus-length/granule-below-pre-skip", testOpusLengthGranuleBelowPreSkip},
 	{"opus-length/skipped-link-no-granule", testOpusLengthSkippedLinkNoGranule},
+	{"implausible-length/opus-past-32-bits", testImplausibleOpusPast32Bits},
+	{"implausible-length/opus-overflow", testImplausibleOpusOverflow},
+	{"implausible-length/opus-past-file-size", testImplausibleOpusPastFileSize},
+	{"implausible-length/opus-chain", testImplausibleOpusChain},
+	{"implausible-length/vorbis", testImplausibleVorbis},
+	{"implausible-length/flac-granule", testImplausibleFlacGranule},
+	{"implausible-length/flac-streaminfo", testImplausibleFlacStreamInfo},
+	{"implausible-length/wav-past-int", testImplausibleWavPastInt},
 };
 
 } // namespace

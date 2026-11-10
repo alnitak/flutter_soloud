@@ -71,6 +71,7 @@ namespace SoLoud
         };
 
         bool detectCodec();
+        unsigned int plausibleLength(int64_t aFrames, int64_t aMaxFramesPerByte) const;
         ogg_int64_t scanLastGranule(int *aSerial = nullptr);
         int64_t scanOpusChainLength();
         bool initVorbis();

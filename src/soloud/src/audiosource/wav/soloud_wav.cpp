@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #include "soloud_wav.h"
 #include "soloud.h"
 #include "soloud_file.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -215,7 +216,12 @@ result Wav::loadogg(MemoryFile *aReader) {
   }
 
   mBaseSamplerate = (float)decoder.getSampleRate();
-  int totalSamples = (int)decoder.getLengthInSamples();
+  // ###### flutter_soloud local patch (ogg length bound) ######
+  // The frame count is an int here: a length past INT_MAX, which the
+  // decoder takes for plausible for a file that size, is decoded to the end
+  // of the file like an unknown one.
+  const unsigned int length = decoder.getLengthInSamples();
+  int totalSamples = length <= (unsigned int)INT_MAX ? (int)length : 0;
 
   if (decoder.getChannels() <= 0) {
     return FILE_LOAD_FAILED;

@@ -25,7 +25,7 @@ fi
 
 # What the test and mb_ogg.cpp include, and the libraries they need.
 XIPH_HEADERS=(ogg/ogg.h vorbis/codec.h vorbis/vorbisfile.h vorbis/vorbisenc.h opus/opus.h
-              FLAC/stream_decoder.h)
+              FLAC/stream_decoder.h FLAC/stream_encoder.h)
 XIPH_LINK=(vorbisenc vorbisfile vorbis ogg opus FLAC)
 
 # Sets XIPH_PREFIX to the first prefix with every header and library, so a
