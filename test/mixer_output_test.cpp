@@ -18,7 +18,9 @@
 //     with a larger ring -- still gets the bytes it was sent for; a packet is
 //     claimed once, a discarded one not at all, unclaimed packets stay
 //     bounded, and claiming a threshold packet acknowledges its bytes in its
-//     own capture's ring only.
+//     own capture's ring only;
+//   * a stopped capture hands over the chunks it notified but nobody
+//     claimed, in order, and then its ring's tail.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -541,6 +543,124 @@ void packetsAreClaimedOnce()
     checkTokens<MixerOutput>(0);
 }
 
+std::vector<float> takeFloats(uint8_t *bytes, size_t length)
+{
+    std::vector<uint8_t> copy;
+    if (bytes != nullptr)
+        copy.assign(bytes, bytes + length);
+    std::free(bytes);
+    return asFloats(copy);
+}
+
+/// What a stopped capture still owes its listener: the chunks notified but
+/// not yet claimed (they left the ring when they were copied), then the tail.
+template <typename Capture>
+auto checkDrain(int)
+    -> decltype(Capture::takeStoppedPackets(0u, std::declval<size_t &>()),
+                void())
+{
+    clearNotices();
+    capture().setDataCallback(keepNotice);
+    EXPECT(startPcm(1 << 20, 4096, 2048) == noError, "drain: start");
+    const uint32_t id = capture().captureId();
+    float next = 0;
+    feed(2 * 2048 + 100, next); // two complete chunks and a 100-frame tail
+    EXPECT(waitFor([] { return noticeCount() >= 2; }, 2000),
+           "drain: two chunks must be notified");
+    capture().setDataCallback(nullptr);
+    capture().stop();
+
+    size_t length = 0;
+    size_t chunkLength = 0;
+    uint8_t *bytes = Capture::takeStoppedPackets(id, length, &chunkLength);
+    const std::vector<float> chunks = takeFloats(bytes, length);
+    EXPECT(length == 2 * 2048 * kBytesPerFrame && countsFrom(chunks, 0),
+           "drain: the unclaimed chunks come out whole and in order, got %zu "
+           "bytes",
+           length);
+    EXPECT(chunkLength == 2048 * kBytesPerFrame,
+           "drain: and they are chunks of 2048 frames, got %zu bytes",
+           chunkLength);
+    bytes = Capture::instance().copyStoppedTail(length);
+    const std::vector<float> tail = takeFloats(bytes, length);
+    EXPECT(length == 100 * kBytesPerFrame &&
+               countsFrom(tail, static_cast<float>(2 * 2048 * kChannels)),
+           "drain: then the ring's tail, got %zu bytes", length);
+    EXPECT(noticeCount() >= 2 &&
+               claim(notice(0).first, notice(0).second).empty() &&
+               claim(notice(1).first, notice(1).second).empty(),
+           "drain: a late notification finds nothing to claim");
+    EXPECT(Capture::takeStoppedPackets(id, length) == nullptr && length == 0,
+           "drain: a second drain finds nothing");
+
+    // A threshold packet's bytes never left the ring: draining only retires
+    // it, and the tail has them.
+    clearNotices();
+    capture().setDataCallback(keepNotice);
+    EXPECT(startPcm(1 << 20, 4096, -1) == noError, "drain: threshold start");
+    const uint32_t thresholdId = capture().captureId();
+    next = 0;
+    feed(1024, next); // 8192 bytes, notified and left unclaimed
+    EXPECT(waitFor([] { return noticeCount() >= 1; }, 2000),
+           "drain: the threshold must be notified");
+    feed(512, next); // and 4096 more while that packet is out
+    capture().setDataCallback(nullptr);
+    capture().stop();
+    EXPECT(Capture::takeStoppedPackets(thresholdId, length) == nullptr &&
+               length == 0,
+           "drain: a threshold packet adds no bytes of its own");
+    bytes = Capture::instance().copyStoppedTail(length);
+    const std::vector<float> rest = takeFloats(bytes, length);
+    EXPECT(length == 12288 && countsFrom(rest, 0),
+           "drain: the tail holds the threshold packet's bytes, got %zu",
+           length);
+    EXPECT(noticeCount() >= 1 &&
+               claim(notice(0).first, notice(0).second).empty(),
+           "drain: and its late notification finds nothing to claim");
+
+    // Claimed after the stop, as by an isolate whose capture another one
+    // stopped, the packet's bytes are delivered once: not again in the tail.
+    clearNotices();
+    capture().setDataCallback(keepNotice);
+    EXPECT(startPcm(1 << 20, 4096, -1) == noError, "drain: second start");
+    const uint32_t claimedId = capture().captureId();
+    next = 0;
+    feed(1024, next);
+    EXPECT(waitFor([] { return noticeCount() >= 1; }, 2000),
+           "drain: the second threshold must be notified");
+    feed(512, next);
+    capture().setDataCallback(nullptr);
+    capture().stop();
+    const std::vector<float> claimed =
+        asFloats(claim(notice(0).first, notice(0).second));
+    EXPECT(claimed.size() * sizeof(float) == 8192 && countsFrom(claimed, 0),
+           "drain: a packet claimed after the stop still has its bytes");
+    EXPECT(Capture::takeStoppedPackets(claimedId, length) == nullptr,
+           "drain: and is not drained");
+    bytes = Capture::instance().copyStoppedTail(length);
+    const std::vector<float> after = takeFloats(bytes, length);
+    EXPECT(length == 4096 &&
+               countsFrom(after, static_cast<float>(1024 * kChannels)),
+           "drain: the tail starts after the claimed bytes, got %zu bytes",
+           length);
+    EXPECT(Capture::instance().copyStoppedTail(length) == nullptr &&
+               length == 0,
+           "drain: and a second copy finds nothing");
+}
+
+template <typename Capture>
+void checkDrain(long)
+{
+    EXPECT(false, "drain: a stopped capture cannot hand over unclaimed chunks");
+}
+
+void stoppedCaptureDrains()
+{
+    std::printf("drain: a stopped capture hands over its unclaimed chunks, "
+                "then its tail\n");
+    checkDrain<MixerOutput>(0);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -548,7 +668,7 @@ int main(int argc, char **argv)
     const char *only = argc > 1 ? argv[1] : nullptr;
     const char *const kScenarios[] = {"chunks",   "fill",     "overrun",
                                       "oversized", "surround", "deferred",
-                                      "restart",  "tokens"};
+                                      "restart",  "tokens",   "drain"};
     if (only != nullptr)
     {
         bool known = false;
@@ -579,6 +699,8 @@ int main(int argc, char **argv)
         lateClaimSurvivesARestart();
     if (wanted("tokens"))
         packetsAreClaimedOnce();
+    if (wanted("drain"))
+        stoppedCaptureDrains();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

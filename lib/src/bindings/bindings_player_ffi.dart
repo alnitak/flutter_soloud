@@ -412,21 +412,57 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     }
   }
 
+  /// What the last stop of this isolate's own capture collected for its
+  /// stream, until [takeStoppedMixerOutput] hands it over.
+  List<Uint8List> _stoppedMixerOutput = const [];
+
   @override
   void stopMixerOutputCapture({bool onlyOwned = false}) {
     final id = _mixerCaptureId;
     _mixerCaptureId = null;
-    if (!onlyOwned ||
-        (id != null &&
-            native.isMixerCaptureRunning() != 0 &&
-            native.getMixerCaptureId() == id)) {
+    if (id != null) {
+      // Native code compares the ids under the capture lifecycle lock: a
+      // capture another isolate started since this one was stopped keeps
+      // running. Only such a stop replaces what an earlier one collected:
+      // the stream manager's stop after SoLoud.deinit() stopped the capture
+      // finds no capture of its own and must still deliver that output.
+      _stoppedMixerOutput = _stopAndDrainMixerCapture(id);
+    }
+    if (!onlyOwned) {
       native.stopMixerCapture();
     }
     // An open port keeps this isolate alive. Native code discards what is
     // posted to it once closed, and the next start what it was sent but
-    // never handled.
+    // never handled. The packets it was sent for this capture have just
+    // been drained.
     _mixerOutputPort?.close();
     _mixerOutputPort = null;
+  }
+
+  List<Uint8List> _stopAndDrainMixerCapture(int captureId) {
+    final chunkBytes = calloc<ffi.Size>();
+    final length = calloc<ffi.Size>();
+    var bytes = ffi.nullptr.cast<ffi.UnsignedChar>();
+    try {
+      bytes = native.stopMixerCaptureAndDrain(captureId, chunkBytes, length);
+      if (bytes == ffi.nullptr) return const [];
+      return splitStoppedMixerOutput(
+        Uint8List.fromList(bytes.cast<ffi.Uint8>().asTypedList(length.value)),
+        chunkBytes.value,
+      );
+    } finally {
+      if (bytes != ffi.nullptr) nativeFree(bytes.cast<ffi.Void>());
+      calloc
+        ..free(chunkBytes)
+        ..free(length);
+    }
+  }
+
+  @override
+  List<Uint8List> takeStoppedMixerOutput() {
+    final stopped = _stoppedMixerOutput;
+    _stoppedMixerOutput = const [];
+    return stopped;
   }
 
   @override

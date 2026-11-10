@@ -210,6 +210,13 @@ external int wasmStartMixerCapture(
 @JS('Module_soloud._stopMixerCapture')
 external void wasmStopMixerCapture();
 
+@JS('Module_soloud._stopMixerCaptureAndDrain')
+external int wasmStopMixerCaptureAndDrain(
+  int captureId,
+  int chunkBytesPtr,
+  int lengthPtr,
+);
+
 @JS('Module_soloud._isMixerCaptureRunning')
 external int wasmIsMixerCaptureRunning();
 

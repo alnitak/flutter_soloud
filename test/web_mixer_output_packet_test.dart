@@ -1,5 +1,6 @@
 // Web capture messages and stops against a stand-in for the wasm module,
-// which has the capture exports, a heap and the event worker but no audio.
+// which has the capture exports, a heap, a capture ring and the event worker
+// but no audio.
 // Run with:
 //
 //   flutter test --platform chrome test/web_mixer_output_packet_test.dart
@@ -44,9 +45,40 @@ class CaptureModule {
         stops++;
       }).toJS
       ..['_isMixerCaptureRunning'] = (() => running ? 1 : 0).toJS
-      ..['_getMixerCaptureAvailableBytes'] = (() => 0).toJS;
+      ..['_getMixerCaptureAvailableBytes'] = (() => tail.length).toJS
+      ..['_getMixerCaptureBufferSize'] = (() => ringSize).toJS
+      ..['_getMixerCaptureReadOffset'] = (() => 0).toJS
+      ..['_getMixerCaptureBufferPointer'] = (() => _ring).toJS;
     if (withPackets) {
       module
+        ..['_stopMixerCaptureAndDrain'] =
+            ((int id, int chunkBytesPtr, int lengthPtr) {
+              // The capture's unclaimed chunks in the order they were
+              // notified, then, unless another start superseded it, its tail.
+              final drained = [
+                for (final token in packets.keys.toList()..sort())
+                  if (packets[token]!.id == id) token,
+              ];
+              final bytes = <int>[
+                for (final token in drained) ...packets.remove(token)!.bytes,
+              ];
+              if (id == captureId) {
+                if (running) {
+                  running = false;
+                  stops++;
+                }
+                bytes.addAll(tail);
+                tail = const [];
+              }
+              heap
+                ..setInt32(
+                  chunkBytesPtr,
+                  bytes.isEmpty ? 0 : chunkBytes,
+                  Endian.little,
+                )
+                ..setInt32(lengthPtr, bytes.length, Endian.little);
+              return bytes.isEmpty ? 0 : place(bytes);
+            }).toJS
         ..['_getMixerCaptureId'] = (() => captureId).toJS
         ..['_takeMixerOutputPacket'] = ((int token, int idPtr, int lengthPtr) {
           final packet = packets.remove(token);
@@ -60,6 +92,8 @@ class CaptureModule {
     globalContext['Module_soloud'] = module;
   }
 
+  static const ringSize = 64;
+
   final module = JSObject();
   final worker = JSObject();
   final heap = ByteData(1 << 16);
@@ -68,8 +102,20 @@ class CaptureModule {
   int captureId = 0;
   bool running = false;
   int stops = 0;
-  var _top = 8;
+
+  /// The size of the chunks the capture emits, 0 in threshold mode.
+  int chunkBytes = 0;
+  final _ring = 8;
+  var _top = 8 + ringSize;
   var _nextToken = 0;
+  List<int> _tail = const [];
+
+  /// The unread bytes in the capture ring, from its start.
+  List<int> get tail => _tail;
+  set tail(List<int> bytes) {
+    _tail = bytes;
+    heap.buffer.asUint8List().setAll(_ring, bytes);
+  }
 
   void free(int ptr) {
     allocations.remove(ptr);
@@ -198,6 +244,90 @@ void main() {
     manager.stop();
     expect(module.stops, 1);
     expect(module.running, isFalse);
+    await subscription.cancel();
+  });
+
+  test('queued chunks are emitted once, before the tail', () async {
+    final module = CaptureModule()..chunkBytes = 4;
+    final bindings = FlutterSoLoudWeb();
+    await bindings.setDartEventCallbacks();
+    final manager = MixerOutputStreamManager(
+      bindings: bindings,
+      isReady: () => true,
+    );
+    final received = <List<int>>[];
+    var closed = false;
+    final subscription = manager
+        .start(chunkPCMFrames: 2048)
+        .listen(received.add, onDone: () => closed = true);
+    // Two chunks notified but not handled yet when the stream stops, and the
+    // tail that never filled a chunk.
+    final first = module.queue([1, 2, 3, 4]);
+    final second = module.queue([5, 6, 7, 8]);
+    module.tail = [9, 10];
+    manager.stop();
+    // Their notifications arrive after the stop.
+    module
+      ..post({'message': 'mixerOutputPacket', 'token': first, 'length': 4})
+      ..post({'message': 'mixerOutputPacket', 'token': second, 'length': 4});
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(received, [
+      orderedEquals([1, 2, 3, 4]),
+      orderedEquals([5, 6, 7, 8]),
+      orderedEquals([9, 10]),
+    ]);
+    expect(closed, isTrue);
+    expect(module.packets, isEmpty);
+    expect(module.allocations, isEmpty);
+    await subscription.cancel();
+  });
+
+  test('a stream whose capture deinit stopped still gets its end', () async {
+    final module = CaptureModule()..chunkBytes = 4;
+    final bindings = FlutterSoLoudWeb();
+    await bindings.setDartEventCallbacks();
+    final manager = MixerOutputStreamManager(
+      bindings: bindings,
+      isReady: () => true,
+    );
+    final received = <List<int>>[];
+    final subscription = manager
+        .start(chunkPCMFrames: 2048)
+        .listen(received.add);
+    module
+      ..queue([1, 2, 3, 4])
+      ..tail = [5, 6];
+    // SoLoud.deinit() stops the capture through the bindings first.
+    bindings.stopMixerOutputCapture();
+    manager.stop();
+
+    expect(received, [
+      orderedEquals([1, 2, 3, 4]),
+      orderedEquals([5, 6]),
+    ]);
+    await subscription.cancel();
+  });
+
+  test("the shipped wasm build's stop still delivers the tail", () async {
+    final module = CaptureModule(withPackets: false);
+    final bindings = FlutterSoLoudWeb();
+    await bindings.setDartEventCallbacks();
+    final manager = MixerOutputStreamManager(
+      bindings: bindings,
+      isReady: () => true,
+    );
+    final received = <List<int>>[];
+    final subscription = manager
+        .start(chunkPCMFrames: 2048)
+        .listen(received.add);
+    module.tail = [7, 8, 9];
+    manager.stop();
+
+    expect(received, [
+      orderedEquals([7, 8, 9]),
+    ]);
+    expect(module.stops, 1);
     await subscription.cancel();
   });
 }

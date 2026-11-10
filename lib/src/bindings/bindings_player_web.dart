@@ -314,18 +314,87 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return PlayerErrors.values[ret];
   }
 
+  /// What the last stop of this page's own capture collected for its stream,
+  /// until [takeStoppedMixerOutput] hands it over.
+  List<Uint8List> _stoppedMixerOutput = const [];
+
   @override
   void stopMixerOutputCapture({bool onlyOwned = false}) {
     final id = _mixerCaptureId;
-    final owned =
-        _ownsMixerCapture &&
-        (id == null || wasmGetMixerCaptureId().toUnsigned(32) == id);
+    final ownsCapture = _ownsMixerCapture;
     _mixerOutputChunkMode = false;
     _mixerCaptureId = null;
     _ownsMixerCapture = false;
-    if (!onlyOwned || owned) {
+    // Only a stop of this page's own capture replaces what an earlier one
+    // collected: the stream manager's stop after SoLoud.deinit() stopped the
+    // capture finds no capture of its own and must still deliver that output.
+    if (ownsCapture &&
+        id != null &&
+        wasmHasExport('_stopMixerCaptureAndDrain')) {
+      // Stops the capture only if it is still this one, and copies its queued
+      // chunks and tail before anything else can run.
+      _stoppedMixerOutput = _stopAndDrainMixerCapture(id);
+      if (!onlyOwned) {
+        wasmStopMixerCapture();
+      }
+      return;
+    }
+    // An older wasm build hands out no packets, only the ring: its tail is
+    // copied right after the stop, which nothing on this thread can come
+    // between.
+    final current =
+        ownsCapture &&
+        (id == null || wasmGetMixerCaptureId().toUnsigned(32) == id);
+    if (!onlyOwned || current) {
       wasmStopMixerCapture();
     }
+    if (current) {
+      _stoppedMixerOutput = _copyStoppedMixerTail();
+    }
+  }
+
+  List<Uint8List> _stopAndDrainMixerCapture(int captureId) {
+    final chunkBytesPtr = wasmMalloc(4);
+    final lengthPtr = wasmMalloc(4);
+    var data = 0;
+    try {
+      data = wasmStopMixerCaptureAndDrain(captureId, chunkBytesPtr, lengthPtr);
+      if (data == 0) return const [];
+      final length = wasmGetI32Value(lengthPtr, 'i32').toUnsigned(32);
+      return splitStoppedMixerOutput(
+        Uint8List.fromList(
+          Uint8List.sublistView(wasmHeapU8.toDart, data, data + length),
+        ),
+        wasmGetI32Value(chunkBytesPtr, 'i32').toUnsigned(32),
+      );
+    } finally {
+      if (data != 0) {
+        wasmFree(data);
+      }
+      wasmFree(lengthPtr);
+      wasmFree(chunkBytesPtr);
+    }
+  }
+
+  List<Uint8List> _copyStoppedMixerTail() {
+    final available = getMixerOutputAvailableBytes();
+    if (available <= 0) return const [];
+    final bufferSize = getMixerOutputBufferSize();
+    final readOffset = getMixerOutputReadOffset();
+    final first = available < bufferSize - readOffset
+        ? available
+        : bufferSize - readOffset;
+    return [
+      if (first > 0) copyMixerOutputBuffer(readOffset, first),
+      if (available > first) copyMixerOutputBuffer(0, available - first),
+    ];
+  }
+
+  @override
+  List<Uint8List> takeStoppedMixerOutput() {
+    final stopped = _stoppedMixerOutput;
+    _stoppedMixerOutput = const [];
+    return stopped;
   }
 
   @override

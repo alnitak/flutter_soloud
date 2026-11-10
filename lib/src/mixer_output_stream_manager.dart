@@ -120,46 +120,18 @@ class MixerOutputStreamManager {
     // worker isolate stopping defensively, say) must not end another's.
     bindings.stopMixerOutputCapture(onlyOwned: true);
 
-    // Flush any captured data that did not reach the notification threshold.
-    // The native side keeps the buffer alive after stopping so we can copy the
-    // tail synchronously and avoid losing compressed-format headers.
-    _flushRemaining();
+    // What the capture still owed this stream when it stopped, copied by the
+    // bindings before another isolate could restart it: the chunks whose
+    // notifications had not been handled yet, then the tail that never
+    // reached the notification threshold or filled a chunk (for compressed
+    // formats, the end of the stream). A manager without a stream leaves it
+    // for the one that has.
+    if (_streamController != null) {
+      bindings.takeStoppedMixerOutput().forEach(_emitChunk);
+    }
 
     _streamController?.close();
     _streamController = null;
-  }
-
-  void _flushRemaining() {
-    final controller = _streamController;
-    if (controller == null || controller.isClosed) {
-      return;
-    }
-
-    final available = bindings.getMixerOutputAvailableBytes();
-    if (available <= 0) {
-      return;
-    }
-
-    final bufferSize = bindings.getMixerOutputBufferSize();
-    final readOffset = bindings.getMixerOutputReadOffset();
-    final firstLength = available < bufferSize - readOffset
-        ? available
-        : bufferSize - readOffset;
-
-    if (firstLength > 0) {
-      final chunk = bindings.copyMixerOutputBuffer(readOffset, firstLength);
-      if (chunk.isNotEmpty) {
-        controller.add(chunk);
-      }
-    }
-
-    if (available > firstLength) {
-      final secondLength = available - firstLength;
-      final chunk = bindings.copyMixerOutputBuffer(0, secondLength);
-      if (chunk.isNotEmpty) {
-        controller.add(chunk);
-      }
-    }
   }
 
   /// Whether mixer output capture is currently active.

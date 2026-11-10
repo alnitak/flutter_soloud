@@ -1019,12 +1019,12 @@ extern "C"
   }
 #endif
 
-  FFI_PLUGIN_EXPORT void stopMixerCapture()
+  /// The caller holds mixer_lifecycle_mutex. That serializes this against
+  /// engine teardown's own stop, and against another isolate's:
+  /// MixerOutput::stop() joins both worker threads and resets the encoder and
+  /// queue, none of which survives being run twice at once.
+  static void stopMixerCaptureLocked()
   {
-    // Serialized against engine teardown's own stop, and against another
-    // isolate's: MixerOutput::stop() joins both worker threads and resets the
-    // encoder and queue, none of which survives being run twice at once.
-    std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
 #ifdef __EMSCRIPTEN__
     // On the multi-threaded (AudioWorklet) build the audio callback runs on
     // the worklet rendering thread and encodes inline in onAudioData().
@@ -1042,6 +1042,78 @@ extern "C"
     }
 #endif
     MixerOutput::instance().stop();
+  }
+
+  FFI_PLUGIN_EXPORT void stopMixerCapture()
+  {
+    std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+    stopMixerCaptureLocked();
+  }
+
+  /// Stops the capture [captureId] names, if it is still the current one, and
+  /// returns what its listener has not been given: the chunks notified but
+  /// never claimed, then the ring's unread tail. All of it is copied before
+  /// the lifecycle lock is released, so no start from another isolate can
+  /// replace the ring in between. A capture another start has superseded is
+  /// left running: only the old capture's own unclaimed chunks come back.
+  ///
+  /// The caller frees the result with nativeFree(). [chunkBytes] receives the
+  /// size of a fixed chunk when the capture emitted them (0 otherwise), so the
+  /// result can be delivered chunk by chunk, and [length] its size.
+  FFI_PLUGIN_EXPORT unsigned char *stopMixerCaptureAndDrain(
+      unsigned int captureId, size_t *chunkBytes, size_t *length)
+  {
+    size_t chunk = 0;
+    size_t total = 0;
+    unsigned char *result = nullptr;
+    {
+      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+      MixerOutput &capture = MixerOutput::instance();
+      if (capture.captureId() != captureId)
+      {
+        result = MixerOutput::takeStoppedPackets(captureId, total, &chunk);
+      }
+      else
+      {
+        stopMixerCaptureLocked();
+        size_t packetLength = 0;
+        size_t tailLength = 0;
+        uint8_t *packets =
+            MixerOutput::takeStoppedPackets(captureId, packetLength);
+        uint8_t *tail = capture.copyStoppedTail(tailLength);
+        chunk = capture.chunkBytes();
+        if (tailLength == 0)
+        {
+          result = packets;
+          total = packetLength;
+          packets = nullptr;
+        }
+        else if (packetLength == 0)
+        {
+          result = tail;
+          total = tailLength;
+          tail = nullptr;
+        }
+        else
+        {
+          result = static_cast<unsigned char *>(
+              malloc(packetLength + tailLength));
+          if (result != nullptr)
+          {
+            std::memcpy(result, packets, packetLength);
+            std::memcpy(result + packetLength, tail, tailLength);
+            total = packetLength + tailLength;
+          }
+        }
+        free(packets);
+        free(tail);
+      }
+    }
+    if (chunkBytes != nullptr)
+      *chunkBytes = result != nullptr ? chunk : 0;
+    if (length != nullptr)
+      *length = result != nullptr ? total : 0;
+    return result;
   }
 
   /// A notification carries a packet token, never a borrowed ring pointer.
@@ -1097,6 +1169,8 @@ extern "C"
 
   FFI_PLUGIN_EXPORT unsigned char *getMixerOutputWavHeader()
   {
+    // start() and stop() rewrite the header under this lock.
+    std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
     const auto &header = MixerOutput::instance().getWavHeader();
     if (header.empty())
     {

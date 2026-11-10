@@ -37,6 +37,9 @@
 //     admitted; a port that refuses (its isolate ended) leaves the capture to
 //     the next start, and a refused start leaves the running capture's port
 //     alone;
+//   * a stopped capture's tail is copied before another isolate's start can
+//     replace the ring, a stop for a superseded capture leaves the newer one
+//     running, and the WAV header is copied under the same lock;
 //   * duplicate destroy/detach notifications tear down exactly once;
 //   * loadFile() decodes without the lifecycle locks, so disposing sounds or
 //     the engine never waits for a decode, and a sound decoded for an engine
@@ -51,8 +54,10 @@
 #include "audiobuffer/metadata_ffi.h"
 #include "device_lifecycle_test_hooks.h"
 #include "enums.h"
+#include "mixeroutput/mixer_output.h"
 #include "native_stream/native_stream_source.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <chrono>
@@ -61,6 +66,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <set>
@@ -101,6 +107,14 @@ extern "C"
     unsigned char *takeMixerOutputPacket(unsigned char *token,
                                          unsigned int *captureId,
                                          size_t *length);
+    unsigned char *stopMixerCaptureAndDrain(unsigned int captureId,
+                                            size_t *chunkBytes,
+                                            size_t *length);
+    int getMixerCaptureAvailableBytes();
+    int getMixerCaptureBufferSize();
+    int getMixerCaptureReadOffset();
+    unsigned char *getMixerCaptureBufferPointer();
+    unsigned char *getMixerOutputWavHeader();
     void nativeFree(void *pointer);
     int isMixerCaptureRunning();
     bool setVisualizationCallbackForEngine(dartVisualizationCallback_t callback,
@@ -1143,6 +1157,179 @@ void testRefusedStartLeavesTheRunningPortAlone()
     resetGlobalState();
 }
 
+/// How the stream manager copied a stopped capture's tail: stop, ask for the
+/// ring's unread size, its size and read offset, then copy through the ring
+/// pointer, each a separate call. [meanwhile] runs where another isolate's
+/// start could, between the questions and the copy.
+std::vector<unsigned char> copyTailCallByCall(
+    const std::function<void()> &meanwhile)
+{
+    stopMixerCapture();
+    const int available = getMixerCaptureAvailableBytes();
+    const int size = getMixerCaptureBufferSize();
+    const int read = getMixerCaptureReadOffset();
+    meanwhile();
+    std::vector<unsigned char> tail;
+    if (available <= 0)
+        return tail;
+    const int first = std::min(available, size - read);
+    // copyMixerOutputBuffer() reads the ring pointer when it copies.
+    const unsigned char *ring = getMixerCaptureBufferPointer();
+    tail.insert(tail.end(), ring + read, ring + read + first);
+    ring = getMixerCaptureBufferPointer();
+    tail.insert(tail.end(), ring, ring + (available - first));
+    return tail;
+}
+
+/// The bindings' stop-and-drain, where they have one (it came with
+/// MixerOutput::copyStoppedTail()); the call-by-call copy otherwise.
+template <typename Capture>
+auto stopAndCopyTail(unsigned int captureId,
+                     const std::function<void()> &meanwhile, int)
+    -> decltype(&Capture::copyStoppedTail, std::vector<unsigned char>())
+{
+    size_t chunkBytes = 0;
+    size_t length = 0;
+    unsigned char *bytes =
+        stopMixerCaptureAndDrain(captureId, &chunkBytes, &length);
+    meanwhile();
+    std::vector<unsigned char> tail;
+    if (bytes != nullptr)
+        tail.assign(bytes, bytes + length);
+    nativeFree(bytes);
+    return tail;
+}
+
+template <typename Capture>
+std::vector<unsigned char> stopAndCopyTail(unsigned int,
+                                           const std::function<void()> &meanwhile,
+                                           long)
+{
+    return copyTailCallByCall(meanwhile);
+}
+
+template <typename Capture>
+auto stopSupersededCapture(unsigned int captureId, int)
+    -> decltype(&Capture::copyStoppedTail, bool())
+{
+    size_t chunkBytes = 0;
+    size_t length = 0;
+    nativeFree(stopMixerCaptureAndDrain(captureId, &chunkBytes, &length));
+    return true;
+}
+
+template <typename Capture>
+bool stopSupersededCapture(unsigned int, long)
+{
+    return false;
+}
+
+/// A stopped capture's stream ends with the tail its ring still holds. Copied
+/// call by call after the stop, a start by another isolate in between
+/// replaces the ring, and the copy reads the new capture's bytes. The copy
+/// has to be made before the capture lifecycle lock is released, and a stop
+/// meant for a capture another start has superseded must leave the newer one
+/// running.
+void testStoppedCaptureTailSurvivesARestart()
+{
+    std::printf("a stopped capture's tail survives another isolate's start\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    constexpr int kRingBytes = 64 * 1024;
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, kRingBytes,
+                             kRingBytes, -1) == noError,
+           "the capture should start");
+    const unsigned int captureId = getMixerCaptureId();
+    // The device mixes silence: this block, mixed last, is what the tail is
+    // checked for.
+    std::vector<float> marker(2 * 256);
+    for (size_t i = 0; i < marker.size(); ++i)
+        marker[i] = 1.0f + static_cast<float>(i);
+    MixerOutput::instance().onAudioData(marker.data(), 256);
+
+    unsigned int newerId = 0;
+    const std::vector<unsigned char> tail = stopAndCopyTail<MixerOutput>(
+        captureId,
+        [&]
+        {
+            EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1,
+                                     4 * kRingBytes, 4096, -1) == noError,
+                   "another isolate's start should succeed");
+            newerId = getMixerCaptureId();
+        },
+        0);
+    const auto *markerBytes =
+        reinterpret_cast<const unsigned char *>(marker.data());
+    EXPECT(std::search(tail.begin(), tail.end(), markerBytes,
+                       markerBytes + marker.size() * sizeof(float)) !=
+               tail.end(),
+           "the stopped capture's tail should end with its last block, not "
+           "the newer capture's bytes (%zu bytes copied)",
+           tail.size());
+
+    EXPECT(stopSupersededCapture<MixerOutput>(captureId, 0),
+           "a stop should be able to name the capture it is for");
+    EXPECT(isMixerCaptureRunning() == 1 && getMixerCaptureId() == newerId,
+           "a stop for the superseded capture should leave the newer one "
+           "running");
+    stopMixerCapture();
+
+    resetGlobalState();
+}
+
+/// start() and stop() rewrite the capture's WAV header under the capture
+/// lifecycle lock, and another isolate can copy it meanwhile. Under
+/// ThreadSanitizer this reports the race unless the copy takes that lock too.
+void testWavHeaderCopyIsSerializedWithRestarts()
+{
+    std::printf("the WAV header is copied under the capture lifecycle lock\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::atomic<bool> done{false};
+    std::atomic<int> headers{0};
+    std::thread reader(
+        [&]
+        {
+            while (!done.load())
+            {
+                unsigned char *header = getMixerOutputWavHeader();
+                if (header != nullptr)
+                    ++headers;
+                nativeFree(header);
+            }
+        });
+    int restarts = 0;
+    for (int i = 0; i < 40; ++i)
+    {
+        if (startMixerCapture(MIXER_OUTPUT_WAV, -1, -1, 64 * 1024, 4096, -1) ==
+            noError)
+            ++restarts;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        stopMixerCapture();
+    }
+    done = true;
+    reader.join();
+    EXPECT(restarts == 40, "every WAV capture should start, got %d", restarts);
+    EXPECT(headers.load() > 0,
+           "the reader should have copied headers while captures restarted");
+
+    resetGlobalState();
+}
+
 /// Retirement stops the visualizations, whose single worker thread invokes the
 /// Dart callable through the gate and holds its own lock across each pass over
 /// the enabled visualizations. Stopping them while still holding the gate
@@ -2077,6 +2264,8 @@ int main()
     testCaptureRefusesAFormatTheMixDoesNotProduce();
     testCaptureDeliversToTheStartingPort();
     testRefusedStartLeavesTheRunningPortAlone();
+    testStoppedCaptureTailSurvivesARestart();
+    testWavHeaderCopyIsSerializedWithRestarts();
     testRetirementWhileVisualizationsDispatch();
     testRetirementSparesWhatANewerRegistrationStarted();
     testVisualizationSendsOnePacketAtATime();

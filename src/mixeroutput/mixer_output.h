@@ -131,6 +131,25 @@ class MixerOutput {
   /// when not 0, is the ring position claiming it acknowledges.
   static uint8_t *copyPacket(const uint8_t *data, size_t length,
                              uint32_t captureId, uint64_t readThrough = 0);
+  /// Hand over the fixed chunks of the stopped capture [captureId] that were
+  /// notified but never claimed: one copy of them, in the order they were
+  /// notified, which the caller frees with free(), and [length] set to its
+  /// size (nullptr and 0 when there are none). Its threshold packets are
+  /// retired too, adding nothing: their bytes are still in the ring, where
+  /// copyStoppedTail() finds them. A late notification then finds nothing
+  /// to claim. [chunkLength], when not null, is set to the size of one of
+  /// the chunks. Does nothing while that capture is still running.
+  static uint8_t *takeStoppedPackets(uint32_t captureId, size_t &length,
+                                     size_t *chunkLength = nullptr);
+  /// Copy the stopped capture's unread ring bytes, oldest first, less any a
+  /// claimed packet already delivered, and mark them read. Returns a copy the
+  /// caller frees with free() and sets [length] to its size (nullptr and 0
+  /// while running, or when nothing is unread). The caller keeps start(),
+  /// which replaces the ring, out meanwhile.
+  uint8_t *copyStoppedTail(size_t &length);
+  /// Bytes in each fixed chunk of the current (or last) capture; 0 in
+  /// threshold mode.
+  size_t chunkBytes() const { return m_chunkBytes; }
 
   /// Encoder currently in use, or nullptr for PCM formats.
   MixerOutputEncoder *encoder() const { return m_encoder.get(); }

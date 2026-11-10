@@ -176,6 +176,26 @@ PlayerErrors startMixerCaptureOnPort(
 @ffi.Native<ffi.Void Function()>()
 external void stopMixerCapture();
 
+/// Stop the capture [captureId] names, unless another start has superseded
+/// it, and return what its listener has not been given: the chunks notified
+/// but never claimed, then the unread tail, copied under the capture
+/// lifecycle lock. A superseded capture's own unclaimed chunks come back and
+/// the newer capture keeps running. Free with nativeFree(). [chunkBytes]
+/// receives the size of a fixed chunk when the capture emitted them (0
+/// otherwise) and [length] the size of the result; nullptr when empty.
+@ffi.Native<
+  ffi.Pointer<ffi.UnsignedChar> Function(
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Size>,
+    ffi.Pointer<ffi.Size>,
+  )
+>()
+external ffi.Pointer<ffi.UnsignedChar> stopMixerCaptureAndDrain(
+  int captureId,
+  ffi.Pointer<ffi.Size> chunkBytes,
+  ffi.Pointer<ffi.Size> length,
+);
+
 /// Claim the capture packet a mixer output notification names by [token].
 /// Returns its bytes, which the caller frees with nativeFree(), and sets
 /// [captureId] to the capture that produced it and [length] to its size;

@@ -36,6 +36,29 @@ constexpr size_t kThresholdPacketBytes = 64 * 1024;
 /// Tokens count up from 1 and are never reused.
 uintptr_t gNextPacket = 0;
 
+/// How far claimed threshold packets reach in the ring of the newest capture
+/// one was claimed from. A claim acknowledges in the ring only while its
+/// capture runs; one made after a stop is remembered here instead, so the
+/// stopped capture's tail does not hand those bytes over a second time.
+struct ClaimedThrough {
+  uint32_t captureId = 0;
+  uint64_t position = 0;
+};
+ClaimedThrough gClaimedThrough;
+
+/// The caller holds gPacketMutex and has just removed [packet].
+void recordClaimLocked(const CapturePacket &packet) {
+  if (packet.readThrough == 0) {
+    return;
+  }
+  if (gClaimedThrough.captureId != packet.captureId) {
+    gClaimedThrough = {packet.captureId, packet.readThrough};
+  } else {
+    gClaimedThrough.position =
+        std::max(gClaimedThrough.position, packet.readThrough);
+  }
+}
+
 #ifndef __EMSCRIPTEN__
 std::unordered_map<uintptr_t, CapturePacket> gPackets;
 
@@ -181,6 +204,7 @@ uint8_t *MixerOutput::takePacket(uint8_t *token, uint32_t &captureId,
       packet = slot->packet;
       std::memcpy(bytes, slot->storage.data(), packet.length);
       slot->token = 0;
+      recordClaimLocked(packet);
     }
   }
   if (packet.bytes == nullptr) {
@@ -197,6 +221,7 @@ uint8_t *MixerOutput::takePacket(uint8_t *token, uint32_t &captureId,
     }
     packet = it->second;
     gPackets.erase(it);
+    recordClaimLocked(packet);
   }
 #endif
   captureId = packet.captureId;
@@ -258,6 +283,164 @@ void MixerOutput::discardPackets() {
   // A threshold packet that is never claimed never acknowledges its bytes:
   // re-arm so whoever consumes next is notified again.
   instance().m_notified.store(false, std::memory_order_release);
+}
+
+uint8_t *MixerOutput::takeStoppedPackets(uint32_t captureId, size_t &length,
+                                         size_t *chunkLength) {
+  length = 0;
+  if (chunkLength != nullptr) {
+    *chunkLength = 0;
+  }
+  const MixerOutput &capture = instance();
+  if (capture.isRunning() && capture.captureId() == captureId) {
+    return nullptr;
+  }
+  // Tokens count up and are never reused, so token order is the order the
+  // chunks were notified in.
+#ifdef __EMSCRIPTEN__
+  // Two passes, as in takePacket(): the worklet waits on this lock, so the
+  // copy is allocated outside it.
+  size_t total = 0;
+  {
+    std::lock_guard<MixerOutputMutex> lock(gPacketMutex);
+    for (const auto &slot : gWebPackets) {
+      if (slot.token != 0 && slot.packet.captureId == captureId &&
+          slot.packet.readThrough == 0) {
+        total += slot.packet.length;
+      }
+    }
+  }
+  auto *bytes =
+      total > 0 ? static_cast<uint8_t *>(std::malloc(total)) : nullptr;
+  {
+    std::lock_guard<MixerOutputMutex> lock(gPacketMutex);
+    std::array<WebCapturePacket *,
+               std::tuple_size<decltype(gWebPackets)>::value>
+        found{};
+    size_t count = 0;
+    for (auto &slot : gWebPackets) {
+      if (slot.token != 0 && slot.packet.captureId == captureId) {
+        found[count++] = &slot;
+      }
+    }
+    std::sort(found.begin(), found.begin() + count,
+              [](const WebCapturePacket *a, const WebCapturePacket *b) {
+                return a->token < b->token;
+              });
+    for (size_t i = 0; i < count; ++i) {
+      WebCapturePacket &slot = *found[i];
+      const CapturePacket &packet = slot.packet;
+      if (packet.readThrough == 0 && bytes != nullptr &&
+          packet.length <= total - length) {
+        if (chunkLength != nullptr && length == 0) {
+          *chunkLength = packet.length;
+        }
+        std::memcpy(bytes + length, slot.storage.data(), packet.length);
+        length += packet.length;
+      }
+      slot.token = 0;
+    }
+  }
+#else
+  std::vector<std::pair<uintptr_t, CapturePacket>> taken;
+  taken.reserve(kMaxPendingPackets);
+  {
+    std::lock_guard<MixerOutputMutex> lock(gPacketMutex);
+    for (auto it = gPackets.begin(); it != gPackets.end();) {
+      if (it->second.captureId != captureId) {
+        ++it;
+        continue;
+      }
+      taken.emplace_back(it->first, it->second);
+      it = gPackets.erase(it);
+    }
+  }
+  std::sort(taken.begin(), taken.end(),
+            [](const std::pair<uintptr_t, CapturePacket> &a,
+               const std::pair<uintptr_t, CapturePacket> &b) {
+              return a.first < b.first;
+            });
+  size_t total = 0;
+  for (const auto &entry : taken) {
+    if (entry.second.readThrough == 0) {
+      total += entry.second.length;
+    }
+  }
+  auto *bytes =
+      total > 0 ? static_cast<uint8_t *>(std::malloc(total)) : nullptr;
+  for (const auto &entry : taken) {
+    const CapturePacket &packet = entry.second;
+    if (packet.readThrough == 0 && bytes != nullptr) {
+      if (chunkLength != nullptr && length == 0) {
+        *chunkLength = packet.length;
+      }
+      std::memcpy(bytes + length, packet.bytes, packet.length);
+      length += packet.length;
+    }
+    std::free(packet.bytes);
+  }
+#endif
+  if (length == 0) {
+    std::free(bytes);
+    if (chunkLength != nullptr) {
+      *chunkLength = 0;
+    }
+    return nullptr;
+  }
+  return bytes;
+}
+
+uint8_t *MixerOutput::copyStoppedTail(size_t &length) {
+  length = 0;
+  if (isRunning() || m_bufferSize == 0 || m_buffer.empty()) {
+    return nullptr;
+  }
+  uint64_t claimedThrough = 0;
+  {
+    std::lock_guard<MixerOutputMutex> lock(gPacketMutex);
+    if (gClaimedThrough.captureId == captureId()) {
+      claimedThrough = gClaimedThrough.position;
+    }
+  }
+  size_t available = 0;
+  {
+    std::lock_guard<MixerOutputMutex> lock(m_bufferMutex);
+    const uint64_t write = m_writeOffset.load(std::memory_order_relaxed);
+    const uint64_t read =
+        std::max(m_readOffset.load(std::memory_order_relaxed),
+                 std::min(write, claimedThrough));
+    m_readOffset.store(read, std::memory_order_release);
+    available = static_cast<size_t>(write - read);
+  }
+  if (available == 0) {
+    return nullptr;
+  }
+  // Allocated outside the ring lock, like every other copy out of the ring.
+  auto *bytes = static_cast<uint8_t *>(std::malloc(available));
+  if (bytes == nullptr) {
+    return nullptr;
+  }
+  {
+    std::lock_guard<MixerOutputMutex> lock(m_bufferMutex);
+    const uint64_t read = m_readOffset.load(std::memory_order_relaxed);
+    available = std::min(
+        available,
+        static_cast<size_t>(m_writeOffset.load(std::memory_order_relaxed) -
+                            read));
+    const size_t offset = static_cast<size_t>(read % m_bufferSize);
+    const size_t first = std::min(available, m_bufferSize - offset);
+    std::memcpy(bytes, m_buffer.data() + offset, first);
+    if (first < available) {
+      std::memcpy(bytes + first, m_buffer.data(), available - first);
+    }
+    m_readOffset.store(read + available, std::memory_order_release);
+  }
+  if (available == 0) {
+    std::free(bytes);
+    return nullptr;
+  }
+  length = available;
+  return bytes;
 }
 
 MixerOutput &MixerOutput::instance() {
@@ -491,9 +674,9 @@ void MixerOutput::stop() {
 
 #ifdef __EMSCRIPTEN__
   // On web there is no encoder thread: flush the encoder tail inline so the
-  // circular buffer is complete when this returns. The Dart side reads the
-  // remaining data synchronously right after stop (_flushRemaining), and
-  // joining a pthread here would block the main browser thread.
+  // circular buffer is complete when this returns. The stop-and-drain export
+  // copies the remaining data right after stop, under the same lifecycle
+  // lock, and joining a pthread here would block the main browser thread.
   if (m_encoder != nullptr) {
     m_encodeScratch.clear();
     if (m_encoder->finalize(m_encodeScratch) && !m_encodeScratch.empty()) {
@@ -519,8 +702,8 @@ void MixerOutput::stop() {
   m_encoder.reset();
   m_pcmQueue.reset();
 
-  // Keep the circular buffer and offsets intact so the Dart side can read
-  // any tail data that did not reach the notification threshold.
+  // Keep the circular buffer and offsets intact for copyStoppedTail(): the
+  // tail that did not reach the notification threshold, or fill a chunk.
   m_notified.store(false);
 }
 

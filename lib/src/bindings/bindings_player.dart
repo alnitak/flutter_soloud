@@ -45,6 +45,23 @@ int customSourceLifecycleAddress(int createdAddress, int destroyedAddress) {
   return createdAddress != 0 ? createdAddress : destroyedAddress;
 }
 
+/// What a stopped mixer capture handed over, as its stream delivers it: in
+/// pieces of [chunkBytes] when the capture emitted fixed-size chunks, so the
+/// queued chunks keep their size and only the last piece can be shorter, and
+/// otherwise in one piece.
+@internal
+List<Uint8List> splitStoppedMixerOutput(Uint8List bytes, int chunkBytes) {
+  if (bytes.isEmpty) return const [];
+  if (chunkBytes <= 0 || bytes.length <= chunkBytes) return [bytes];
+  return [
+    for (var start = 0; start < bytes.length; start += chunkBytes)
+      bytes.sublist(
+        start,
+        start + chunkBytes < bytes.length ? start + chunkBytes : bytes.length,
+      ),
+  ];
+}
+
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
 abstract class FlutterSoLoud {
@@ -148,6 +165,16 @@ abstract class FlutterSoLoud {
   /// still the running one, so it cannot end another isolate's capture.
   @mustBeOverridden
   void stopMixerOutputCapture({bool onlyOwned = false});
+
+  /// Hands over, once, what the last stop of a capture this binding started
+  /// collected for that capture's stream, in order: the chunks notified but
+  /// not delivered yet, then the tail that never reached the notification
+  /// threshold or filled a chunk. Empty when there is nothing (left).
+  ///
+  /// A stop of a capture this binding did not start collects nothing and
+  /// leaves what an earlier stop collected for the stream manager.
+  @mustBeOverridden
+  List<Uint8List> takeStoppedMixerOutput();
 
   /// Whether mixer output capture is currently active.
   @mustBeOverridden

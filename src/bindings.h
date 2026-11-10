@@ -152,6 +152,16 @@ extern "C"
   /// Stop capturing the master mixer output.
   FFI_PLUGIN_EXPORT void stopMixerCapture();
 
+  /// Stop the capture [captureId] names, unless another start has superseded
+  /// it, and return what its listener has not been given: the chunks notified
+  /// but never claimed, then the unread tail, copied under the capture
+  /// lifecycle lock. A superseded capture's own unclaimed chunks come back and
+  /// the newer capture keeps running. Free with nativeFree(). [chunkBytes]
+  /// receives the size of a fixed chunk when the capture emitted them (0
+  /// otherwise) and [length] the size of the result; nullptr when empty.
+  FFI_PLUGIN_EXPORT unsigned char *stopMixerCaptureAndDrain(
+      unsigned int captureId, size_t *chunkBytes, size_t *length);
+
   /// Claim the capture packet a mixer output notification names by [token].
   /// Returns its bytes, which the caller frees with nativeFree(), and sets
   /// [captureId] to the capture that produced it and [length] to its size;
