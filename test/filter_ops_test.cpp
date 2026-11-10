@@ -10,9 +10,17 @@
 //           delete that voice. Run under ThreadSanitizer (--tsan), which
 //           reports the unsynchronized voice-table read.
 //
+//   compressor  A new compressor instance (each voice that plays with the
+//           filter gets one) fed a steady signal well below its threshold
+//           must leave it untouched from the first sample: its level
+//           detector has to start from silence. One that starts at full
+//           scale ducks the start of every voice until it releases.
+//
 // Build and run from the flutter_soloud repository root with:
 //
 //   ./test/run_filter_ops_test.sh [--asan|--tsan] [scenario]
+
+#include "filters/compressor.h"
 
 #include "soloud.h"
 #include "soloud_biquadresonantfilter.h"
@@ -23,6 +31,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <thread>
 #include <vector>
 
@@ -162,6 +171,53 @@ void testFilterGetterRacesVoiceEnd() {
     soloud.deinit();
 }
 
+// ---- compressor -------------------------------------------------------------
+
+void testCompressorStartsFromSilence() {
+    std::printf("compressor: a signal below the threshold passes untouched from the start\n");
+    constexpr unsigned int kFrames = 512;
+    constexpr float kLevel = 0.1f; // -20 dBFS, below the default -6 dB threshold
+
+    Compressor parent(kSampleRate);
+    std::unique_ptr<SoLoud::FilterInstance> instance(parent.createInstance());
+
+    std::vector<float> buffer(kFrames * kChannels);
+    int changed = 0;
+    float firstGain = 1.0f;
+    float minGain = 1.0f;
+    for (int block = 0; block < 16; ++block) {
+        for (unsigned int ch = 0; ch < kChannels; ++ch)
+            for (unsigned int i = 0; i < kFrames; ++i)
+                buffer[ch * kFrames + i] = (i % 2 == 0) ? kLevel : -kLevel;
+        instance->filter(buffer.data(), kFrames, kFrames, kChannels,
+                         static_cast<float>(kSampleRate), 0.0);
+        if (block == 0)
+            firstGain = std::fabs(buffer[0]) / kLevel;
+        for (float s : buffer) {
+            minGain = std::min(minGain, std::fabs(s) / kLevel);
+            if (std::fabs(std::fabs(s) - kLevel) > 1e-4f)
+                ++changed;
+        }
+    }
+    EXPECT(changed == 0,
+           "%d of %u samples changed; the first came out at %.2f dB, the lowest at "
+           "%.2f dB",
+           changed, 16 * kFrames * kChannels, 20.0f * std::log10(firstGain),
+           20.0f * std::log10(minGain));
+
+    // A signal above the threshold is still compressed, once the attack has
+    // caught up with it.
+    for (unsigned int ch = 0; ch < kChannels; ++ch)
+        for (unsigned int i = 0; i < kFrames; ++i)
+            buffer[ch * kFrames + i] = (i % 2 == 0) ? 0.9f : -0.9f;
+    for (int block = 0; block < 8; ++block)
+        instance->filter(buffer.data(), kFrames, kFrames, kChannels,
+                         static_cast<float>(kSampleRate), 0.0);
+    const float loudGain = std::fabs(buffer[kFrames - 1]) / 0.9f;
+    EXPECT(loudGain < 0.9f, "a signal 5 dB over the threshold is not compressed "
+           "(gain %.3f)", loudGain);
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -172,6 +228,8 @@ int main(int argc, char **argv) {
 
     if (wanted("getter"))
         testFilterGetterRacesVoiceEnd();
+    if (wanted("compressor"))
+        testCompressorStartsFromSilence();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

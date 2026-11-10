@@ -20,8 +20,11 @@ CompressorInstance::CompressorInstance(Compressor *aParent)
     attackCoef = expf(-1.0f / fmaxf(mParam[Compressor::ATTACK_TIME] * 0.001f * mLastSamplerate, 1e-6f));
     releaseCoef = expf(-1.0f / fmaxf(mParam[Compressor::RELEASE_TIME] * 0.001f * mLastSamplerate, 1e-6f));
 
+    // The level detector runs in dB and starts from silence: the floor of
+    // its input, 20 * log10(1e-8). Starting at 0 dBFS made every new voice
+    // duck until the release brought the envelope down.
     for (unsigned int i = 0; i < MAX_CHANNELS; ++i) {
-        mEnvelope[i] = 0.0f;
+        mEnvelope[i] = -160.0f;
     }
 }
 
