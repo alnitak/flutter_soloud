@@ -185,12 +185,15 @@ class Vst3Host {
 
   /// Loads a VST3 **Audio Effect (`Fx`)** and attaches it to [slot]
   /// (`CustomFilterSlot` `0..7` on Global or Bus filters).
+  ///
+  /// The plugin is set up for [sampleRate], which must be the rate of the
+  /// audio it filters: it defaults to the engine's ([SoLoud.sampleRate]).
   @experimental
   Vst3EffectPlugin loadEffect({
     required String bundlePath,
     required CustomFilterSlot slot,
     String? classUid,
-    int sampleRate = 48000,
+    int? sampleRate,
     int maxBlockSize = 2048,
     Channels channels = Channels.stereo,
   }) {
@@ -202,7 +205,7 @@ class Vst3Host {
     final handle = _loadNativePlugin(
       bundlePath: bundlePath,
       classUid: classUid,
-      sampleRate: sampleRate,
+      sampleRate: sampleRate ?? SoLoud.instance.sampleRate,
       maxBlockSize: maxBlockSize,
       channels: channels.count,
     );

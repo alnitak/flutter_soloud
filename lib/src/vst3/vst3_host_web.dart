@@ -37,7 +37,7 @@ class Vst3Host {
     required String bundlePath,
     required CustomFilterSlot slot,
     String? classUid,
-    int sampleRate = 48000,
+    int? sampleRate,
     int maxBlockSize = 2048,
     Channels channels = Channels.stereo,
   }) {
