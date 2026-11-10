@@ -201,6 +201,15 @@ namespace SoLoud
 			}
 			memcpy(mBuffer, s->mBuffer, sizeof(float) * s->floats());
 		}
+		else if (mBuffer)
+		{
+			// The snapshot predates the first block (play() takes one before
+			// the filter runs), when the delay line was still empty. Silence
+			// the live one instead of keeping what it heard since, which the
+			// re-mix would echo again; keeping its storage allocates nothing
+			// here, and the next block reuses it as a new one.
+			memset(mBuffer, 0, sizeof(float) * (size_t)mBufferMaxLength * (size_t)mBufferChannels);
+		}
 	}
 
 	EchoFilterInstance::~EchoFilterInstance()

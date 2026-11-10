@@ -187,6 +187,13 @@ namespace SoLoud
 			}
 			memcpy(mBuffer, s->mBuffer, sizeof(float) * s->floats());
 		}
+		else if (mBuffer)
+		{
+			// The snapshot predates the first block, when the delay line was
+			// still empty: silence the live one rather than replay what it
+			// heard since. Its storage is kept, so nothing is allocated here.
+			memset(mBuffer, 0, sizeof(float) * (size_t)mBufferLength * (size_t)mBufferChannels);
+		}
 	}
 
 	FlangerFilterInstance::~FlangerFilterInstance()
