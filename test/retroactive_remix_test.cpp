@@ -843,6 +843,112 @@ void testLongIdleNoStreamTimeOrRingDrift()
            first);
 }
 
+// ---- Fade starting values ---------------------------------------------------
+
+enum class FadePath { Direct, RingFallback, RingRetroactive };
+
+const char* fadePathName(FadePath path)
+{
+    switch (path) {
+    case FadePath::Direct: return "direct mix";
+    case FadePath::RingFallback: return "ring, non-restorable source";
+    default: return "ring, retroactive";
+    }
+}
+
+// A voice group whose two voices differ in volume, pan and speed. A fade on
+// the group must start each voice from its own value, on the direct mix path
+// and on both ring paths: a restorable source takes the retroactive re-mix,
+// a non-restorable one its going-forward fallback. Every voice used to fade
+// from the first voice's value, read through the group handle, and was set
+// to the target at once when the target was that value.
+void testGroupFadesStartFromEachVoice()
+{
+    constexpr double kFade = 4.0;
+    const FadePath paths[] = {FadePath::Direct, FadePath::RingFallback,
+                              FadePath::RingRetroactive};
+    const char* const ops[] = {"fadeVolume(0.6)", "fadeVolume(0.2), voice 1's volume",
+                               "fadePan(0)", "fadeRelativePlaySpeed(1.5)",
+                               "scheduleFadeAt(playhead, 0.6)"};
+    for (FadePath path : paths) {
+        for (int op = 0; op < 5; ++op) {
+            SoLoud::Soloud engine;
+            if (path != FadePath::Direct)
+                engine.setRenderAheadConfig(kDevicePeriod, kRenderAhead);
+            const SoLoud::result result =
+                engine.init(SoLoud::Soloud::CLIP_ROUNDOFF,
+                            SoLoud::Soloud::NULLDRIVER, kSampleRate, kQuantum, 2);
+            EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+            PulseSource pulse(1 << 22, 0.5f);
+            NonRestorableDcSource dc;
+            SoLoud::AudioSource& source =
+                path == FadePath::RingFallback ? static_cast<SoLoud::AudioSource&>(dc)
+                                               : static_cast<SoLoud::AudioSource&>(pulse);
+            const SoLoud::handle h1 = engine.play(source, 0.2f, -1.0f);
+            const SoLoud::handle h2 = engine.play(source, 1.0f, 1.0f);
+            engine.setRelativePlaySpeed(h2, 2.0f);
+            const SoLoud::handle group = engine.createVoiceGroup();
+            engine.addVoiceToGroup(group, h1);
+            engine.addVoiceToGroup(group, h2);
+            std::vector<float> buf(kQuantum * 2);
+            auto advance = [&] {
+                if (path == FadePath::Direct) {
+                    engine.mix(buf.data(), kQuantum);
+                } else {
+                    engine.renderRingTopUp_internal();
+                    engine.mRenderRing.read(buf.data(), kQuantum);
+                }
+            };
+            for (int i = 0; i < 6; ++i)
+                advance();
+
+            switch (op) {
+            case 0: engine.fadeVolume(group, 0.6f, kFade); break;
+            case 1: engine.fadeVolume(group, 0.2f, kFade); break;
+            case 2: engine.fadePan(group, 0.0f, kFade); break;
+            case 3: engine.fadeRelativePlaySpeed(group, 1.5f, kFade); break;
+            default:
+                engine.scheduleFadeAt(group, engine.getPlayheadTime(), 0.6f, kFade, false);
+                break;
+            }
+
+            // Voice 1 has its own fade, except where it already is at the
+            // target; voice 2 always does.
+            for (int v = (op == 1 ? 1 : 0); v < 2; ++v) {
+                const SoLoud::handle h = v == 0 ? h1 : h2;
+                const int slot = engine.getVoiceFromHandle_internal(h);
+                EXPECT(slot >= 0, "%s, %s: voice %d is gone", fadePathName(path), ops[op], v + 1);
+                if (slot < 0)
+                    continue;
+                const SoLoud::AudioSourceInstance* voice = engine.mVoice[slot];
+                const SoLoud::Fader& fader = op == 2   ? voice->mPanFader
+                                             : op == 3 ? voice->mRelativePlaySpeedFader
+                                                       : voice->mVolumeFader;
+                const float own = op == 2 ? (v == 0 ? -1.0f : 1.0f)
+                                  : op == 3 ? (v == 0 ? 1.0f : 2.0f)
+                                            : (v == 0 ? 0.2f : 1.0f);
+                EXPECT(fader.mActive > 0 && std::fabs(fader.mFrom - own) < 1e-4f &&
+                           std::fabs(fader.mTime - kFade) < 1e-6,
+                       "%s, %s: voice %d fades from %f over %f s (active %d), "
+                       "want from its own %f over %f s",
+                       fadePathName(path), ops[op], v + 1, fader.mFrom, fader.mTime,
+                       fader.mActive, own, kFade);
+            }
+            // A few quanta into the fade, voice 2 is still near its own value.
+            for (int i = 0; i < 4; ++i)
+                advance();
+            const float now = op == 2 ? engine.getPan(h2)
+                              : op == 3 ? engine.getRelativePlaySpeed(h2)
+                                        : engine.getVolume(h2);
+            const float own2 = op == 2 ? 1.0f : op == 3 ? 2.0f : 1.0f;
+            EXPECT(std::fabs(now - own2) < 0.1f,
+                   "%s, %s: voice 2 is at %f a few quanta into a %f s fade from %f",
+                   fadePathName(path), ops[op], now, kFade, own2);
+            engine.deinit();
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -866,6 +972,7 @@ int main()
     testSubSampleMicrosecondRoundingNoSpuriousRollback();
     testRepeatedRollbacksDoNotDoubleExtendStopSamplesLeft();
     testLongIdleNoStreamTimeOrRingDrift();
+    testGroupFadesStartFromEachVoice();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);
