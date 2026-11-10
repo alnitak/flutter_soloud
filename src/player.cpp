@@ -3086,7 +3086,11 @@ void Player::disposeSound(unsigned int soundHash)
         {
             // Stop all handles for this sound before destroying to prevent
             // the audio thread from accessing filters during destruction.
-            for (auto &handleInfo : it->get()->handle)
+            // Walk a copy: stop() can dispatch the voice-ended callback
+            // synchronously, and its removeHandle() erases from the
+            // sound's own handle list.
+            const std::vector<ActiveHandle> handles = it->get()->handle;
+            for (const auto &handleInfo : handles)
             {
                 mSoundByHandle.erase(handleInfo.handle);
                 soloud.stop(handleInfo.handle);

@@ -2222,6 +2222,47 @@ void testDiskStreamedM4aNeverBlocksLifecycle()
 #endif
 }
 
+/// Stopping a voice dispatches its voice-ended callback synchronously, and
+/// that callback removes the handle from the sound's handle list. Disposing a
+/// sound playing on several voices must not walk that list while the
+/// callbacks shrink it (AddressSanitizer reports the overflow).
+void testDisposeSoundWithSeveralVoices()
+{
+    std::printf("disposing a sound playing on several voices stops them all\n");
+    resetGlobalState();
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::vector<unsigned char> wav = makeWavBytes();
+    unsigned int hash = 0;
+    EXPECT(loadMem(const_cast<char *>("voices"), wav.data(),
+                   static_cast<int>(wav.size()), 1, &hash) == noError,
+           "loadMem should succeed");
+
+    constexpr int kVoices = 4;
+    for (int i = 0; i < kVoices; i++)
+    {
+        unsigned int handle = 0;
+        EXPECT(play(hash, 0, 1.0f, 0.0f, false, true, 0, 0, -1, -1, 1.0f,
+                    &handle) == noError,
+               "play %d should succeed", i);
+    }
+
+    gVoiceEndedCalls = 0;
+    disposeSound(hash);
+
+    EXPECT(gVoiceEndedCalls.load() == kVoices,
+           "every voice should end once, got %d", gVoiceEndedCalls.load());
+    EXPECT(soloudTestSoundCount() == 0,
+           "the sound should be gone, found %d", soloudTestSoundCount());
+
+    resetGlobalState();
+}
+
 } // namespace
 
 int main()
@@ -2278,6 +2319,7 @@ int main()
     testLoadDecodeDoesNotBlockLifecycleCalls();
     testTeardownDuringDecodeDropsTheSound();
     testDiskStreamedM4aNeverBlocksLifecycle();
+    testDisposeSoundWithSeveralVoices();
 
     {
         std::lock_guard<std::mutex> lock(gDartLoopMutex);
