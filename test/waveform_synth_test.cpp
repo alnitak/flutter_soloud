@@ -15,9 +15,12 @@
 //   freq     setWaveformFreq() must refuse a NaN or infinite frequency: it
 //            would make the oscillator's phase non-finite for good.
 //
-// `freq` opens the default output device through the plugin's initEngine()
-// (miniaudio falls back to its null backend without one); `fourier` renders
-// waveform instances directly and needs no engine.
+//   params   loadWaveform(waveform, superWave, scale, detune) must build the
+//            waveform with that scale and that detune, not the two swapped.
+//
+// `freq` and `params` open the default output device through the plugin's
+// initEngine() (miniaudio falls back to its null backend without one);
+// `fourier` renders waveform instances directly and needs no engine.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -200,6 +203,41 @@ void testSetWaveformFreqRefusesNonFinite() {
     dispose();
 }
 
+// ---- params -----------------------------------------------------------------
+
+void testLoadWaveformKeepsScaleAndDetune() {
+    std::printf("params: loadWaveform builds the waveform with its scale and detune\n");
+    if (!initPluginEngine())
+        return;
+
+    const struct {
+        bool superWave;
+        float scale;
+        float detune;
+    } cases[] = {{true, 0.25f, 1.0f}, {true, 0.0f, 0.125f}, {false, 0.5f, 0.0f}};
+    for (const auto &c : cases) {
+        unsigned int hash = 0;
+        EXPECT(loadWaveform(SoLoud::Soloud::WAVE_SIN, c.superWave, c.scale, c.detune,
+                            &hash) == noError,
+               "loadWaveform should succeed");
+        Basicwave *wave = waveformOf(hash);
+        EXPECT(wave != nullptr, "the waveform should be registered");
+        if (wave == nullptr)
+            continue;
+        const double scale = wave->mSuperwaveScale;
+        const double detune = wave->mSuperwaveDetune;
+        const bool superWave = wave->mSuperwave;
+        EXPECT(scale == static_cast<double>(c.scale), "scale should be %g, got %g",
+               c.scale, scale);
+        EXPECT(detune == static_cast<double>(c.detune), "detune should be %g, got %g",
+               c.detune, detune);
+        EXPECT(superWave == c.superWave, "superWave should be %d",
+               c.superWave ? 1 : 0);
+    }
+
+    dispose();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -212,6 +250,8 @@ int main(int argc, char **argv) {
         testFourierTablesStayInBounds();
     if (wanted("freq"))
         testSetWaveformFreqRefusesNonFinite();
+    if (wanted("params"))
+        testLoadWaveformKeepsScaleAndDetune();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;
