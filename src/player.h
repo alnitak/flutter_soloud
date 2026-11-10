@@ -26,6 +26,7 @@
 #include <vector>
 
 namespace SoLoud {
+class PullBufferStream;
 class RealtimeStream;
 }
 
@@ -1172,6 +1173,17 @@ public:
   unsigned int mChannels;
 
 private:
+  // Its buffering check locks sounds_mutex (see checkBuffering()).
+  friend class SoLoud::PullBufferStream;
+
+  /// Looks the pull stream [hash] up under sounds_mutex and pins it (see
+  /// PullBufferStream::pin()) into [stream]; the caller unpins it.
+  PlayerErrors pinPullBufferStream(unsigned int hash,
+                                   SoLoud::PullBufferStream *&stream);
+  /// Waits, without sounds_mutex, until no call pins [sound]'s pull stream:
+  /// a disposal, which has removed the sound, calls it before destroying it.
+  void waitForPinnedCalls(ActiveSound *sound);
+
   std::mutex remove_handle_mutex;
   mutable std::recursive_mutex sounds_mutex; // Protects sounds, mSoundByHash, and mSoundByHandle
   std::unordered_map<unsigned int, ActiveSound *> mSoundByHash;

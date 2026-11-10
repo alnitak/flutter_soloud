@@ -1265,14 +1265,43 @@ PlayerErrors Player::setPullBufferStream(
     return e;
 }
 
-PlayerErrors Player::resetPullBufferStream(unsigned int hash)
+PlayerErrors Player::pinPullBufferStream(unsigned int hash,
+                                         SoLoud::PullBufferStream *&stream)
 {
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
     auto const s = findByHash(hash);
 
-    if (s == nullptr || s->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
+    if (s == nullptr)
         return PlayerErrors::soundHashNotFound;
 
-    static_cast<SoLoud::PullBufferStream *>(s->sound.get())->resetPullBufferStream();
+    if (s->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
+        return PlayerErrors::hashIsNotAPullBufferStream;
+
+    stream = static_cast<SoLoud::PullBufferStream *>(s->sound.get());
+    stream->pin();
+    return PlayerErrors::noError;
+}
+
+namespace
+{
+    /// Unpins a stream Player::pinPullBufferStream() pinned.
+    struct PullStreamUnpinner
+    {
+        SoLoud::PullBufferStream *stream;
+        ~PullStreamUnpinner() { stream->unpin(); }
+    };
+}
+
+PlayerErrors Player::resetPullBufferStream(unsigned int hash)
+{
+    // Pinned, see addPullBufferDataStream(): the reset waits for a delivery's
+    // decode.
+    SoLoud::PullBufferStream *stream = nullptr;
+    if (pinPullBufferStream(hash, stream) != PlayerErrors::noError)
+        return PlayerErrors::soundHashNotFound;
+    const PullStreamUnpinner unpinner{stream};
+
+    stream->resetPullBufferStream();
     return PlayerErrors::noError;
 }
 
@@ -1282,16 +1311,20 @@ PlayerErrors Player::addPullBufferDataStream(
     unsigned int aDataLen,
     uint64_t offset)
 {
-    auto const s = findByHash(hash);
+    // The stream is pinned, not used under sounds_mutex: disposeSound() and
+    // disposeAllSound() destroy it only once the calls that pinned it have
+    // unpinned it, so a feeder thread never decodes into a destroyed stream.
+    // A delivery's decode can take tens of milliseconds, and every other
+    // user of sounds_mutex (a voice's end on the mixer's dispatch too) would
+    // wait for it.
+    SoLoud::PullBufferStream *stream = nullptr;
+    const PlayerErrors pinned = pinPullBufferStream(hash, stream);
+    if (pinned != PlayerErrors::noError)
+        return pinned;
+    const PullStreamUnpinner unpinner{stream};
+    SOLOUD_TEST_BARRIER(pullDataSoundLookedUp);
 
-    if (s == nullptr)
-        return PlayerErrors::soundHashNotFound;
-
-    if (s->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
-        return PlayerErrors::hashIsNotAPullBufferStream;
-
-    return static_cast<SoLoud::PullBufferStream *>(s->sound.get())
-        ->addAudioData(data, aDataLen, offset);
+    return stream->addAudioData(data, aDataLen, offset);
 }
 
 PlayerErrors Player::getPullBufferTimeRange(
@@ -1299,15 +1332,14 @@ PlayerErrors Player::getPullBufferTimeRange(
     double *startTime,
     double *endTime)
 {
-    auto const s = findByHash(hash);
+    // Pinned, see addPullBufferDataStream(): the range waits for a
+    // delivery's decode.
+    SoLoud::PullBufferStream *pullStream = nullptr;
+    const PlayerErrors pinned = pinPullBufferStream(hash, pullStream);
+    if (pinned != PlayerErrors::noError)
+        return pinned;
+    const PullStreamUnpinner unpinner{pullStream};
 
-    if (s == nullptr)
-        return PlayerErrors::soundHashNotFound;
-
-    if (s->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
-        return PlayerErrors::hashIsNotAPullBufferStream;
-
-    auto *pullStream = static_cast<SoLoud::PullBufferStream *>(s->sound.get());
     double start = 0.0;
     double end = 0.0;
     pullStream->getBufferTimeRange(start, end);
@@ -3065,6 +3097,19 @@ void Player::removeHandle(unsigned int handle)
     }
 }
 
+void Player::waitForPinnedCalls(ActiveSound *sound)
+{
+    if (sound == nullptr || sound->soundType != SoundType::TYPE_PULL_BUFFER_STREAM)
+        return;
+#ifndef __EMSCRIPTEN__
+    // Without sounds_mutex: a pinned delivery takes it for its buffering
+    // check. On the web every call that pins runs on the browser's main
+    // thread, as this does, so nothing pinned can be running elsewhere.
+    static_cast<SoLoud::PullBufferStream *>(sound->sound.get())
+        ->waitUntilUnpinned();
+#endif
+}
+
 void Player::disposeSound(unsigned int soundHash)
 {
     std::unique_ptr<ActiveSound> soundToDestroy;
@@ -3131,6 +3176,7 @@ void Player::disposeSound(unsigned int soundHash)
             sounds.erase(it);
         }
     }
+    waitForPinnedCalls(soundToDestroy.get());
     // Sound (and its filters) is destroyed here when soundToDestroy goes out of scope
 
     // After disposing a sound, check if there are any remaining active voices.
@@ -3198,6 +3244,8 @@ void Player::stopDeviceAndDestroyAllSounds()
         soundsToDestroy = std::move(sounds);
         sounds.clear();
     }
+    for (auto &sound : soundsToDestroy)
+        waitForPinnedCalls(sound.get());
     // Sounds (and their filters) are destroyed here when soundsToDestroy goes out of scope
 }
 

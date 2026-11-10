@@ -1216,6 +1216,8 @@ void PullBufferStream::requestMoreDataIfNeeded(bool aFromMixer) {
 bool PullBufferStream::nextDataRequestLocked(uint64_t &aOffset) {
   auto callback = mOnMoreDataIsNeededCallback.load();
   if (callback == nullptr) return false;
+  // Disposed while a pinned delivery finishes (see pin()).
+  if (mIsDestroyed.load()) return false;
   if (mDataIsEnded.load()) return false;
   if (mWaitingForData.load()) return false;
   // The sequential feed has already reached the declared end of the file;
@@ -1297,8 +1299,29 @@ bool PullBufferStream::nextDataRequestLocked(uint64_t &aOffset) {
   return true;
 }
 
+void PullBufferStream::pin() {
+  std::lock_guard<std::mutex> lock(mPinMutex);
+  ++mPins;
+}
+
+void PullBufferStream::unpin() {
+  std::lock_guard<std::mutex> lock(mPinMutex);
+  if (--mPins == 0) mUnpinned.notify_all();
+}
+
+void PullBufferStream::waitUntilUnpinned() {
+  std::unique_lock<std::mutex> lock(mPinMutex);
+  mUnpinned.wait(lock, [this] { return mPins == 0; });
+}
+
 void PullBufferStream::checkBuffering() {
   SOLOUD_TEST_BARRIER(pullBufferingCheckEntered);
+  // The sound's handle list is read and the voice paused under sounds_mutex,
+  // which a play() and a voice's end hold while they update the list, taken
+  // before the audio mutex as everywhere. A delivery runs this pinned and
+  // without it (see pin()); once the sound is disposed its voices are gone.
+  std::lock_guard<std::recursive_mutex> soundsLock(mThePlayer->sounds_mutex);
+  if (!isValid()) return;
   if (mParent == nullptr || mParent->handle.empty()) return;
 
   // The figures the decision needs, read under the decode mutex; the Player

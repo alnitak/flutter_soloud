@@ -13,6 +13,7 @@
 #include "stream_decoder.h"
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -103,6 +104,15 @@ public:
 
   bool isValid() const { return !mIsDestroyed.load(); }
   void markForDestruction() { mIsDestroyed.store(true); }
+
+  /// The Player pins the stream, under sounds_mutex, for a call that uses it
+  /// after releasing that mutex (a delivery, a reset, the buffered-range
+  /// getter: each can wait for a delivery's decode). A disposal removes the
+  /// sound under sounds_mutex, then waits without it for the calls pinned
+  /// before to unpin it, before it destroys the stream.
+  void pin();
+  void unpin();
+  void waitUntilUnpinned();
 
   /// True when the audio thread has requested data but it has not arrived yet.
   bool isWaitingForData() const { return mWaitingForData.load(); }
@@ -268,6 +278,10 @@ private:
   /// the stream synchronously, run after it is released (see
   /// DeferredCallbacks).
   mutable std::mutex mDecodeMutex;
+  /// See pin().
+  std::mutex mPinMutex;
+  std::condition_variable mUnpinned;
+  unsigned int mPins = 0;
   /// A seek or rewind deferred by PullBufferStreamInstance::deferMove(), and
   /// the seek's target. Set and applied with the audio mutex held; a reset
   /// drops it.

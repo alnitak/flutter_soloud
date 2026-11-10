@@ -81,6 +81,10 @@ namespace soloud_test
     /// buffer and dropped from the queue: a delivery, or the mixer
     /// (tryDecodePendingData()), is decoding.
     pullDecoding,
+    /// In Player::addPullBufferDataStream(), right after the stream has been
+    /// looked up by hash and before data is added to it. A disposal started
+    /// while a feeder is parked here must not destroy the stream under it.
+    pullDataSoundLookedUp,
     barrierCount
   };
 

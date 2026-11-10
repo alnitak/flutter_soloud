@@ -40,6 +40,16 @@
 //   reset         The mixer parks while it decodes a queued chunk, and the
 //                 stream is reset. The reset must wait for the mixer; the
 //                 stream then asks for its data from 0.
+//   dispose       A delivery parks right after it has looked the playing
+//                 stream up, and disposeSound() runs meanwhile. The disposal
+//                 must wait for the delivery, which then completes; a later
+//                 delivery finds no stream.
+//   dispose-all   The same with disposeAllSound().
+//   lock-during-decode
+//                 A delivery parks while it decodes. Other users of the
+//                 Player's sounds_mutex must not wait for it, and a disposal
+//                 meanwhile waits for the delivery without holding that
+//                 mutex.
 //   stress        A PCM stream and an MP3 stream
 //                 (example/assets/audio/8_bit_mentality.mp3) are fed, seeked
 //                 (to 0 too), reset and read by four threads at once while
@@ -48,7 +58,8 @@
 //                 under AddressSanitizer a decoder or buffer used after it
 //                 was replaced.
 //
-// A scenario that deadlocks cannot be cleaned up after: the run then prints
+// A scenario that deadlocks, or whose parked threads would use discarded or
+// freed state once released, cannot be cleaned up after: the run then prints
 // its counts and exits with failure.
 //
 // The stream is raw 16-bit stereo PCM at 44.1 kHz, driven through the exports
@@ -441,6 +452,97 @@ void resetDuringMixerDecode() {
     endStream(s);
 }
 
+/// A delivery parks right after it has looked the playing stream up, and the
+/// stream is disposed meanwhile (all sounds when [disposeAll]). The disposal
+/// must wait for the delivery: released after it, the delivery would decode
+/// into the destroyed stream.
+void deliveryDuringDisposal(const char *name, bool disposeAll) {
+    std::printf("%s: a delivery parked after its lookup while %s runs\n", name,
+                disposeAll ? "disposeAllSound()" : "disposeSound()");
+    const Stream s = startStream();
+    const unsigned int hash = s.hash;
+    soloud_test::armBarrier(DeviceBarrier::pullDataSoundLookedUp);
+    auto delivered = std::make_shared<std::atomic<int>>(-1);
+    std::thread feeder([hash, delivered] {
+        delivered->store(static_cast<int>(addPullBufferDataStream(
+            hash, gChunk.data(), static_cast<unsigned int>(gChunk.size()),
+            gChunk.size())));
+    });
+    EXPECT(barrierReached(DeviceBarrier::pullDataSoundLookedUp, 3000),
+           "the delivery did not look the stream up");
+
+    auto disposed = std::make_shared<std::atomic<bool>>(false);
+    std::thread disposer([hash, disposeAll, disposed] {
+        if (disposeAll)
+            disposeAllSound();
+        else
+            disposeSound(hash);
+        disposed->store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    if (disposed->load())
+        deadlocked("the disposal finished while a delivery was parked between "
+                   "its lookup and its use of the stream (releasing it would "
+                   "decode into the destroyed stream)");
+
+    soloud_test::releaseBarrier(DeviceBarrier::pullDataSoundLookedUp);
+    feeder.join();
+    disposer.join();
+    EXPECT(delivered->load() == static_cast<int>(PlayerErrors::noError),
+           "the parked delivery should complete before the disposal, got %d",
+           delivered->load());
+    EXPECT(getIsValidVoiceHandle(s.voice) == 0,
+           "the disposal should have stopped the stream's voice");
+    const PlayerErrors after = addPullBufferDataStream(
+        hash, gChunk.data(), static_cast<unsigned int>(gChunk.size()), 0);
+    EXPECT(after == PlayerErrors::soundHashNotFound,
+           "a delivery after the disposal should find no stream, got %d",
+           static_cast<int>(after));
+}
+
+/// A delivery to a stream nothing plays parks in its decode, so only the
+/// delivery can reach the barrier. sounds_mutex must be free meanwhile, also
+/// while a disposal of the stream waits for the delivery.
+void lockDuringDecode() {
+    std::printf("lock-during-decode: sounds_mutex while a delivery decodes\n");
+    unsigned int hash = 0;
+    PlayerErrors err = setPullBufferStream(
+        &hash, 1u << 20, 0.5, kSampleRate, kChannels,
+        static_cast<int>(BufferType::PCM_S16LE), kTotalBytes, nullptr, nullptr,
+        onMoreData, nullptr);
+    EXPECT(err == PlayerErrors::noError, "setPullBufferStream: %d", (int)err);
+    soloud_test::armBarrier(DeviceBarrier::pullDecoding);
+    auto delivered = std::make_shared<std::atomic<int>>(-1);
+    std::thread feeder([hash, delivered] {
+        delivered->store(static_cast<int>(addPullBufferDataStream(
+            hash, gChunk.data(), static_cast<unsigned int>(gChunk.size()), 0)));
+    });
+    EXPECT(barrierReached(DeviceBarrier::pullDecoding, 3000),
+           "the delivery did not reach its decode");
+    // countAudioSource() only looks the sound up under sounds_mutex.
+    EXPECT(returnsWithin(300, [hash] { (void)countAudioSource(hash); }),
+           "sounds_mutex is held while the delivery decodes");
+
+    auto disposed = std::make_shared<std::atomic<bool>>(false);
+    std::thread disposer([hash, disposed] {
+        disposeSound(hash);
+        disposed->store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    if (disposed->load())
+        deadlocked("the disposal finished while a delivery was decoding into "
+                   "the stream");
+    EXPECT(returnsWithin(300, [hash] { (void)countAudioSource(hash); }),
+           "sounds_mutex is held while a disposal waits for the delivery");
+
+    soloud_test::releaseBarrier(DeviceBarrier::pullDecoding);
+    feeder.join();
+    disposer.join();
+    EXPECT(delivered->load() == static_cast<int>(PlayerErrors::noError),
+           "the parked delivery should complete, got %d", delivered->load());
+    EXPECT(countAudioSource(hash) == 0, "the stream should be disposed");
+}
+
 // ------------------------------------------------------------------ stress
 std::vector<unsigned char> gMp3;
 std::mutex gStressMutex;
@@ -585,6 +687,9 @@ int main(int argc, char **argv) {
     if (want("seek-during-decode")) seekDuringDecode();
     if (want("loop-during-decode")) loopDuringDecode();
     if (want("reset")) resetDuringMixerDecode();
+    if (want("dispose")) deliveryDuringDisposal("dispose", false);
+    if (want("dispose-all")) deliveryDuringDisposal("dispose-all", true);
+    if (want("lock-during-decode")) lockDuringDecode();
     if (want("stress")) stress();
 
     dispose();
