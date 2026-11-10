@@ -89,6 +89,10 @@ namespace soloud_test
     /// samples from the circular buffer and before it counts them as read. A
     /// reset must not land between the two.
     pullSamplesRead,
+    /// In a BufferStream's background decode thread, after it has added a
+    /// decoded chunk to the buffer and before its buffering check, which reads
+    /// and updates the sound's handle list.
+    bufferStreamBackgroundDecoded,
     barrierCount
   };
 

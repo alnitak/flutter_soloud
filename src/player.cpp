@@ -1640,6 +1640,36 @@ PlayerErrors Player::setDataIsEnded(unsigned int hash)
     return PlayerErrors::noError;
 }
 
+bool Player::runWithSoundsLock(const std::function<void()> &work,
+                               const std::function<bool()> &cancelled)
+{
+    if (!cancelled)
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        work();
+        return true;
+    }
+    for (;;)
+    {
+        {
+            std::unique_lock<std::recursive_mutex> lock(sounds_mutex,
+                                                        std::try_to_lock);
+            if (lock.owns_lock())
+            {
+                if (cancelled())
+                    return false;
+                work();
+                return true;
+            }
+        }
+        if (cancelled())
+            return false;
+        // Held for as long as a play, a delivery or a disposal takes: rarely
+        // long, and the caller has nothing else to do meanwhile.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
 PlayerErrors Player::getBufferSize(unsigned int hash, unsigned int *sizeInBytes)
 {
     // See addAudioDataStream() for why the lock must span the whole call.
@@ -1767,6 +1797,10 @@ void Player::applyPauseState(unsigned int handle, bool pause, bool isUserAction)
                 break;
             }
         }
+        // The user decides over a buffering pause the mixer made before.
+        if (isUserAction && s->soundType == SoundType::TYPE_BUFFER_STREAM)
+            static_cast<SoLoud::BufferStream *>(s->sound.get())
+                ->takeBufferingPause(handle);
     }
 
     if (!pause)
