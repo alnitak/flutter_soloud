@@ -799,6 +799,78 @@ void testTeardownDuringActiveMixerCapture()
     resetGlobalState();
 }
 
+/// The capture ring is fed the mixer's own output: interleaved, at the
+/// engine's channel count and sample rate. MixerOutput has no channel mixer
+/// and no resampler, so a capture asking for another channel count would read
+/// the device buffer with the wrong frame size (past its end, for more
+/// channels), and one at another sample rate would be labelled with a rate
+/// its samples are not at. Such a capture must be refused; the engine's own
+/// format, given explicitly or as -1, still starts.
+void testCaptureRefusesAFormatTheMixDoesNotProduce()
+{
+    std::printf("capture refuses a channel count or rate the mix does not "
+                "produce\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    EXPECT(setMixerOutputCallbackForEngine(onMixerOutput, kEngineA),
+           "the owner should publish its mixer callable");
+
+    struct Case
+    {
+        int sampleRate;
+        int channels;
+        const char *what;
+    };
+    const Case refused[] = {
+        {44100, 8, "more channels than the engine mixes"},
+        {44100, 1, "fewer channels than the engine mixes"},
+        {22050, 2, "another sample rate than the engine's"},
+    };
+    for (const Case &c : refused)
+    {
+        const PlayerErrors error = startMixerCapture(
+            MIXER_OUTPUT_PCM_F32LE, c.sampleRate, c.channels,
+            /*bufferSizeBytes=*/256 * 1024,
+            /*notificationThresholdBytes=*/4096, /*chunkPCMFrames=*/-1);
+        EXPECT(error == invalidParameter,
+               "a capture with %s (%d Hz, %d channels) should be refused, "
+               "got error %d",
+               c.what, c.sampleRate, c.channels, static_cast<int>(error));
+        if (error == noError)
+        {
+            // Let the device feed it, so AddressSanitizer sees what it reads.
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            stopMixerCapture();
+        }
+        EXPECT(isMixerCaptureRunning() == 0,
+               "no capture should be left running (%s)", c.what);
+    }
+
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, 44100, 2, 256 * 1024,
+                             4096, -1) == noError,
+           "a capture in the engine's own format should start");
+    stopMixerCapture();
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, 256 * 1024,
+                             4096, -1) == noError,
+           "a capture following the engine's format (-1) should start");
+    stopMixerCapture();
+
+    resetGlobalState();
+
+    // Without an engine there is no mix to capture, and no format to follow.
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, 256 * 1024,
+                             4096, -1) == backendNotInited,
+           "a capture without an engine should be refused");
+    EXPECT(isMixerCaptureRunning() == 0,
+           "no capture should run without an engine");
+}
+
 /// Retirement stops the visualizations, whose single worker thread invokes the
 /// Dart callable through the gate and holds its own lock across each pass over
 /// the enabled visualizations. Stopping them while still holding the gate
@@ -1730,6 +1802,7 @@ int main()
     testMixerCallbackPublicationIsOwnerScoped();
     testStaleWorkerMixerCallbackCannotBeRevived();
     testTeardownDuringActiveMixerCapture();
+    testCaptureRefusesAFormatTheMixDoesNotProduce();
     testRetirementWhileVisualizationsDispatch();
     testRetirementSparesWhatANewerRegistrationStarted();
     testVisualizationSendsOnePacketAtATime();

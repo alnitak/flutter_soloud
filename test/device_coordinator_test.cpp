@@ -1104,7 +1104,11 @@ void testMixerStopThenStartDoesNotAdmitOldCallback()
     std::atomic<bool> swapDone{false};
     std::thread swapper([&] {
         stopMixerCapture();
-        startMixerCapture(MIXER_OUTPUT_PCM_F32LE, 22050, 2, 65536, 4096, -1);
+        // Capture follows the engine rate. Vary the PCM format instead so
+        // this remains a distinct replacement under the format checks.
+        const auto result = startMixerCapture(
+            MIXER_OUTPUT_PCM_S16LE, 44100, 2, 65536, 4096, -1);
+        EXPECT(result == PlayerErrors::noError, "capture B should start");
         swapDone.store(true, std::memory_order_release);
     });
 

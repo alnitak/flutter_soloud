@@ -66,14 +66,17 @@ external void retireDartCallbacksFinalizer(ffi.Pointer<ffi.Void> token);
 /// Start capturing the master mixer output.
 ///
 /// [format] the output format from the MixerOutputFormat enum.
-/// [sampleRate] desired sample rate, or <=0 to use the engine sample rate.
-/// [channels] desired channel count, or <=0 to use the engine channel count.
+/// [sampleRate] the engine sample rate, or <=0 to follow it. Capture does
+/// not resample: another rate is refused with invalidParameter.
+/// [channels] the engine channel count, or <=0 to follow it. Capture does
+/// not remix: another count is refused with invalidParameter.
 /// [bufferSizeBytes] size of the circular buffer in bytes.
 /// [notificationThresholdBytes] number of available bytes before a callback
 /// is fired.
 /// [chunkPCMFrames] fixed PCM chunk size in frames, or 0 to disable chunk
 /// mode.
-/// Returns [PlayerErrors.noError] if success.
+/// Returns [PlayerErrors.noError] if success, backendNotInited without an
+/// initialized engine.
 @ffi.Native<
   ffi.UnsignedInt Function(ffi.Int, ffi.Int, ffi.Int, ffi.Int, ffi.Int, ffi.Int)
 >(symbol: 'startMixerCapture')

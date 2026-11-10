@@ -77,6 +77,8 @@ class SoLoudIsolate {
   /// can be called from a non-main isolate. The engine must have been
   /// initialized in the main isolate before calling this method.
   ///
+  /// [sampleRate] and [channels] must match the engine, or be -1 to follow
+  /// it: capture does not resample or remix channels.
   /// See [SoLoud.startMixerOutputStream] for parameter details.
   @experimental
   Stream<Uint8List> startMixerOutputStream({

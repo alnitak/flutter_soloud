@@ -66,8 +66,11 @@ class MixerOutput {
   /// Start capturing mixer output.
   ///
   /// [format] the desired output format.
-  /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
-  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// [sampleRate] the sample rate of the mix [onAudioData] is fed, resolved
+  /// by the caller.
+  /// [channels] the channel count of that mix, resolved by the caller. No
+  /// resampling or channel conversion happens here: every frame handed to
+  /// [onAudioData] must hold exactly this many samples.
   /// [bufferSizeBytes] the total size of the circular buffer.
   /// [notificationThresholdBytes] how many bytes must be available before
   /// the Dart callback is triggered. Used for compressed formats.

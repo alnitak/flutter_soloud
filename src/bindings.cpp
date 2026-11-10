@@ -119,10 +119,12 @@ namespace
   /// teardown's stop() has run, leaving a live notification thread attached to
   /// a disposed engine.
   ///
-  /// Lock ordering: `init_deinit_mutex -> mixer_lifecycle_mutex`. Never the
-  /// reverse — startMixerCapture() releases init_deinit_mutex before taking
-  /// this. Neither is ever held while acquiring the Dart callback gate, which
-  /// stays a leaf.
+  /// Lock ordering: `init_deinit_mutex -> player_lifetime_mutex ->
+  /// mixer_lifecycle_mutex`. Never the reverse — startMixerCapture() holds a
+  /// PlayerLease across this and never takes init_deinit_mutex, and teardown
+  /// stops the capture before, not while, holding player_lifetime_mutex
+  /// exclusively. This lock is never held while acquiring the Dart callback
+  /// gate, which stays a leaf.
   std::mutex mixer_lifecycle_mutex;
 
   std::mutex engine_lifecycle_mutex;
@@ -816,22 +818,29 @@ extern "C"
   {
     MixerOutputFormat outputFormat = static_cast<MixerOutputFormat>(format);
 
-    int sr = sampleRate;
-    int ch = channels;
-    if (sr <= 0 || ch <= 0)
-    {
-      // Scoped deliberately: init_deinit_mutex must be released before
-      // mixer_lifecycle_mutex is taken, or this inverts the order that
-      // disposeLocked() uses and the two deadlock.
-      std::lock_guard<std::mutex> guard(init_deinit_mutex);
-      if (player.get() != nullptr && player.get()->isInited())
-      {
-        if (sr <= 0)
-          sr = static_cast<int>(player.get()->soloud.getBackendSamplerate());
-        if (ch <= 0)
-          ch = static_cast<int>(player.get()->soloud.getBackendChannels());
-      }
-    }
+    // The capture copies the engine's own mix as the device callback hands it
+    // over: interleaved frames of getBackendChannels() samples at the engine
+    // rate. Nothing resamples or remixes it, so another rate would be
+    // mislabelled audio and another channel count would read the device buffer
+    // with the wrong frame size -- past its end, for more channels, on the
+    // audio thread. Refuse both; <= 0 follows the engine.
+    //
+    // The lease is held through the start, so the engine cannot be torn down
+    // and re-initialized in another format between this check and the
+    // capture. Unlike init_deinit_mutex, it does not wait behind an engine
+    // initialization or teardown that is busy with the device.
+    const PlayerLease lease;
+    if (!lease)
+      return backendNotInited;
+    const int engineRate =
+        static_cast<int>(lease->soloud.getBackendSamplerate());
+    const int engineChannels =
+        static_cast<int>(lease->soloud.getBackendChannels());
+    if ((sampleRate > 0 && sampleRate != engineRate) ||
+        (channels > 0 && channels != engineChannels))
+      return invalidParameter;
+    int sr = engineRate;
+    int ch = engineChannels;
 
     if (sr <= 0)
       sr = 44100;
