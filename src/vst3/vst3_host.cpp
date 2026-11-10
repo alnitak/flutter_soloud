@@ -960,7 +960,15 @@ Vst3HostManager::Vst3HostManager() {
 }
 
 Vst3HostManager::~Vst3HostManager() {
+#if defined(_WIN32)
+  // Run at DLL_PROCESS_DETACH, after ExitProcess has ended every other
+  // thread: no mix is in progress, and the barrier's locks (the player
+  // lifetime lock, the audio mutex) may have been held by a thread that
+  // died, which would hang the exit or end the process.
   unloadAll();
+#else
+  unloadAllAtExit();
+#endif
 }
 
 VST3::Hosting::Module::Ptr Vst3HostManager::getOrLoadModule(
@@ -1136,8 +1144,9 @@ void Vst3HostManager::unloadAll(void (*audioThreadBarrier)(void *),
   // The audio thread reads raw pointers from mPluginTable without a lock.
   // Clearing the table stops new lookups, but a mix already in progress may
   // still hold a pointer it loaded before the clear. Wait for it to finish
-  // before any instance is shut down or destroyed below.
-  if (audioThreadBarrier != nullptr) {
+  // before any instance is shut down or destroyed below. (With no plugin
+  // loaded there is nothing to wait for.)
+  if (audioThreadBarrier != nullptr && !toUnload.empty()) {
     audioThreadBarrier(barrierUserData);
   }
   // 1. Shutdown all active plugin instances: close editors, stop processing,
@@ -1152,6 +1161,24 @@ void Vst3HostManager::unloadAll(void (*audioThreadBarrier)(void *),
   // 2. Clear cached hosting modules so bundleExit() is called only after
   //    all instances have been cleanly terminated and released.
   modulesToUnload.clear();
+}
+
+void Vst3HostManager::setAudioThreadBarrier(void (*audioThreadBarrier)(void *),
+                                            void *barrierUserData) {
+  std::lock_guard<std::mutex> lock(mMutex);
+  mAudioThreadBarrier = audioThreadBarrier;
+  mAudioThreadBarrierUserData = barrierUserData;
+}
+
+void Vst3HostManager::unloadAllAtExit() {
+  void (*barrier)(void *) = nullptr;
+  void *barrierUserData = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(mMutex);
+    barrier = mAudioThreadBarrier;
+    barrierUserData = mAudioThreadBarrierUserData;
+  }
+  unloadAll(barrier, barrierUserData);
 }
 
 std::shared_ptr<Vst3PluginInstance> Vst3HostManager::getPlugin(int pluginHandle) {

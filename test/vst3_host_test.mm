@@ -10,7 +10,7 @@
 #include "vst3/vst3_host.h"
 #include "vst3_mock_plugin.h"
 
-#include <CoreFoundation/CoreFoundation.h>
+#import <Cocoa/Cocoa.h>
 
 #include <algorithm>
 #include <atomic>
@@ -21,11 +21,13 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
 using SoLoud::Vst3HostManager;
+using SoLoud::Vst3PluginInstance;
 
 static int g_failures = 0;
 static int g_assertions = 0;
@@ -291,6 +293,48 @@ static void testRemoteEditorCloseWhileProcessing() {
     Vst3HostManager::instance().unloadPlugin(handle);
 }
 
+// The unload the app runs when it terminates
+// (NSApplicationWillTerminateNotification) must wait for a mix that took the
+// plugin's pointer from the lookup table before it destroys the plugin.
+static void testExitUnloadWaitsForAudioThread() {
+    std::printf("Test: exit-time unload waits for the audio thread\n");
+    // Held by every mix, as SoLoud's audio mutex; the barrier waits for it.
+    static std::mutex audioMutex;
+    static void (*barrier)(void *) = [](void *) { std::lock_guard<std::mutex> wait(audioMutex); };
+    Vst3HostManager::instance().setAudioThreadBarrier(barrier, nullptr);
+    const int handle = loadMock(gBundle, "Mock Effect");
+
+    std::atomic<bool> pointerTaken{false};
+    std::atomic<bool> unloadReturned{false};
+    std::atomic<bool> processed{false};
+    std::thread mix([&] {
+        std::lock_guard<std::mutex> mixing(audioMutex);
+        // vst3FilterDspCallback, preempted between its lookup and the call.
+        Vst3PluginInstance *plugin = Vst3HostManager::instance().getPluginAudioThread(handle);
+        pointerTaken.store(true);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        // Once the unload has returned the plugin is gone: don't touch it.
+        if (plugin != nullptr && !unloadReturned.load()) {
+            std::vector<float> buffer(2 * 64, 0.5f);
+            plugin->processAudioEffectBlock(buffer.data(), 64, 64, 2, kSampleRate, 0.0,
+                                            nullptr, 0, 0);
+            processed.store(true);
+        }
+    });
+    while (!pointerTaken.load())
+        std::this_thread::yield();
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:NSApplicationWillTerminateNotification
+                      object:nil];
+    unloadReturned.store(true);
+    mix.join();
+
+    EXPECT(processed.load(), "the exit-time unload destroyed the plugin under a running mix");
+    EXPECT(Vst3HostManager::instance().getPlugin(handle) == nullptr,
+           "the exit-time unload left the plugin loaded");
+    Vst3HostManager::instance().setAudioThreadBarrier(nullptr, nullptr);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: %s <directory of the mock bundles> [test]\n", argv[0]);
@@ -304,6 +348,8 @@ int main(int argc, char **argv) {
         {"instrument", testInstrumentOutputIsNeverStale},
         {"editor", testEditorOpenCloseWhileProcessing},
         {"remote-editor", testRemoteEditorCloseWhileProcessing},
+        // Last: it unloads every plugin, as when the app terminates.
+        {"exit", testExitUnloadWaitsForAudioThread},
     };
     for (const auto &test : tests)
         if (only.empty() || only == test.first)

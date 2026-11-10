@@ -1162,7 +1162,8 @@ std::unique_ptr<Vst3EditorWindow> Vst3EditorWindow::create() {
 - (void)applicationWillTerminate:(NSNotification *)notification {
   (void)notification;
   SoLoud::sAppTerminating.store(true, std::memory_order_release);
-  SoLoud::Vst3HostManager::instance().unloadAll();
+  // The engine may still be mixing.
+  SoLoud::Vst3HostManager::instance().unloadAllAtExit();
 }
 @end
 

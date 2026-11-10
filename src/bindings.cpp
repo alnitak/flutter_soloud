@@ -5302,10 +5302,15 @@ extern "C"
     free(subCategories);
   }
 
+  static void vst3AudioThreadBarrier(void *userData);
+
   FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3LoadPlugin(
       const char *bundlePath, const char *classUidHex, unsigned int sampleRate,
       unsigned int maxBlockSize, unsigned int channels, int *outPluginHandle)
   {
+    // For the unload at process exit, which may come while the engine mixes.
+    SoLoud::Vst3HostManager::instance().setAudioThreadBarrier(
+        &vst3AudioThreadBarrier, nullptr);
     return SoLoud::Vst3HostManager::instance().loadPlugin(
         bundlePath, classUidHex, sampleRate, maxBlockSize, channels,
         outPluginHandle);

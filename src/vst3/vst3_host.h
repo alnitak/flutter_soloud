@@ -225,6 +225,16 @@ public:
   void unloadAll(void (*audioThreadBarrier)(void *) = nullptr,
                  void *barrierUserData = nullptr);
 
+  /// Registers the barrier unloadAllAtExit() passes to unloadAll().
+  void setAudioThreadBarrier(void (*audioThreadBarrier)(void *),
+                             void *barrierUserData);
+
+  /// unloadAll() when the process exits (the macOS app terminating, or this
+  /// manager's static destructor outside Windows), with the barrier
+  /// registered by setAudioThreadBarrier(): the audio device may still be
+  /// mixing then.
+  void unloadAllAtExit();
+
   std::shared_ptr<Vst3PluginInstance> getPlugin(int pluginHandle);
 
   /// Lock-free lookup for the real-time audio thread (no mutex, no refcounting).
@@ -265,6 +275,9 @@ private:
   std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> mPlugins;
   std::array<std::atomic<Vst3PluginInstance *>, kMaxFastPlugins> mPluginTable{};
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> mLoadedModules;
+  // Guarded by mMutex.
+  void (*mAudioThreadBarrier)(void *) = nullptr;
+  void *mAudioThreadBarrierUserData = nullptr;
   std::atomic<void (*)(int, unsigned int, double)> mParamEditCallback{nullptr};
   std::atomic<dartVst3RestartComponentCallback_t> mRestartCallback{nullptr};
 };
