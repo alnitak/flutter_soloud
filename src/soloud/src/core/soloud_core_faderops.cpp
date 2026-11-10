@@ -190,23 +190,25 @@ namespace SoLoud
 		}
 
 		FOR_ALL_VOICES_PRE
-		const float from = mVoice[ch]->mSetVolume;
-		if (aTo == from)
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// Start the fade at the playhead when the ring allows it. It fades
+		// from the voice's value there, which the write head may already
+		// have left: only the going-forward fade, from the write head, sets
+		// a voice that is already at aTo there, as setVolume() would.
+		if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_VOLUME, aTo, aTime, playheadTimeLocked_internal()))
 		{
-			// Already there: what setVolume() does.
-			if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_VOLUME, aTo, 0, playheadTimeLocked_internal()))
+			const float from = mVoice[ch]->mSetVolume;
+			if (aTo == from)
 			{
 				mVoice[ch]->mVolumeFader.mActive = 0;
 				setVoiceVolume_internal(ch, aTo);
 				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, 0);
 			}
-		}
-		// ###### flutter_soloud local patch (retroactive re-mix) ######
-		// Start the fade at the playhead when the ring allows it.
-		else if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_VOLUME, aTo, aTime, playheadTimeLocked_internal()))
-		{
-			mVoice[ch]->mVolumeFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
-			journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, aTime);
+			else
+			{
+				mVoice[ch]->mVolumeFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, aTime);
+			}
 		}
 		FOR_ALL_VOICES_POST
 	}
@@ -220,22 +222,22 @@ namespace SoLoud
 		}
 
 		FOR_ALL_VOICES_PRE
-		const float from = mVoice[ch]->mPan;
-		if (aTo == from)
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// As in fadeVolume().
+		if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_PAN, aTo, aTime, playheadTimeLocked_internal()))
 		{
-			// Already there: what setPan() does.
-			if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_PAN, aTo, 0, playheadTimeLocked_internal()))
+			const float from = mVoice[ch]->mPan;
+			if (aTo == from)
 			{
 				mVoice[ch]->mPanFader.mActive = 0;
 				setVoicePan_internal(ch, aTo);
 				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAN, aTo, mStreamTime, 0);
 			}
-		}
-		// ###### flutter_soloud local patch (retroactive re-mix) ######
-		else if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_PAN, aTo, aTime, playheadTimeLocked_internal()))
-		{
-			mVoice[ch]->mPanFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
-			journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAN, aTo, mStreamTime, aTime);
+			else
+			{
+				mVoice[ch]->mPanFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAN, aTo, mStreamTime, aTime);
+			}
 		}
 		FOR_ALL_VOICES_POST
 	}
@@ -248,22 +250,22 @@ namespace SoLoud
 			return;
 		}
 		FOR_ALL_VOICES_PRE
-		const float from = mVoice[ch]->mSetRelativePlaySpeed;
-		if (aTo == from)
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// As in fadeVolume().
+		if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_SPEED, aTo, aTime, playheadTimeLocked_internal()))
 		{
-			// Already there: what setRelativePlaySpeed() does.
-			if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_SPEED, aTo, 0, playheadTimeLocked_internal()))
+			const float from = mVoice[ch]->mSetRelativePlaySpeed;
+			if (aTo == from)
 			{
 				mVoice[ch]->mRelativePlaySpeedFader.mActive = 0;
 				if (setVoiceRelativePlaySpeed_internal(ch, aTo) == SO_NO_ERROR)
 					journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_SPEED, aTo, mStreamTime, 0);
 			}
-		}
-		// ###### flutter_soloud local patch (retroactive re-mix) ######
-		else if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_SPEED, aTo, aTime, playheadTimeLocked_internal()))
-		{
-			mVoice[ch]->mRelativePlaySpeedFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
-			journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_SPEED, aTo, mStreamTime, aTime);
+			else
+			{
+				mVoice[ch]->mRelativePlaySpeedFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_SPEED, aTo, mStreamTime, aTime);
+			}
 		}
 		FOR_ALL_VOICES_POST
 	}

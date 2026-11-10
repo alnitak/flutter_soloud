@@ -1011,6 +1011,75 @@ void testRetroactiveFadeStartsFromTheLiveValue()
     }
 }
 
+// A fade to the value a voice has at the write head, but not yet at the
+// playhead, still fades from the playhead. A 30 ms fade to 0.25 has finished
+// at the write head while the playhead is 9 ms into it. fadeVolume(h, 0.25,
+// 1 s) compared 0.25 with the write head's value and set the voice to it at
+// the playhead, so the output dropped to half within one quantum, while
+// scheduleFadeAt(h, playhead, 0.25, 1 s) faded. The two must give the same
+// output, and fadePan and fadeRelativePlaySpeed must fade too.
+void testFadeToTheWriteHeadValueFades()
+{
+    const double shortFade = 0.03;  // 1323 frames, from the playhead at 2100
+    std::vector<float> outs[2];
+    for (int scheduled = 0; scheduled < 2; ++scheduled) {
+        Rig rig;
+        PulseSource a(1 << 20, 0.5f);
+        const SoLoud::handle h = rig.engine.play(a);
+        rig.topUp();
+        rig.discard(2100);
+        rig.engine.fadeVolume(h, 0.25f, shortFade);
+        rig.discard(400);
+        if (scheduled)
+            rig.engine.scheduleFadeAt(h, rig.engine.getPlayheadTime(), 0.25f, 1.0, false);
+        else
+            rig.engine.fadeVolume(h, 0.25f, 1.0);
+        outs[scheduled] = rig.readAll();
+    }
+    float worst = outs[0].size() == outs[1].size() ? 0.0f : 1.0f;
+    for (size_t i = 0; i < outs[0].size() && i < outs[1].size(); ++i)
+        worst = std::max(worst, std::fabs(outs[0][i] - outs[1][i]));
+    EXPECT(worst < 1e-6f,
+           "fadeVolume(h, 0.25, 1 s) differs from scheduleFadeAt(h, playhead, "
+           "0.25, 1 s) by up to %f", worst);
+    EXPECT(outs[0].size() > 1000 && outs[0][800] > 0.9f * outs[0][0],
+           "fadeVolume(h, 0.25, 1 s) drops the voice from %f to %f in 400 frames",
+           outs[0].size() > 0 ? outs[0][0] : 0.0f,
+           outs[0].size() > 800 ? outs[0][800] : 0.0f);
+
+    for (int speed = 0; speed < 2; ++speed) {
+        Rig rig;
+        PulseSource a(1 << 20, 0.5f);
+        const SoLoud::handle h = rig.engine.play(a);
+        rig.topUp();
+        rig.discard(2100);
+        if (speed)
+            rig.engine.fadeRelativePlaySpeed(h, 1.5f, shortFade);
+        else
+            rig.engine.fadePan(h, 0.5f, shortFade);
+        rig.discard(400);
+        if (speed)
+            rig.engine.fadeRelativePlaySpeed(h, 1.5f, 1.0);
+        else
+            rig.engine.fadePan(h, 0.5f, 1.0);
+        const int slot = rig.engine.getVoiceFromHandle_internal(h);
+        EXPECT(slot >= 0, "the voice is gone");
+        if (slot < 0)
+            continue;
+        const SoLoud::AudioSourceInstance* voice = rig.engine.mVoice[slot];
+        const SoLoud::Fader& fader =
+            speed ? voice->mRelativePlaySpeedFader : voice->mPanFader;
+        // Where the short fade is at the playhead, 400 frames in.
+        const float live = (speed ? 1.0f : 0.0f) + 0.5f * 400.0f / 1323.0f;
+        EXPECT(fader.mActive > 0 && std::fabs(fader.mTime - 1.0) < 1e-6 &&
+                   std::fabs(fader.mFrom - live) < 0.01f,
+               "%s to the write-head value: fades from %f over %f s (active %d), "
+               "want from %f over 1 s",
+               speed ? "fadeRelativePlaySpeed" : "fadePan", fader.mFrom,
+               fader.mTime, fader.mActive, live);
+    }
+}
+
 // ---- Device reads during an event -------------------------------------------
 
 #if defined(SOLOUD_RETRO_TEST_HOOKS)
@@ -1133,6 +1202,7 @@ int main()
     testLongIdleNoStreamTimeOrRingDrift();
     testGroupFadesStartFromEachVoice();
     testRetroactiveFadeStartsFromTheLiveValue();
+    testFadeToTheWriteHeadValueFades();
 #if defined(SOLOUD_RETRO_TEST_HOOKS)
     testRetroactivePlayWhileTheDeviceReads();
 #endif
