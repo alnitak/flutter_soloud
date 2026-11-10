@@ -745,6 +745,13 @@ namespace SoLoud
 		// Engine time of the sample currently reaching the device. Caller
 		// must hold the audio mutex.
 		time playheadTimeLocked_internal();
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// Test builds only: called by playheadTimeLocked_internal() before
+		// it reads the ring, so a test can read the ring there as the
+		// device may, which takes no lock.
+		void (*mPlayheadTestHook)(Soloud *aSoloud) = nullptr;
+#endif
 		// Bodies of getScheduledDelaySamples/getClockedDelaySamples with the
 		// audio mutex already held by the caller.
 		unsigned int getScheduledDelaySamplesLocked_internal(time aEngineTime);
@@ -986,6 +993,11 @@ namespace SoLoud
 		unsigned long long mRemixStartPos;
 		time mRemixOldStreamTime;
 		time mRemixCheckpointTime;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The event time the rollback is placed at: the caller's, moved up to
+		// the playhead retroactiveBegin_internal read. Never before
+		// mRemixCheckpointTime.
+		time mRemixEventTime;
 		// Flags; see Soloud::FLAGS
 		unsigned int mFlags;
 		// Global volume. Applied before clipping.

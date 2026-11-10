@@ -909,6 +909,10 @@ namespace SoLoud
 	time Soloud::playheadTimeLocked_internal()
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+		if (mPlayheadTestHook != nullptr)
+			mPlayheadTestHook(this);
+#endif
 		time t = mStreamTime;
 		if (isRenderAheadEnabled() && mRenderRing.isInited() && mSamplerate > 0)
 			t -= (time)mRenderRing.availableToRead() / (time)mSamplerate;
@@ -1363,6 +1367,8 @@ namespace SoLoud
 		mRemixOldStreamTime = mStreamTime;
 		mRemixWritePos = mRenderRing.getWritePosition();
 		mRemixCheckpointTime = cp.mTime;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		mRemixEventTime = aEventTime;
 		// The rewrite starts at the checkpoint's ring write position (the
 		// beginning of the quantum starting at cp.mTime).
 		mRemixStartPos = cp.mRingWritePosition;
@@ -1481,6 +1487,13 @@ namespace SoLoud
 		const int ci = retroactiveBegin_internal(aEventTime);
 		if (ci < 0)
 			return false;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The device reads the ring without the audio mutex: since the
+		// playhead was read above, it may have moved past aEventTime and
+		// past a checkpoint, which retroactiveBegin_internal() then
+		// restored. Start the voice where that re-mix placed the event, at
+		// the newer playhead: never before the checkpoint.
+		aEventTime = mRemixEventTime;
 
 		// The voice this event inserted survived the restore (the checkpoint
 		// predates it, so it was left running); retarget its start to the

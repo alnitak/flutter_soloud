@@ -1011,6 +1011,103 @@ void testRetroactiveFadeStartsFromTheLiveValue()
     }
 }
 
+// ---- Device reads during an event -------------------------------------------
+
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+// Counts its frames: source frame i is (i + 1) / 4096, so the output shows
+// which source frame plays where. Restorable, like PulseSource.
+class CountInstance final : public SoLoud::AudioSourceInstance {
+public:
+    unsigned int getAudio(float* buffer, unsigned int samplesToRead,
+                          unsigned int bufferSize) override {
+        for (unsigned int ch = 0; ch < mChannels; ++ch)
+            for (unsigned int i = 0; i < samplesToRead; ++i)
+                buffer[ch * bufferSize + i] = (float)(offset_ + i + 1) / 4096.0f;
+        offset_ += samplesToRead;
+        return samplesToRead;
+    }
+    bool hasEnded() override { return false; }
+    SoLoud::result rewind() override {
+        offset_ = 0;
+        mStreamPosition = 0;
+        return SoLoud::SO_NO_ERROR;
+    }
+    SoLoud::SourceStateSnapshot* captureSourceState() override {
+        auto* s = new PulseSnapshot();
+        s->offset = offset_;
+        return s;
+    }
+    void restoreSourceState(SoLoud::SourceStateSnapshot* state) override {
+        offset_ = static_cast<PulseSnapshot*>(state)->offset;
+    }
+
+private:
+    unsigned int offset_ = 0;
+};
+
+class CountSource final : public SoLoud::AudioSource {
+public:
+    CountSource() {
+        mBaseSamplerate = static_cast<float>(kSampleRate);
+        mChannels = 1;
+    }
+    SoLoud::AudioSourceInstance* createInstance() override {
+        return new CountInstance();
+    }
+};
+
+int gPlayheadReads = 0;
+int gDeviceReadsBefore = 0;
+constexpr unsigned int kDeviceFrames = 16;
+
+// The device, reading the ring right before the gDeviceReadsBefore-th
+// playhead read.
+void deviceReadsBeforePlayhead(SoLoud::Soloud* engine)
+{
+    if (++gPlayheadReads != gDeviceReadsBefore)
+        return;
+    std::vector<float> tmp(kDeviceFrames * 2);
+    engine->mRenderRing.read(tmp.data(), kDeviceFrames);
+}
+
+// A retroactive play() starts the voice at the playhead even when the device,
+// which takes no lock, reads the ring while play() holds the audio mutex. The
+// playhead is 8 frames short of the checkpoint at 2048 and the device reads
+// 16 frames, before each of the playhead reads in turn. When it read after
+// the voice's start time was taken and before the rollback read the playhead
+// again, the rollback restored the checkpoint at 2048, after that start time:
+// the start delay came out as -8 frames and was cast to unsigned, which is
+// undefined behaviour. Built with clang on arm64 it gave a delay of about
+// 2^32 frames, so the voice never started; a build that saturates to 0
+// starts it 8 frames before the playhead.
+void testRetroactivePlayWhileTheDeviceReads()
+{
+    for (int before = 1; before <= 6; ++before) {
+        Rig rig;
+        rig.topUp();
+        rig.discard(2040);
+        CountSource count;
+        gPlayheadReads = 0;
+        gDeviceReadsBefore = before;
+        rig.engine.mPlayheadTestHook = deviceReadsBeforePlayhead;
+        rig.engine.play(count);
+        rig.engine.mPlayheadTestHook = nullptr;
+
+        // The voice's output frame at the playhead. With the linear
+        // resampler its output frame j is source frame j - 1, so once the
+        // rewrite's 32-frame crossfade at the playhead is over,
+        // out[k] = g * (k + j) / 4096.
+        const std::vector<float> out = rig.readAll();
+        const float step = out.size() >= 84 ? out[82] - out[80] : 0.0f;
+        const long frame = step > 1e-7f ? std::lround(out[80] / step) - 40 : -1;
+        EXPECT(frame == 0,
+               "device read before playhead read %d: the playhead is at output "
+               "frame %ld of the new voice (-1: silent), want 0",
+               before, frame);
+    }
+}
+#endif
+
 } // namespace
 
 int main()
@@ -1036,6 +1133,9 @@ int main()
     testLongIdleNoStreamTimeOrRingDrift();
     testGroupFadesStartFromEachVoice();
     testRetroactiveFadeStartsFromTheLiveValue();
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+    testRetroactivePlayWhileTheDeviceReads();
+#endif
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);
