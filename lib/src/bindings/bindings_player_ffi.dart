@@ -2577,6 +2577,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int onInstanceDestroyedAddress = 0,
     int userdataAddress = 0,
     String? webJsFunctionName,
+    bool singleInstance = false,
   }) {
     final ffi.Pointer<ffi.UnsignedInt> hash = calloc();
     final cWebName = webJsFunctionName != null && webJsFunctionName.isNotEmpty
@@ -2605,7 +2606,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
                 native.SoLoudSourceInstanceLifecycleCallback_tFunction
               >
             >.fromAddress(lifecycleAddress),
-      false,
+      singleInstance,
       cWebName == ffi.nullptr ? ffi.nullptr : cWebName.cast<ffi.Char>(),
       mustTickWhenInaudible,
       killWhenInaudible,

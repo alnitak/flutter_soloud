@@ -5352,6 +5352,10 @@ interface class SoLoud {
   ///   inaudible); a 2D voice faded to zero volume keeps playing.
   /// - [autoDispose]: Whether to dispose the source automatically when all
   ///   voices finish (default `false`).
+  /// - [singleInstance]: Whether playing the source stops the voice already
+  ///   playing it (default `false`). Use it when the callback renders one
+  ///   shared state, such as a synthesizer: every voice calls it once per
+  ///   mix.
   @experimental
   AudioSource createCustomAudioSource({
     int sampleRate = 48000,
@@ -5364,6 +5368,7 @@ interface class SoLoud {
     bool mustTickWhenInaudible = true,
     bool killWhenInaudible = false,
     bool autoDispose = false,
+    bool singleInstance = false,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -5378,6 +5383,7 @@ interface class SoLoud {
       onInstanceDestroyedAddress: onInstanceDestroyedAddress,
       userdataAddress: userdataAddress,
       webJsFunctionName: webJsFunctionName,
+      singleInstance: singleInstance,
     );
     _logPlayerError(ret.error, from: 'createCustomAudioSource() result');
     if (ret.error != PlayerErrors.noError) {

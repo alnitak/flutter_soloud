@@ -1820,6 +1820,7 @@ abstract class FlutterSoLoud {
     int onInstanceDestroyedAddress = 0,
     int userdataAddress = 0,
     String? webJsFunctionName,
+    bool singleInstance = false,
   });
 
   /// Add a custom filter slot (`0..7`) to global, bus, or single-sound scope.

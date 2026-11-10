@@ -258,6 +258,9 @@ class Vst3Host {
         channels: channels,
         dspCallbackAddress: cbPtr.address,
         userdataAddress: userDataPtr.address,
+        // One plugin renders for every voice: with two voices it would run
+        // twice per mix.
+        singleInstance: true,
       );
       return Vst3InstrumentPlugin._(pluginHandle: handle, audioSource: source);
     } catch (_) {

@@ -2699,6 +2699,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int onInstanceDestroyedAddress = 0,
     int userdataAddress = 0,
     String? webJsFunctionName,
+    bool singleInstance = false,
   }) {
     final hashPtr = wasmMalloc(4);
     var webNamePtr = 0;
@@ -2717,7 +2718,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         dspCallbackAddress,
         userdataAddress,
         lifecyclePtr,
-        0,
+        singleInstance ? 1 : 0,
         webNamePtr,
         mustTickWhenInaudible ? 1 : 0,
         killWhenInaudible ? 1 : 0,
