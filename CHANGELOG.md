@@ -2,6 +2,7 @@
 - fix: don't drop the end of a voice that doesn't loop. Thanks to @Colton127 #604
 - fix: remove double slash in plugin asset path for web initialization #606
 - fix windows: prevent process hang at exit when engine is not deinitialized #608
+- fix android: detect ADTS before AC-3 syncwords. Thanks to @EmiDS17 #611
 
 ##### 5.2.3 (5 Nov 2026)
 - fix win arm64: include `<malloc.h>` on MSVC for Windows ARM64 compilation #603
