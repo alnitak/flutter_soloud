@@ -25,7 +25,23 @@ freely, subject to the following restrictions:
 #include "basic_wave.h"
 #include "soloud_misc.h"
 
+#include <cmath>
 #include <iostream>
+
+namespace
+{
+    // Brings a phase back into [0, 1) whichever way and however far it
+    // moved: a negative frequency makes it fall, and a superwave harmonic of
+    // a high frequency can advance by more than a period per sample.
+    inline double wrapPhase(double aPhase)
+    {
+        if (aPhase >= 0.0 && aPhase < 1.0)
+            return aPhase;
+        aPhase -= std::floor(aPhase);
+        // aPhase - floor(aPhase) rounds to 1.0 for a tiny negative phase.
+        return aPhase < 1.0 ? aPhase : 0.0;
+    }
+}
 
 BasicwaveInstance::BasicwaveInstance(Basicwave *aParent)
 {
@@ -60,9 +76,7 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
         for (i = 0; i < aSamplesToRead; i++)
         {
             mCurrentFrequency += (targetFrequency - mCurrentFrequency) * smoothingFactor;
-            mPhase += mCurrentFrequency * d;
-            if (mPhase >= 1.0)
-                mPhase -= 1.0;
+            mPhase = wrapPhase(mPhase + mCurrentFrequency * d);
 
             aBuffer[i] = SoLoud::Misc::generateWaveform(
                              waveform,
@@ -86,21 +100,13 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
             mCurrentFrequency += (targetFrequency - mCurrentFrequency) * smoothingFactor;
             const double phaseIncrement = mCurrentFrequency * d;
 
-            mPhase += phaseIncrement;
-            if (mPhase >= 1.0)
-                mPhase -= 1.0;
-
-            mHarmonicPhases[0] += phaseIncrement * harmMult0;
-            if (mHarmonicPhases[0] >= 1.0)
-                mHarmonicPhases[0] -= 1.0;
-
-            mHarmonicPhases[1] += phaseIncrement * harmMult1;
-            if (mHarmonicPhases[1] >= 1.0)
-                mHarmonicPhases[1] -= 1.0;
-
-            mHarmonicPhases[2] += phaseIncrement * harmMult2;
-            if (mHarmonicPhases[2] >= 1.0)
-                mHarmonicPhases[2] -= 1.0;
+            mPhase = wrapPhase(mPhase + phaseIncrement);
+            mHarmonicPhases[0] =
+                wrapPhase(mHarmonicPhases[0] + phaseIncrement * harmMult0);
+            mHarmonicPhases[1] =
+                wrapPhase(mHarmonicPhases[1] + phaseIncrement * harmMult1);
+            mHarmonicPhases[2] =
+                wrapPhase(mHarmonicPhases[2] + phaseIncrement * harmMult2);
 
             const float env = mParent->mADSR.val(mT, 10000000000000.0);
             const float primary = SoLoud::Misc::generateWaveform(

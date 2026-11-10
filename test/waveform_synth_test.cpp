@@ -23,10 +23,17 @@
 //            written unsynchronized; run under ThreadSanitizer (--tsan),
 //            which reports the setters racing BasicwaveInstance::getAudio().
 //
+//   negfreq  A waveform at a negative frequency runs backwards: its phase,
+//            and each superwave harmonic's, falls and has to wrap below 0
+//            the way it wraps at 1. A saw is p - 0.5 for its phase p, so
+//            one that stays within [-0.5, 0.5] kept its phase within the
+//            period. A superwave harmonic of a high frequency advances by
+//            more than a period per sample and has to wrap as well.
+//
 // `freq`, `params` and `race` open the default output device through the
 // plugin's initEngine() (miniaudio falls back to its null backend without
-// one; `race` plays at a volume of 0.001); `fourier` renders waveform
-// instances directly and needs no engine.
+// one; `race` plays at a volume of 0.001); `fourier` and `negfreq` render
+// waveform instances directly and need no engine.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -39,6 +46,7 @@
 #include "soloud.h"
 #include "soloud_misc.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -300,6 +308,91 @@ void testSettersWhileTheWaveformPlays() {
     dispose();
 }
 
+// ---- negfreq ----------------------------------------------------------------
+
+// Renders one second of a new instance of [wave] (at the instance's default
+// 44100 Hz), in blocks of 512 samples as the mixer would.
+std::vector<float> oneSecondOf(Basicwave &wave) {
+    std::unique_ptr<SoLoud::AudioSourceInstance> instance(wave.createInstance());
+    std::vector<float> out(44100);
+    for (size_t done = 0; done < out.size(); done += 512) {
+        const unsigned int n =
+            static_cast<unsigned int>(std::min<size_t>(512, out.size() - done));
+        instance->getAudio(out.data() + done, n, n);
+    }
+    return out;
+}
+
+// How many of [samples] are outside [-bound, bound].
+int outsideOf(const std::vector<float> &samples, float bound) {
+    int outside = 0;
+    for (float s : samples)
+        if (!(std::fabs(s) <= bound))
+            ++outside;
+    return outside;
+}
+
+void testNegativeFrequencyWrapsThePhase() {
+    std::printf("negfreq: a waveform at a negative frequency wraps its phase\n");
+
+    // A saw at -440 Hz is the 440 Hz saw reversed: it ramps down and jumps
+    // back up at the end of each of its 440 periods a second.
+    {
+        Basicwave wave(SoLoud::Soloud::WAVE_SAW, false, 0.0, 0.0);
+        wave.setFreq(-440.0);
+        const std::vector<float> out = oneSecondOf(wave);
+        const int outside = outsideOf(out, 0.5f);
+        EXPECT(outside == 0,
+               "a saw at -440 Hz rendered %d of %zu samples outside [-0.5, 0.5] "
+               "(the last one %g)",
+               outside, out.size(), out.back());
+        int jumpsUp = 0;
+        for (size_t i = 1; i < out.size(); ++i)
+            if (out[i] > out[i - 1])
+                ++jumpsUp;
+        EXPECT(jumpsUp >= 439 && jumpsUp <= 441,
+               "a saw at -440 Hz should start over 440 times a second, did %d times",
+               jumpsUp);
+    }
+    // A square at -440 Hz is high for half of each period. With a phase that
+    // only falls, it stays low.
+    {
+        Basicwave wave(SoLoud::Soloud::WAVE_SQUARE, false, 0.0, 0.0);
+        wave.setFreq(-440.0);
+        const std::vector<float> out = oneSecondOf(wave);
+        int high = 0;
+        for (float s : out)
+            if (s > 0.0f)
+                ++high;
+        EXPECT(high > 21800 && high < 22300,
+               "a square at -440 Hz should be high for half of its %zu samples, was "
+               "for %d",
+               out.size(), high);
+    }
+    // A superwave saw adds three harmonics at 2, 2 + detune and 2 + 2 * detune
+    // times the frequency, scaled by scale: within [-0.5, 0.5] each, the sum
+    // stays within 0.5 * (1 + 3 * scale) = 0.875 here.
+    const struct {
+        double freq;
+        double detune;
+    } superwaves[] = {
+        {-440.0, 0.5},
+        // At 15 kHz the harmonics at 3 and 4 times the frequency advance by
+        // 1.02 and 1.36 periods per sample.
+        {15000.0, 1.0},
+    };
+    for (const auto &c : superwaves) {
+        Basicwave wave(SoLoud::Soloud::WAVE_SAW, true, 0.25, c.detune);
+        wave.setFreq(c.freq);
+        const std::vector<float> out = oneSecondOf(wave);
+        const int outside = outsideOf(out, 0.875f + 1e-6f);
+        EXPECT(outside == 0,
+               "a superwave saw at %g Hz (detune %g) rendered %d of %zu samples "
+               "outside [-0.875, 0.875] (the last one %g)",
+               c.freq, c.detune, outside, out.size(), out.back());
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -316,6 +409,8 @@ int main(int argc, char **argv) {
         testLoadWaveformKeepsScaleAndDetune();
     if (wanted("race"))
         testSettersWhileTheWaveformPlays();
+    if (wanted("negfreq"))
+        testNegativeFrequencyWrapsThePhase();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;
