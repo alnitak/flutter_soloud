@@ -8,7 +8,7 @@
 // the real module, and its event worker and buffering bridge deliver the
 // handle the way the native side does, as a signed 32-bit number.
 //
-// Run with: flutter test --platform chrome test/web_handle_sign_test.dart
+// Run with: flutter test --platform chrome [--wasm] test/web_handle_sign_test.dart
 @TestOn('browser')
 library;
 
@@ -63,11 +63,16 @@ void main() {
   late JSObject worker;
 
   setUp(() {
-    heap = ByteData(1 << 16);
+    // The heap is a JS Uint8Array, as on the real module, and Dart reads it
+    // through a view of that array. Converting a Dart Uint8List with .toJS
+    // instead would copy it on dart2wasm, so the stand-in exports would
+    // write to a copy that getValue never reads.
+    final heapU8 = JSUint8Array.withLength(1 << 16);
+    heap = ByteData.sublistView(heapU8.toDart);
     var top = 8;
     worker = JSObject();
     globalContext['Module_soloud'] = JSObject()
-      ..['HEAPU8'] = heap.buffer.asUint8List().toJS
+      ..['HEAPU8'] = heapU8
       ..['wasmWorker'] = worker
       ..['_malloc'] = ((int size) {
         final ptr = top;

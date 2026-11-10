@@ -24,7 +24,7 @@ import 'package:web/web.dart' as web;
 class CaptureModule {
   CaptureModule({bool withPackets = true}) {
     module
-      ..['HEAPU8'] = heap.buffer.asUint8List().toJS
+      ..['HEAPU8'] = heapU8
       ..['wasmWorker'] = worker
       ..['_malloc'] = allocate.toJS
       ..['_free'] = free.toJS
@@ -97,7 +97,11 @@ class CaptureModule {
 
   final module = JSObject();
   final worker = JSObject();
-  final heap = ByteData(1 << 16);
+
+  /// A JS Uint8Array, as on the real module, read here through [heap]: a
+  /// Dart Uint8List's .toJS copies it on dart2wasm.
+  final heapU8 = JSUint8Array.withLength(1 << 16);
+  late final heap = ByteData.sublistView(heapU8.toDart);
   final allocations = <int, int>{};
   final packets = <int, ({int id, List<int> bytes})>{};
   int captureId = 0;

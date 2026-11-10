@@ -36,7 +36,10 @@ void main() {
   }
 
   setUp(() {
-    heap = ByteData(1 << 16);
+    // A JS Uint8Array, as on the real module, read here through a view: a
+    // Dart Uint8List's .toJS copies it on dart2wasm.
+    final heapU8 = JSUint8Array.withLength(1 << 16);
+    heap = ByteData.sublistView(heapU8.toDart);
     for (var i = 0; i < heap.lengthInBytes; i++) {
       heap.setUint8(i, 0xAA);
     }
@@ -51,7 +54,7 @@ void main() {
     }
 
     final module = JSObject()
-      ..['HEAPU8'] = heap.buffer.asUint8List().toJS
+      ..['HEAPU8'] = heapU8
       ..['_malloc'] = ((int size) {
         final ptr = top;
         top += (size + 7) & ~7;
