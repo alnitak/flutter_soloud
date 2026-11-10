@@ -507,7 +507,7 @@ void OpusDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& ou
     }
 }
 
-void OpusDecoderWrapper::prepareForSeek(uint64_t targetSample)
+void OpusDecoderWrapper::prepareForSeek(uint64_t targetSample, uint64_t byteOffset)
 {
     // Preserve the already-parsed header and decoder configuration, but reset
     // the Ogg page-level state so that mid-stream data can be synced again.
@@ -519,7 +519,9 @@ void OpusDecoderWrapper::prepareForSeek(uint64_t targetSample)
         ogg_stream_clear(&os);
         ogg_stream_init(&os, serial);
     }
-    mSeekIndex.clear();
+    // The data fed next starts at [byteOffset] in the file, so the pages
+    // indexed from here on are counted from there.
+    mSeekIndex.clear(byteOffset);
     skipSamplesPending = 0;
     totalOutputSamples = static_cast<int64_t>(targetSample);
     packetCount = 2; // OpusHead and OpusTags have already been parsed.

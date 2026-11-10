@@ -494,8 +494,9 @@ double FlacDecoderWrapper::getDuration() const
     return static_cast<double>(mTotalSamples) / static_cast<double>(m_samplerate);
 }
 
-void FlacDecoderWrapper::prepareForSeek(uint64_t targetSample)
+void FlacDecoderWrapper::prepareForSeek(uint64_t targetSample, uint64_t byteOffset)
 {
+    (void)byteOffset; // Offsets are estimated from the file size.
     if (m_pFlacDecoder)
     {
         FLAC__stream_decoder_finish(m_pFlacDecoder);

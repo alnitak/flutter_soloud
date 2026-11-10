@@ -384,7 +384,7 @@ void VorbisDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& 
     }
 }
 
-void VorbisDecoderWrapper::prepareForSeek(uint64_t targetSample)
+void VorbisDecoderWrapper::prepareForSeek(uint64_t targetSample, uint64_t byteOffset)
 {
     (void)targetSample;
     // Preserve the already-parsed headers and decoder state, but reset the
@@ -397,7 +397,9 @@ void VorbisDecoderWrapper::prepareForSeek(uint64_t targetSample)
         ogg_stream_clear(&os);
         ogg_stream_init(&os, serial);
     }
-    mSeekIndex.clear();
+    // The data fed next starts at [byteOffset] in the file, so the pages
+    // indexed from here on are counted from there.
+    mSeekIndex.clear(byteOffset);
     mDataEnded = false;
     mDrained = false;
 }

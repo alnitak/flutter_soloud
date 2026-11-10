@@ -281,7 +281,7 @@ result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
   mParent->mPendingSeekByteOffset = newOffset;
   mParent->mDataIsEnded.store(false);
   mParent->mWaitingForData.store(false);
-  mParent->resetDecoderForSeek(targetSample);
+  mParent->resetDecoderForSeek(targetSample, newOffset);
   mParent->applyPendingSeek();
   return SO_NO_ERROR;
 }
@@ -349,14 +349,15 @@ void PullBufferStream::resetProbeState() {
   mTailProbeBuffer.clear();
 }
 
-void PullBufferStream::resetDecoderForSeek(uint64_t targetSample) {
+void PullBufferStream::resetDecoderForSeek(uint64_t targetSample,
+                                           uint64_t byteOffset) {
   if (mPCMformat.dataType != BufferType::AUTO || !mStreamDecoder) return;
   const DetectedType type = mStreamDecoder->getWrapperType();
   if (type == DetectedType::BUFFER_OGG_OPUS ||
       type == DetectedType::BUFFER_OGG_VORBIS ||
       type == DetectedType::BUFFER_WAV ||
       type == DetectedType::BUFFER_FLAC) {
-    mStreamDecoder->prepareForSeek(targetSample);
+    mStreamDecoder->prepareForSeek(targetSample, byteOffset);
   } else {
     mStreamDecoder = std::make_unique<StreamDecoder>();
   }
@@ -986,7 +987,7 @@ void PullBufferStream::applyPendingSeek() {
     if (auto *instance = mInstance.load(); instance != nullptr) {
       instance->mStreamPosition = mPendingSeekTime;
     }
-    resetDecoderForSeek(targetSample);
+    resetDecoderForSeek(targetSample, newOffset);
     mPendingSeekByteOffset = newOffset;
     mDataIsEnded.store(false);
     mWaitingForData.store(false);

@@ -138,8 +138,9 @@ private:
 
   void resetProbeState();
 
-  /// Reset the decoder state for an out-of-buffer seek.
-  void resetDecoderForSeek(uint64_t targetSample);
+  /// Reset the decoder state for an out-of-buffer seek whose data will be fed
+  /// from [byteOffset] in the encoded file.
+  void resetDecoderForSeek(uint64_t targetSample, uint64_t byteOffset);
 
   /// Current start/end of the decoded circular buffer in seconds.
   double getBufferStartTime() const;
