@@ -9,6 +9,15 @@
 - example: added real-time PCM synth, isolate drum sequencer, custom DSP workbench, and VST3 plugin host examples
 - fix iOS: resume audio playback after returning from background on iOS 16+ where `wasSuspended` interruption reason is no longer sent #573
 - fix: `FreeverbFilter` no longer doubles the dry signal. At `wet` 0 the output now equals the input (it used to be +6 dB), and the dry part of any wet/dry mix is half as loud as in 5.2.x; mixes tuned against the old level will sound quieter
+- fix: `FlangerFilter` on a stereo sound sweeps at the rate it is set to, with both channels in step. It used to advance its LFO once per channel per frame, so a 10 Hz setting swept at 20 Hz with the right channel ahead of the left; stereo flanger settings tuned against the old behaviour will sweep half as fast
+- fix: a fade on a voice group fades each voice from its own volume, pan or speed. It used to start every voice from the first voice's value
+- fix: with `renderAheadFrames`, a speed change on a playing voice takes effect at the next mix quantum after the playhead (up to one quantum later, about 23 ms at 1024 frames and 44.1 kHz) instead of skipping part of the source
+- fix: `FilterParam.value` of a global filter that is not active throws `SoLoudFilterNotFoundException`, as it already did for a voice or a bus; it used to return 9999. `bandFrequency()` of an equalizer that is not active returns the band's default frequency
+- fix: setting or reading a filter parameter of a `MixingBus` before `playOnEngine()` throws `SoLoudSoundHandleNotFoundCppException`; it used to be silently lost
+- fix: `disposeAllSources()` also deactivates every global filter and forgets the custom filter callbacks
+- fix: a waveform played at a negative frequency (`setWaveformFreq`) plays backwards. It used to drift out of range or hold at a constant level
+- feat: `createCustomAudioSource(singleInstance:)` stops the voice already playing the source when it is played again, for callbacks that render one shared state such as a synthesizer
+- fix: `Vst3Host.loadEffect` sets the plugin up at the engine's sample rate by default; it used to default to 48000 Hz
 - perf: multiplatform SIMD acceleration (ARM64/ARMv7 NEON, x86/x86_64 SSE2/AVX2, and WebAssembly SIMD128) across core mixing, linear/Catmull-Rom voice resampling, panning, clipping, and PCM format conversions
 - perf: accelerated DSP filters, FFT, and synthesis
 - perf: hardware subnormal/denormal flushing (`FTZ`/`DAZ`) on audio threads across ARM and x86, single-pass waveform extraction with SIMD RMS, `O(1)` stream buffer compaction, and `-O3` compiler/SIMD flags across native builds and Xiph prebuilds
