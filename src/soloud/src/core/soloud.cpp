@@ -907,7 +907,12 @@ namespace SoLoud
 
 	time Soloud::getHardwareOutputLatency()
 	{
+#if defined(WITH_MINIAUDIO)
 		return (time)miniaudio_getHardwareOutputLatency();
+#else
+		// No other backend reports a hardware latency.
+		return 0;
+#endif
 	}
 
 	bool Soloud::renderRingMixQuantumLocked_internal()
