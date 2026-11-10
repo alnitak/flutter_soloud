@@ -41,6 +41,9 @@ static int g_assertions = 0;
 namespace {
 
 std::string gBundle;
+// The same plug-in in a bundle the macOS host opens in the out-of-process
+// editor helper (here test/vst3_mock_editor_helper.cpp).
+std::string gRemoteBundle;
 
 constexpr float kSampleRate = 44100.0f;
 
@@ -250,17 +253,57 @@ static void testEditorOpenCloseWhileProcessing() {
     Vst3HostManager::instance().unloadPlugin(handle);
 }
 
+// Closing an out-of-process editor while the effect writes telemetry into
+// the shared memory it maps: from the host (closeEditor), and from the
+// helper (the user closed its window, which the host's poll timer notices).
+// Run under --tsan / --asan.
+static void testRemoteEditorCloseWhileProcessing() {
+    std::printf("Test: remote editor close while the effect processes\n");
+    const int handle = loadMock(gRemoteBundle, "Mock Effect");
+    auto plugin = Vst3HostManager::instance().getPlugin(handle);
+    if (plugin == nullptr)
+        return;
+
+    EffectAudioThread audio(handle);
+    for (int i = 0; i < 60; ++i) {
+        const bool helperCloses = (i % 2) == 1;
+        if (!plugin->openEditor(helperCloses ? "helper-closes" : "Mock Effect")) {
+            EXPECT(false, "remote editor %d did not open", i);
+            break;
+        }
+        EXPECT(plugin->isEditorOpen(), "remote editor %d is not open", i);
+        // Let the audio thread write telemetry for a while. (Reading its
+        // block count here would order those writes before the close for
+        // ThreadSanitizer.)
+        std::this_thread::sleep_for(std::chrono::milliseconds(3));
+        if (helperCloses) {
+            EXPECT(waitFor([&] { return !plugin->isEditorOpen(); }, std::chrono::seconds(2)),
+                   "the host did not notice that helper %d closed", i);
+        } else {
+            plugin->closeEditor();
+        }
+    }
+    const long blocks = audio.blocks();
+    audio.stop();
+    EXPECT(blocks > 20, "only %ld blocks ran while the editors were open", blocks);
+
+    plugin.reset();
+    Vst3HostManager::instance().unloadPlugin(handle);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: %s <directory of the mock bundles> [test]\n", argv[0]);
         return 2;
     }
     gBundle = std::string(argv[1]) + "/MockVst3.vst3";
+    gRemoteBundle = std::string(argv[1]) + "/MockVst3Remote.vst3";
     const std::string only = argc > 2 ? argv[2] : "";
     const std::pair<const char *, void (*)()> tests[] = {
         {"params", testParameterChangesReachProcessor},
         {"instrument", testInstrumentOutputIsNeverStale},
         {"editor", testEditorOpenCloseWhileProcessing},
+        {"remote-editor", testRemoteEditorCloseWhileProcessing},
     };
     for (const auto &test : tests)
         if (only.empty() || only == test.first)

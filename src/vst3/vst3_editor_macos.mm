@@ -521,6 +521,7 @@ public:
     }
 
     mIsOpen.store(true, std::memory_order_release);
+    publishRemoteShm(mShm);
 
     void (^startTimerBlock)(void) = ^{
       NSTimer *timer = [NSTimer
@@ -544,33 +545,6 @@ public:
 
     return true;
 #endif
-  }
-
-  void notifyParameterChanged(uint32_t paramId,
-                              double normalizedValue) override {
-    if (mShm == nullptr || !mIsOpen.load(std::memory_order_acquire)) {
-      return;
-    }
-    uint32_t w = mShm->hostToGuiWrite.load(std::memory_order_relaxed);
-    const uint32_t r = mShm->hostToGuiRead.load(std::memory_order_acquire);
-    if (w - r < kVst3EditorParamQueueSize) {
-      auto &slot = mShm->hostToGuiQueue[w % kVst3EditorParamQueueSize];
-      slot.paramId = paramId;
-      slot.reserved = 0;
-      slot.value = normalizedValue;
-      mShm->hostToGuiWrite.store(w + 1, std::memory_order_release);
-    }
-  }
-
-  void writeAudioTelemetry(const float *inL, const float *inR,
-                           const float *outL, const float *outR,
-                           int32_t numSamples,
-                           double sampleRate) noexcept override {
-    if (!mIsOpen.load(std::memory_order_acquire)) {
-      return;
-    }
-    writeVst3EditorShmTelemetry(mShm, inL, inR, outL, outR, numSamples,
-                                sampleRate);
   }
 
   bool open(Steinberg::IPlugView *plugView, const char *title) override {
@@ -820,6 +794,7 @@ public:
         mHelperPid = 0;
       }
       if (mShm != nullptr) {
+        retireRemoteShm();
         munmap(mShm, sizeof(SoLoudVst3EditorShm));
         mShm = nullptr;
       }

@@ -8,7 +8,7 @@
 # from .dart_tool/flutter_soloud/vst3/prebuild, or from VST3_PREBUILD_DIR.
 #
 # --asan builds under AddressSanitizer and UndefinedBehaviorSanitizer,
-# --tsan under ThreadSanitizer.
+# --tsan under ThreadSanitizer (the editor tests check threading).
 #
 # Elsewhere, or without the SDK, it prints a SKIP line and exits 0.
 
@@ -75,8 +75,21 @@ c++ -std=c++17 -Wall -bundle "${SANITIZER[@]}" \
     "$SDK_LIB" \
     -framework CoreFoundation
 
+# The same plug-in in a bundle that embeds a Flutter app, whose editor the
+# host opens in the out-of-process helper, with a stand-in for the helper.
+make_bundle "$WORK/MockVst3Remote.vst3" MockVst3Remote
+mkdir -p "$WORK/MockVst3Remote.vst3/Contents/Frameworks/App.framework"
+cp "$WORK/MockVst3.vst3/Contents/MacOS/MockVst3" \
+    "$WORK/MockVst3Remote.vst3/Contents/MacOS/MockVst3Remote"
+c++ -std=c++17 -Wall -O1 \
+    -DSOLOUD_ENABLE_VST3 \
+    -I src \
+    -o "$WORK/vst3_mock_editor_helper" \
+    test/vst3_mock_editor_helper.cpp
+
 c++ -std=c++17 -Wall -pthread "${SANITIZER[@]}" \
     -DSOLOUD_ENABLE_VST3 \
+    -DSOLOUD_VST3_HELPER_PATH="\"$WORK/vst3_mock_editor_helper\"" \
     -I src \
     -I test \
     -isystem "$PREBUILD/include" \
