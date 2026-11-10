@@ -232,10 +232,11 @@ extern "C"
   static void soloudTestInitBarrier();
 #endif
 
-#if defined(__clang__)
-  [[clang::no_destroy]]
-#endif
-  std::unique_ptr<Player> player = std::make_unique<Player>();
+  // Deliberately allocate on the heap and hold via reference so no static destructor
+  // is registered by any compiler (MSVC, Clang, GCC). At process exit, the OS
+  // reclaims all resources; running Player::~Player() at exit causes deadlocks on Windows
+  // (due to ExitProcess terminating audio threads under loader lock) and crashes on macOS.
+  std::unique_ptr<Player> &player = *new std::unique_ptr<Player>(std::make_unique<Player>());
 
   /// Pins the `player` object for exports that run on any isolate's thread
   /// (the realtime stream API is fed from background isolates) while another
