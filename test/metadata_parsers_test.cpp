@@ -28,6 +28,8 @@
 //                  been cached for the codec to restart from
 //   flac-truncated-header  data that ends inside the FLAC metadata finishes
 //                  instead of staying pending
+//   metadata-defaults      a default-constructed AudioMetadata holds an
+//                  unknown type and zeroed Ogg format fields
 //
 // The *-wrap scenarios other than m4a-large-wrap can only fail with a 32-bit
 // size_t, as in the web build and on armeabi-v7a: run them with --wasm32. On
@@ -53,6 +55,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -600,6 +603,45 @@ static void testValid() {
 #endif
 }
 
+// A stream turns each AudioMetadata it reports into the struct Dart reads
+// (convertMetadataToFFI() in audiobuffer.cpp and pull_buffer_stream.cpp): it
+// maps the type with a switch and copies the fields of every format. A
+// default-constructed AudioMetadata, which a decoder fills only in part and
+// the streams' callback test hook passes as it is, must hold an unknown type
+// and zeros. It is built over bytes of 0xa5, as a stack frame left by earlier
+// calls might hold.
+static void runMetadataDefaults() {
+    std::printf("metadata-defaults: a default-constructed AudioMetadata\n");
+    alignas(AudioMetadata) unsigned char storage[sizeof(AudioMetadata)];
+    std::memset(storage, 0xa5, sizeof(storage));
+    AudioMetadata *meta = new (storage) AudioMetadata;
+    const DetectedType type = meta->type;
+    EXPECT(type == BUFFER_UNKNOWN, "type %u instead of BUFFER_UNKNOWN",
+           static_cast<unsigned int>(type));
+    const OggMetadata &ogg = meta->oggMetadata;
+    EXPECT(ogg.vorbisInfo.version == 0 && ogg.vorbisInfo.channels == 0 &&
+               ogg.vorbisInfo.rate == 0 && ogg.vorbisInfo.bitrate_upper == 0 &&
+               ogg.vorbisInfo.bitrate_nominal == 0 &&
+               ogg.vorbisInfo.bitrate_lower == 0 &&
+               ogg.vorbisInfo.bitrate_window == 0,
+           "the Vorbis fields should be zero (rate %ld)", ogg.vorbisInfo.rate);
+    EXPECT(ogg.opusInfo.version == 0 && ogg.opusInfo.channels == 0 &&
+               ogg.opusInfo.pre_skip == 0 &&
+               ogg.opusInfo.input_sample_rate == 0 &&
+               ogg.opusInfo.output_gain == 0 && ogg.opusInfo.mapping_family == 0,
+           "the Opus fields should be zero (input rate %u)",
+           static_cast<unsigned int>(ogg.opusInfo.input_sample_rate));
+    EXPECT(ogg.flacInfo.min_blocksize == 0 && ogg.flacInfo.max_blocksize == 0 &&
+               ogg.flacInfo.min_framesize == 0 &&
+               ogg.flacInfo.max_framesize == 0 &&
+               ogg.flacInfo.sample_rate == 0 && ogg.flacInfo.channels == 0 &&
+               ogg.flacInfo.bits_per_sample == 0 &&
+               ogg.flacInfo.total_samples == 0,
+           "the FLAC fields should be zero (sample rate %u)",
+           static_cast<unsigned int>(ogg.flacInfo.sample_rate));
+    meta->~AudioMetadata();
+}
+
 // Runs a scenario that can crash the process in a child, so a stack overflow
 // or wild read is reported as a failure instead of ending the run. Under
 // Emscripten (no fork) it runs in-process: a trap or abort ends the run.
@@ -660,6 +702,7 @@ int main(int argc, char **argv) {
         isolated("aac-id3-wrap", "an ID3 frame size that wraps (AAC stream)", runAacId3Wrap);
     if (want("id3-latin1")) runId3Latin1();
     if (want("id3-utf16")) runId3Utf16();
+    if (want("metadata-defaults")) runMetadataDefaults();
 #if !defined(NO_XIPH_LIBS)
     if (want("opus-wrap"))
         isolated("opus-wrap", "an OpusTags vendor length that wraps", runOpusWrap);

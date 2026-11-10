@@ -91,9 +91,11 @@ struct OggMetadata {
   std::string vendor;
   int commentsCount = 0;
   std::map<std::string, std::string> comments;
-  FlacInfo flacInfo;
-  VorbisInfo vorbisInfo;
-  OpusInfo opusInfo;
+  // Zeroed: a stream copies all three into the metadata it hands to Dart,
+  // whichever one the format fills.
+  FlacInfo flacInfo{};
+  VorbisInfo vorbisInfo{};
+  OpusInfo opusInfo{};
 };
 
 struct Mp3Metadata {
@@ -157,7 +159,9 @@ struct Eac3Metadata {
 };
 
 struct AudioMetadata {
-  DetectedType type;
+  // A stream maps the type with a switch: a default-constructed AudioMetadata
+  // must hold a valid one.
+  DetectedType type = BUFFER_UNKNOWN;
   Mp3Metadata mp3Metadata;
   OggMetadata oggMetadata;
   AacMetadata aacMetadata;
