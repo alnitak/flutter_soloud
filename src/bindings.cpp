@@ -3602,8 +3602,10 @@ extern "C"
   /// filter.
   /// [busId] the bus to check the filter.
   /// If both [handle] and [busId] are =0 this function searches in the global filters.
-  /// [filterType] filter to modify a param. Returns the value of param or
-  /// 9999.0 if the filter is not found.
+  /// [filterType] filter to modify a param. The value of the param is stored
+  /// in [filterValue]. Returns [PlayerErrors.filterNotFound] if the filter
+  /// is not active, and [PlayerErrors.filterParameterGetError] if the value
+  /// is NaN or infinite.
   FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(unsigned int handle,
                                                       unsigned int busId,
                                                       enum FilterType filterType,
@@ -3617,8 +3619,11 @@ extern "C"
     /// the sound which owns [handle].
     if (handle == 0 && busId == 0)
     {
-      *filterValue =
-          player.get()->mFilters.getFilterParams(handle, filterType, attributeId);
+      if (!player.get()->mFilters.getFilterParams(handle, filterType,
+                                                  attributeId, filterValue))
+        return filterNotFound;
+      if (!isfinite(*filterValue))
+        return filterParameterGetError;
       return noError;
     }
     else
@@ -3632,14 +3637,14 @@ extern "C"
         }
         else
         {
-          *filterValue =
-              busFilters->filters.getFilterParams(handle > 0 ? handle : busFilters->handle, filterType, attributeId);
+          if (!busFilters->filters.getFilterParams(
+                  handle > 0 ? handle : busFilters->handle, filterType,
+                  attributeId, filterValue))
+            return filterNotFound;
           // Zero is a valid parameter value (a completely dry filter, say);
           // only a NaN or infinite one is an error.
           if (!isfinite(*filterValue))
             return filterParameterGetError;
-          if (*filterValue == 9999.0f)
-            return filterNotFound;
           return noError;
         }
       }
@@ -3650,12 +3655,11 @@ extern "C"
           return soundHandleNotFound;
         else
         {
-          *filterValue =
-              s->filters.get()->getFilterParams(handle, filterType, attributeId);
+          if (!s->filters.get()->getFilterParams(handle, filterType,
+                                                 attributeId, filterValue))
+            return filterNotFound;
           if (!isfinite(*filterValue))
             return filterParameterGetError;
-          if (*filterValue == 9999.0f)
-            return filterNotFound;
           return noError;
         }
       }
@@ -4133,10 +4137,12 @@ extern "C"
 
     if (handle == 0 && busId == 0)
     {
-      *filterValue = player.get()->mFilters.getFilterParams(
-          handle, FilterType::CustomFilter, attributeId, customFilterId);
-      if (*filterValue == 9999.0f)
+      if (!player.get()->mFilters.getFilterParams(
+              handle, FilterType::CustomFilter, attributeId, filterValue,
+              customFilterId))
         return filterNotFound;
+      if (!isfinite(*filterValue))
+        return filterParameterGetError;
       return noError;
     }
     else if (busId > 0)
@@ -4144,14 +4150,13 @@ extern "C"
       auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr)
         return busIdNotFound;
-      *filterValue = busFilters->filters.getFilterParams(
-          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
-          attributeId, customFilterId);
-      if (!(isnormal(*filterValue) || isnan(*filterValue) ||
-            *filterValue == 0.0f))
-        return filterParameterGetError;
-      if (*filterValue == 9999.0f)
+      if (!busFilters->filters.getFilterParams(
+              handle > 0 ? handle : busFilters->handle,
+              FilterType::CustomFilter, attributeId, filterValue,
+              customFilterId))
         return filterNotFound;
+      if (!isfinite(*filterValue))
+        return filterParameterGetError;
       return noError;
     }
     else
@@ -4159,13 +4164,12 @@ extern "C"
       auto const &s = player.get()->findByHandle(handle);
       if (s == nullptr)
         return soundHandleNotFound;
-      *filterValue = s->filters.get()->getFilterParams(
-          handle, FilterType::CustomFilter, attributeId, customFilterId);
-      if (!(isnormal(*filterValue) || isnan(*filterValue) ||
-            *filterValue == 0.0f))
-        return filterParameterGetError;
-      if (*filterValue == 9999.0f)
+      if (!s->filters.get()->getFilterParams(handle, FilterType::CustomFilter,
+                                             attributeId, filterValue,
+                                             customFilterId))
         return filterNotFound;
+      if (!isfinite(*filterValue))
+        return filterParameterGetError;
       return noError;
     }
   }

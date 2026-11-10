@@ -52,8 +52,11 @@ public:
                        int attributeId, float value, int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
-  float getFilterParams(SoLoud::handle handle, FilterType filterType,
-                        int attributeId, int customFilterId = 0);
+  /// Stores the parameter in [value] and returns true, or returns false and
+  /// leaves [value] alone if the filter is not active. Every float is a
+  /// possible parameter value, so none can stand for a missing filter.
+  bool getFilterParams(SoLoud::handle handle, FilterType filterType,
+                       int attributeId, float *value, int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
   void fadeFilterParameter(SoLoud::handle handle, FilterType filterType,

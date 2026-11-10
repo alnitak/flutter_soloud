@@ -6,6 +6,11 @@
 //   zero    A filter parameter set to 0, such as the wet level of a fully dry
 //           echo, must read back as 0 from a voice and from a bus.
 //
+//   missing A filter that is not active must report filterNotFound, globally
+//           too, and an active one must read back any finite value: 9999 (a
+//           parametric EQ band at 9999 Hz) from a voice, a bus, a global
+//           filter and a custom filter. A NaN value is filterParameterGetError.
+//
 // Every scenario opens the default output device through the plugin's
 // initEngine() (miniaudio falls back to its null backend without one); the
 // sounds are waveforms that play paused or at volume 0.
@@ -48,6 +53,14 @@ extern "C"
     enum PlayerErrors getFilterParams(unsigned int handle, unsigned int busId,
                                       enum FilterType filterType, int attributeId,
                                       float *filterValue);
+    enum PlayerErrors addCustomFilter(unsigned int soundHash, unsigned int busId,
+                                      int customFilterId);
+    enum PlayerErrors setCustomFilterParams(unsigned int handle, unsigned int busId,
+                                            int customFilterId, int attributeId,
+                                            float value);
+    enum PlayerErrors getCustomFilterParams(unsigned int handle, unsigned int busId,
+                                            int customFilterId, int attributeId,
+                                            float *filterValue);
 }
 
 namespace {
@@ -66,6 +79,8 @@ int gAssertions = 0;
 
 // Echo parameters (soloud_echofilter.h).
 constexpr int kEchoWet = 0;
+// The parametric EQ's band 0 frequency (parametric_eq_filter.h).
+constexpr int kEqBand0Freq = 67;
 
 bool initPluginEngine() {
     prepareEngineInit(1);
@@ -135,6 +150,85 @@ void testZeroParameterReadsBack() {
     dispose();
 }
 
+// ---- missing ----------------------------------------------------------------
+
+void testNoValueMeansMissing() {
+    std::printf("missing: a missing filter is filterNotFound, 9999 reads back\n");
+    if (!initPluginEngine())
+        return;
+
+    const unsigned int hash = loadSound();
+    EXPECT(addFilter(hash, 0, ParametricEQFilter) == noError,
+           "addFilter on the sound");
+    const unsigned int voice = playPaused(hash);
+    EXPECT(setFilterParams(voice, 0, ParametricEQFilter, kEqBand0Freq,
+                           9999.0f) == noError,
+           "set the voice's band 0 to 9999 Hz");
+    float value = -1.0f;
+    PlayerErrors e =
+        getFilterParams(voice, 0, ParametricEQFilter, kEqBand0Freq, &value);
+    EXPECT(e == noError && value == 9999.0f,
+           "the voice's band 0 reads back as error %d, value %g", e, value);
+
+    const unsigned int bus = createBus();
+    EXPECT(addFilter(0, bus, ParametricEQFilter) == noError,
+           "addFilter on the bus");
+    playBus(bus);
+    EXPECT(setFilterParams(0, bus, ParametricEQFilter, kEqBand0Freq,
+                           9999.0f) == noError,
+           "set the bus's band 0 to 9999 Hz");
+    value = -1.0f;
+    e = getFilterParams(0, bus, ParametricEQFilter, kEqBand0Freq, &value);
+    EXPECT(e == noError && value == 9999.0f,
+           "the bus's band 0 reads back as error %d, value %g", e, value);
+
+    EXPECT(addFilter(0, 0, ParametricEQFilter) == noError,
+           "addFilter globally");
+    EXPECT(setFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, 9999.0f) ==
+               noError,
+           "set the global band 0 to 9999 Hz");
+    value = -1.0f;
+    e = getFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, &value);
+    EXPECT(e == noError && value == 9999.0f,
+           "the global band 0 reads back as error %d, value %g", e, value);
+
+    EXPECT(addCustomFilter(0, 0, 0) == noError, "addCustomFilter globally");
+    EXPECT(setCustomFilterParams(0, 0, 0, 1, 9999.0f) == noError,
+           "set the global custom filter's parameter 1 to 9999");
+    value = -1.0f;
+    e = getCustomFilterParams(0, 0, 0, 1, &value);
+    EXPECT(e == noError && value == 9999.0f,
+           "the custom filter's parameter 1 reads back as error %d, value %g",
+           e, value);
+
+    // Filters that were never added.
+    e = getFilterParams(0, 0, EchoFilter, kEchoWet, &value);
+    EXPECT(e == filterNotFound,
+           "a missing global echo reads back as error %d, value %g", e, value);
+    e = getFilterParams(voice, 0, EchoFilter, kEchoWet, &value);
+    EXPECT(e == filterNotFound,
+           "a missing voice echo reads back as error %d, value %g", e, value);
+    e = getFilterParams(0, bus, EchoFilter, kEchoWet, &value);
+    EXPECT(e == filterNotFound,
+           "a missing bus echo reads back as error %d, value %g", e, value);
+    e = getCustomFilterParams(0, 0, 1, 1, &value);
+    EXPECT(e == filterNotFound,
+           "a missing custom filter reads back as error %d, value %g", e,
+           value);
+
+    // A NaN value is the one error a present filter reports.
+    EXPECT(setFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, NAN) ==
+               noError,
+           "set the global band 0 to NaN");
+    e = getFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, &value);
+    EXPECT(e == filterParameterGetError,
+           "a NaN global parameter reads back as error %d, value %g", e,
+           value);
+    setFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, 1000.0f);
+
+    dispose();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -145,6 +239,8 @@ int main(int argc, char **argv) {
 
     if (wanted("zero"))
         testZeroParameterReadsBack();
+    if (wanted("missing"))
+        testNoValueMeansMissing();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

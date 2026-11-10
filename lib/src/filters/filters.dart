@@ -456,6 +456,8 @@ class FilterParam {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
+  /// Throws [SoLoudCppException] if the value can't be read, for example
+  /// because the filter is not active.
   double get value {
     if (kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
