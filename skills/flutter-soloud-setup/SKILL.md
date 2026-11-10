@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-setup
-version: 6
+version: 7
 description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux audio backends ALSA/PulseAudio/JACK, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, enable opt-in desktop VST3 plugin hosting (enable_vst3), set up logging, and enumerate/switch output devices or Linux audio backends. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, configure Linux audio backends, reduce binary size, enable VST3 hosting, or switch the audio output device.
 ---
 
@@ -92,7 +92,8 @@ await SoLoud.instance.init(
 - **Inspection getters**:
   - `bool get isRenderAheadEnabled` — true when enabled on native platforms.
   - `Duration getPlayheadTime()` — true playhead time reaching the speaker right now (equals `getEngineTime()` when disabled or on web).
-  - `Duration getOutputLatency()` — estimated output latency (ring depth + device period; `Duration.zero` when disabled or on web).
+  - `Duration getOutputLatency()` — internal software mix cushion (render-ahead ring depth + one device period; `Duration.zero` when disabled or on web).
+  - `Duration getHardwareOutputLatency()` — external OS/HAL/DAC presentation delay from the device callback to the physical transducer (Android AAudio timestamp, iOS `AVAudioSession`, macOS CoreAudio device latency + safety offset, Windows WASAPI, Web Audio `outputLatency + baseLatency`; `Duration.zero` during warm-up or when unsupported). Works regardless of whether the render-ahead ring is enabled. Total delay from mix quantum to ear is `getOutputLatency() + getHardwareOutputLatency()`.
 - **Caveats**: Ignored on web. Ended-voice callbacks may fire up to `renderAheadFrames` earlier than without the ring. Unseekable/un-snapshotable streams (released push streams, pull streams, `speechText`) degrade gracefully to standard buffer boundaries.
 
 ## Traps
