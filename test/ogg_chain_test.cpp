@@ -13,15 +13,22 @@
 // past the caller's buffer. Every link is now decoded at the stream's channel
 // count, and a link with a header no Opus decoder takes is skipped.
 //
-// The test builds its files with libopus and libogg, and reads them through a
-// WavStream voice instance the way the mixer does, through a voice on the null
-// backend, and through Wav (what LoadMode.memory uses).
+// vorbis-channels: reads copied the stream's channel count of planes out of
+// what libvorbis returned for the link being read. A mono link after a stereo
+// one has one plane: the second copy read a pointer past libvorbis' array and
+// copied from wherever it pointed. A link with fewer channels than the stream
+// now repeats them, and a mono stream plays the mean of a stereo link's two
+// channels (it played the first), as it does for Opus.
+//
+// The test builds its files with libopus, libvorbisenc and libogg, and reads
+// them through a WavStream voice instance the way the mixer does, through a
+// voice on the null backend, and through Wav (what LoadMode.memory uses).
 //
 // Build and run from the flutter_soloud repository root with:
 //
 //   ./test/run_ogg_chain_test.sh [--asan] [case or group...]
 //
-// Groups: opus-channels. With none, all cases run.
+// Groups: opus-channels, vorbis-channels. With none, all cases run.
 
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -30,6 +37,7 @@
 #include "native_audio_decoder.h"
 
 #include <ogg/ogg.h>
+#include <vorbis/vorbisenc.h>
 #if __has_include(<opus/opus.h>)
 #include <opus/opus.h>
 #else
@@ -78,6 +86,7 @@ void check(bool ok, const std::string &what)
 }
 
 constexpr unsigned int kOpusRate = 48000;
+constexpr unsigned int kVorbisRate = 44100;
 constexpr unsigned int kBlock = 512;
 // Never a decoded sample: marks what a read did not write.
 constexpr float kUnwritten = 1000.0f;
@@ -213,6 +222,78 @@ Bytes makeOpusLink(const OpusLink &link)
 	return out;
 }
 
+// One Ogg Vorbis link of a tone at 44.1 kHz.
+Bytes makeVorbisLink(int channels, int serial, double seconds)
+{
+	vorbis_info vi;
+	vorbis_info_init(&vi);
+	if (vorbis_encode_init_vbr(&vi, channels, kVorbisRate, 0.4f) != 0)
+	{
+		std::printf("vorbis_encode_init_vbr failed\n");
+		std::exit(1);
+	}
+	vorbis_comment vc;
+	vorbis_comment_init(&vc);
+	vorbis_dsp_state vd;
+	vorbis_analysis_init(&vd, &vi);
+	vorbis_block vb;
+	vorbis_block_init(&vd, &vb);
+
+	Bytes out;
+	ogg_stream_state os;
+	ogg_stream_init(&os, serial);
+	ogg_packet header, comments, codebooks;
+	vorbis_analysis_headerout(&vd, &vc, &header, &comments, &codebooks);
+	ogg_stream_packetin(&os, &header);
+	ogg_stream_packetin(&os, &comments);
+	ogg_stream_packetin(&os, &codebooks);
+	takePages(os, out, true);
+
+	const long frames = std::lround(seconds * kVorbisRate);
+	long done = 0;
+	bool ended = false;
+	while (!ended)
+	{
+		const long n = std::min(1024L, frames - done);
+		if (n > 0)
+		{
+			float **buffer = vorbis_analysis_buffer(&vd, (int)n);
+			for (long i = 0; i < n; i++)
+			{
+				for (int ch = 0; ch < channels; ch++)
+					buffer[ch][i] = tone(serial, ch, done + i, kVorbisRate);
+			}
+			vorbis_analysis_wrote(&vd, (int)n);
+			done += n;
+		}
+		else
+		{
+			vorbis_analysis_wrote(&vd, 0); // end of the link
+			ended = true;
+		}
+		while (vorbis_analysis_blockout(&vd, &vb) == 1)
+		{
+			vorbis_analysis(&vb, nullptr);
+			vorbis_bitrate_addblock(&vb);
+			ogg_packet op;
+			while (vorbis_bitrate_flushpacket(&vd, &op))
+			{
+				ogg_stream_packetin(&os, &op);
+				// A page per packet: libvorbisfile skips a link of a
+				// chained file whose audio is a single page.
+				takePages(os, out, true);
+			}
+		}
+	}
+	takePages(os, out, true);
+	ogg_stream_clear(&os);
+	vorbis_block_clear(&vb);
+	vorbis_dsp_clear(&vd);
+	vorbis_comment_clear(&vc);
+	vorbis_info_clear(&vi);
+	return out;
+}
+
 Bytes chain(const std::vector<Bytes> &links)
 {
 	Bytes out;
@@ -295,6 +376,23 @@ double rms(const Planar &p, unsigned int ch, double from, double to, unsigned in
 	for (size_t i = a; i < b; i++)
 		sum += (double)p.planes[ch][i] * p.planes[ch][i];
 	return std::sqrt(sum / (double)(b - a));
+}
+
+// Largest difference between channel 0 of [mono] from frame [start] on and
+// the mean of [stereo]'s two channels, or -1 when [mono] has no such frames.
+double downmixDifference(const Planar &mono, unsigned int start, const Planar &stereo)
+{
+	const unsigned int frames = stereo.frames();
+	if (mono.channels < 1 || stereo.channels < 2 || frames == 0 ||
+		start + frames > mono.frames())
+		return -1;
+	double most = 0;
+	for (unsigned int i = 0; i < frames; i++)
+	{
+		const float mix = (stereo.planes[0][i] + stereo.planes[1][i]) / 2.0f;
+		most = std::max(most, (double)std::fabs(mono.planes[0][start + i] - mix));
+	}
+	return most;
 }
 
 // Largest difference between channels 0 and 1 over [from, to) seconds, or
@@ -470,6 +568,85 @@ void testOpusStereoThenMono()
 			  std::to_string(wavDifference) + ")");
 }
 
+void testVorbisStereoThenMono()
+{
+	const std::string what = "stereo Vorbis link, then a mono link";
+	std::printf("%s\n", what.c_str());
+	const Bytes file = chain({makeVorbisLink(2, 41, 0.5), makeVorbisLink(1, 42, 1.5)});
+
+	SoLoud::WavStream ws;
+	if (!loadStream(ws, file, what))
+		return;
+	check(ws.mChannels == 2, what + ": the stream has the first link's 2 channels");
+	const Planar streamed = streamAll(ws, what, 5.0);
+	for (unsigned int ch = 0; ch < 2; ch++)
+	{
+		check(rms(streamed, ch, 0.1, 0.4, kVorbisRate) > kHeard,
+			  what + ": channel " + std::to_string(ch) + " plays the first link");
+		check(rms(streamed, ch, 0.6, 1.9, kVorbisRate) > kHeard,
+			  what + ": channel " + std::to_string(ch) + " plays the second link");
+	}
+	const double difference = channelDifference(streamed, 0.6, 1.9, kVorbisRate);
+	check(difference == 0,
+		  what + ": the mono link plays the same on both channels (they differ by " +
+			  std::to_string(difference) + ")");
+
+	SoLoud::Wav wav;
+	if (!loadWav(wav, file, what))
+		return;
+	const Planar loaded = wavAll(wav);
+	for (unsigned int ch = 0; ch < loaded.channels; ch++)
+		check(rms(loaded, ch, 0.6, 1.9, kVorbisRate) > kHeard,
+			  what + ": Wav channel " + std::to_string(ch) + " holds the second link");
+	const double wavDifference = channelDifference(loaded, 0.6, 1.9, kVorbisRate);
+	check(wavDifference == 0,
+		  what + ": Wav holds the mono link on both channels (they differ by " +
+			  std::to_string(wavDifference) + ")");
+}
+
+void testVorbisMonoThenStereo()
+{
+	const std::string what = "mono Vorbis link, then a stereo link";
+	std::printf("%s\n", what.c_str());
+	const Bytes first = makeVorbisLink(1, 51, 0.5);
+	const Bytes second = makeVorbisLink(2, 52, 1.5);
+	const Bytes file = chain({first, second});
+
+	SoLoud::WavStream ws;
+	if (!loadStream(ws, file, what))
+		return;
+	check(ws.mChannels == 1, what + ": the stream has the first link's 1 channel");
+	const Planar streamed = streamAll(ws, what, 5.0);
+	check(rms(streamed, 0, 0.1, 0.4, kVorbisRate) > kHeard, what + ": the first link plays");
+	check(rms(streamed, 0, 0.6, 1.9, kVorbisRate) > kHeard, what + ": the second link plays");
+
+	// The second link, its channels two tones, plays as their mean, as Opus
+	// gives it: what each link decodes to on its own shows where it starts
+	// and what its channels are.
+	SoLoud::WavStream firstAlone;
+	SoLoud::WavStream secondAlone;
+	if (!loadStream(firstAlone, first, what + " (first link alone)") ||
+		!loadStream(secondAlone, second, what + " (second link alone)"))
+		return;
+	const unsigned int start = streamAll(firstAlone, what + " (first link alone)", 5.0).frames();
+	const Planar stereo = streamAll(secondAlone, what + " (second link alone)", 5.0);
+	const double mixDifference = downmixDifference(streamed, start, stereo);
+	check(mixDifference >= 0 && mixDifference < 1e-6,
+		  what + ": the second link plays as the mean of its channels (off by " +
+			  std::to_string(mixDifference) + ")");
+
+	SoLoud::Wav wav;
+	if (!loadWav(wav, file, what))
+		return;
+	check(wav.mChannels == 1, what + ": Wav has the first link's 1 channel");
+	const Planar loaded = wavAll(wav);
+	check(rms(loaded, 0, 0.6, 1.9, kVorbisRate) > kHeard, what + ": Wav holds the second link");
+	const double wavMixDifference = downmixDifference(loaded, start, stereo);
+	check(wavMixDifference >= 0 && wavMixDifference < 1e-6,
+		  what + ": Wav holds the second link as the mean of its channels (off by " +
+			  std::to_string(wavMixDifference) + ")");
+}
+
 // A case runs when no argument is given, or when an argument names it or its
 // group ("opus-channels" runs "opus-channels/zero").
 bool wanted(int argc, char **argv, const std::string &name)
@@ -495,6 +672,8 @@ const Case kCases[] = {
 	{"opus-channels/zero", testOpusZeroChannelLink},
 	{"opus-channels/mono-stereo", testOpusMonoThenStereo},
 	{"opus-channels/stereo-mono", testOpusStereoThenMono},
+	{"vorbis-channels/stereo-mono", testVorbisStereoThenMono},
+	{"vorbis-channels/mono-stereo", testVorbisMonoThenStereo},
 };
 
 } // namespace

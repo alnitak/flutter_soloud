@@ -314,9 +314,27 @@ unsigned int MBOggDecoder::readVorbis(float *aBuffer, unsigned int aSamples,
     if (ret <= 0)
       break;
 
-    for (int ch = 0; ch < outChannels; ch++) {
-      memcpy(aBuffer + ch * aBufferSize + samplesRead, pcm[ch],
-             sizeof(float) * ret);
+    // ###### flutter_soloud local patch (chained vorbis channels) ######
+    // pcm holds the channels of the link being read. In a chained file that
+    // can differ from mChannels, the first link's, which callers size their
+    // buffers for: a link with fewer channels repeats them, so a mono link
+    // plays on both channels of a stereo stream, and a mono stream gets the
+    // mix of a link with more, as libopus gives it for Opus.
+    const vorbis_info *info = ov_info(&mVorbisFile, bitstream);
+    const int linkChannels = info && info->channels > 0 ? info->channels : 1;
+    if (outChannels == 1 && linkChannels > 1) {
+      float *out = aBuffer + samplesRead;
+      for (long i = 0; i < ret; i++) {
+        float sum = 0.0f;
+        for (int ch = 0; ch < linkChannels; ch++)
+          sum += pcm[ch][i];
+        out[i] = sum / (float)linkChannels;
+      }
+    } else {
+      for (int ch = 0; ch < outChannels; ch++) {
+        memcpy(aBuffer + ch * aBufferSize + samplesRead,
+               pcm[ch % linkChannels], sizeof(float) * ret);
+      }
     }
     samplesRead += (unsigned int)ret;
   }
