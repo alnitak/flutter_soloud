@@ -1052,12 +1052,15 @@ void testFadeToTheWriteHeadValueFades()
         PulseSource a(1 << 20, 0.5f);
         const SoLoud::handle h = rig.engine.play(a);
         rig.topUp();
-        rig.discard(2100);
+        // A speed change starts at the end of the quantum the device is
+        // playing: the short speed fade, from the playhead at 1500, at 2048,
+        // and the long one, from 2500, at 3072.
+        rig.discard(speed ? 1500 : 2100);
         if (speed)
             rig.engine.fadeRelativePlaySpeed(h, 1.5f, shortFade);
         else
             rig.engine.fadePan(h, 0.5f, shortFade);
-        rig.discard(400);
+        rig.discard(speed ? 1000 : 400);
         if (speed)
             rig.engine.fadeRelativePlaySpeed(h, 1.5f, 1.0);
         else
@@ -1069,8 +1072,10 @@ void testFadeToTheWriteHeadValueFades()
         const SoLoud::AudioSourceInstance* voice = rig.engine.mVoice[slot];
         const SoLoud::Fader& fader =
             speed ? voice->mRelativePlaySpeedFader : voice->mPanFader;
-        // Where the short fade is at the playhead, 400 frames in.
-        const float live = (speed ? 1.0f : 0.0f) + 0.5f * 400.0f / 1323.0f;
+        // Where the short fade is where the long one starts: 400 frames in
+        // for the pan, 1024 for the speed.
+        const float live = speed ? 1.0f + 0.5f * 1024.0f / 1323.0f
+                                 : 0.5f * 400.0f / 1323.0f;
         EXPECT(fader.mActive > 0 && std::fabs(fader.mTime - 1.0) < 1e-6 &&
                    std::fabs(fader.mFrom - live) < 0.01f,
                "%s to the write-head value: fades from %f over %f s (active %d), "
@@ -1080,9 +1085,8 @@ void testFadeToTheWriteHeadValueFades()
     }
 }
 
-// ---- Device reads during an event -------------------------------------------
+// ---- Speed changes --------------------------------------------------------
 
-#if defined(SOLOUD_RETRO_TEST_HOOKS)
 // Counts its frames: source frame i is (i + 1) / 4096, so the output shows
 // which source frame plays where. Restorable, like PulseSource.
 class CountInstance final : public SoLoud::AudioSourceInstance {
@@ -1125,6 +1129,85 @@ public:
     }
 };
 
+// A speed change at the playhead neither skips nor repeats the source. The
+// mixer sets a voice's speed once per quantum, for all of it, so the change
+// cannot start inside the quantum the device is playing. With the playhead
+// at 2900, 852 frames into the quantum from 2048, setRelativePlaySpeed(h, 2)
+// re-mixed that quantum from 2048 at speed 2, and the device skipped about
+// 850 source frames. The rest of that quantum must play as it would have,
+// and the new speed from its end, at 3072, on. The same holds while a speed
+// fade runs: the quantum keeps the speed the fade has at its end.
+void testSpeedChangeAtThePlayheadDoesNotSkip()
+{
+    constexpr unsigned int kPlayhead = 2900;
+    constexpr unsigned int kRest = 3072 - kPlayhead;  // to the quantum's end
+    float step = 0.0f;  // output per source frame at speed 1
+    for (int fading = 0; fading < 2; ++fading) {
+        const float to = fading ? 1.0f : 2.0f;
+        std::vector<float> outs[2];
+        for (int change = 0; change < 2; ++change) {
+            Rig rig;
+            CountSource count;
+            const SoLoud::handle h = rig.engine.play(count);
+            if (fading)
+                rig.engine.fadeRelativePlaySpeed(h, 2.0f, 0.5);
+            rig.topUp();
+            rig.discard(kPlayhead);
+            if (change)
+                rig.engine.setRelativePlaySpeed(h, to);
+            outs[change] = rig.readAll();
+        }
+        const std::vector<float>& before = outs[0];
+        const std::vector<float>& after = outs[1];
+        if (!fading && before.size() > 2 * kRest)
+            step = before[2 * kRest] - before[2 * kRest - 2];
+        float worst = before.size() == after.size() ? 0.0f : 1.0f;
+        for (size_t i = 0; i < 2 * kRest && i < before.size() && i < after.size(); ++i)
+            worst = std::max(worst, std::fabs(after[i] - before[i]));
+        EXPECT(worst < 1e-5f,
+               "%s: the change moves the rest of the quantum at the playhead "
+               "by up to %f source frames",
+               fading ? "fading" : "steady", step > 0.0f ? worst / step : -1.0f);
+        for (unsigned int k : {kRest + 8, kRest + 600}) {
+            const float speed = step > 0.0f && after.size() > 2 * k + 2
+                ? (after[2 * k + 2] - after[2 * k]) / step : -1.0f;
+            EXPECT(std::fabs(speed - to) < 1e-3f,
+                   "%s: speed %f at %u frames past the playhead, want %f",
+                   fading ? "fading" : "steady", speed, k, to);
+        }
+    }
+}
+
+// A voice played at the playhead and given a new speed right away, the
+// random-pitch sound-effect pattern, plays at that speed from its first
+// frame: the device has heard none of it, so nothing can skip, and the
+// change must not wait for the end of the quantum.
+void testSpeedChangeOfANewVoiceStartsAtOnce()
+{
+    std::vector<float> outs[2];
+    for (int change = 0; change < 2; ++change) {
+        Rig rig;
+        rig.topUp();
+        rig.discard(2900);  // 852 frames into the quantum from 2048
+        CountSource count;
+        const SoLoud::handle h = rig.engine.play(count);
+        if (change)
+            rig.engine.setRelativePlaySpeed(h, 2.0f);
+        outs[change] = rig.readAll();
+    }
+    for (unsigned int k : {40u, 100u, 160u}) {
+        const float base = outs[0].size() > 2 * k + 2
+            ? outs[0][2 * k + 2] - outs[0][2 * k] : 0.0f;
+        const float speed = base > 0.0f && outs[1].size() > 2 * k + 2
+            ? (outs[1][2 * k + 2] - outs[1][2 * k]) / base : -1.0f;
+        EXPECT(std::fabs(speed - 2.0f) < 1e-3f,
+               "new voice: speed %f at its frame %u, want 2", speed, k);
+    }
+}
+
+// ---- Device reads during an event -------------------------------------------
+
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
 int gPlayheadReads = 0;
 int gDeviceReadsBefore = 0;
 constexpr unsigned int kDeviceFrames = 16;
@@ -1203,6 +1286,8 @@ int main()
     testGroupFadesStartFromEachVoice();
     testRetroactiveFadeStartsFromTheLiveValue();
     testFadeToTheWriteHeadValueFades();
+    testSpeedChangeAtThePlayheadDoesNotSkip();
+    testSpeedChangeOfANewVoiceStartsAtOnce();
 #if defined(SOLOUD_RETRO_TEST_HOOKS)
     testRetroactivePlayWhileTheDeviceReads();
 #endif

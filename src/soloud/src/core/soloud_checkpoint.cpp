@@ -1587,6 +1587,25 @@ namespace SoLoud
 		// meanwhile. A zero aDuration is a step change (RETRO_FADE_TIME keeps
 		// Fader::get() off its 0-duration NaN path).
 		const time dur = aDuration > 0 ? aDuration : RETRO_FADE_TIME;
+		// ###### flutter_soloud local patch (retroactive speed) ######
+		// The mixer sets a voice's speed once per quantum, for all of it. A
+		// speed change inside the quantum the device is playing would re-mix
+		// that quantum from its start at the new speed, and the device would
+		// skip or repeat the source by (new - old speed) * (playhead -
+		// quantum start) frames. Start it at the next quantum boundary
+		// instead, the end of that quantum: up to there the re-mix plays
+		// what the device has been playing. Two changes inside one quantum
+		// so land together, and the later one replaces the earlier one.
+		if (aParam == RetroJournalEntry::PARAM_SPEED)
+		{
+			const long long q = (long long)mBufferSize;
+			const long long frames = (long long)floor(
+				(mRemixEventTime - mRemixCheckpointTime) * (time)mSamplerate + 0.5);
+			// A voice that starts at or after the playhead has played nothing
+			// the device heard, so nothing can skip: change it at the event.
+			if ((long long)v->mDelaySamples < frames)
+				t = mRemixCheckpointTime + (time)((frames + q - 1) / q * q) / (time)mSamplerate;
+		}
 		const time voiceTime = v->mStreamTime + (t - mRemixCheckpointTime);
 		// ###### flutter_soloud local patch (fade starting values) ######
 		// Start from the value the voice has where the re-mix becomes
@@ -1606,7 +1625,9 @@ namespace SoLoud
 			v->mPanFader.setScheduled(faderValueAt(v->mPanFader, v->mPan, liveTime), aValue, dur, voiceTime);
 			break;
 		case RetroJournalEntry::PARAM_SPEED:
-			v->mRelativePlaySpeedFader.setScheduled(faderValueAt(v->mRelativePlaySpeedFader, v->mSetRelativePlaySpeed, liveTime), aValue, dur, voiceTime);
+			// From the speed the voice has at the start time, which the
+			// quantum ending there plays at.
+			v->mRelativePlaySpeedFader.setScheduled(faderValueAt(v->mRelativePlaySpeedFader, v->mSetRelativePlaySpeed, voiceTime), aValue, dur, voiceTime);
 			break;
 		case RetroJournalEntry::PARAM_PAUSE:
 			v->mPauseScheduler.setScheduled(1, 0, dur, voiceTime);
