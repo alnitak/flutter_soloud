@@ -1042,13 +1042,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final ffi.Pointer<Utf8> cString = textToSpeech.toNativeUtf8();
-    final e = native.speechText(cString.cast<ffi.Char>(), handle);
-    final ret = (
-      error: PlayerErrors.values[e.value],
-      handle: SoundHandle(handle.value),
-    );
-    calloc.free(handle);
-    return ret;
+    try {
+      final e = native.speechText(cString.cast<ffi.Char>(), handle);
+      return (
+        error: PlayerErrors.values[e.value],
+        handle: SoundHandle(handle.value),
+      );
+    } finally {
+      calloc
+        ..free(cString)
+        ..free(handle);
+    }
   }
 
   @override
