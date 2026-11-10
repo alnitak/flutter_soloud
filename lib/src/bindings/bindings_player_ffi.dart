@@ -2066,29 +2066,32 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double endTime = -1,
     bool average = false,
   }) {
-    final pSamples = calloc<ffi.Float>(
-      numSamplesNeeded * ffi.sizeOf<ffi.Float>(),
-    );
-    final error = native.readSamplesFromFile(
-      completeFileName.toNativeUtf8().cast<ffi.Char>(),
-      startTime,
-      endTime,
-      numSamplesNeeded,
-      average,
-      pSamples,
-    );
-    final samples = pSamples.asTypedList(numSamplesNeeded).asUnmodifiableView();
-
-    /// Seems freeing this pointer is not needed because "samples" gets
-    /// undefined after using "free"!? It will be GC-ed.
-    // calloc.free(pSamples);
-    if (ReadSamplesErrors.fromValue(error.value) !=
-        ReadSamplesErrors.readSamplesNoError) {
-      throw SoLoudCppException.fromReadSampleError(
-        ReadSamplesErrors.fromValue(error.value),
+    final pSamples = calloc<ffi.Float>(numSamplesNeeded);
+    final fileName = completeFileName.toNativeUtf8();
+    try {
+      final error = native.readSamplesFromFile(
+        fileName.cast<ffi.Char>(),
+        startTime,
+        endTime,
+        numSamplesNeeded,
+        average,
+        pSamples,
       );
+      if (ReadSamplesErrors.fromValue(error.value) !=
+          ReadSamplesErrors.readSamplesNoError) {
+        throw SoLoudCppException.fromReadSampleError(
+          ReadSamplesErrors.fromValue(error.value),
+        );
+      }
+      // Native memory is not garbage collected: copy the samples out of it
+      // and free it.
+      return Float32List.fromList(
+        pSamples.asTypedList(numSamplesNeeded),
+      ).asUnmodifiableView();
+    } finally {
+      malloc.free(fileName);
+      calloc.free(pSamples);
     }
-    return samples;
   }
 
   @override
@@ -2099,34 +2102,35 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double endTime = -1,
     bool average = false,
   }) {
-    final pSamples = calloc<ffi.Float>(
-      numSamplesNeeded * ffi.sizeOf<ffi.Float>(),
-    );
+    final pSamples = calloc<ffi.Float>(numSamplesNeeded);
     final ffi.Pointer<ffi.Uint8> bufferPtr = calloc(buffer.length);
-    for (var i = 0; i < buffer.length; i++) {
-      bufferPtr[i] = buffer[i];
-    }
-    final error = native.readSamplesFromMem(
-      bufferPtr.cast<ffi.UnsignedChar>(),
-      buffer.length,
-      startTime,
-      endTime,
-      numSamplesNeeded,
-      average,
-      pSamples,
-    );
-    final samples = pSamples.asTypedList(numSamplesNeeded).asUnmodifiableView();
-
-    /// Seems freeing this pointer is not needed because "samples" gets
-    /// undefined after using "free"!? It will be GC-ed.
-    // calloc.free(pSamples);
-    if (ReadSamplesErrors.fromValue(error.value) !=
-        ReadSamplesErrors.readSamplesNoError) {
-      throw SoLoudCppException.fromReadSampleError(
-        ReadSamplesErrors.fromValue(error.value),
+    try {
+      bufferPtr.asTypedList(buffer.length).setAll(0, buffer);
+      final error = native.readSamplesFromMem(
+        bufferPtr.cast<ffi.UnsignedChar>(),
+        buffer.length,
+        startTime,
+        endTime,
+        numSamplesNeeded,
+        average,
+        pSamples,
       );
+      if (ReadSamplesErrors.fromValue(error.value) !=
+          ReadSamplesErrors.readSamplesNoError) {
+        throw SoLoudCppException.fromReadSampleError(
+          ReadSamplesErrors.fromValue(error.value),
+        );
+      }
+      // Native memory is not garbage collected: copy the samples out of it
+      // and free it, and the copy of [buffer] with it.
+      return Float32List.fromList(
+        pSamples.asTypedList(numSamplesNeeded),
+      ).asUnmodifiableView();
+    } finally {
+      calloc
+        ..free(bufferPtr)
+        ..free(pSamples);
     }
-    return samples;
   }
 
   /////////////////////////////////////////
