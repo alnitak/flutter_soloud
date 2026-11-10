@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -324,11 +325,23 @@ public:
     close();
     guiSymbols().load();
 
-    static std::atomic<uint32_t> sShmCounter{0};
-    const std::string shmPath =
-        "/tmp/soloud_vst3_shm_" + std::to_string(getpid()) + "_" +
-        std::to_string(++sShmCounter) + ".bin";
-    const int fd = ::open(shmPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0600);
+    // A new file under a random name, created with O_EXCL and mode 0600 by
+    // mkstemp(), in the per-user runtime directory when there is one: a
+    // predictable name in /tmp could be taken first, by a symlink say.
+    const char *const shmDirs[] = {::getenv("XDG_RUNTIME_DIR"),
+                                   ::getenv("TMPDIR"), "/tmp"};
+    std::string shmPath;
+    int fd = -1;
+    for (const char *dir : shmDirs) {
+      if (dir == nullptr || dir[0] != '/') {
+        continue;
+      }
+      shmPath = std::string(dir) + "/soloud_vst3_shm_XXXXXX";
+      fd = ::mkstemp(&shmPath[0]);
+      if (fd >= 0) {
+        break;
+      }
+    }
     if (fd < 0) {
       return false;
     }
