@@ -24,6 +24,10 @@ namespace SoLoud {
 
 class PullBufferStream;
 
+/// A seek or a rewind of the voice that waits for the decode mutex (see
+/// PullBufferStreamInstance::deferMove()).
+enum class PullStreamMove { None, Rewind, Seek };
+
 /// One active voice for a PullBufferStream. Only one instance is supported per
 /// source because the circular buffer is shared.
 class PullBufferStreamInstance : public AudioSourceInstance {
@@ -45,6 +49,16 @@ public:
   ~PullBufferStreamInstance() override;
 
 private:
+  /// The bodies of seek() and rewind(), with mParent->mDecodeMutex held.
+  void seekLocked(double aSeconds);
+  void rewindLocked();
+  /// Leaves a seek (or a rewind, with [aSeconds] 0) that found the decode
+  /// mutex held for getAudio() to apply. SoLoud seeks and rewinds with its
+  /// audio mutex held, often on the mixer, and a delivery holds the decode
+  /// mutex for its whole decode: waiting would stall the mixer (on the web's
+  /// AudioWorklet thread a contended lock aborts).
+  void deferMove(PullStreamMove aMove, double aSeconds);
+
   PullBufferStream *mParent;
 };
 
@@ -83,13 +97,9 @@ public:
 
   AudioSourceInstance *createInstance() override;
 
+  /// Not for the audio thread: both take mDecodeMutex.
   SoLoud::time getLength() const;
   SoLoud::time getBufferedLength() const;
-
-  /// Convert target time (seconds) to a byte offset in the encoded stream.
-  /// For PCM this is exact; for compressed formats it uses the decoder
-  /// metadata once known.
-  uint64_t timeToEncodedByteOffset(double seconds);
 
   bool isValid() const { return !mIsDestroyed.load(); }
   void markForDestruction() { mIsDestroyed.store(true); }
@@ -115,29 +125,64 @@ private:
     Done           ///< Duration has been reported.
   };
 
+  // Methods named *Locked, and the decode and probe helpers below, need
+  // mDecodeMutex held by the caller (see its declaration).
+
   /// Pauses the voice when the decoded audio runs low and resumes it once
   /// enough is buffered again.
   ///
-  /// Runs only on a thread delivering data (addAudioData(), setDataIsEnded()),
-  /// never on the audio thread nor with mDecodeMutex held: it calls
+  /// Runs only on a thread delivering data (addAudioData()), after it has
+  /// released mDecodeMutex, and never on the audio thread: it calls
   /// Player::getPause()/setPause(), which take SoLoud's audio mutex. The mixer
   /// holds that mutex while it mixes, and a seek holds it while it takes
   /// mDecodeMutex.
   void checkBuffering();
-  void requestMoreDataIfNeeded();
-  void decodePendingData();
-  void decodePendingDataLocked();
+  /// Asks Dart for the next chunk if the buffer is running low. Decides under
+  /// mDecodeMutex and calls back after releasing it. [aFromMixer]: only
+  /// try-lock, and skip the request when a delivery holds the mutex (that
+  /// delivery asks for more itself once it is done).
+  void requestMoreDataIfNeeded(bool aFromMixer = false);
+  /// The decision part of requestMoreDataIfNeeded(): true, with [aOffset] to
+  /// request, when a request is due.
+  bool nextDataRequestLocked(uint64_t &aOffset);
+  /// [aUnderAudioMutex]: the caller is mixing (tryDecodePendingData()) or
+  /// seeking the voice, with SoLoud's audio mutex held; see applyPendingSeek().
+  void decodePendingDataLocked(bool aUnderAudioMutex = false);
   void tryDecodePendingData();
-  /// Completes a pending seek once data at the target has been decoded. It
-  /// runs on the mixer too, so it leaves the buffering check to the delivery
-  /// that brought the data (see mSeekCompletedSinceCheck).
-  void applyPendingSeek();
+  /// Completes a pending seek once data at the target has been decoded. When
+  /// the encoded offset becomes known only now, also moves the voice's play
+  /// position: directly when [aUnderAudioMutex] (the position belongs to the
+  /// mixer, which advances it every block), otherwise through
+  /// mPendingStreamPosition for the mixer's next getAudio() to apply. It runs
+  /// on the mixer too, so it leaves the buffering check to the delivery that
+  /// brought the data (see mSeekCompletedSinceCheck).
+  void applyPendingSeek(bool aUnderAudioMutex = false);
   void drainBacklog();
   void drainBacklogLocked();
   void probeDurationFromFirstChunk();
   void probeDurationFromOggTail(uint64_t aOffset);
+  /// Records the duration; the caller reports it once it has released
+  /// mDecodeMutex (see DeferredCallbacks).
   void finishDurationProbe(double duration);
-  void setDataIsEnded();
+  void setDataIsEndedLocked();
+
+  /// The duration and metadata callbacks that work done under mDecodeMutex
+  /// produced, to make once it is released: on the web they run Dart
+  /// synchronously, and Dart may call back into the stream. Every thread that
+  /// can produce them takes them before it unlocks and delivers them after.
+  struct DeferredCallbacks {
+    std::vector<AudioMetadata> metadata;
+    bool hasDuration = false;
+    double duration = 0.0;
+  };
+  DeferredCallbacks takeDeferredCallbacksLocked();
+  void deliverDeferredCallbacks(DeferredCallbacks &aCallbacks);
+  SoLoud::time getLengthLocked() const;
+
+  /// Convert target time (seconds) to a byte offset in the encoded stream.
+  /// For PCM this is exact; for compressed formats it uses the decoder
+  /// metadata once known.
+  uint64_t timeToEncodedByteOffsetLocked(double seconds);
 
   /// Reset the decoded playback window and stream offsets without zeroing the
   /// underlying storage.
@@ -154,8 +199,8 @@ private:
   void resetDecoderForSeek(uint64_t targetSample, uint64_t byteOffset);
 
   /// Current start/end of the decoded circular buffer in seconds.
-  double getBufferStartTime() const;
-  double getBufferEndTime() const;
+  double getBufferStartTimeLocked() const;
+  double getBufferEndTimeLocked() const;
 
   Player *mThePlayer;
   ActiveSound *mParent;
@@ -210,7 +255,29 @@ private:
   static constexpr int kMaxSeekTableBuildChunks = 16; ///< Cap for seek-table pre-build phase.
   std::vector<unsigned char> mTailProbeBuffer; ///< Accumulated tail bytes for Ogg probe.
 
+  /// Guards every non-atomic member above and below that the mixer and the
+  /// other threads share: the decoder, the format, the offsets and counters,
+  /// the pending seek, the duration probe and the buffers below. A delivery,
+  /// a reset and the Dart-thread getters take it. The mixer never waits for
+  /// it: it only try-locks it while mixing, skipping that work when a
+  /// delivery holds it, and a seek or a rewind, which SoLoud runs with its
+  /// audio mutex held, is deferred when it finds it held (mDeferredMove).
+  /// Nothing that holds it may wait for the audio mutex or sounds_mutex,
+  /// and no callback runs under it: the Player calls
+  /// (checkBuffering()) and every Dart callback, which on the web can re-enter
+  /// the stream synchronously, run after it is released (see
+  /// DeferredCallbacks).
   mutable std::mutex mDecodeMutex;
+  /// A seek or rewind deferred by PullBufferStreamInstance::deferMove(), and
+  /// the seek's target. Set and applied with the audio mutex held; a reset
+  /// drops it.
+  std::atomic<PullStreamMove> mDeferredMove{PullStreamMove::None};
+  std::atomic<double> mDeferredSeekTime{0.0};
+  DeferredCallbacks mDeferredCallbacks;
+  /// A play position for the voice, resolved by a delivery (see
+  /// applyPendingSeek()) and applied by the mixer's next getAudio().
+  std::atomic<bool> mStreamPositionPending{false};
+  std::atomic<double> mPendingStreamPosition{0.0};
   std::vector<unsigned char> mEncodedBuffer;
   std::vector<unsigned char> mDecodeScratch;
   std::vector<float> mDecodedBacklog;

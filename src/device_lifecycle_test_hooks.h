@@ -71,6 +71,16 @@ namespace soloud_test
     /// At the top of PullBufferStream::checkBuffering(), which reads and sets
     /// the voice's pause state.
     pullBufferingCheckEntered,
+    /// In PullBufferStreamInstance::seek(), for a target outside the buffered
+    /// range at a known encoded offset, and in rewind(): right before the
+    /// buffered audio and the queued bytes are discarded. SoLoud applies seeks
+    /// (and rewinds a looping voice) with its audio mutex held.
+    pullSeekDiscarding,
+    /// In PullBufferStream::decodePendingDataLocked(), for raw PCM, after the
+    /// queued bytes have been converted and before they are written to the
+    /// buffer and dropped from the queue: a delivery, or the mixer
+    /// (tryDecodePendingData()), is decoding.
+    pullDecoding,
     barrierCount
   };
 

@@ -21,6 +21,32 @@
 //                 finish once the delivery is released: the seek holds the
 //                 audio mutex and waits for the decode mutex, so the check
 //                 must not run while the delivery holds the decode mutex.
+//   seek          A seek out of the buffered range parks right before it
+//                 discards the buffer, and a feeder delivers the data at its
+//                 target. The delivery must not decode until the seek is
+//                 done; its data then lands at the target.
+//   rewind        The same with a seek to 0, a rewind.
+//   seek-during-decode
+//                 A delivery parks while it decodes, holding the decode
+//                 mutex, and the (paused) voice is rewound and then seeked.
+//                 Neither may wait for the delivery: SoLoud seeks with its
+//                 audio mutex held, so the mixer would wait too. Once the
+//                 voice plays again the last seek is applied.
+//   loop-during-decode
+//                 A looping voice waits for its first data while a delivery
+//                 parks in its decode. The mixer rewinds such a voice on
+//                 every block, and must not wait for the delivery; the
+//                 delivered data is then kept.
+//   reset         The mixer parks while it decodes a queued chunk, and the
+//                 stream is reset. The reset must wait for the mixer; the
+//                 stream then asks for its data from 0.
+//   stress        A PCM stream and an MP3 stream
+//                 (example/assets/audio/8_bit_mentality.mp3) are fed, seeked
+//                 (to 0 too), reset and read by four threads at once while
+//                 they play. Under ThreadSanitizer this reports any access to
+//                 the decode state that the decode mutex does not order, and
+//                 under AddressSanitizer a decoder or buffer used after it
+//                 was replaced.
 //
 // A scenario that deadlocks cannot be cleaned up after: the run then prints
 // its counts and exits with failure.
@@ -36,14 +62,19 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -227,6 +258,296 @@ void deliveryAndSeek() {
            "the audio mutex should be free after the seek");
     endStream(s);
 }
+
+/// A seek out of the buffered range (or, for 0, a rewind) parks right before
+/// it discards the buffer. A delivery made meanwhile must not decode until
+/// the seek is done, and its data then lands at the target.
+void deliveryDuringDiscard(const char *name, float target) {
+    std::printf("%s: a delivery while a seek to %.0f s discards the buffer\n",
+                name, target);
+    const Stream s = startStream();
+    soloud_test::armBarrier(DeviceBarrier::pullSeekDiscarding);
+    const unsigned int voice = s.voice;
+    std::thread seeker([voice, target] { seek(voice, target); });
+    EXPECT(barrierReached(DeviceBarrier::pullSeekDiscarding, 3000),
+           "the seek did not reach the discard");
+
+    soloud_test::armBarrier(DeviceBarrier::pullDecoding);
+    std::thread feeder([&s, target] { deliverAt(s, target); });
+    if (barrierReached(DeviceBarrier::pullDecoding, 300))
+        deadlocked("the delivery decoded while the seek was discarding the "
+                   "buffer (releasing them would let the seek clear what the "
+                   "delivery decodes)");
+
+    soloud_test::releaseBarrier(DeviceBarrier::pullSeekDiscarding);
+    seeker.join();
+    EXPECT(barrierReached(DeviceBarrier::pullDecoding, 3000),
+           "the delivery did not decode after the seek");
+    soloud_test::releaseBarrier(DeviceBarrier::pullDecoding);
+    feeder.join();
+    double start = 0, end = 0;
+    getPullBufferTimeRange(s.hash, &start, &end);
+    EXPECT(start >= target - 0.01 && end > target + 0.5,
+           "the delivered data should be at %.0f s, buffered [%.2f, %.2f]",
+           target, start, end);
+    endStream(s);
+}
+
+/// A delivery parks in its decode, holding the decode mutex, while the voice
+/// is seeked to 0 (a rewind) and then to 300 s. The voice is paused, so that
+/// only the delivery can reach the barrier. With SoLoud's audio mutex held,
+/// neither seek may wait for the delivery.
+void seekDuringDecode() {
+    std::printf("seek-during-decode: seeks while a delivery decodes\n");
+    const Stream s = startStream();
+    const unsigned int voice = s.voice;
+    setPause(voice, true);
+    soloud_test::armBarrier(DeviceBarrier::pullDecoding);
+    std::thread feeder([&s] {
+        addPullBufferDataStream(s.hash, gChunk.data(),
+                                static_cast<unsigned int>(gChunk.size()),
+                                gChunk.size());
+    });
+    EXPECT(barrierReached(DeviceBarrier::pullDecoding, 3000),
+           "the delivery did not reach its decode");
+    {
+        std::lock_guard<std::mutex> lock(gRequestMutex);
+        gRequests.clear();
+    }
+    EXPECT(returnsWithin(300, [voice] { seek(voice, 0.0f); }),
+           "a rewind waited for the delivery's decode");
+    EXPECT(returnsWithin(300, [voice] { seek(voice, 300.0f); }),
+           "a seek waited for the delivery's decode");
+    // Shared: a getPosition() that does not return in time outlives this.
+    auto reported = std::make_shared<std::atomic<double>>(-1.0);
+    EXPECT(returnsWithin(300, [voice, reported] {
+               reported->store(getPosition(voice));
+           }),
+           "the audio mutex is held while the delivery decodes");
+    double position = reported->load();
+    EXPECT(position > 299.9 && position < 300.1,
+           "the seeked voice should report 300 s, got %.2f", position);
+
+    soloud_test::releaseBarrier(DeviceBarrier::pullDecoding);
+    feeder.join();
+    setPause(voice, false);
+    bool askedFor300 = false;
+    for (int i = 0; i < 100 && !askedFor300; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::lock_guard<std::mutex> lock(gRequestMutex);
+        for (uint64_t offset : gRequests) askedFor300 |= offset == offsetOf(300.0);
+    }
+    EXPECT(askedFor300, "the stream should ask for the data at 300 s");
+    deliverAt(s, 300.0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    position = getPosition(voice);
+    EXPECT(position >= 300.0 && position < 301.0,
+           "the voice should play from 300 s, at %.2f", position);
+    endStream(s);
+}
+
+/// A looping voice waits for its first data, so the mixer rewinds it on every
+/// block, while a delivery parks in its decode. Played paused until the
+/// delivery has parked, so that only the delivery can reach the barrier.
+void loopDuringDecode() {
+    std::printf("loop-during-decode: a looping voice waits for a decode\n");
+    unsigned int hash = 0;
+    PlayerErrors err = setPullBufferStream(
+        &hash, 1u << 20, 0.5, kSampleRate, kChannels,
+        static_cast<int>(BufferType::PCM_S16LE), kTotalBytes, nullptr, nullptr,
+        onMoreData, nullptr);
+    EXPECT(err == PlayerErrors::noError, "setPullBufferStream: %d", (int)err);
+    unsigned int voice = 0;
+    err = play(hash, 0, 0.05f, 0.0f, true, true, 0.0, 0.0, -1, -1, 1.0f,
+               &voice);
+    EXPECT(err == PlayerErrors::noError && voice != 0, "play: %d", (int)err);
+    soloud_test::armBarrier(DeviceBarrier::pullDecoding);
+    std::thread feeder([hash] {
+        addPullBufferDataStream(hash, gChunk.data(),
+                                static_cast<unsigned int>(gChunk.size()), 0);
+    });
+    EXPECT(barrierReached(DeviceBarrier::pullDecoding, 3000),
+           "the delivery did not reach its decode");
+    setPause(voice, false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    EXPECT(returnsWithin(300, [voice] { (void)getPosition(voice); }),
+           "the mixer waits for the delivery's decode to rewind the voice");
+
+    soloud_test::releaseBarrier(DeviceBarrier::pullDecoding);
+    feeder.join();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    double start = 0, end = 0;
+    getPullBufferTimeRange(hash, &start, &end);
+    EXPECT(start < 0.01 && end > 0.5,
+           "the delivered data should be kept, buffered [%.2f, %.2f]", start,
+           end);
+    const double position = getPosition(voice);
+    EXPECT(position > 0.0 && position < 0.5,
+           "the voice should play the delivered data, at %.2f", position);
+    stop(voice);
+    disposeSound(hash);
+}
+
+/// The mixer parks while it decodes a queued chunk. A reset meanwhile must
+/// wait for it, and the stream then asks for its data from the start.
+void resetDuringMixerDecode() {
+    std::printf("reset: a reset while the mixer decodes\n");
+    const Stream s = startStream();
+    soloud_test::armBarrier(DeviceBarrier::pullDataQueued);
+    soloud_test::armBarrier(DeviceBarrier::pullDecoding);
+    std::thread feeder([&s] {
+        addPullBufferDataStream(s.hash, gChunk.data(),
+                                static_cast<unsigned int>(gChunk.size()), 0);
+    });
+    EXPECT(barrierReached(DeviceBarrier::pullDataQueued, 3000),
+           "the delivery did not queue its data");
+    EXPECT(barrierReached(DeviceBarrier::pullDecoding, 3000),
+           "the mixer did not decode the queued data");
+    {
+        std::lock_guard<std::mutex> lock(gRequestMutex);
+        gRequests.clear();
+    }
+
+    auto reset = std::make_shared<std::atomic<bool>>(false);
+    const unsigned int hash = s.hash;
+    std::thread([hash, reset] {
+        resetPullBufferStream(hash);
+        reset->store(true);
+    }).detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    if (reset->load())
+        deadlocked("the reset finished while the mixer was decoding "
+                   "(releasing the mixer would let it write into the reset "
+                   "stream)");
+
+    soloud_test::releaseBarrier(DeviceBarrier::pullDecoding);
+    soloud_test::releaseBarrier(DeviceBarrier::pullDataQueued);
+    feeder.join();
+    for (int i = 0; i < 600 && !reset->load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    EXPECT(reset->load(), "the reset did not finish after the mixer");
+    bool askedForStart = false;
+    {
+        std::lock_guard<std::mutex> lock(gRequestMutex);
+        for (uint64_t offset : gRequests) askedForStart |= offset == 0;
+    }
+    EXPECT(askedForStart, "the reset stream should ask for data from 0");
+    deliverAt(s, 0.0);
+    double start = 0, end = 0;
+    getPullBufferTimeRange(s.hash, &start, &end);
+    EXPECT(start < 0.01 && end > 0.5,
+           "the reset stream should hold the new data from 0, buffered "
+           "[%.2f, %.2f]", start, end);
+    endStream(s);
+}
+
+// ------------------------------------------------------------------ stress
+std::vector<unsigned char> gMp3;
+std::mutex gStressMutex;
+std::condition_variable gStressCv;
+std::deque<uint64_t> gStressRequests;
+std::atomic<bool> gStressStop{false};
+
+void onStressData(uint64_t offset) {
+    std::lock_guard<std::mutex> lock(gStressMutex);
+    gStressRequests.push_back(offset);
+    gStressCv.notify_all();
+}
+
+/// Plays one stream while threads feed it, seek it (to 0 too, a rewind),
+/// reset it and read its buffered range for [ms]. [source] holds the encoded
+/// file; empty means raw PCM, any bytes at any offset.
+void stressStream(const char *what, BufferType format, unsigned int sampleRate,
+                  uint64_t totalBytes, const std::vector<unsigned char> &source,
+                  float maxSeek, int ms) {
+    std::printf("stress: %s fed, seeked, reset and read at once\n", what);
+    {
+        std::lock_guard<std::mutex> lock(gStressMutex);
+        gStressRequests.clear();
+    }
+    gStressStop.store(false);
+    unsigned int hash = 0;
+    PlayerErrors err = setPullBufferStream(
+        &hash, 1u << 20, 0.5, sampleRate, kChannels, static_cast<int>(format),
+        totalBytes, nullptr, nullptr, onStressData, nullptr);
+    EXPECT(err == PlayerErrors::noError, "setPullBufferStream: %d", (int)err);
+
+    std::thread feeder([&] {
+        while (!gStressStop.load()) {
+            uint64_t offset = 0;
+            {
+                std::unique_lock<std::mutex> lock(gStressMutex);
+                gStressCv.wait_for(lock, std::chrono::milliseconds(5), [] {
+                    return !gStressRequests.empty() || gStressStop.load();
+                });
+                if (gStressRequests.empty()) continue;
+                offset = gStressRequests.front();
+                gStressRequests.pop_front();
+            }
+            if (offset >= totalBytes) continue;
+            const unsigned char *data = gChunk.data();
+            size_t len = gChunk.size();
+            if (!source.empty()) {
+                data = source.data() + offset;
+                len = std::min<size_t>(32768, source.size() - offset);
+            }
+            len = std::min<size_t>(len, totalBytes - offset);
+            addPullBufferDataStream(hash, data, static_cast<unsigned int>(len),
+                                    offset);
+        }
+    });
+    // A first chunk, as Dart sends once the stream exists.
+    onStressData(0);
+    unsigned int voice = 0;
+    err = play(hash, 0, 0.05f, 0.0f, false, false, 0.0, 0.0, -1, -1, 1.0f,
+               &voice);
+    EXPECT(err == PlayerErrors::noError && voice != 0, "play: %d", (int)err);
+
+    std::thread seeker([&] {
+        unsigned int n = 0;
+        while (!gStressStop.load()) {
+            const float t = (n++ % 5 == 0) ? 0.0f : maxSeek * ((n * 37) % 100) / 100.0f;
+            seek(voice, t);
+            std::this_thread::sleep_for(std::chrono::milliseconds(7));
+        }
+    });
+    std::thread resetter([&] {
+        while (!gStressStop.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(60));
+            resetPullBufferStream(hash);
+        }
+    });
+    std::thread reader([&] {
+        while (!gStressStop.load()) {
+            double start = 0, end = 0;
+            getPullBufferTimeRange(hash, &start, &end);
+            (void)getPosition(voice);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    gStressStop.store(true);
+    seeker.join();
+    resetter.join();
+    reader.join();
+    feeder.join();
+    EXPECT(returnsWithin(3000, [voice] { (void)getPause(voice); }),
+           "the engine should still respond after the stress");
+    stop(voice);
+    disposeSound(hash);
+}
+
+void stress() {
+    stressStream("a PCM stream", BufferType::PCM_S16LE, kSampleRate,
+                 kTotalBytes, {}, 900.0f, 1500);
+    if (gMp3.empty()) {
+        std::printf("  (no MP3 file, the MP3 stream is skipped)\n");
+        return;
+    }
+    stressStream("an MP3 stream", BufferType::AUTO, kSampleRate, gMp3.size(),
+                 gMp3, 60.0f, 1500);
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -250,8 +571,21 @@ int main(int argc, char **argv) {
     }
     setDartEventCallback(onVoiceEnded, onFileLoaded, onStateChanged, kEngineId);
 
+    {
+        std::ifstream in("example/assets/audio/8_bit_mentality.mp3",
+                         std::ios::binary);
+        gMp3.assign(std::istreambuf_iterator<char>(in),
+                    std::istreambuf_iterator<char>());
+    }
+
     if (want("mixer-seek")) mixerCompletesSeek();
     if (want("deliver-seek")) deliveryAndSeek();
+    if (want("seek")) deliveryDuringDiscard("seek", 300.0f);
+    if (want("rewind")) deliveryDuringDiscard("rewind", 0.0f);
+    if (want("seek-during-decode")) seekDuringDecode();
+    if (want("loop-during-decode")) loopDuringDecode();
+    if (want("reset")) resetDuringMixerDecode();
+    if (want("stress")) stress();
 
     dispose();
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
