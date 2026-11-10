@@ -268,12 +268,15 @@ private:
   /// Guards every non-atomic member above and below that the mixer and the
   /// other threads share: the decoder, the format, the offsets and counters,
   /// the pending seek, the duration probe and the buffers below. A delivery,
-  /// a reset and the Dart-thread getters take it. The mixer never waits for
-  /// it: it only try-locks it while mixing, skipping that work when a
+  /// a reset and the Dart-thread getters take it; a reset then takes the
+  /// audio mutex too, because the mixer reads the circular buffer and counts
+  /// that read under the audio mutex only. The mixer never waits
+  /// for it: it only try-locks it while mixing, skipping that work when a
   /// delivery holds it, and a seek or a rewind, which SoLoud runs with its
   /// audio mutex held, is deferred when it finds it held (mDeferredMove).
-  /// Nothing that holds it may wait for the audio mutex or sounds_mutex,
-  /// and no callback runs under it: the Player calls
+  /// Nothing holding the audio mutex waits for it, and apart from that reset
+  /// nothing holding it waits for the audio mutex or sounds_mutex. No
+  /// callback runs under it: the Player calls
   /// (checkBuffering()) and every Dart callback, which on the web can re-enter
   /// the stream synchronously, run after it is released (see
   /// DeferredCallbacks).

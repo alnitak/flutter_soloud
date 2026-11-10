@@ -40,6 +40,14 @@
 //   reset         The mixer parks while it decodes a queued chunk, and the
 //                 stream is reset. The reset must wait for the mixer; the
 //                 stream then asks for its data from 0.
+//   reset-during-decode
+//                 A delivery parks while it decodes, and the stream is
+//                 reset. The reset waits for the delivery, but the audio
+//                 mutex, which the reset also takes, must stay free
+//                 meanwhile: the mixer would wait too.
+//   read-reset    The mixer parks between taking samples from the buffer and
+//                 counting them as read, and the stream is reset. The reset
+//                 must wait for the mixer, and leave an empty range, [0, 0].
 //   dispose       A delivery parks right after it has looked the playing
 //                 stream up, and disposeSound() runs meanwhile. The disposal
 //                 must wait for the delivery, which then completes; a later
@@ -456,6 +464,93 @@ void resetDuringMixerDecode() {
     endStream(s);
 }
 
+/// The mixer parks between taking samples from the buffer and counting them
+/// as read. A reset meanwhile must wait for it: counted after the reset, that
+/// read would leave the empty stream claiming a block it does not have.
+/// A delivery parks in its decode while the stream is reset. The voice is
+/// paused, so that only the delivery can reach the barrier.
+void resetDuringDecode() {
+    std::printf("reset-during-decode: a reset while a delivery decodes\n");
+    const Stream s = startStream();
+    const unsigned int voice = s.voice;
+    setPause(voice, true);
+    soloud_test::armBarrier(DeviceBarrier::pullDecoding);
+    std::thread feeder([&s] {
+        addPullBufferDataStream(s.hash, gChunk.data(),
+                                static_cast<unsigned int>(gChunk.size()),
+                                gChunk.size());
+    });
+    EXPECT(barrierReached(DeviceBarrier::pullDecoding, 3000),
+           "the delivery did not reach its decode");
+    {
+        std::lock_guard<std::mutex> lock(gRequestMutex);
+        gRequests.clear();
+    }
+    auto reset = std::make_shared<std::atomic<bool>>(false);
+    const unsigned int hash = s.hash;
+    std::thread([hash, reset] {
+        resetPullBufferStream(hash);
+        reset->store(true);
+    }).detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT(!reset->load(), "the reset should wait for the delivery");
+    EXPECT(returnsWithin(300, [voice] { (void)getPosition(voice); }),
+           "the audio mutex is held while a reset waits for a delivery");
+
+    soloud_test::releaseBarrier(DeviceBarrier::pullDecoding);
+    feeder.join();
+    for (int i = 0; i < 600 && !reset->load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    if (!reset->load())
+        deadlocked("the reset did not finish after the delivery");
+    bool askedForStart = false;
+    {
+        std::lock_guard<std::mutex> lock(gRequestMutex);
+        for (uint64_t offset : gRequests) askedForStart |= offset == 0;
+    }
+    EXPECT(askedForStart, "the reset stream should ask for data from 0");
+    double start = -1, end = -1;
+    getPullBufferTimeRange(s.hash, &start, &end);
+    EXPECT(start == 0.0 && end == 0.0,
+           "the reset stream should be empty, buffered [%.2f, %.2f]", start,
+           end);
+    endStream(s);
+}
+
+void resetDuringMixerRead() {
+    std::printf("read-reset: a reset while the mixer counts what it read\n");
+    const Stream s = startStream();
+    soloud_test::armBarrier(DeviceBarrier::pullSamplesRead);
+    EXPECT(barrierReached(DeviceBarrier::pullSamplesRead, 3000),
+           "the mixer did not read the buffer");
+
+    auto reset = std::make_shared<std::atomic<bool>>(false);
+    const unsigned int hash = s.hash;
+    std::thread([hash, reset] {
+        resetPullBufferStream(hash);
+        reset->store(true);
+    }).detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    const bool finishedWhileReading = reset->load();
+    EXPECT(!finishedWhileReading,
+           "the reset finished between the mixer's read and its count");
+
+    soloud_test::releaseBarrier(DeviceBarrier::pullSamplesRead);
+    for (int i = 0; i < 600 && !reset->load(); ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    EXPECT(reset->load(), "the reset did not finish after the mixer");
+    // The mixer holds the audio mutex until it has counted its read.
+    const unsigned int voice = s.voice;
+    if (!returnsWithin(3000, [voice] { (void)getPause(voice); }))
+        deadlocked("the mixer did not finish its block");
+    double start = -1, end = -1;
+    getPullBufferTimeRange(s.hash, &start, &end);
+    EXPECT(start == 0.0 && end == 0.0,
+           "the reset stream should hold nothing, buffered [%.6f, %.6f]",
+           start, end);
+    endStream(s);
+}
+
 /// A delivery parks right after it has looked the playing stream up, and the
 /// stream is disposed meanwhile (all sounds when [disposeAll]). The disposal
 /// must wait for the delivery: released after it, the delivery would decode
@@ -793,6 +888,8 @@ int main(int argc, char **argv) {
     if (want("seek-during-decode")) seekDuringDecode();
     if (want("loop-during-decode")) loopDuringDecode();
     if (want("reset")) resetDuringMixerDecode();
+    if (want("reset-during-decode")) resetDuringDecode();
+    if (want("read-reset")) resetDuringMixerRead();
     if (want("dispose")) deliveryDuringDisposal("dispose", false);
     if (want("dispose-all")) deliveryDuringDisposal("dispose-all", true);
     if (want("lock-during-decode")) lockDuringDecode();

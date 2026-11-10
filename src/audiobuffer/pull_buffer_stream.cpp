@@ -19,6 +19,22 @@
 
 namespace SoLoud {
 
+namespace {
+/// Holds SoLoud's audio mutex for a scope.
+class AudioMutexLock {
+public:
+  explicit AudioMutexLock(Soloud &aSoloud) : mSoloud(aSoloud) {
+    mSoloud.lockAudioMutex_internal();
+  }
+  ~AudioMutexLock() { mSoloud.unlockAudioMutex_internal(); }
+  AudioMutexLock(const AudioMutexLock &) = delete;
+  AudioMutexLock &operator=(const AudioMutexLock &) = delete;
+
+private:
+  Soloud &mSoloud;
+};
+} // namespace
+
 #ifdef MA_ENABLE_AUDIO_WORKLETS
 // Main-thread entry points for the stream event callbacks. On the
 // multi-threaded (AudioWorklet) build the callbacks can fire from the
@@ -191,6 +207,7 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   // planar layout the SoLoud mixer expects without an intermediate scratch copy.
   const size_t readFrames = mParent->mCircularBuffer.readPlanar(
       aBuffer, aBufferSize, framesToRequest, mChannels);
+  SOLOUD_TEST_BARRIER(pullSamplesRead);
   const size_t readSamples = readFrames * mChannels;
   mParent->mDecodedSamplesRead += readSamples;
 
@@ -588,6 +605,15 @@ void PullBufferStream::resetPullBufferStream() {
     // Held so the mixer, which decodes and drains under it, and a delivery
     // never find the decoder or the buffers replaced mid-use.
     std::lock_guard<std::mutex> lock(mDecodeMutex);
+    // The mixer takes samples from the circular buffer and counts them as
+    // read with only the audio mutex held (getAudio() must not wait for a
+    // delivery decoding under the decode mutex). Holding the audio mutex
+    // keeps a reset from landing between that read and its count, which
+    // would leave the reset stream claiming samples it does not have. It is
+    // taken after the decode mutex, so that a reset waiting for a delivery's
+    // decode does not hold the mixer up meanwhile: nothing holding the audio
+    // mutex waits for the decode mutex (see its declaration).
+    AudioMutexLock audioLock(mThePlayer->soloud);
     mCircularBuffer.clear();
     mEncodedBuffer.clear();
     mDecodeScratch.clear();

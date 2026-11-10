@@ -85,6 +85,10 @@ namespace soloud_test
     /// looked up by hash and before data is added to it. A disposal started
     /// while a feeder is parked here must not destroy the stream under it.
     pullDataSoundLookedUp,
+    /// In PullBufferStreamInstance::getAudio(), after the mixer has taken
+    /// samples from the circular buffer and before it counts them as read. A
+    /// reset must not land between the two.
+    pullSamplesRead,
     barrierCount
   };
 
