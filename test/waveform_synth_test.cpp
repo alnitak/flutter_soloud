@@ -18,9 +18,15 @@
 //   params   loadWaveform(waveform, superWave, scale, detune) must build the
 //            waveform with that scale and that detune, not the two swapped.
 //
-// `freq` and `params` open the default output device through the plugin's
-// initEngine() (miniaudio falls back to its null backend without one);
-// `fourier` renders waveform instances directly and needs no engine.
+//   race     The setWaveform*() calls change a waveform while the audio
+//            thread renders it. The parameters the mixer reads must not be
+//            written unsynchronized; run under ThreadSanitizer (--tsan),
+//            which reports the setters racing BasicwaveInstance::getAudio().
+//
+// `freq`, `params` and `race` open the default output device through the
+// plugin's initEngine() (miniaudio falls back to its null backend without
+// one; `race` plays at a volume of 0.001); `fourier` renders waveform
+// instances directly and needs no engine.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -33,12 +39,14 @@
 #include "soloud.h"
 #include "soloud_misc.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <thread>
 #include <vector>
 
 extern "C"
@@ -53,7 +61,18 @@ extern "C"
     void dispose();
     enum PlayerErrors loadWaveform(int waveform, bool superWave, float scale,
                                    float detune, unsigned int *hash);
+    void setWaveformScale(unsigned int hash, float newScale);
+    void setWaveformDetune(unsigned int hash, float newDetune);
     void setWaveformFreq(unsigned int hash, float newFreq);
+    void setSuperWave(unsigned int hash, bool superwave);
+    void setWaveform(unsigned int hash, int newWaveform);
+    enum PlayerErrors play(unsigned int soundHash, unsigned int busId, float volume,
+                           float pan, bool paused, bool looping,
+                           double loopingStartAt, double loopingEndAt,
+                           int loopingStartOffsetAt, int loopingEndOffsetAt,
+                           float scale, unsigned int *handle);
+    double getPosition(unsigned int handle);
+    int getIsValidVoiceHandle(unsigned int handle);
 }
 
 namespace {
@@ -238,6 +257,49 @@ void testLoadWaveformKeepsScaleAndDetune() {
     dispose();
 }
 
+// ---- race -------------------------------------------------------------------
+
+void testSettersWhileTheWaveformPlays() {
+    std::printf("race: setWaveform*() while the waveform plays\n");
+    if (!initPluginEngine())
+        return;
+
+    unsigned int hash = 0;
+    EXPECT(loadWaveform(SoLoud::Soloud::WAVE_SIN, true, 0.5f, 0.1f, &hash) == noError,
+           "loadWaveform should succeed");
+    unsigned int handle = 0;
+    EXPECT(play(hash, 0, 0.001f, 0.0f, false, true, 0.0, 0.0, 0, 0, 1.0f, &handle) ==
+                   noError &&
+               handle != 0,
+           "the waveform should play");
+
+    // Let the device start rendering it.
+    const double startedAt = getPosition(handle);
+    for (int i = 0; i < 100 && getPosition(handle) == startedAt; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    EXPECT(getPosition(handle) > startedAt, "the device should render the waveform");
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
+    unsigned int rounds = 0;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const float f = static_cast<float>(rounds % 100);
+        setWaveformFreq(hash, 220.0f + f);
+        setWaveformScale(hash, 0.01f * f);
+        setWaveformDetune(hash, 0.001f * f);
+        setSuperWave(hash, (rounds & 1) != 0);
+        setWaveform(hash, static_cast<int>(rounds % 4));
+        ++rounds;
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
+    std::printf("  %u rounds of parameter changes\n", rounds);
+    // A low bound: a sanitizer reporting a race stalls the loop for a while.
+    EXPECT(rounds > 20, "too few parameter changes: %u", rounds);
+    EXPECT(getIsValidVoiceHandle(handle) != 0, "the waveform should still play");
+
+    dispose();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -252,6 +314,8 @@ int main(int argc, char **argv) {
         testSetWaveformFreqRefusesNonFinite();
     if (wanted("params"))
         testLoadWaveformKeepsScaleAndDetune();
+    if (wanted("race"))
+        testSettersWhileTheWaveformPlays();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;
