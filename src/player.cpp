@@ -854,7 +854,11 @@ Player::PendingSound Player::decodeMem(
     {
         newSound->sound = std::make_unique<SoLoud::WavStream>();
         newSound->soundType = TYPE_WAVSTREAM;
-        result = static_cast<SoLoud::WavStream *>(newSound->sound.get())->loadMem(mem, length, false, true);
+        // [mem] belongs to the caller, who frees it once this returns. The
+        // stream streams from its own copy, so it neither keeps nor frees
+        // [mem], also when it rejects the data and the fallbacks below read
+        // [mem] again.
+        result = static_cast<SoLoud::WavStream *>(newSound->sound.get())->loadMem(mem, length, true, true);
     }
 
     pending.error = fromSoLoudError(result);

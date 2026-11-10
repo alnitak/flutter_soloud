@@ -713,28 +713,32 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     Uint8List buffer,
     LoadMode mode,
   ) {
-    final ffi.Pointer<ffi.UnsignedInt> hash = calloc(
-      ffi.sizeOf<ffi.UnsignedInt>(),
-    );
-    final ffi.Pointer<ffi.Uint8> bufferPtr = calloc(buffer.length);
-    for (var i = 0; i < buffer.length; i++) {
-      bufferPtr[i] = buffer[i];
+    // The native loader copies what it keeps, so the bytes are only lent for
+    // the call: free them, whatever happens.
+    final hash = calloc<ffi.UnsignedInt>();
+    var bytes = ffi.nullptr.cast<ffi.Uint8>();
+    var name = ffi.nullptr.cast<Utf8>();
+    try {
+      bytes = calloc<ffi.Uint8>(buffer.length);
+      bytes.asTypedList(buffer.length).setAll(0, buffer);
+      name = uniqueName.toNativeUtf8();
+      final e = native.loadMem(
+        name.cast<ffi.Char>(),
+        bytes.cast<ffi.UnsignedChar>(),
+        buffer.length,
+        mode == LoadMode.memory ? 1 : 0,
+        hash,
+      );
+      return (
+        error: PlayerErrors.values[e.value],
+        soundHash: SoundHash.fromValue(hash.value),
+      );
+    } finally {
+      malloc.free(name);
+      calloc
+        ..free(bytes)
+        ..free(hash);
     }
-
-    final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
-    final e = native.loadMem(
-      cString.cast<ffi.Char>(),
-      bufferPtr.cast<ffi.UnsignedChar>(),
-      buffer.length,
-      mode == LoadMode.memory ? 1 : 0,
-      hash,
-    );
-    final soundHash = SoundHash.fromValue(hash.value);
-    final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
-    calloc
-      ..free(hash)
-      ..free(cString);
-    return ret;
   }
 
   @override
