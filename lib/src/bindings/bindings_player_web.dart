@@ -225,12 +225,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   /// If we will need to send messages to the native. Not used now.
   void sendMessageToWasmWorker(String message, int value) {
-    final messagePtr = wasmMalloc(message.length);
-    for (var i = 0; i < message.length; i++) {
-      wasmSetValue(messagePtr + i, message.codeUnits[i], 'i8');
+    final messagePtr = _allocUtf8CString(message);
+    try {
+      wasmSendToWorker(messagePtr, value);
+    } finally {
+      wasmFree(messagePtr);
     }
-    wasmSendToWorker(messagePtr, value);
-    wasmFree(messagePtr);
   }
 
   @override
@@ -631,35 +631,29 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   ) {
     final hashPtr = wasmMalloc(4); // 4 bytes for an int32
     final bytesPtr = wasmMalloc(buffer.length);
-    final pathPtr = wasmMalloc(uniqueName.length);
+    final pathPtr = _allocUtf8CString(uniqueName);
+    try {
+      /// Copy the buffer into WASM memory using the HEAPU8 view.
+      final heapU8 = wasmHeapU8;
+      heapU8.toDart.setAll(bytesPtr, buffer);
 
-    /// Copy the buffer into WASM memory using the HEAPU8 view.
-    final heapU8 = wasmHeapU8;
-    heapU8.toDart.setAll(bytesPtr, buffer);
+      final result = wasmLoadMem(
+        pathPtr,
+        bytesPtr,
+        buffer.length,
+        mode == LoadMode.memory ? 1 : 0,
+        hashPtr,
+      );
 
-    /// Copy the path string into WASM memory.
-    for (var i = 0; i < uniqueName.length; i++) {
-      wasmSetValue(pathPtr + i, uniqueName.codeUnits[i], 'i8');
+      /// "*" means unsigned int 32
+      final hash = wasmGetI32Value(hashPtr, '*');
+      final soundHash = SoundHash.fromValue(hash);
+      return (error: PlayerErrors.values[result], soundHash: soundHash);
+    } finally {
+      wasmFree(hashPtr);
+      wasmFree(bytesPtr);
+      wasmFree(pathPtr);
     }
-
-    final result = wasmLoadMem(
-      pathPtr,
-      bytesPtr,
-      buffer.length,
-      mode == LoadMode.memory ? 1 : 0,
-      hashPtr,
-    );
-
-    /// "*" means unsigned int 32
-    final hash = wasmGetI32Value(hashPtr, '*');
-    final soundHash = SoundHash.fromValue(hash);
-    final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
-
-    wasmFree(hashPtr);
-    wasmFree(bytesPtr);
-    wasmFree(pathPtr);
-
-    return ret;
   }
 
   @override
@@ -671,38 +665,32 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final hashPtr = wasmMalloc(4); // 4 bytes for an int32
     final bytes1Ptr = wasmMalloc(bufferLeft.length);
     final bytes2Ptr = wasmMalloc(bufferRight.length);
-    final pathPtr = wasmMalloc(uniqueName.length);
+    final pathPtr = _allocUtf8CString(uniqueName);
+    try {
+      /// Copy the buffers into WASM memory using the HEAPU8 view.
+      final heapU8 = wasmHeapU8;
+      heapU8.toDart.setAll(bytes1Ptr, bufferLeft);
+      heapU8.toDart.setAll(bytes2Ptr, bufferRight);
 
-    /// Copy the buffers into WASM memory using the HEAPU8 view.
-    final heapU8 = wasmHeapU8;
-    heapU8.toDart.setAll(bytes1Ptr, bufferLeft);
-    heapU8.toDart.setAll(bytes2Ptr, bufferRight);
+      final result = wasmJoinTwoSources(
+        pathPtr,
+        bytes1Ptr,
+        bytes2Ptr,
+        bufferLeft.length,
+        bufferRight.length,
+        hashPtr,
+      );
 
-    /// Copy the path string into WASM memory.
-    for (var i = 0; i < uniqueName.length; i++) {
-      wasmSetValue(pathPtr + i, uniqueName.codeUnits[i], 'i8');
+      /// "*" means unsigned int 32
+      final hash = wasmGetI32Value(hashPtr, '*');
+      final soundHash = SoundHash.fromValue(hash);
+      return (error: PlayerErrors.values[result], soundHash: soundHash);
+    } finally {
+      wasmFree(hashPtr);
+      wasmFree(bytes1Ptr);
+      wasmFree(bytes2Ptr);
+      wasmFree(pathPtr);
     }
-
-    final result = wasmJoinTwoSources(
-      pathPtr,
-      bytes1Ptr,
-      bytes2Ptr,
-      bufferLeft.length,
-      bufferRight.length,
-      hashPtr,
-    );
-
-    /// "*" means unsigned int 32
-    final hash = wasmGetI32Value(hashPtr, '*');
-    final soundHash = SoundHash.fromValue(hash);
-    final ret = (error: PlayerErrors.values[result], soundHash: soundHash);
-
-    wasmFree(hashPtr);
-    wasmFree(bytes1Ptr);
-    wasmFree(bytes2Ptr);
-    wasmFree(pathPtr);
-
-    return ret;
   }
 
   @override
@@ -1033,18 +1021,18 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   @override
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
     final handlePtr = wasmMalloc(4); // 4 bytes for an int32
-    final textToSpeechPtr = wasmMalloc(textToSpeech.length);
-    final result = wasmSpeechText(textToSpeechPtr, handlePtr);
-
-    final newHandle = wasmGetI32Value(handlePtr, 'i32');
-    final ret = (
-      error: PlayerErrors.values[result],
-      handle: SoundHandle(newHandle),
-    );
-    wasmFree(textToSpeechPtr);
-    wasmFree(handlePtr);
-
-    return ret;
+    final textToSpeechPtr = _allocUtf8CString(textToSpeech);
+    try {
+      final result = wasmSpeechText(textToSpeechPtr, handlePtr);
+      final newHandle = wasmGetI32Value(handlePtr, 'i32');
+      return (
+        error: PlayerErrors.values[result],
+        handle: SoundHandle(newHandle),
+      );
+    } finally {
+      wasmFree(textToSpeechPtr);
+      wasmFree(handlePtr);
+    }
   }
 
   @override
@@ -2689,18 +2677,21 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     int? busId,
   }) {
     final namePtr = _allocUtf8CString(name);
-    final e = wasmSetCustomFilterParamDefinition(
-      soundHash?.hash ?? 0,
-      busId ?? 0,
-      customFilterId,
-      paramIndex,
-      namePtr,
-      minVal,
-      maxVal,
-      defaultVal,
-    );
-    wasmFree(namePtr);
-    return PlayerErrors.values[e];
+    try {
+      final e = wasmSetCustomFilterParamDefinition(
+        soundHash?.hash ?? 0,
+        busId ?? 0,
+        customFilterId,
+        paramIndex,
+        namePtr,
+        minVal,
+        maxVal,
+        defaultVal,
+      );
+      return PlayerErrors.values[e];
+    } finally {
+      wasmFree(namePtr);
+    }
   }
 
   @override
