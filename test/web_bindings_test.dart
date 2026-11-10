@@ -8,6 +8,7 @@ library;
 
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
+import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
 import 'package:flutter_soloud/src/enums.dart';
@@ -20,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// parametric EQ 195 parameters named `Param 0`, `Param 1`, ... and every
 /// other filter 4, like the module does with malloc()'d strings.
 /// `UTF8ToString` throws for the string that `unreadable` is set to.
+/// `readSamplesFromMem` makes sample i the i-th input byte divided by 256.
 const _standIn = '''
 (function () {
   const heap = new ArrayBuffer(1 << 20);
@@ -82,6 +84,13 @@ const _standIn = '''
       }
       return 0;
     },
+    _readSamplesFromMem: function (bufferPtr, bufferLength, startTime, endTime,
+                                   n, average, samplesPtr) {
+      for (let i = 0; i < n; i++) {
+        HEAPF32[(samplesPtr >> 2) + i] = HEAPU8[bufferPtr + (i % bufferLength)] / 256;
+      }
+      return 0;
+    },
   };
   globalThis.Module_soloud = m;
 })();
@@ -116,6 +125,24 @@ void main() {
       () => FlutterSoLoudWeb().getFilterParamNames(FilterType.parametricEq),
       throwsA(anything),
     );
+    expect(_flag('badFree'), isFalse);
+    expect(_liveAllocations, 0, reason: 'heap memory is leaked');
+  });
+
+  test('readSamplesFromMem returns samples that outlive the heap memory', () {
+    final web = FlutterSoLoudWeb();
+    final samples = web.readSamplesFromMem(
+      Uint8List.fromList([for (var i = 0; i < 64; i++) i * 4]),
+      64,
+    );
+    // The next call reuses the heap memory the first one freed.
+    final again = web.readSamplesFromMem(
+      Uint8List(64)..fillRange(0, 64, 1),
+      64,
+    );
+
+    expect(samples, [for (var i = 0; i < 64; i++) i * 4 / 256]);
+    expect(again, everyElement(1 / 256));
     expect(_flag('badFree'), isFalse);
     expect(_liveAllocations, 0, reason: 'heap memory is leaked');
   });

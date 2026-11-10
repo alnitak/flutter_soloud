@@ -2155,41 +2155,40 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     bool average = false,
   }) {
     final bufferPtr = wasmMalloc(buffer.length);
-
-    /// Copy the buffer into WASM memory using the HEAPU8 view.
-    final heapU8 = wasmHeapU8;
-    heapU8.toDart.setAll(bufferPtr, buffer);
-
     final samplesPtr = wasmMalloc(numSamplesNeeded * 4);
-    final error = wasmReadSamplesFromMem(
-      bufferPtr,
-      buffer.length,
-      startTime,
-      endTime,
-      numSamplesNeeded,
-      average,
-      samplesPtr,
-    );
+    try {
+      /// Copy the buffer into WASM memory using the HEAPU8 view.
+      final heapU8 = wasmHeapU8;
+      heapU8.toDart.setAll(bufferPtr, buffer);
 
-    // Create a view of the WASM memory using JSFloat32Array first
-    final jsHeapF32 = wasmHeapF32;
-    // Convert the TypedArray view to a Dart Float32List
-    final samples = Float32List.sublistView(
-      jsHeapF32.toDart,
-      samplesPtr ~/ 4, // divide by 4 because Float32 is 4 bytes
-      (samplesPtr ~/ 4) + numSamplesNeeded,
-    );
-
-    wasmFree(samplesPtr);
-    wasmFree(bufferPtr);
-
-    if (ReadSamplesErrors.fromValue(error) !=
-        ReadSamplesErrors.readSamplesNoError) {
-      throw SoLoudCppException.fromReadSampleError(
-        ReadSamplesErrors.fromValue(error),
+      final error = wasmReadSamplesFromMem(
+        bufferPtr,
+        buffer.length,
+        startTime,
+        endTime,
+        numSamplesNeeded,
+        average,
+        samplesPtr,
       );
+      if (ReadSamplesErrors.fromValue(error) !=
+          ReadSamplesErrors.readSamplesNoError) {
+        throw SoLoudCppException.fromReadSampleError(
+          ReadSamplesErrors.fromValue(error),
+        );
+      }
+
+      // Copy the samples out of the WASM heap before they are freed: a view
+      // of it would show whatever the module writes there next, and goes
+      // empty when the heap grows.
+      final jsHeapF32 = wasmHeapF32;
+      return jsHeapF32.toDart.sublist(
+        samplesPtr ~/ 4, // divide by 4 because Float32 is 4 bytes
+        (samplesPtr ~/ 4) + numSamplesNeeded,
+      );
+    } finally {
+      wasmFree(samplesPtr);
+      wasmFree(bufferPtr);
     }
-    return samples;
   }
 
   /////////////////////////////////////////
