@@ -48,6 +48,8 @@
 //   read-reset    The mixer parks between taking samples from the buffer and
 //                 counting them as read, and the stream is reset. The reset
 //                 must wait for the mixer, and leave an empty range, [0, 0].
+//   range         The mixer parks at the same point. The buffered range read
+//                 meanwhile must still end where the delivered data ends.
 //   dispose       A delivery parks right after it has looked the playing
 //                 stream up, and disposeSound() runs meanwhile. The disposal
 //                 must wait for the delivery, which then completes; a later
@@ -551,6 +553,30 @@ void resetDuringMixerRead() {
     endStream(s);
 }
 
+/// The mixer parks between taking samples from the buffer and counting them
+/// as read. The buffered range read meanwhile must still end where the
+/// delivered data ends: nothing was delivered or discarded.
+void rangeDuringMixerRead() {
+    std::printf("range: the buffered range while the mixer counts what it read\n");
+    const Stream s = startStream();
+    const double delivered = static_cast<double>(kChunkFrames) / kSampleRate;
+    double start = -1, end = -1;
+    getPullBufferTimeRange(s.hash, &start, &end);
+    EXPECT(start == 0.0 && std::fabs(end - delivered) < 1e-9,
+           "the range should be [0, %.9f] between blocks, got [%.9f, %.9f]",
+           delivered, start, end);
+
+    soloud_test::armBarrier(DeviceBarrier::pullSamplesRead);
+    EXPECT(barrierReached(DeviceBarrier::pullSamplesRead, 3000),
+           "the mixer did not read the buffer");
+    getPullBufferTimeRange(s.hash, &start, &end);
+    EXPECT(start == 0.0 && std::fabs(end - delivered) < 1e-9,
+           "the range should stay [0, %.9f] while the mixer reads, got "
+           "[%.9f, %.9f]", delivered, start, end);
+    soloud_test::releaseBarrier(DeviceBarrier::pullSamplesRead);
+    endStream(s);
+}
+
 /// A delivery parks right after it has looked the playing stream up, and the
 /// stream is disposed meanwhile (all sounds when [disposeAll]). The disposal
 /// must wait for the delivery: released after it, the delivery would decode
@@ -890,6 +916,7 @@ int main(int argc, char **argv) {
     if (want("reset")) resetDuringMixerDecode();
     if (want("reset-during-decode")) resetDuringDecode();
     if (want("read-reset")) resetDuringMixerRead();
+    if (want("range")) rangeDuringMixerRead();
     if (want("dispose")) deliveryDuringDisposal("dispose", false);
     if (want("dispose-all")) deliveryDuringDisposal("dispose-all", true);
     if (want("lock-during-decode")) lockDuringDecode();

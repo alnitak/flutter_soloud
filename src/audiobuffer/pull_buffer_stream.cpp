@@ -715,8 +715,13 @@ double PullBufferStream::getBufferEndTimeLocked() const {
   const unsigned int sampleRate = mPCMformat.sampleRate;
   const unsigned int channels = mPCMformat.channels;
   if (sampleRate == 0 || channels == 0) return 0.0;
-  const double endTime = static_cast<double>(mDecodedSamplesRead +
-                                              mCircularBuffer.available()) /
+  // The mixer takes samples from the circular buffer before it adds them to
+  // mDecodedSamplesRead, without the decode mutex, so the sum of the two can
+  // come out a block short. The samples written minus the backlog not yet in
+  // the buffer is the same end, and both change only under the decode mutex
+  // held here.
+  const double endTime = static_cast<double>(mDecodedSamplesWritten -
+                                              mDecodedBacklog.size()) /
                          static_cast<double>(sampleRate * channels);
   const double totalLength = getLengthLocked();
   if (totalLength > 0.0) {
