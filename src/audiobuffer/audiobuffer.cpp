@@ -20,6 +20,22 @@
 // TODO: readSamplesFromBuffer as for waveform
 
 namespace SoLoud {
+namespace {
+/// Holds SoLoud's audio mutex for a scope.
+class AudioMutexLock {
+public:
+  explicit AudioMutexLock(Soloud &aSoloud) : mSoloud(aSoloud) {
+    mSoloud.lockAudioMutex_internal();
+  }
+  ~AudioMutexLock() { mSoloud.unlockAudioMutex_internal(); }
+  AudioMutexLock(const AudioMutexLock &) = delete;
+  AudioMutexLock &operator=(const AudioMutexLock &) = delete;
+
+private:
+  Soloud &mSoloud;
+};
+} // namespace
+
 std::mutex check_buffer_mutex;
 
 #ifdef MA_ENABLE_AUDIO_WORKLETS
@@ -81,7 +97,11 @@ BufferStreamInstance::BufferStreamInstance(BufferStream *aParent) {
   mParent = aParent;
   mOffset = 0;
   samplerateAlreadySet = false;
-  if (mParent != nullptr && mParent->autoTypeSamplerate != 0.f) {
+  if (mParent == nullptr) return;
+  // The first decode and a reset change these under the buffer mutex.
+  std::lock_guard<std::recursive_mutex> lock(mParent->mBuffer.bufferMutex);
+  mFormatGeneration = mParent->mFormatGeneration;
+  if (mParent->autoTypeSamplerate != 0.f) {
     mBaseSamplerate = mParent->autoTypeSamplerate;
     mSamplerate = mParent->autoTypeSamplerate;
     mChannels = mParent->autoTypeChannels;
@@ -96,6 +116,7 @@ class BufferStreamSourceStateSnapshot : public SoLoud::SourceStateSnapshot {
 public:
   unsigned int mOffset;
   bool samplerateAlreadySet;
+  uint64_t formatGeneration;
 };
 
 static const char kBufferStreamSnapshotKind = 0;
@@ -110,6 +131,7 @@ SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
   s->mKind = &kBufferStreamSnapshotKind;
   s->mOffset = mOffset;
   s->samplerateAlreadySet = samplerateAlreadySet;
+  s->formatGeneration = mFormatGeneration;
   return s;
 }
 
@@ -123,6 +145,7 @@ bool BufferStreamInstance::captureSourceStateInto(
   auto *s = static_cast<BufferStreamSourceStateSnapshot *>(aState);
   s->mOffset = mOffset;
   s->samplerateAlreadySet = samplerateAlreadySet;
+  s->formatGeneration = mFormatGeneration;
   return true;
 }
 
@@ -134,6 +157,7 @@ void BufferStreamInstance::restoreSourceState(
   }
   mOffset = s->mOffset;
   samplerateAlreadySet = s->samplerateAlreadySet;
+  mFormatGeneration = s->formatGeneration;
 }
 
 
@@ -152,13 +176,26 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
   std::lock_guard<std::recursive_mutex> lock(mParent->mBuffer.bufferMutex);
 
+  // A reset of the stream lets a new source, maybe in another format, be
+  // delivered: the format this voice adopted is stale then. Only a reset
+  // advances the generation, so seeks and loop restarts keep the adopted
+  // format. A voice snapshot keeps the generation too, so restoring one
+  // taken before a reset still re-reads the format.
+  if (mFormatGeneration != mParent->mFormatGeneration) {
+    mFormatGeneration = mParent->mFormatGeneration;
+    samplerateAlreadySet = false;
+  }
+
   // When using BufferType::AUTO, samplerate and channels are got from the
   // stream. Hence we need to update them regardless of how are set by
   // setBufferStream. But these parameters need to be set after the play
   // function is called and the instance of this class is created.
   if (!samplerateAlreadySet && mParent->autoTypeSamplerate != 0.f) {
     mBaseSamplerate = mParent->autoTypeSamplerate;
-    mSamplerate = mParent->autoTypeSamplerate;
+    // The mixing rate includes the voice's relative play speed (doppler
+    // too), as updateVoiceRelativePlaySpeed_internal() sets it: adopting the
+    // source's format must keep it.
+    mSamplerate = mBaseSamplerate * mOverallRelativePlaySpeed;
     mChannels = mParent->autoTypeChannels;
     samplerateAlreadySet = true;
   } else if (mChannels == 0 && mParent->mChannels > 0) {
@@ -405,17 +442,28 @@ PlayerErrors BufferStream::setBufferStream(
 }
 
 void BufferStream::resetBuffer() {
+  // Joined before either lock below is taken.
   stopBackgroundDecode();
   buffer.clear();
-  mBuffer.clear();
-  mSampleCount = 0;
-  mBytesReceived = 0;
-  mUncompressedBytesReceived = 0;
-  mBytesConsumed = 0;
-  dataIsEnded = false;
-  mIsBuffering = true;
-  autoTypeChannels = 0;
-  autoTypeSamplerate = 0.f;
+  {
+    // The mixer reads the buffer, the counters and the detected format with
+    // the audio mutex and the buffer mutex held, taken in that order; so are
+    // they here (the caller holds sounds_mutex, taken before both). Only a
+    // reset advances the format generation: a voice still playing re-reads
+    // the format of whatever is delivered next.
+    AudioMutexLock audioLock(mThePlayer->soloud);
+    std::lock_guard<std::recursive_mutex> lock(mBuffer.bufferMutex);
+    mBuffer.clear();
+    mSampleCount = 0;
+    mBytesReceived = 0;
+    mUncompressedBytesReceived = 0;
+    mBytesConsumed = 0;
+    dataIsEnded = false;
+    mIsBuffering = true;
+    autoTypeChannels = 0;
+    autoTypeSamplerate = 0.f;
+    ++mFormatGeneration;
+  }
   if (streamDecoder) {
     streamDecoder = std::make_unique<StreamDecoder>();
     streamDecoder->setBufferIcyMetaInt(mIcyMetaInt);
