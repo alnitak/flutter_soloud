@@ -731,6 +731,10 @@ extern "C"
   /// device period). 0 when the render-ahead ring is disabled.
   FFI_PLUGIN_EXPORT double getOutputLatency();
 
+  /// Estimated hardware presentation latency in seconds (DAC, OS buffers,
+  /// driver queues, and route delays).
+  FFI_PLUGIN_EXPORT double getHardwareOutputLatency();
+
   /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
   /// active. Enabled at init time via `initEngine`'s `renderAheadFrames`.
   FFI_PLUGIN_EXPORT unsigned int isRenderAheadEnabled();

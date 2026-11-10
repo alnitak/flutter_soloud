@@ -728,6 +728,12 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   Duration getOutputLatency();
 
+  /// Estimated hardware output latency: the delay between audio leaving
+  /// the engine and reaching the physical audio output (DAC, OS buffers,
+  /// audio route). [Duration.zero] when not supported or during warm-up.
+  @mustBeOverridden
+  Duration getHardwareOutputLatency();
+
   /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
   /// active. Enabled at init time via [initEngine]'s `renderAheadFrames`.
   /// Always false on web.

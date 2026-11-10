@@ -2704,6 +2704,15 @@ extern "C"
     return player.get()->getOutputLatency();
   }
 
+  /// Estimated hardware presentation latency in seconds (DAC, OS buffers,
+  /// driver queues, and route delays).
+  FFI_PLUGIN_EXPORT double getHardwareOutputLatency()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return 0.0;
+    return player.get()->getHardwareOutputLatency();
+  }
+
   /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
   /// active. Enabled at init time via `initEngine`'s `renderAheadFrames`.
   FFI_PLUGIN_EXPORT unsigned int isRenderAheadEnabled()

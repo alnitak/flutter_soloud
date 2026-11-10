@@ -15,6 +15,7 @@ import 'create_notes.dart' as create_notes;
 import 'equalizer_filter.dart' as equalizer_filter;
 import 'global_filters.dart' as global_filters;
 import 'handles.dart' as handles;
+import 'hardware_output_latency.dart' as hardware_output_latency;
 import 'hot_restart_lifecycle.dart' as hot_restart_lifecycle;
 import 'join_two_sources.dart' as join_two_sources;
 import 'latency_test.dart' as latency_test;
@@ -148,6 +149,10 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'Handles',
     run: handles.testHandles,
+  ),
+  const TestEntry(
+    name: 'HardwareOutputLatency',
+    run: hardware_output_latency.testHardwareOutputLatency,
   ),
   const TestEntry(
     name: 'HotRestartLifecycle',

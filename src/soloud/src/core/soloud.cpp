@@ -905,6 +905,11 @@ namespace SoLoud
 		return (time)(buffered + mDevicePeriodFrames) / (time)mSamplerate;
 	}
 
+	time Soloud::getHardwareOutputLatency()
+	{
+		return (time)miniaudio_getHardwareOutputLatency();
+	}
+
 	bool Soloud::renderRingMixQuantumLocked_internal()
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
