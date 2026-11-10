@@ -366,7 +366,8 @@ long MBOggDecoder::vorbisTellCb(void *datasource) {
 // ------------------------------------------------------------------
 bool MBOggDecoder::initOpus() {
   mSampleRate = 48000;
-  mChannels = 2;
+  // Set by the first link's OpusHead (see decodeOpusPacket()).
+  mChannels = 0;
   mOpusPreSkip = 0;
 
   // Scan the final Ogg granule position first (O(1) 64 KB tail scan with
@@ -471,24 +472,38 @@ bool MBOggDecoder::feedOpusData() {
 bool MBOggDecoder::decodeOpusPacket(ogg_packet *packet) {
   if (!mOpusHeaderParsed) {
     if (packet->bytes >= 8 && memcmp(packet->packet, "OpusHead", 8) == 0) {
-      if (packet->bytes >= 19) {
-        unsigned char *data = (unsigned char *)packet->packet;
-        mChannels = data[9];
-        mOpusPreSkip = (uint16_t)(data[10] | (data[11] << 8));
-
-        int error = OPUS_OK;
-        if (mOpusDecoder)
-          opus_decoder_destroy(mOpusDecoder);
-        mOpusDecoder = opus_decoder_create(48000, mChannels, &error);
-        if (error != OPUS_OK || !mOpusDecoder) {
-          mOpusDecoder = nullptr;
-          return false;
-        }
-        opus_decoder_ctl(mOpusDecoder, OPUS_RESET_STATE);
-        mOpusMaxFrameSize = 48000 * 60 / 1000;
-        mOpusOutputBuffer.resize(mOpusMaxFrameSize * mChannels);
-        mOpusSkipSamples = (int)((int64_t)mOpusPreSkip * 48000 + 47999) / 48000;
+      // ###### flutter_soloud local patch (chained opus channels) ######
+      // mChannels is the channel count of the whole stream, the first
+      // link's: getChannels() reports it and callers size their buffers for
+      // it. Each link of a chained file is decoded at that count (libopus
+      // outputs a mono link as stereo and a stereo link as mono). A link
+      // whose header declares no channels, or more than an Opus decoder
+      // without a channel mapping takes, gets no decoder, so its audio is
+      // skipped; the first link must decode.
+      if (mOpusDecoder) {
+        opus_decoder_destroy(mOpusDecoder);
+        mOpusDecoder = nullptr;
       }
+      const unsigned char *data = (const unsigned char *)packet->packet;
+      const int linkChannels = packet->bytes >= 19 ? data[9] : 0;
+      if (linkChannels < 1 || linkChannels > 2) {
+        mOpusPacketCount++;
+        return mChannels > 0;
+      }
+      if (mChannels == 0)
+        mChannels = linkChannels;
+      mOpusPreSkip = (uint16_t)(data[10] | (data[11] << 8));
+
+      int error = OPUS_OK;
+      mOpusDecoder = opus_decoder_create(48000, mChannels, &error);
+      if (error != OPUS_OK || !mOpusDecoder) {
+        mOpusDecoder = nullptr;
+        return false;
+      }
+      opus_decoder_ctl(mOpusDecoder, OPUS_RESET_STATE);
+      mOpusMaxFrameSize = 48000 * 60 / 1000;
+      mOpusOutputBuffer.resize(mOpusMaxFrameSize * mChannels);
+      mOpusSkipSamples = (int)((int64_t)mOpusPreSkip * 48000 + 47999) / 48000;
     } else if (packet->bytes >= 8 &&
                memcmp(packet->packet, "OpusTags", 8) == 0) {
       mOpusHeaderParsed = true;
