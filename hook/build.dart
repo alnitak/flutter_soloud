@@ -23,6 +23,7 @@ import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
+import 'package:meta/meta.dart';
 import 'package:native_toolchain_c/native_toolchain_c.dart';
 
 /// The asset id is `package:flutter_soloud/src/bindings.cpp`, matching the
@@ -796,6 +797,14 @@ final class XiphLink {
       ? 'https://github.com/$_prebuildRepo/releases/latest/download'
       : 'https://github.com/$_prebuildRepo/releases/download/$tag';
 
+  /// [_downloadWithHttpClient], for tests.
+  @visibleForTesting
+  static Future<String?> debugDownloadWithHttpClient(
+    String url,
+    File file, {
+    Duration deadline = _downloadDeadline,
+  }) => _downloadWithHttpClient(url, file, deadline: deadline);
+
   static File _getVersionFile(Directory dir) {
     final file = File('${dir.path}/$_prebuildVersionFileName');
     if (file.existsSync()) return file;
@@ -926,6 +935,79 @@ final class XiphLink {
     }
   }
 
+  /// The limit on one whole download attempt, curl's `-m 60`.
+  static const Duration _downloadDeadline = Duration(seconds: 60);
+
+  /// Downloads [url] into [file] with Dart's HttpClient, the fallback for
+  /// when curl is unavailable or failed. Returns the release tag a redirect
+  /// resolved to, if any. Throws when the transfer fails or is empty, and a
+  /// [TimeoutException] when it is not complete within [deadline].
+  static Future<String?> _downloadWithHttpClient(
+    String url,
+    File file, {
+    Duration deadline = _downloadDeadline,
+  }) async {
+    String? resolvedTag;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..userAgent = _browserUserAgent;
+    // The timeouts below cover the connection and the response headers but
+    // not the body, which can stall for good after them. Like curl's -m 60,
+    // this bounds the whole attempt: closing the client ends a transfer in
+    // flight with an error.
+    var timedOut = false;
+    final deadlineTimer = Timer(deadline, () {
+      timedOut = true;
+      client.close(force: true);
+    });
+    try {
+      final uri = Uri.parse(url);
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 15));
+      request.headers.set(HttpHeaders.acceptHeader, _browserAcceptHeader);
+      request.headers.set(HttpHeaders.acceptLanguageHeader, 'en-US,en;q=0.9');
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException(
+          'HTTP ${response.statusCode} (${response.reasonPhrase})',
+          uri: uri,
+        );
+      }
+
+      for (final r in response.redirects) {
+        final match = RegExp(
+          '/releases/download/([^/]+)/',
+        ).firstMatch(r.location.toString());
+        if (match != null) {
+          resolvedTag = match.group(1);
+          break;
+        }
+      }
+
+      final sink = file.openWrite();
+      await response.pipe(sink);
+      if (!file.existsSync() || file.lengthSync() == 0) {
+        throw const FileSystemException('Downloaded file is empty');
+      }
+      return resolvedTag;
+    } catch (_) {
+      if (timedOut) {
+        throw TimeoutException(
+          'Download not complete within ${deadline.inSeconds} s',
+          deadline,
+        );
+      }
+      rethrow;
+    } finally {
+      deadlineTimer.cancel();
+      client.close();
+    }
+  }
+
   static Future<String?> _downloadAndExtract(
     String url,
     Directory destination, {
@@ -1023,55 +1105,13 @@ final class XiphLink {
         }
         try {
           print('[flutter_soloud] Trying Dart HttpClient download...');
-          final client = HttpClient()
-            ..connectionTimeout = const Duration(seconds: 15)
-            ..userAgent = _browserUserAgent;
-          try {
-            final uri = Uri.parse(url);
-            final request = await client
-                .getUrl(uri)
-                .timeout(const Duration(seconds: 15));
-            request.headers.set(HttpHeaders.acceptHeader, _browserAcceptHeader);
-            request.headers.set(
-              HttpHeaders.acceptLanguageHeader,
-              'en-US,en;q=0.9',
-            );
-            final response = await request.close().timeout(
-              const Duration(seconds: 20),
-            );
-
-            if (response.statusCode != HttpStatus.ok) {
-              throw HttpException(
-                'HTTP ${response.statusCode} (${response.reasonPhrase})',
-                uri: uri,
-              );
-            }
-
-            for (final r in response.redirects) {
-              final match = RegExp(
-                '/releases/download/([^/]+)/',
-              ).firstMatch(r.location.toString());
-              if (match != null) {
-                resolvedTag = match.group(1);
-                break;
-              }
-            }
-
-            final sink = tempFile.openWrite();
-            await response.pipe(sink);
-            if (tempFile.existsSync() && tempFile.lengthSync() > 0) {
-              downloadSuccess = true;
-              print(
-                '[flutter_soloud] Download completed successfully '
-                '(${tempFile.lengthSync()} bytes).',
-              );
-              break;
-            } else {
-              throw const FileSystemException('Downloaded file is empty');
-            }
-          } finally {
-            client.close();
-          }
+          resolvedTag = await _downloadWithHttpClient(url, tempFile);
+          downloadSuccess = true;
+          print(
+            '[flutter_soloud] Download completed successfully '
+            '(${tempFile.lengthSync()} bytes).',
+          );
+          break;
         } catch (e) {
           lastError = e;
           print('[flutter_soloud] Dart HttpClient download failed: $e');
