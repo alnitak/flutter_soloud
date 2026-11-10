@@ -2779,6 +2779,11 @@ namespace SoLoud
 					step = 0;
 				unsigned int step_fixed = (int)floor(step * FIXPOINT_FRAC_MUL);
 				unsigned int outofs = 0;
+				// ###### flutter_soloud local patch (voice tail) ######
+				// Whether the latest read is the first to come back empty (see
+				// the auto-stop below). A voice still alive after such a read
+				// is still in that block, or its source has not ended.
+				bool firstEmptyRead = voice->mSourceDrained;
 			
 				if (voice->mDelaySamples)
 				{
@@ -2857,6 +2862,7 @@ namespace SoLoud
 					// mResampleData lookahead, so once the source ends everything it
 					// produced is already output in this pass.
 					voice->mSourceDrained = (readcount < directSamples) || voice->hasEnded();
+					firstEmptyRead = false;
 					if (readcount < directSamples)
 					{
 						unsigned int k;
@@ -2908,6 +2914,7 @@ namespace SoLoud
 						// ###### flutter_soloud local patch (voice tail) ######
 						// Nothing came back: everything read before this block has
 						// been resampled, so the voice may now be auto-stopped.
+						firstEmptyRead = readcount == 0 && !voice->mSourceDrained;
 						voice->mSourceDrained = readcount == 0;
 
                         // Clear remaining of the resample data if the full scratch wasn't used
@@ -3055,8 +3062,14 @@ namespace SoLoud
 				// Wait for a read after the end to come back empty, so all of
 				// that block is output: the voice outlives its last sample by
 				// the silent rest of the block, at most one more pass at the
-				// usual buffer sizes.
-				else if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained)
+				// usual buffer sizes. Catmull-Rom outputs a source sample two
+				// positions after it, one later than linear: the last sample
+				// of the block before the first empty one comes out at
+				// position 1 of the empty one, so wait until a position at or
+				// after that is output.
+				else if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained &&
+					!(firstEmptyRead && aResampler == RESAMPLER_CATMULLROM &&
+					  (unsigned long long)voice->mSrcOffset < (unsigned long long)FIXPOINT_FRAC_MUL + step_fixed))
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}
@@ -3072,6 +3085,9 @@ namespace SoLoud
 				float step = voice->mSamplerate / aSamplerate;
 				int step_fixed = (int)floor(step * FIXPOINT_FRAC_MUL);
 				unsigned int outofs = 0;
+				// ###### flutter_soloud local patch (voice tail) ######
+				// As in the audible branch.
+				bool firstEmptyRead = voice->mSourceDrained;
 
 				if (voice->mDelaySamples)
 				{
@@ -3127,6 +3143,7 @@ namespace SoLoud
 								voice->mResampleData[0], SAMPLE_GRANULARITY,
 								SAMPLE_GRANULARITY);
 						}
+						firstEmptyRead = readcount == 0 && !voice->mSourceDrained;
 						voice->mSourceDrained = readcount == 0;
 
 						// ###### flutter_soloud local patch (resampler carry) ######
@@ -3184,7 +3201,9 @@ namespace SoLoud
 				// clear voice if the sound is over
 				// ###### flutter_soloud local patch (voice tail) ######
 				// Once a read after the end came back empty, as above.
-				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained)
+				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained &&
+					!(firstEmptyRead && aResampler == RESAMPLER_CATMULLROM &&
+					  (unsigned long long)voice->mSrcOffset < (unsigned long long)FIXPOINT_FRAC_MUL + (unsigned int)step_fixed))
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}
