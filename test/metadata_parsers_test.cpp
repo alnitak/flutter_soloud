@@ -17,6 +17,10 @@
 //   m4a-large-wrap an extended (64-bit) box size of UINT64_MAX
 //   mp3-id3-wrap   an ID3v2.3 frame size that wraps `pos + size` (MP3 stream)
 //   aac-id3-wrap   the same frame in front of an AAC stream
+//   id3-latin1     Latin-1 (and UTF-8) ID3 text comes out as UTF-8, from the
+//                  AAC parser and the MP3 decoder
+//   id3-utf16      UTF-16 ID3 text with characters outside the Basic
+//                  Multilingual Plane, or unpaired surrogates, likewise
 //   opus-wrap      an OpusTags vendor length that wraps `pos + length`
 //   flac-split-header      a FLAC file whose 64 KiB final metadata block
 //                  arrives in two deliveries decodes as when it arrives whole
@@ -36,6 +40,7 @@
 
 #include "audiobuffer/aac_stream_decoder.h"
 #include "audiobuffer/m4a_metadata.h"
+#include "audiobuffer/mp3_stream_decoder.h"
 #include "audiobuffer/stream_decoder.h"
 
 #if !defined(NO_XIPH_LIBS)
@@ -234,6 +239,97 @@ static void runAacId3Wrap() {
     size_t id3Size = 0;
     AACDecoderWrapper::parseId3Tags(tag.data(), tag.size(), meta, id3Size);
     EXPECT(meta.title.empty(), "a frame larger than the tag must not be read");
+}
+
+// Escapes non-ASCII bytes, to print a title.
+static std::string escaped(const std::string &text) {
+    std::string out;
+    char hex[8];
+    for (unsigned char c : text) {
+        if (c >= 0x20 && c < 0x7F) {
+            out.push_back(static_cast<char>(c));
+        } else {
+            std::snprintf(hex, sizeof(hex), "\\x%02x", c);
+            out += hex;
+        }
+    }
+    return out;
+}
+
+// Checks the title that a TIT2 frame with [body] yields, as UTF-8, from the
+// AAC parser and from the MP3 decoder's metadata report. Four mono MPEG-1
+// layer III frames after the tag let dr_mp3 initialize and report it.
+static void checkId3Title(const char *what, const Bytes &body, const std::string &expected) {
+    const Bytes tag = id3Tag(static_cast<uint32_t>(body.size()), body);
+    AacMetadata aac;
+    size_t id3Size = 0;
+    EXPECT(AACDecoderWrapper::parseId3Tags(tag.data(), tag.size(), aac, id3Size),
+           "%s: AAC ID3 not parsed", what);
+    EXPECT(aac.title == expected, "%s: AAC title \"%s\", expected \"%s\"", what,
+           escaped(aac.title).c_str(), escaped(expected).c_str());
+
+    MP3DecoderWrapper mp3;
+    mp3.detectedType = DetectedType::BUFFER_MP3_WITH_ID3;
+    std::string title;
+    int reports = 0;
+    mp3.setTrackChangeCallback([&](AudioMetadata meta) {
+        title = meta.mp3Metadata.title;
+        ++reports;
+    });
+    EXPECT(mp3.initializeDecoder(44100, 1), "%s: MP3 initialize", what);
+    Bytes frames(417 * 4, 0);
+    for (size_t i = 0; i < frames.size(); i += 417) {
+        frames[i] = 0xFF;
+        frames[i + 1] = 0xFB;
+        frames[i + 2] = 0x90; // 128 kbit/s, 44100 Hz
+        frames[i + 3] = 0xC0; // mono
+    }
+    Bytes stream = cat(tag, frames);
+    int rate = 44100, channels = 1;
+    mp3.decode(stream, &rate, &channels);
+    EXPECT(reports > 0, "%s: no MP3 metadata report", what);
+    EXPECT(title == expected, "%s: MP3 title \"%s\", expected \"%s\"", what,
+           escaped(title).c_str(), escaped(expected).c_str());
+}
+
+static void runId3Latin1() {
+    std::printf("id3-latin1: Latin-1 and UTF-8 ID3 text comes out as UTF-8\n");
+    checkId3Title("Latin-1", {0, 'C', 'a', 'f', 0xE9}, "Caf\xC3\xA9");
+    checkId3Title("UTF-8", {3, 'C', 'a', 'f', 0xC3, 0xA9}, "Caf\xC3\xA9");
+}
+
+static Bytes utf16Body(uint8_t encoding, bool little, bool bom,
+                       std::initializer_list<uint16_t> units) {
+    Bytes body = {encoding};
+    if (bom) {
+        body.push_back(little ? 0xFF : 0xFE);
+        body.push_back(little ? 0xFE : 0xFF);
+    }
+    for (uint16_t unit : units) {
+        body.push_back(little ? unit & 0xFF : unit >> 8);
+        body.push_back(little ? unit >> 8 : unit & 0xFF);
+    }
+    return body;
+}
+
+static void runId3Utf16() {
+    std::printf("id3-utf16: UTF-16 surrogate pairs become one UTF-8 character\n");
+    // "A", U+1F600 (the pair D83D DE00), "B".
+    const std::string pair = "A\xF0\x9F\x98\x80" "B";
+    checkId3Title("UTF-16LE, BOM", utf16Body(1, true, true, {0x41, 0xD83D, 0xDE00, 0x42}), pair);
+    checkId3Title("UTF-16BE, BOM", utf16Body(1, false, true, {0x41, 0xD83D, 0xDE00, 0x42}), pair);
+    checkId3Title("UTF-16, no BOM", utf16Body(1, true, false, {0x41, 0xD83D, 0xDE00, 0x42}), pair);
+    checkId3Title("UTF-16BE", utf16Body(2, false, false, {0x41, 0xD83D, 0xDE00, 0x42}), pair);
+    checkId3Title("UTF-16BE with a BOM", utf16Body(2, false, true, {0x41, 0xD83D, 0xDE00, 0x42}), pair);
+    // An unpaired surrogate becomes U+FFFD.
+    const std::string replaced = "A\xEF\xBF\xBD" "B";
+    checkId3Title("lone high surrogate", utf16Body(1, true, true, {0x41, 0xD83D, 0x42}), replaced);
+    checkId3Title("lone low surrogate", utf16Body(2, false, false, {0x41, 0xDE00, 0x42}), replaced);
+    checkId3Title("high surrogate at the end", utf16Body(1, true, true, {0x41, 0xD83D}),
+                  "A\xEF\xBF\xBD");
+    // Text below U+D800 keeps its one-unit encoding.
+    checkId3Title("BMP text", utf16Body(1, true, true, {0x43, 0x61, 0x66, 0xE9, 0x20AC}),
+                  "Caf\xC3\xA9\xE2\x82\xAC");
 }
 
 #if !defined(NO_XIPH_LIBS)
@@ -562,6 +658,8 @@ int main(int argc, char **argv) {
         isolated("mp3-id3-wrap", "an ID3 frame size that wraps (MP3 stream)", runMp3Id3Wrap);
     if (want("aac-id3-wrap"))
         isolated("aac-id3-wrap", "an ID3 frame size that wraps (AAC stream)", runAacId3Wrap);
+    if (want("id3-latin1")) runId3Latin1();
+    if (want("id3-utf16")) runId3Utf16();
 #if !defined(NO_XIPH_LIBS)
     if (want("opus-wrap"))
         isolated("opus-wrap", "an OpusTags vendor length that wraps", runOpusWrap);

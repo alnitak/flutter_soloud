@@ -1,3 +1,4 @@
+#include "id3_text.h"
 #include "metadata_bounds.h"
 #include "aac_stream_decoder.h"
 #include "../native_decoder/native_audio_decoder.h"
@@ -418,50 +419,7 @@ bool AACDecoderWrapper::parseEac3Metadata(const unsigned char *data, size_t size
 }
 
 static std::string parseId3TextFrame(const unsigned char *data, size_t frameSize) {
-  if (frameSize <= 1) return "";
-  uint8_t encoding = data[0];
-  const unsigned char *textData = data + 1;
-  size_t textLen = frameSize - 1;
-
-  if (encoding == 1 || encoding == 2) { // UTF-16
-    bool isLE = true;
-    if (encoding == 1 && textLen >= 2) {
-      if (textData[0] == 0xFF && textData[1] == 0xFE) {
-        isLE = true;
-        textData += 2;
-        textLen -= 2;
-      } else if (textData[0] == 0xFE && textData[1] == 0xFF) {
-        isLE = false;
-        textData += 2;
-        textLen -= 2;
-      }
-    } else if (encoding == 2) {
-      isLE = false; // UTF-16BE
-    }
-    std::string utf8;
-    for (size_t i = 0; metadataHasBytes(textLen, i, 2); i += 2) {
-      uint16_t ch = isLE ? (textData[i] | (textData[i + 1] << 8))
-                         : ((textData[i] << 8) | textData[i + 1]);
-      if (ch == 0) break;
-      if (ch < 0x80) {
-        utf8.push_back(static_cast<char>(ch));
-      } else if (ch < 0x800) {
-        utf8.push_back(static_cast<char>(0xC0 | (ch >> 6)));
-        utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-      } else {
-        utf8.push_back(static_cast<char>(0xE0 | (ch >> 12)));
-        utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
-        utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-      }
-    }
-    return utf8;
-  }
-
-  std::string result(reinterpret_cast<const char *>(textData), textLen);
-  while (!result.empty() && result.back() == '\0') {
-    result.pop_back();
-  }
-  return result;
+  return id3TextToUtf8(data, frameSize);
 }
 
 bool AACDecoderWrapper::parseId3Tags(const unsigned char *data, size_t size, AacMetadata &out, size_t &outId3Size) {
