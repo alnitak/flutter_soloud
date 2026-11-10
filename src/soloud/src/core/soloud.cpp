@@ -918,6 +918,13 @@ namespace SoLoud
 	bool Soloud::renderRingMixQuantumLocked_internal()
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+		// ###### flutter_soloud local patch (render-ahead ring writers) ######
+		// The callers check under the mutex that a whole quantum fits (see
+		// renderRingWantsQuantum()). Never mix one that does not: write()
+		// would drop its end, and the mix clock would stay ahead of the ring.
+		SOLOUD_ASSERT(mRenderRing.availableToWrite() >= mBufferSize);
+		if (mRenderRing.availableToWrite() < mBufferSize)
+			return false;
 		unsigned int stride = (mBufferSize + 15) & ~0xf;
 		time buffertime = (time)mBufferSize / (time)mSamplerate;
 		float globalVolume[2];
@@ -960,17 +967,32 @@ namespace SoLoud
 		return notifyVoiceInactive;
 	}
 
+	// ###### flutter_soloud local patch (render-ahead ring writers) ######
+	// Whether the ring holds fewer than aFrames frames and has room for a
+	// whole engine quantum. The render worker and the device callback (when
+	// the worker fell behind) both append to the ring, so a check made
+	// before taking the audio mutex can be out of date by the time it is
+	// held: the other writer may have appended a quantum meanwhile, and
+	// RenderRing::write() would drop whatever no longer fits. Every writer
+	// holds the mutex, so checked again under it, the answer holds until
+	// the quantum is written.
+	static bool renderRingWantsQuantum(const RenderRing &aRing, unsigned int aFrames, unsigned int aQuantum)
+	{
+		return aRing.availableToRead() < aFrames && aRing.availableToWrite() >= aQuantum;
+	}
+
 	void Soloud::renderRingTopUp_internal()
 	{
 		if (!mRenderRing.isInited() || mBufferSize == 0)
 			return;
-		while (mRenderRing.availableToRead() < mRenderAheadFrames &&
-			mRenderRing.availableToWrite() >= mBufferSize)
+		while (renderRingWantsQuantum(mRenderRing, mRenderAheadFrames, mBufferSize))
 		{
 			lockAudioMutex_internal();
 			// deinit() clears mEngineReady and then takes the audio mutex
-			// once: no quantum may start after that.
-			if (mEngineReady.load(std::memory_order_acquire) == 0)
+			// once: no quantum may start after that. The device callback may
+			// have mixed while this thread waited for the mutex.
+			if (mEngineReady.load(std::memory_order_acquire) == 0 ||
+				!renderRingWantsQuantum(mRenderRing, mRenderAheadFrames, mBufferSize))
 			{
 				unlockAudioMutex_internal();
 				return;
@@ -989,12 +1011,13 @@ namespace SoLoud
 	{
 		if (!mRenderRing.isInited() || mBufferSize == 0)
 			return;
-		while (mRenderRing.availableToRead() < aFrames &&
-			mRenderRing.availableToWrite() >= mBufferSize)
+		while (renderRingWantsQuantum(mRenderRing, aFrames, mBufferSize))
 		{
 			if (!tryLockAudioMutex_internal())
 				return;
-			if (mEngineReady.load(std::memory_order_acquire) == 0)
+			// The worker may have mixed since the check above.
+			if (mEngineReady.load(std::memory_order_acquire) == 0 ||
+				!renderRingWantsQuantum(mRenderRing, aFrames, mBufferSize))
 			{
 				unlockAudioMutex_internal();
 				return;

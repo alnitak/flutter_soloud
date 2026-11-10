@@ -482,6 +482,137 @@ void testRenderWorkerKeepsDeviceFed()
                 "render worker, %llu without\n", withWorker, without);
 }
 
+// A sawtooth with a 512-frame period: consecutive frames differ by the same
+// step except at the wrap, so frames missing from the ring show as a jump.
+class RampSourceInstance final : public SoLoud::AudioSourceInstance {
+public:
+    unsigned int getAudio(float* buffer, unsigned int samplesToRead,
+                          unsigned int bufferSize) override {
+        for (unsigned int channel = 0; channel < mChannels; ++channel)
+            for (unsigned int i = 0; i < samplesToRead; ++i)
+                buffer[channel * bufferSize + i] =
+                    static_cast<float>((position_ + i) % 512) / 1024.0f;
+        position_ += samplesToRead;
+        return samplesToRead;
+    }
+
+    bool hasEnded() override { return false; }
+
+private:
+    unsigned long long position_ = 0;
+};
+
+class RampSource final : public SoLoud::AudioSource {
+public:
+    RampSource() {
+        mBaseSamplerate = static_cast<float>(kSampleRate);
+        mChannels = 1;
+    }
+
+    SoLoud::AudioSourceInstance* createInstance() override {
+        return new RampSourceInstance();
+    }
+};
+
+// Frames after aFrom whose step from the previous frame is not the ramp's.
+unsigned int rampJumps(const std::vector<float>& frames, size_t aFrom)
+{
+    double step = 0;
+    for (size_t i = aFrom + 1; i < frames.size() && step == 0; ++i)
+        if (frames[i] > frames[i - 1])
+            step = frames[i] - frames[i - 1];
+    unsigned int jumps = 0;
+    for (size_t i = aFrom + 1; i < frames.size(); ++i) {
+        const double d = frames[i] - frames[i - 1];
+        const bool ramp = std::fabs(d - step) < step * 0.01;
+        const bool wrap = std::fabs(d + 511 * step) < step * 0.5;
+        if (!ramp && !wrap)
+            ++jumps;
+    }
+    return jumps;
+}
+
+// The render worker and the device callback (once the worker falls behind)
+// both append whole quanta to the ring, and each used to check for room only
+// before taking the audio mutex. While the worker waited for the mutex the
+// device could mix a quantum and play a period; the worker then mixed a
+// second quantum into the room that was left, and the ring dropped its end:
+// a skip in the audio, and a mix clock ahead of the ring from then on. With a
+// 2048-frame quantum, a 512-frame render-ahead and 256-frame periods the ring
+// holds 3584 frames, so 1792 are free for those 2048. Here the test thread
+// holds the mutex, as a slow API call does, and does the device's part while
+// the worker waits.
+void testWritersRecheckRoomUnderTheMutex()
+{
+    constexpr unsigned int kBigQuantum = 2048;
+    constexpr unsigned int kShortAhead = 512;
+    constexpr unsigned int kShortPeriod = 256;
+    SoLoud::Soloud engine;
+    engine.setRenderAheadConfig(kShortPeriod, kShortAhead);
+    // Mono and no clipper, so the ring holds the ramp as it is.
+    const SoLoud::result result =
+        engine.init(0, SoLoud::Soloud::NULLDRIVER, kSampleRate, kBigQuantum, 1);
+    EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+    EXPECT(engine.mRenderRing.getCapacity() == 3584,
+           "unexpected ring capacity %u", engine.mRenderRing.getCapacity());
+    RampSource ramp;
+    engine.play(ramp);
+
+    engine.lockAudioMutex_internal();
+    std::atomic<bool> started{false};
+    std::thread worker([&] {
+        started.store(true);
+        engine.renderRingTopUp_internal();
+    });
+    while (!started.load())
+        std::this_thread::yield();
+    // Long enough for the worker to find the ring empty and wait for the
+    // mutex.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // The device callback's own quantum (renderRingTopUpNoWait_internal()
+    // mixes it under the mutex, held here) and the period it plays.
+    engine.renderRingMixQuantumLocked_internal();
+    std::vector<float> played(kShortPeriod);
+    std::vector<float> buf(4 * kBigQuantum);
+    unsigned int got = engine.mRenderRing.read(buf.data(), kShortPeriod);
+    played.assign(buf.begin(), buf.begin() + got);
+    engine.unlockAudioMutex_internal();
+    worker.join();
+
+    const unsigned long long written = engine.mRenderRing.getWritePosition();
+    EXPECT(written == kBigQuantum,
+           "the ring holds %llu frames after one quantum and a racing top-up "
+           "(the worker mixed a quantum into %u frames of room)",
+           written, 3584 - (kBigQuantum - kShortPeriod));
+    const double ahead =
+        engine.getEngineTime() * kSampleRate - static_cast<double>(written);
+    EXPECT(std::fabs(ahead) < 1e-3,
+           "the mix clock runs %.0f frames ahead of the ring", ahead);
+    const double origin = engine.mRenderRingTimeOrigin.load();
+    EXPECT(std::fabs(origin) < 1e-9,
+           "ring frame 0 moved to engine time %.9f (it stays at 0)", origin);
+
+    // The device plays on and the worker keeps up: every frame from the end
+    // of the voice's start ramp on follows the sawtooth.
+    for (int quantum = 0; quantum < 3; ++quantum) {
+        while ((got = engine.mRenderRing.read(buf.data(), kShortPeriod)) > 0)
+            played.insert(played.end(), buf.begin(), buf.begin() + got);
+        engine.renderRingTopUp_internal();
+    }
+    while ((got = engine.mRenderRing.read(buf.data(), kShortPeriod)) > 0)
+        played.insert(played.end(), buf.begin(), buf.begin() + got);
+    EXPECT(played.size() >= 4 * kBigQuantum, "only %zu frames played",
+           played.size());
+    const unsigned int jumps = rampJumps(played, kBigQuantum);
+    EXPECT(jumps == 0, "%u jumps in the played sawtooth", jumps);
+    EXPECT(engine.mRenderRing.getWritePosition() % kBigQuantum == 0,
+           "the ring's write head %llu is not a whole number of quanta",
+           engine.mRenderRing.getWritePosition());
+
+    engine.stopAll();
+    engine.deinit();
+}
+
 int main()
 {
     testRingRoundtrip();
@@ -493,6 +624,7 @@ int main()
     testEngineFeatureOff();
     testEngineFeatureOn();
     testRenderWorkerKeepsDeviceFed();
+    testWritersRecheckRoomUnderTheMutex();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);

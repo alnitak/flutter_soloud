@@ -658,7 +658,8 @@ namespace SoLoud
 		// worker fell behind. Never waits for another thread.
 		void renderRingTopUpNoWait_internal(unsigned int aFrames);
 		// Mix one engine quantum and append it to the ring. Audio mutex
-		// held; returns whether the voice-inactive callback is due.
+		// held; returns whether the voice-inactive callback is due. Mixes
+		// nothing when the ring has no room for a whole quantum.
 		bool renderRingMixQuantumLocked_internal();
 		// The render worker: a thread that keeps the ring topped up so the
 		// device callback only copies frames out. A device backend sets
