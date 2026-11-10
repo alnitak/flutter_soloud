@@ -264,27 +264,30 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
         size_t n = fread(probeBuf, 1, sizeof(probeBuf), probeFp);
         fclose(probeFp);
         if (n >= 8) {
+            size_t id3Skip = NativeAudioDecoder::skipId3Header(probeBuf, n);
+            const unsigned char *payload = probeBuf + id3Skip;
+            const size_t payloadLen = n - id3Skip;
             if (NativeAudioDecoder::isM4aOrMp4(probeBuf, n)) {
                 M4aMetadata m4a;
                 if (parseM4aMetadata(probeBuf, n, m4a)) {
                     if (m4a.sampleRate > 0) probedSampleRate = m4a.sampleRate;
                     if (m4a.channels > 0) probedChannels = m4a.channels;
                 }
-            } else if (NativeAudioDecoder::isAacAdts(probeBuf, n)) {
+            } else if (NativeAudioDecoder::isAacAdts(payload, payloadLen)) {
                 AacMetadata aac;
-                if (AACDecoderWrapper::parseAacAdtsMetadata(probeBuf, n, aac)) {
+                if (AACDecoderWrapper::parseAacAdtsMetadata(payload, payloadLen, aac)) {
                     if (aac.sampleRate > 0) probedSampleRate = aac.sampleRate;
                     if (aac.channels > 0) probedChannels = aac.channels;
                 }
-            } else if (NativeAudioDecoder::isAc3(probeBuf, n)) {
+            } else if (NativeAudioDecoder::isAc3(payload, payloadLen)) {
                 Ac3Metadata ac3;
-                if (AACDecoderWrapper::parseAc3Metadata(probeBuf, n, ac3)) {
+                if (AACDecoderWrapper::parseAc3Metadata(payload, payloadLen, ac3)) {
                     if (ac3.sampleRate > 0) probedSampleRate = ac3.sampleRate;
                     if (ac3.channels > 0) probedChannels = ac3.channels;
                 }
-            } else if (NativeAudioDecoder::isEac3(probeBuf, n)) {
+            } else if (NativeAudioDecoder::isEac3(payload, payloadLen)) {
                 Eac3Metadata eac3;
-                if (AACDecoderWrapper::parseEac3Metadata(probeBuf, n, eac3)) {
+                if (AACDecoderWrapper::parseEac3Metadata(payload, payloadLen, eac3)) {
                     if (eac3.sampleRate > 0) probedSampleRate = eac3.sampleRate;
                     if (eac3.channels > 0) probedChannels = eac3.channels;
                 }
@@ -653,13 +656,16 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
 
     // Determine extension hint so FFmpeg demuxes without guessing
     const char *ext = ".bin";
+    size_t id3Skip = NativeAudioDecoder::skipId3Header(bytes, length);
+    const unsigned char *payload = bytes + id3Skip;
+    const size_t payloadLen = length - id3Skip;
     if (NativeAudioDecoder::isM4aOrMp4(bytes, length)) {
         ext = ".m4a";
-    } else if (NativeAudioDecoder::isAacAdts(bytes, length)) {
+    } else if (NativeAudioDecoder::isAacAdts(payload, payloadLen)) {
         ext = ".aac";
-    } else if (NativeAudioDecoder::isAc3(bytes, length)) {
+    } else if (NativeAudioDecoder::isAc3(payload, payloadLen)) {
         ext = ".ac3";
-    } else if (NativeAudioDecoder::isEac3(bytes, length)) {
+    } else if (NativeAudioDecoder::isEac3(payload, payloadLen)) {
         ext = ".eac3";
     }
 

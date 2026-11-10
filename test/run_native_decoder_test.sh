@@ -12,10 +12,10 @@ OUT="${TMPDIR:-/tmp}/native_decoder_test"
 PLATFORM_SRCS=()
 PLATFORM_LIBS=()
 if [ "$(uname -s)" = "Darwin" ]; then
-    PLATFORM_SRCS+=(src/audiobuffer/aac_stream_decoder_apple.mm)
+    PLATFORM_SRCS+=(src/audiobuffer/aac_stream_decoder_apple.mm src/native_decoder/os_decoder_apple.mm)
     PLATFORM_LIBS+=(-framework AudioToolbox -framework CoreFoundation)
 else
-    PLATFORM_SRCS+=(src/audiobuffer/aac_stream_decoder_linux.cpp)
+    PLATFORM_SRCS+=(src/audiobuffer/aac_stream_decoder_linux.cpp src/native_decoder/os_decoder_linux.cpp)
     PLATFORM_LIBS+=(-ldl)
 fi
 

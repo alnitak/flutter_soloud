@@ -87,7 +87,7 @@ Future<({PlayerErrors error, SoundHash soundHash})> _loadMemWeb({
       buffer[7] == 0x70; // 'p'
   final isAac =
       buffer.length >= 4 &&
-      ((buffer[0] == 0xFF && (buffer[1] & 0xF0) == 0xF0) || // ADTS
+      ((buffer[0] == 0xFF && (buffer[1] & 0xF6) == 0xF0) || // ADTS (layer 00)
           (buffer[0] == 0x41 &&
               buffer[1] == 0x44 &&
               buffer[2] == 0x49 &&

@@ -49,6 +49,17 @@ void testHeaderSniffing() {
     assert(!NativeAudioDecoder::isAacAdts(aacHeader, 1));
     assert(!NativeAudioDecoder::isAc3OrEac3(nullptr, 100));
     assert(!NativeAudioDecoder::isAc3OrEac3(ac3HeaderBE, 1));
+    assert(!NativeAudioDecoder::isSupportedNativeFormat(nullptr, 100));
+    assert(!NativeAudioDecoder::isSupportedNativeFormat(aacHeader, 0));
+
+    // 5. ID3v2 skip helper (single tag, consecutive tags, footer, and isSupportedNativeFormat)
+    unsigned char id3WithAdts[] = {
+        'I', 'D', '3', 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04,
+        0x0B, 0x77, 0x00, 0x40, // AC-3-like bytes inside ID3 payload
+        0xFF, 0xF1, 0x50, 0x80
+    };
+    assert(NativeAudioDecoder::skipId3Header(id3WithAdts, sizeof(id3WithAdts)) == 14);
+    assert(NativeAudioDecoder::isSupportedNativeFormat(id3WithAdts, sizeof(id3WithAdts)));
 
     std::cout << "  Passed!" << std::endl;
 }
@@ -629,6 +640,41 @@ void testMp3MetadataEmission() {
     std::cout << "  Passed!" << std::endl;
 }
 
+void testAdtsWithAc3LikeBytes() {
+    std::cout << "[Test] ADTS containing AC-3-like bytes decodes as AAC..." << std::endl;
+
+    std::ifstream aacFile("example/assets/audio/sample-AAC.aac", std::ios::binary);
+    if (!aacFile.is_open()) {
+        std::cout << "  Skipped (sample-AAC.aac not found)" << std::endl;
+        return;
+    }
+    std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(aacFile)),
+                                     std::istreambuf_iterator<char>());
+    const size_t aacBytes = bytes.size();
+    DecodedAudioData reference = NativeAudioDecoder::decodeMemory(bytes.data(), bytes.size());
+    if (!reference.success) {
+        // On Linux without system FFmpeg installed, native decoding is unavailable.
+        std::cout << "  Skipped (native decoder unavailable: " << reference.errorMessage << ")" << std::endl;
+        reference.freeSamples();
+        return;
+    }
+
+    const unsigned char ac3Like[] = {0x0B, 0x77, 0x00, 0x00, 0x00, 0x40};
+    bytes.insert(bytes.end(), std::begin(ac3Like), std::end(ac3Like));
+    assert(NativeAudioDecoder::findAc3Syncword(bytes.data(), bytes.size()) == static_cast<int>(aacBytes));
+
+    DecodedAudioData decoded = NativeAudioDecoder::decodeMemory(bytes.data(), bytes.size());
+    assert(decoded.success);
+    assert(decoded.sampleRate == reference.sampleRate && decoded.channels == reference.channels);
+    assert(decoded.sampleCount == reference.sampleCount);
+    assert(std::memcmp(decoded.samples, reference.samples,
+                       reference.sampleCount * reference.channels * sizeof(float)) == 0);
+    decoded.freeSamples();
+    reference.freeSamples();
+
+    std::cout << "  Passed!" << std::endl;
+}
+
 int main() {
     std::cout << "Running Native Decoder C++ Tests..." << std::endl;
     testHeaderSniffing();
@@ -638,6 +684,7 @@ int main() {
     testM4aMetadataAndOffsets();
     testMp3VsAacDetection();
     testMp3MetadataEmission();
+    testAdtsWithAc3LikeBytes();
     std::cout << "All Native Decoder C++ Tests passed successfully!" << std::endl;
     return 0;
 }

@@ -502,19 +502,6 @@ DecodedAudioData decodeFromFd(int fd, off64_t length) {
     return decodeFromExtractor(extractor.get());
 }
 
-size_t skipId3Header(const unsigned char *data, size_t size) {
-    if (data && size >= 10 && std::memcmp(data, "ID3", 3) == 0) {
-        uint32_t tagSize = ((data[6] & 0x7F) << 21) |
-                           ((data[7] & 0x7F) << 14) |
-                           ((data[8] & 0x7F) << 7) |
-                           (data[9] & 0x7F);
-        size_t total = 10 + tagSize;
-        if ((data[5] & 0x10) != 0) total += 10; // footer
-        return total <= size ? total : size;
-    }
-    return 0;
-}
-
 DecodedAudioData decodeElementaryStream(std::vector<unsigned char> buffer, DetectedType type) {
     AACDecoderWrapper wrapper(type);
     if (!wrapper.initializeDecoder(0, 0)) {
@@ -675,13 +662,15 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
             DetectedType type = DetectedType::BUFFER_UNKNOWN;
             // An ADTS header at the start identifies AAC. Check it before
             // looking for AC-3 syncwords, which can occur in AAC payload data.
-            size_t id3Skip = skipId3Header(header, bytesRead);
-            if (NativeAudioDecoder::isAacAdts(header + id3Skip, bytesRead - id3Skip)) {
+            size_t id3Skip = NativeAudioDecoder::skipId3Header(header, bytesRead);
+            const unsigned char *payload = header + id3Skip;
+            const size_t payloadLen = bytesRead - id3Skip;
+            if (NativeAudioDecoder::isAacAdts(payload, payloadLen)) {
                 type = DetectedType::BUFFER_AAC;
             } else {
-                int syncIdx = NativeAudioDecoder::findAc3Syncword(header, bytesRead);
-                if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= bytesRead) {
-                    type = NativeAudioDecoder::isEac3(header + syncIdx, bytesRead - syncIdx)
+                int syncIdx = NativeAudioDecoder::findAc3Syncword(payload, payloadLen);
+                if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= payloadLen) {
+                    type = NativeAudioDecoder::isEac3(payload + syncIdx, payloadLen - syncIdx)
                                ? DetectedType::BUFFER_EAC3
                                : DetectedType::BUFFER_AC3;
                 }
@@ -706,17 +695,19 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
         if (!NativeAudioDecoder::isM4aOrMp4(bytes, length)) {
             // An ADTS header at the start identifies AAC. Check it before
             // scanning the payload: compressed AAC data can contain 0x0B77.
-            size_t id3Skip = skipId3Header(bytes, length);
-            if (NativeAudioDecoder::isAacAdts(bytes + id3Skip, length - id3Skip)) {
+            size_t id3Skip = NativeAudioDecoder::skipId3Header(bytes, length);
+            const unsigned char *payload = bytes + id3Skip;
+            const size_t payloadLen = length - id3Skip;
+            if (NativeAudioDecoder::isAacAdts(payload, payloadLen)) {
                 return decodeElementaryStream(std::vector<unsigned char>(bytes, bytes + length),
                                               DetectedType::BUFFER_AAC);
             }
 
             // Check if the buffer is a raw AC-3 or E-AC-3 elementary stream
-            int syncIdx = NativeAudioDecoder::findAc3Syncword(bytes, length);
-            if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= length) {
-                const unsigned char *h = bytes + syncIdx;
-                size_t rem = length - syncIdx;
+            int syncIdx = NativeAudioDecoder::findAc3Syncword(payload, payloadLen);
+            if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= payloadLen) {
+                const unsigned char *h = payload + syncIdx;
+                size_t rem = payloadLen - syncIdx;
                 if (NativeAudioDecoder::isEac3(h, rem)) {
                     return decodeElementaryStream(std::vector<unsigned char>(bytes, bytes + length),
                                                   DetectedType::BUFFER_EAC3);
