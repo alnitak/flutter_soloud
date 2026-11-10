@@ -1,6 +1,7 @@
 // ignore_for_file: public_member_api_docs
 
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
@@ -232,6 +233,21 @@ external int wasmGetMixerOutputWavHeader();
 
 @JS('Module_soloud._setMixerOutputCallback')
 external void wasmSetMixerOutputCallback(int callbackPtr);
+
+@JS('Module_soloud._takeMixerOutputPacket')
+external int wasmTakeMixerOutputPacket(
+  int token,
+  int captureIdPtr,
+  int lengthPtr,
+);
+
+@JS('Module_soloud._getMixerCaptureId')
+external int wasmGetMixerCaptureId();
+
+/// Whether the loaded wasm module exports [name] (for example
+/// `_getMixerCaptureId`). An older prebuilt module lacks the newer exports,
+/// and calling one that is missing throws.
+bool wasmHasExport(String name) => moduleSoloudInstance?.has(name) ?? false;
 
 @JS('Module_soloud._initEngine')
 external int wasmInitEngine(

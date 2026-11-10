@@ -110,15 +110,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   /// Controller that fires whenever new mixer output data is available.
   ///
-  /// The event contains a pointer to the start of the contiguous unread
-  /// region and the number of valid bytes. The pointer remains valid until
-  /// the read position is advanced with [advanceMixerOutputReadPosition].
-  late final StreamController<({ffi.Pointer<ffi.Uint8> pointer, int length})>
-  mixerOutputDataAvailableController = StreamController.broadcast();
+  /// Each event owns its bytes and stays valid after capture stops.
+  late final StreamController<Uint8List> mixerOutputDataAvailableController =
+      StreamController.broadcast();
 
-  /// Stream of notifications that new mixer output data is available.
-  Stream<({ffi.Pointer<ffi.Uint8> pointer, int length})>
-  get mixerOutputDataAvailableEvents =>
+  /// Stream of owned mixer output chunks.
+  Stream<Uint8List> get mixerOutputDataAvailableEvents =>
       mixerOutputDataAvailableController.stream;
 
   final Map<int, _BufferStreamNativeCallbacks> _bufferStreamNativeCallables =
@@ -180,24 +177,41 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     stateChangedController.add(s);
   }
 
+  /// [token] names a native packet, not memory to read: this listener runs
+  /// later than the notification, when the capture may have moved on to its
+  /// next chunk or been restarted. Claiming the packet hands over an owned
+  /// copy of its bytes, and acknowledges a threshold-mode packet's bytes in
+  /// the ring, so it is claimed even when nobody listens.
   void _mixerOutputDataCallback(
-    ffi.Pointer<ffi.UnsignedChar> data,
+    ffi.Pointer<ffi.UnsignedChar> token,
     int length,
   ) {
-    if (mixerOutputDataAvailableController.hasListener) {
-      mixerOutputDataAvailableController.add((
-        pointer: data.cast<ffi.Uint8>(),
-        length: length,
-      ));
-    }
-    if (mixerOutputChunkController.hasListener) {
-      final bytes = data.cast<ffi.Uint8>().asTypedList(length);
-      mixerOutputChunkController.add(Uint8List.fromList(bytes));
-      // In fixed PCM chunk mode the native side advances the read position
-      // before invoking the callback, so Dart must not advance it again.
-      if (!_mixerOutputChunkMode) {
-        advanceMixerOutputReadPosition(length);
+    final captureId = calloc<ffi.UnsignedInt>();
+    final claimed = calloc<ffi.Size>();
+    final bytes = native.takeMixerOutputPacket(token, captureId, claimed);
+    try {
+      // A packet of another capture -- one that was stopped, or started by
+      // another isolate -- is not this stream's data.
+      if (bytes == ffi.nullptr || captureId.value != _mixerCaptureId) {
+        return;
       }
+      if (mixerOutputDataAvailableController.hasListener ||
+          mixerOutputChunkController.hasListener) {
+        final copy = Uint8List.fromList(
+          bytes.cast<ffi.Uint8>().asTypedList(claimed.value),
+        );
+        if (mixerOutputDataAvailableController.hasListener) {
+          mixerOutputDataAvailableController.add(copy);
+        }
+        if (mixerOutputChunkController.hasListener) {
+          mixerOutputChunkController.add(copy);
+        }
+      }
+    } finally {
+      nativeFree(bytes.cast<ffi.Void>());
+      calloc
+        ..free(captureId)
+        ..free(claimed);
     }
   }
 
@@ -377,10 +391,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // Mixer output capture bindings
   // ////////////////////////////////////////////////
 
-  /// Whether the current mixer output capture is using fixed-size PCM chunks.
-  /// When true, the native side advances the circular buffer read position
-  /// before invoking the callback, so Dart must not advance it again.
-  bool _mixerOutputChunkMode = false;
+  /// The capture this isolate started, whose packets it emits.
+  int? _mixerCaptureId;
 
   @override
   PlayerErrors startMixerOutputCapture(
@@ -391,7 +403,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int notificationThresholdBytes,
     int chunkPCMFrames,
   ) {
-    _mixerOutputChunkMode = format.isPcm && chunkPCMFrames > 0;
     final ret = native.startMixerCapture(
       format.value,
       sampleRate,
@@ -400,12 +411,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       notificationThresholdBytes,
       chunkPCMFrames,
     );
+    if (ret == native.PlayerErrors.noError) {
+      _mixerCaptureId = native.getMixerCaptureId();
+    }
     return PlayerErrors.values[ret.value];
   }
 
   @override
   void stopMixerOutputCapture() {
-    _mixerOutputChunkMode = false;
+    _mixerCaptureId = null;
     native.stopMixerCapture();
   }
 

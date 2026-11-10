@@ -132,6 +132,16 @@ extern "C"
   /// Stop capturing the master mixer output.
   FFI_PLUGIN_EXPORT void stopMixerCapture();
 
+  /// Claim the capture packet a mixer output notification names by [token].
+  /// Returns its bytes, which the caller frees with nativeFree(), and sets
+  /// [captureId] to the capture that produced it and [length] to its size;
+  /// returns nullptr for a token already claimed or discarded.
+  FFI_PLUGIN_EXPORT unsigned char *takeMixerOutputPacket(
+      unsigned char *token, unsigned int *captureId, size_t *length);
+
+  /// The id of the current (or last) mixer capture. Each start changes it.
+  FFI_PLUGIN_EXPORT unsigned int getMixerCaptureId();
+
   /// Returns 1 if mixer capture is running, 0 otherwise.
   FFI_PLUGIN_EXPORT int isMixerCaptureRunning();
 

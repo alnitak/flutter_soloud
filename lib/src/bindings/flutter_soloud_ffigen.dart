@@ -111,6 +111,27 @@ PlayerErrors startMixerCapture(
 @ffi.Native<ffi.Void Function()>()
 external void stopMixerCapture();
 
+/// Claim the capture packet a mixer output notification names by [token].
+/// Returns its bytes, which the caller frees with nativeFree(), and sets
+/// [captureId] to the capture that produced it and [length] to its size;
+/// returns nullptr for a token already claimed or discarded.
+@ffi.Native<
+  ffi.Pointer<ffi.UnsignedChar> Function(
+    ffi.Pointer<ffi.UnsignedChar>,
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Size>,
+  )
+>()
+external ffi.Pointer<ffi.UnsignedChar> takeMixerOutputPacket(
+  ffi.Pointer<ffi.UnsignedChar> token,
+  ffi.Pointer<ffi.UnsignedInt> captureId,
+  ffi.Pointer<ffi.Size> length,
+);
+
+/// The id of the current (or last) mixer capture. Each start changes it.
+@ffi.Native<ffi.UnsignedInt Function()>()
+external int getMixerCaptureId();
+
 /// Returns 1 if mixer capture is running, 0 otherwise.
 @ffi.Native<ffi.Int Function()>()
 external int isMixerCaptureRunning();

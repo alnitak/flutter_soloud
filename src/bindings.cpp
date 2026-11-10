@@ -445,32 +445,42 @@ extern "C"
     return engineGeneration.load(std::memory_order_acquire);
   }
 
-  /// Posts a mixer output notification to the web event worker. MUST run on
-  /// the main browser thread, which is where Module_soloud.wasmWorker lives.
-  static void postMixerOutputToEventWorker(int offset, int length,
+  /// Posts a mixer output packet notification to the web event worker. MUST
+  /// run on the main browser thread, which is where Module_soloud.wasmWorker
+  /// lives. Without a worker nobody can claim the packet, so it is discarded.
+  ///
+  /// A message of its own, 'mixerOutputPacket', rather than the
+  /// 'mixerOutputData' that carried a heap address: the Dart side can tell
+  /// a token from an address whichever wasm build it runs against.
+  static void postMixerOutputToEventWorker(int token, int length,
                                            int captureId)
   {
-    EM_ASM(
+    const int posted = EM_ASM_INT(
         {
           if (Module_soloud.wasmWorker)
           {
             Module_soloud.wasmWorker.postMessage({
-              message : 'mixerOutputData',
-              offset : $0,
+              message : 'mixerOutputPacket',
+              token : $0,
               length : $1,
               captureId : $2,
             });
+            return 1;
           }
+          return 0;
         },
-        offset, length, captureId);
+        token, length, captureId);
+    if (!posted)
+      MixerOutput::discardPacket(reinterpret_cast<uint8_t *>(
+          static_cast<uintptr_t>(static_cast<uint32_t>(token))));
   }
 
-  /// Notify the web worker that new mixer output data is available.
-  /// [offset] byte offset into the mixer output circular buffer.
-  /// [length] number of contiguous valid bytes.
+  /// Notify the web worker that a mixer output packet is ready.
+  /// [token] opaque packet token, passed on without dereferencing it.
+  /// [length] number of bytes in the packet.
   /// [captureId] identifies the active capture session so the Dart side
   /// can discard stale notifications.
-  static void sendMixerOutputToWorker(size_t offset, size_t length,
+  static void sendMixerOutputToWorker(size_t token, size_t length,
                                       uint32_t captureId)
   {
 #ifdef MA_ENABLE_AUDIO_WORKLETS
@@ -483,13 +493,13 @@ extern "C"
       // and never reach the event worker on the main thread.
       emscripten_audio_worklet_post_function_viii(
           EMSCRIPTEN_AUDIO_MAIN_THREAD, postMixerOutputToEventWorker,
-          static_cast<int>(offset), static_cast<int>(length),
+          static_cast<int>(token), static_cast<int>(length),
           static_cast<int>(captureId));
       return;
     }
 #endif
     // Main browser thread (or the single-threaded build): post directly.
-    postMixerOutputToEventWorker(static_cast<int>(offset),
+    postMixerOutputToEventWorker(static_cast<int>(token),
                                  static_cast<int>(length),
                                  static_cast<int>(captureId));
   }
@@ -645,7 +655,9 @@ extern "C"
     dartStateChangedCallback.store(state_changed_callback,
                                    std::memory_order_release);
     // Claiming here retires every earlier registration, this engine's included,
-    // and every source that recorded an earlier generation.
+    // and every source that recorded an earlier generation. The capture
+    // packets in flight went to a callable that claim retires.
+    MixerOutput::discardPackets();
     globalCallbackGeneration = registration.claim(owner_engine_id);
   }
 
@@ -663,6 +675,7 @@ extern "C"
     dartVisualizationCallback.store(nullptr, std::memory_order_release);
     // The packets in flight went to the callable just retired.
     Analyzer::abandonDartDispatches();
+    MixerOutput::discardPackets();
     globalCallbackGeneration = dart_callbacks::kNoGeneration;
     mixerCallbackGeneration = dart_callbacks::kNoGeneration;
     visualizationCallbackGeneration = dart_callbacks::kNoGeneration;
@@ -892,6 +905,25 @@ extern "C"
     MixerOutput::instance().stop();
   }
 
+  /// A notification carries a packet token, never a borrowed ring pointer.
+  /// Claiming it hands its immutable bytes to the caller, who frees them with
+  /// nativeFree(); a token already claimed, or discarded because its listener
+  /// was retired, returns null.
+  FFI_PLUGIN_EXPORT unsigned char *takeMixerOutputPacket(
+      unsigned char *token, unsigned int *captureId, size_t *length)
+  {
+    uint32_t id = 0;
+    unsigned char *bytes = MixerOutput::takePacket(token, id, length);
+    if (captureId != nullptr)
+      *captureId = id;
+    return bytes;
+  }
+
+  FFI_PLUGIN_EXPORT unsigned int getMixerCaptureId()
+  {
+    return MixerOutput::instance().captureId();
+  }
+
   FFI_PLUGIN_EXPORT int isMixerCaptureRunning()
   {
     return MixerOutput::instance().isRunning() ? 1 : 0;
@@ -943,16 +975,21 @@ extern "C"
 
   /// What MixerOutput calls on its notification thread. Named rather than a
   /// lambda so a test can drive the exact function MixerOutput holds.
+  ///
+  /// [data] is a packet token (see MixerOutputDataCallback). Whatever does
+  /// not hand it to a consumer discards it, or it would stay pending forever.
   static void dispatchMixerOutputToDart(uint8_t *data, size_t length)
   {
 #ifdef __EMSCRIPTEN__
     // On the web the callback may fire from the audio thread, so we cannot call
-    // Dart directly. Send the offset/length to the web worker, which forwards
+    // Dart directly. Send the packet token to the web worker, which forwards
     // it to the main isolate.
     if (length == 0)
+    {
+      MixerOutput::discardPacket(data);
       return;
-    const size_t offset = reinterpret_cast<size_t>(data);
-    sendMixerOutputToWorker(offset, length,
+    }
+    sendMixerOutputToWorker(reinterpret_cast<size_t>(data), length,
                             MixerOutput::instance().captureId());
 #else
     // Held across the call so a retirement cannot return — and the owning
@@ -962,11 +999,18 @@ extern "C"
     // registration it joined.
     const dart_callbacks::InvocationPass pass;
     if (!pass.isLive(mixerCallbackGeneration))
+    {
+      MixerOutput::discardPacket(data);
       return;
+    }
     auto cb = dartMixerOutputDataCallback.load(std::memory_order_acquire);
     if (cb != nullptr)
     {
       cb(data, static_cast<uint64_t>(length));
+    }
+    else
+    {
+      MixerOutput::discardPacket(data);
     }
 #endif
   }
@@ -995,6 +1039,8 @@ extern "C"
         return false;
       }
 
+      // The packets in flight went to the callable this one replaces.
+      MixerOutput::discardPackets();
       dartMixerOutputDataCallback.store(callback, std::memory_order_release);
       mixerCallbackGeneration = registration.generation();
     }
@@ -1996,7 +2042,9 @@ extern "C"
   FFI_PLUGIN_EXPORT void soloudTestInvokeMixerOutput()
   {
     unsigned char scratch[4] = {0, 0, 0, 0};
-    dispatchMixerOutputToDart(scratch, sizeof(scratch));
+    uint8_t *token = MixerOutput::copyPacket(
+        scratch, sizeof(scratch), MixerOutput::instance().captureId());
+    dispatchMixerOutputToDart(token, sizeof(scratch));
   }
 
   /// True while a Dart callable registered at the current generation may run.

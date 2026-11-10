@@ -86,6 +86,10 @@ extern "C"
                                         int notificationThresholdBytes,
                                         int chunkPCMFrames);
     void stopMixerCapture();
+    unsigned char *takeMixerOutputPacket(unsigned char *token,
+                                         unsigned int *captureId,
+                                         size_t *length);
+    void nativeFree(void *pointer);
     int isMixerCaptureRunning();
     bool setVisualizationCallbackForEngine(dartVisualizationCallback_t callback,
                                            int64_t owner_engine_id);
@@ -207,7 +211,15 @@ void onStateChanged(enum PlayerStateEvents *state)
     ++gStateChangedCalls;
 }
 
-void onMixerOutput(unsigned char *, uint64_t) { ++gMixerOutputCalls; }
+/// Claims and frees each packet, as the Dart listener does: unclaimed
+/// packets fill the bounded pending queue.
+void onMixerOutput(unsigned char *token, uint64_t)
+{
+    ++gMixerOutputCalls;
+    unsigned int captureId = 0;
+    size_t length = 0;
+    nativeFree(takeMixerOutputPacket(token, &captureId, &length));
+}
 
 // Stand-in for the Dart event loop a NativeCallable.listener posts to. The
 // visualization callable only queues its packet; this thread reports it done,

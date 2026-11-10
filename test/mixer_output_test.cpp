@@ -13,7 +13,12 @@
 //     in order, rather than discarding the ring;
 //   * a single write larger than the whole ring keeps its newest bytes and
 //     writes nothing outside the ring (AddressSanitizer reports it otherwise);
-//   * a surround ring keeps whole frames through a fill and an overrun.
+//   * a surround ring keeps whole frames through a fill and an overrun;
+//   * a notification handled late -- after the next chunk, or after a restart
+//     with a larger ring -- still gets the bytes it was sent for; a packet is
+//     claimed once, a discarded one not at all, unclaimed packets stay
+//     bounded, and claiming a threshold packet acknowledges its bytes in its
+//     own capture's ring only.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -21,7 +26,9 @@
 //   ./test/run_mixer_output_test.sh --asan     (AddressSanitizer + UBSan)
 //   ./test/run_mixer_output_test.sh --tsan     (ThreadSanitizer)
 //
-// A scenario name after the flag runs only that scenario.
+// --web-model after the checker flag builds the web path instead (inline
+// notifications, the packet pool) on the host. A scenario name after the
+// flags runs only that scenario.
 
 #include "mixeroutput/mixer_output.h"
 
@@ -31,6 +38,7 @@
 #include <cstring>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -52,6 +60,7 @@ int gAssertions = 0;
 
 constexpr int kChannels = 2;
 constexpr int kSampleRate = 48000;
+constexpr size_t kBytesPerFrame = kChannels * sizeof(float);
 
 MixerOutput &capture() { return MixerOutput::instance(); }
 
@@ -110,13 +119,48 @@ PlayerErrors startPcm(size_t ringBytes, size_t thresholdBytes, int chunkFrames)
                            ringBytes, thresholdBytes, chunkFrames);
 }
 
+/// The bytes a consumer gets for a notification when it handles it. With
+/// owned packets a notification carries a token, claimed here; before them it
+/// carried an address into capture storage, read here as a consumer did.
+template <typename Capture>
+auto claimNotice(uint8_t *data, size_t, int)
+    -> decltype(Capture::takePacket(data, std::declval<uint32_t &>(), nullptr),
+                std::vector<uint8_t>())
+{
+    uint32_t captureId = 0;
+    size_t length = 0;
+    uint8_t *bytes = Capture::takePacket(data, captureId, &length);
+    std::vector<uint8_t> copy;
+    if (bytes != nullptr)
+        copy.assign(bytes, bytes + length);
+    std::free(bytes);
+    return copy;
+}
+
+template <typename Capture>
+std::vector<uint8_t> claimNotice(uint8_t *data, size_t length, long)
+{
+    return std::vector<uint8_t>(data, data + length);
+}
+
+std::vector<uint8_t> claim(uint8_t *data, size_t length)
+{
+    return claimNotice<MixerOutput>(data, length, 0);
+}
+
+std::vector<float> asFloats(const std::vector<uint8_t> &bytes)
+{
+    std::vector<float> floats(bytes.size() / sizeof(float));
+    std::memcpy(floats.data(), bytes.data(), floats.size() * sizeof(float));
+    return floats;
+}
+
 std::mutex gChunkMutex;
-std::vector<std::vector<float>> gChunks; // copied when the callback runs
+std::vector<std::vector<float>> gChunks; // claimed when the callback runs
 
 void copyChunk(uint8_t *data, size_t length)
 {
-    std::vector<float> chunk(length / sizeof(float));
-    std::memcpy(chunk.data(), data, chunk.size() * sizeof(float));
+    std::vector<float> chunk = asFloats(claim(data, length));
     std::lock_guard<std::mutex> lock(gChunkMutex);
     gChunks.push_back(std::move(chunk));
 }
@@ -293,13 +337,218 @@ void surroundRingKeepsWholeFrames()
     }
 }
 
+std::mutex gNoticeMutex;
+std::vector<std::pair<uint8_t *, size_t>> gNotices; // handled later
+
+void keepNotice(uint8_t *data, size_t length)
+{
+    std::lock_guard<std::mutex> lock(gNoticeMutex);
+    gNotices.emplace_back(data, length);
+}
+
+size_t noticeCount()
+{
+    std::lock_guard<std::mutex> lock(gNoticeMutex);
+    return gNotices.size();
+}
+
+std::pair<uint8_t *, size_t> notice(size_t index)
+{
+    std::lock_guard<std::mutex> lock(gNoticeMutex);
+    return gNotices[index];
+}
+
+void clearNotices()
+{
+    std::lock_guard<std::mutex> lock(gNoticeMutex);
+    gNotices.clear();
+}
+
+/// True when [samples] count up from [first].
+bool countsFrom(const std::vector<float> &samples, float first)
+{
+    for (size_t i = 0; i < samples.size(); ++i)
+        if (samples[i] != first + static_cast<float>(i))
+            return false;
+    return !samples.empty();
+}
+
+// A Dart listener runs on its isolate's event loop, after the notification:
+// here, after the next chunk has been emitted.
+void lateClaimGetsItsOwnChunk()
+{
+    std::printf("deferred: a chunk handled after the next one is emitted is "
+                "still its own\n");
+    constexpr int kChunkFrames = 2048;
+    constexpr size_t kChunkFloats = kChunkFrames * kChannels;
+    clearNotices();
+    capture().setDataCallback(keepNotice);
+    EXPECT(startPcm(1 << 20, 4096, kChunkFrames) == noError,
+           "deferred: start");
+    float next = 0;
+    feed(2 * kChunkFrames, next);
+    EXPECT(waitFor([] { return noticeCount() >= 2; }, 2000),
+           "deferred: two chunks must be notified, got %zu", noticeCount());
+    if (noticeCount() >= 2)
+    {
+        const std::vector<float> first =
+            asFloats(claim(notice(0).first, notice(0).second));
+        const std::vector<float> second =
+            asFloats(claim(notice(1).first, notice(1).second));
+        EXPECT(first.size() == kChunkFloats && countsFrom(first, 0),
+               "deferred: the first chunk must hold samples 0.., it starts "
+               "at %.0f",
+               first.empty() ? -1.0 : static_cast<double>(first[0]));
+        EXPECT(second.size() == kChunkFloats &&
+                   countsFrom(second, static_cast<float>(kChunkFloats)),
+               "deferred: the second chunk must hold samples %zu..",
+               kChunkFloats);
+    }
+    capture().setDataCallback(nullptr);
+    capture().stop();
+}
+
+// The listener's turn comes after the capture was stopped and restarted with
+// a larger ring, which frees the storage the first capture notified from.
+// AddressSanitizer reports reading it as a heap-use-after-free.
+void lateClaimSurvivesARestart()
+{
+    std::printf("restart: a packet handled after a restart with a larger ring "
+                "is still its own\n");
+    clearNotices();
+    capture().setDataCallback(keepNotice);
+    EXPECT(startPcm(64 * 1024, 4096, -1) == noError, "restart: start");
+    float next = 0;
+    feed(1024, next); // 8192 bytes, over the threshold
+    EXPECT(waitFor([] { return noticeCount() >= 1; }, 2000),
+           "restart: the threshold must be notified");
+    capture().setDataCallback(nullptr);
+    capture().stop();
+    EXPECT(startPcm(4 << 20, 4096, -1) == noError,
+           "restart: a larger capture starts");
+    float later = 0;
+    feed(512, later); // 4096 bytes of the new capture
+    if (noticeCount() >= 1)
+    {
+        const std::vector<float> packet =
+            asFloats(claim(notice(0).first, notice(0).second));
+        EXPECT(packet.size() == 1024 * kChannels && countsFrom(packet, 0),
+               "restart: the packet must hold the first capture's %d "
+               "samples, got %zu",
+               1024 * kChannels, packet.size());
+        EXPECT(capture().getAvailableBytes() == 4096,
+               "restart: a stale packet must not acknowledge the new "
+               "capture's bytes, %zu of 4096 left",
+               capture().getAvailableBytes());
+    }
+    capture().stop();
+}
+
+/// Token rules, which only owned packets have.
+template <typename Capture>
+auto checkTokens(int) -> decltype(Capture::discardPackets(), void())
+{
+    // A packet is claimed once, and a discarded one not at all.
+    clearNotices();
+    capture().setDataCallback(keepNotice);
+    EXPECT(startPcm(1 << 20, 4096, 2048) == noError, "tokens: start");
+    float next = 0;
+    feed(2 * 2048, next);
+    EXPECT(waitFor([] { return noticeCount() >= 2; }, 2000),
+           "tokens: two chunks must be notified");
+    capture().setDataCallback(nullptr);
+    capture().stop();
+    if (noticeCount() >= 2)
+    {
+        uint32_t id = 0;
+        size_t length = 0;
+        uint8_t *bytes = Capture::takePacket(notice(0).first, id, &length);
+        EXPECT(bytes != nullptr && length == 2048 * kBytesPerFrame &&
+                   id == capture().captureId(),
+               "tokens: a claim returns the packet, its size and its capture");
+        std::free(bytes);
+        EXPECT(Capture::takePacket(notice(0).first, id, &length) == nullptr &&
+                   length == 0,
+               "tokens: a packet can be claimed only once");
+        Capture::discardPackets();
+        EXPECT(Capture::takePacket(notice(1).first, id, &length) == nullptr,
+               "tokens: a discarded packet cannot be claimed");
+    }
+
+    // A consumer that stopped claiming gets a bounded number of packets; the
+    // rest of the data waits in the ring, where an overrun drops the oldest.
+    clearNotices();
+    capture().setDataCallback(keepNotice);
+    EXPECT(startPcm(1 << 20, 4096, 2048) == noError, "tokens: restart");
+    for (int chunk = 0; chunk < 100; ++chunk)
+        feed(2048, next);
+    waitFor([] { return noticeCount() >= 100; }, 300);
+    const size_t pending = noticeCount();
+    EXPECT(pending >= 8 && pending <= 64,
+           "tokens: unclaimed packets must stay bounded, got %zu", pending);
+    capture().setDataCallback(nullptr);
+    capture().stop();
+    Capture::discardPackets();
+
+    // Claiming a threshold packet -- whole surround frames, at most 64 KiB --
+    // acknowledges its bytes, which re-arms the notification.
+    clearNotices();
+    capture().setDataCallback(keepNotice);
+    constexpr int channels = 6;
+    EXPECT(capture().start(MIXER_OUTPUT_PCM_F32LE, kSampleRate, channels,
+                           1 << 20, 4096, -1) == noError,
+           "tokens: a surround threshold capture starts");
+    next = 0;
+    feed(4096, next, channels); // 98304 bytes
+    EXPECT(waitFor([] { return noticeCount() >= 1; }, 2000),
+           "tokens: the threshold must be notified");
+    if (noticeCount() >= 1)
+    {
+        const size_t length = notice(0).second;
+        EXPECT(length % (channels * sizeof(float)) == 0 && length > 0 &&
+                   length <= 64 * 1024,
+               "tokens: a threshold packet is whole frames, at most 64 KiB, "
+               "got %zu bytes",
+               length);
+        EXPECT(capture().getAvailableBytes() == 98304,
+               "tokens: an unclaimed packet's bytes stay in the ring");
+        uint32_t id = 0;
+        size_t claimed = 0;
+        std::free(Capture::takePacket(notice(0).first, id, &claimed));
+        EXPECT(claimed == length &&
+                   capture().getAvailableBytes() == 98304 - length,
+               "tokens: claiming acknowledges the packet's bytes, %zu left",
+               capture().getAvailableBytes());
+        // The web path notifies from the audio callback: give it one.
+        feed(16, next, channels);
+        EXPECT(waitFor([] { return noticeCount() >= 2; }, 2000),
+               "tokens: the acknowledgement re-arms the notification");
+    }
+    capture().setDataCallback(nullptr);
+    capture().stop();
+    Capture::discardPackets();
+}
+
+template <typename Capture>
+void checkTokens(long)
+{
+    EXPECT(false, "tokens: notifications carry no owned packets");
+}
+
+void packetsAreClaimedOnce()
+{
+    std::printf("tokens: packets are claimed once, bounded and acknowledged\n");
+    checkTokens<MixerOutput>(0);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
 {
     const char *only = argc > 1 ? argv[1] : nullptr;
-    const char *const kScenarios[] = {"chunks", "fill", "overrun", "oversized",
-                                      "surround"};
+    const char *const kScenarios[] = {"chunks",   "fill",     "overrun",
+                                      "oversized", "surround", "deferred",
+                                      "restart",  "tokens"};
     if (only != nullptr)
     {
         bool known = false;
@@ -324,6 +573,12 @@ int main(int argc, char **argv)
         oversizedWriteStaysInsideTheRing();
     if (wanted("surround"))
         surroundRingKeepsWholeFrames();
+    if (wanted("deferred"))
+        lateClaimGetsItsOwnChunk();
+    if (wanted("restart"))
+        lateClaimSurvivesARestart();
+    if (wanted("tokens"))
+        packetsAreClaimedOnce();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

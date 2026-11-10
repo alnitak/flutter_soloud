@@ -56,8 +56,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
 
   /// Whether the current mixer output capture is using fixed-size PCM chunks.
   /// When true, the native side advances the circular buffer read position
-  /// before invoking the callback, so Dart must not advance it again.
+  /// before invoking the callback, so Dart must not advance it again. Only
+  /// the borrowed-address messages of an older wasm build need it.
   bool _mixerOutputChunkMode = false;
+
+  /// The capture this page started, whose packets it emits. Null with an
+  /// older wasm build, which has no capture id to read.
+  int? _mixerCaptureId;
 
   /// Serializes native engine lifecycle calls (initEngine / changeDevice /
   /// deinit / disposeAllSound).
@@ -201,7 +206,13 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         voiceEndedEventController.add(
           (message['value'] as num).toInt().toUnsigned(32),
         );
+      case 'mixerOutputPacket':
+        _takeMixerOutputPacket(
+          (message['token'] as num).toInt(),
+          (message['length'] as num).toInt(),
+        );
       case 'mixerOutputData':
+        // Posted by an older wasm build: a heap address, read right away.
         final offset = (message['offset'] as num).toInt();
         final length = (message['length'] as num).toInt();
         _log.finest(
@@ -223,6 +234,39 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         if (!_mixerOutputChunkMode) {
           advanceMixerOutputReadPosition(length);
         }
+    }
+  }
+
+  /// Claims the packet [token] names and emits its bytes, unless it belongs
+  /// to another capture: one stopped or restarted before this message
+  /// arrived. A packet is claimed even when nobody listens, which
+  /// acknowledges a threshold-mode packet's bytes in the ring.
+  void _takeMixerOutputPacket(int token, int length) {
+    _log.finest(
+      () => 'MIXER OUTPUT PACKET EVENT token: $token length: $length',
+    );
+    final captureIdPtr = wasmMalloc(4);
+    final lengthPtr = wasmMalloc(4);
+    var data = 0;
+    try {
+      data = wasmTakeMixerOutputPacket(token, captureIdPtr, lengthPtr);
+      if (data == 0 ||
+          wasmGetI32Value(captureIdPtr, 'i32').toUnsigned(32) !=
+              _mixerCaptureId) {
+        return;
+      }
+      final claimed = wasmGetI32Value(lengthPtr, 'i32').toUnsigned(32);
+      mixerOutputChunkController.add(
+        Uint8List.fromList(
+          Uint8List.sublistView(wasmHeapU8.toDart, data, data + claimed),
+        ),
+      );
+    } finally {
+      if (data != 0) {
+        wasmFree(data);
+      }
+      wasmFree(lengthPtr);
+      wasmFree(captureIdPtr);
     }
   }
 
@@ -257,12 +301,17 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       notificationThresholdBytes,
       chunkPCMFrames,
     );
+    if (ret == PlayerErrors.noError.value &&
+        wasmHasExport('_getMixerCaptureId')) {
+      _mixerCaptureId = wasmGetMixerCaptureId().toUnsigned(32);
+    }
     return PlayerErrors.values[ret];
   }
 
   @override
   void stopMixerOutputCapture() {
     _mixerOutputChunkMode = false;
+    _mixerCaptureId = null;
     wasmStopMixerCapture();
   }
 
