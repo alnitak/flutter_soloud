@@ -19,6 +19,11 @@
 //           soundHandleNotFound, and must not reach the global filter in
 //           the same slot. Once the bus plays they work.
 //
+//   names   getFilterParamNamesBounded() writes no more names than the
+//           caller has room for (the parametric EQ has 195 parameters) and
+//           reports how many there are; getFilterParamNames() still writes
+//           them all.
+//
 // Every scenario opens the default output device through the plugin's
 // initEngine() (miniaudio falls back to its null backend without one); the
 // sounds are waveforms that play paused or at volume 0.
@@ -32,6 +37,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 extern "C"
@@ -97,6 +103,23 @@ extern "C"
                                                      int customFilterId,
                                                      int attributeId, float from,
                                                      float to, float time);
+    void nativeFree(void *pointer);
+    enum PlayerErrors getFilterParamNames(enum FilterType filterType,
+                                          int *paramsCount, char **names);
+}
+
+// Set by the stand-in below.
+static bool gNoBoundedNames = false;
+
+// The plugin's definition overrides this weak stand-in. Without one (a
+// commit before the export existed) the stand-in keeps the file building
+// and the names scenario reports the export as missing.
+extern "C" __attribute__((weak)) enum PlayerErrors
+getFilterParamNamesBounded(enum FilterType, int *paramsCount, char **, int)
+{
+    gNoBoundedNames = true;
+    *paramsCount = 0;
+    return unknownError;
 }
 
 namespace {
@@ -397,6 +420,82 @@ void testUnplayedBusFilters() {
     dispose();
 }
 
+// ---- names ------------------------------------------------------------------
+
+// The parametric EQ's parameter count and names (parametric_eq_filter.h).
+constexpr int kEqParams = 195;
+
+int countNames(char **names, int slots) {
+    int n = 0;
+    for (int i = 0; i < slots; i++)
+        n += names[i] != nullptr;
+    return n;
+}
+
+void freeNames(char **names, int slots) {
+    for (int i = 0; i < slots; i++)
+        nativeFree(names[i]);
+    std::free(names);
+}
+
+void testParamNamesFitTheArray() {
+    std::printf("names: the names fit the caller's array\n");
+    if (!initPluginEngine())
+        return;
+
+    int count = -1;
+    PlayerErrors e =
+        getFilterParamNamesBounded(ParametricEQFilter, &count, nullptr, 0);
+    EXPECT(!gNoBoundedNames, "getFilterParamNamesBounded() is missing");
+    EXPECT(e == noError && count == kEqParams,
+           "the EQ's parameter count reads back as error %d, count %d", e,
+           count);
+
+    // As many slots as the FFI binding used to allocate. AddressSanitizer
+    // reports any write past them.
+    char **names = static_cast<char **>(std::calloc(30, sizeof(char *)));
+    count = -1;
+    e = getFilterParamNamesBounded(ParametricEQFilter, &count, names, 30);
+    EXPECT(e == noError && count == kEqParams,
+           "30 EQ names read back as error %d, count %d", e, count);
+    EXPECT(countNames(names, 30) == 30, "%d of 30 slots were written",
+           countNames(names, 30));
+    EXPECT(names[0] != nullptr && std::strcmp(names[0], "Wet") == 0,
+           "the EQ's first name is %s", names[0] ? names[0] : "(null)");
+    freeNames(names, 30);
+
+    // Room for all of them.
+    names = static_cast<char **>(std::calloc(kEqParams, sizeof(char *)));
+    count = -1;
+    e = getFilterParamNamesBounded(ParametricEQFilter, &count, names,
+                                   kEqParams);
+    EXPECT(e == noError && count == kEqParams &&
+               countNames(names, kEqParams) == kEqParams,
+           "all EQ names read back as error %d, count %d, %d written", e,
+           count, countNames(names, kEqParams));
+    EXPECT(names[kEqParams - 1] != nullptr &&
+               std::strcmp(names[kEqParams - 1], "Band 63 Q") == 0,
+           "the EQ's last name is %s",
+           names[kEqParams - 1] ? names[kEqParams - 1] : "(null)");
+    freeNames(names, kEqParams);
+
+    // The unbounded export still writes them all.
+    names = static_cast<char **>(std::calloc(kEqParams, sizeof(char *)));
+    count = -1;
+    e = getFilterParamNames(ParametricEQFilter, &count, names);
+    EXPECT(e == noError && count == kEqParams &&
+               countNames(names, kEqParams) == kEqParams,
+           "getFilterParamNames() gives error %d, count %d, %d written", e,
+           count, countNames(names, kEqParams));
+    freeNames(names, kEqParams);
+
+    // Room for names, but no array.
+    e = getFilterParamNamesBounded(EchoFilter, &count, nullptr, 4);
+    EXPECT(e == invalidParameter, "a null array of 4 gives error %d", e);
+
+    dispose();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -413,6 +512,8 @@ int main(int argc, char **argv) {
         testDisposeAllSoundForgetsGlobalFilters();
     if (wanted("bus"))
         testUnplayedBusFilters();
+    if (wanted("names"))
+        testParamNamesFitTheArray();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

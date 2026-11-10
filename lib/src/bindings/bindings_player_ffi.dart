@@ -1657,37 +1657,47 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
     FilterType filterType,
   ) {
+    final type = native.FilterType.fromValue(filterType.index);
     final ffi.Pointer<ffi.Int> paramsCount = calloc(ffi.sizeOf<ffi.Int>());
-    final ffi.Pointer<ffi.Pointer<ffi.Char>> names =
-        calloc<ffi.Pointer<ffi.Char>>(30);
-    _log.fine(
-      () =>
-          'PARAMS NAME paramsCount: ${paramsCount.address.toRadixString(16)}  '
-          'names: ${names.address.toRadixString(16)}',
-    );
-
-    final e = native.getFilterParamNames(
-      native.FilterType.fromValue(filterType.index),
-      paramsCount,
-      names,
-    );
-    final pNames = <String>[];
-    for (var i = 0; i < paramsCount.value; i++) {
-      _log.fine(
-        () =>
-            'PARAMS NAME $i ${names + i}   '
-            '${names[i].cast<Utf8>().toDartString()}    '
-            'names[i]: ${names[i].address.toRadixString(16)}',
+    try {
+      // Ask how many parameters the filter has (the parametric EQ has 195),
+      // then for that many names.
+      var e = native.getFilterParamNamesBounded(
+        type,
+        paramsCount,
+        ffi.nullptr,
+        0,
       );
-      pNames.add(names[i].cast<Utf8>().toDartString());
+      final capacity = paramsCount.value;
+      if (e != native.PlayerErrors.noError || capacity <= 0) {
+        return (error: PlayerErrors.values[e.value], names: <String>[]);
+      }
+      final names = calloc<ffi.Pointer<ffi.Char>>(capacity);
+      try {
+        e = native.getFilterParamNamesBounded(
+          type,
+          paramsCount,
+          names,
+          capacity,
+        );
+        final pNames = <String>[];
+        for (var i = 0; i < capacity; i++) {
+          if (names[i] == ffi.nullptr) continue;
+          pNames.add(names[i].cast<Utf8>().toDartString());
+        }
+        return (error: PlayerErrors.values[e.value], names: pNames);
+      } finally {
+        // Allocated natively with malloc(), which calloc.free() does not
+        // match on Windows. Free them all here, even if one could not be
+        // decoded. A slot the export did not fill is still null.
+        for (var i = 0; i < capacity; i++) {
+          if (names[i] != ffi.nullptr) nativeFree(names[i].cast<ffi.Void>());
+        }
+        calloc.free(names);
+      }
+    } finally {
+      calloc.free(paramsCount);
     }
-    final ret = (error: PlayerErrors.values[e.value], names: pNames);
-    calloc.free(paramsCount);
-    for (var i = 0; i < pNames.length; i++) {
-      calloc.free(names[i]);
-    }
-    calloc.free(names);
-    return ret;
   }
 
   @override

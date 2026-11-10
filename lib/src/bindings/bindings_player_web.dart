@@ -36,6 +36,12 @@ typedef OnMetadataCallbackTFunction = void Function(int metadataPtr);
 class FlutterSoLoudWeb extends FlutterSoLoud {
   static final Logger _log = Logger('flutter_soloud.FlutterSoLoudFfi');
 
+  /// How many names [getFilterParamNames] leaves room for. The module's
+  /// getFilterParamNames() writes one 32-bit pointer per parameter without
+  /// knowing the array's size, so this must be more than any filter has:
+  /// the largest, the parametric EQ, has 195.
+  static const _maxFilterParamNames = 256;
+
   WorkerController? workerController;
   bool _eventCallbacksSetUp = false;
 
@@ -1740,28 +1746,33 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     FilterType filterType,
   ) {
     final paramsCountPtr = wasmMalloc(4); // 4 bytes for an int32
-    final namesPtr = wasmMalloc(30 * 20); // list of 30 String with 20 chars
-    final e = wasmGetFilterParamNames(
-      filterType.index,
-      paramsCountPtr,
-      namesPtr,
-    );
+    final namesPtr = wasmMalloc(_maxFilterParamNames * 4);
+    var paramsCount = 0;
+    try {
+      final e = wasmGetFilterParamNames(
+        filterType.index,
+        paramsCountPtr,
+        namesPtr,
+      );
 
-    final pNames = <String>[];
-    var offsetPtr = 0;
-    final paramsCount = wasmGetI32Value(paramsCountPtr, 'i32');
-    for (var i = 0; i < paramsCount; i++) {
-      final namePtr = wasmGetI32Value(namesPtr + offsetPtr, 'i32');
-      final name = wasmUtf8ToString(namePtr);
-      offsetPtr += name.length;
-
-      pNames.add(name);
+      paramsCount = wasmGetI32Value(paramsCountPtr, 'i32');
+      if (paramsCount > _maxFilterParamNames) {
+        paramsCount = _maxFilterParamNames;
+      }
+      final pNames = <String>[];
+      for (var i = 0; i < paramsCount; i++) {
+        pNames.add(wasmUtf8ToString(wasmGetI32Value(namesPtr + i * 4, 'i32')));
+      }
+      return (error: PlayerErrors.values[e], names: pNames);
+    } finally {
+      // Each name is allocated by the module with malloc(). Free them all
+      // here, even if one could not be read.
+      for (var i = 0; i < paramsCount; i++) {
+        wasmFree(wasmGetI32Value(namesPtr + i * 4, 'i32'));
+      }
+      wasmFree(namesPtr);
+      wasmFree(paramsCountPtr);
     }
-
-    final ret = (error: PlayerErrors.values[e], names: pNames);
-    wasmFree(namesPtr);
-    wasmFree(paramsCountPtr);
-    return ret;
   }
 
   @override

@@ -1122,9 +1122,26 @@ extern "C"
   ///
   /// [filterType] filter to get param names.
   /// Returns [PlayerErrors.noError] if no errors and the list of param names.
+  ///
+  /// [names] must have room for one pointer per parameter, and the filter
+  /// does not say how many it has beforehand (the parametric EQ has 195):
+  /// prefer [getFilterParamNamesBounded].
   FFI_PLUGIN_EXPORT enum PlayerErrors
   getFilterParamNames(enum FilterType filterType, int *paramsCount,
                       char **names);
+
+  /// Get parameters names of the given filter.
+  ///
+  /// [filterType] filter to get param names.
+  /// [paramsCount] receives the number of parameters of the filter, which can
+  /// be more than [capacity].
+  /// [names] receives the first [capacity] names at most. Each one is
+  /// allocated with malloc(): free it with nativeFree(). [names] can be null
+  /// when [capacity] is 0, to get the count only.
+  /// Returns [PlayerErrors.noError] if no errors.
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  getFilterParamNamesBounded(enum FilterType filterType, int *paramsCount,
+                             char **names, int capacity);
 
   /// Add the filter [filterType] to [soundHash]. If [soundHash]==0 the
   /// filter is added to global filters.

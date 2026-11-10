@@ -36,7 +36,9 @@
 #endif
 #endif
 
+#include <algorithm>
 #include <atomic>
+#include <climits>
 #include <condition_variable>
 #include <cstdint>
 #include <map>
@@ -3448,17 +3450,40 @@ extern "C"
   ///
   /// [filterType] filter to get param names.
   /// Returns [PlayerErrors.noError] if no errors and the list of param names.
+  ///
+  /// [names] must have room for one pointer per parameter, and the filter
+  /// does not say how many it has beforehand (the parametric EQ has 195):
+  /// prefer [getFilterParamNamesBounded].
   FFI_PLUGIN_EXPORT enum PlayerErrors
   getFilterParamNames(enum FilterType filterType, int *paramsCount,
                       char **names)
   {
+    return getFilterParamNamesBounded(filterType, paramsCount, names, INT_MAX);
+  }
+
+  /// Get parameters names of the given filter.
+  ///
+  /// [filterType] filter to get param names.
+  /// [paramsCount] receives the number of parameters of the filter, which can
+  /// be more than [capacity].
+  /// [names] receives the first [capacity] names at most. Each one is
+  /// allocated with malloc(): free it with nativeFree(). [names] can be null
+  /// when [capacity] is 0, to get the count only.
+  /// Returns [PlayerErrors.noError] if no errors.
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  getFilterParamNamesBounded(enum FilterType filterType, int *paramsCount,
+                             char **names, int capacity)
+  {
     *paramsCount = 0;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (capacity < 0 || (capacity > 0 && names == nullptr))
+      return invalidParameter;
     std::vector<std::string> pNames =
         player.get()->mFilters.getFilterParamNames(filterType);
     *paramsCount = static_cast<int>(pNames.size());
-    for (int i = 0; i < *paramsCount; i++)
+    const int n = std::min(*paramsCount, capacity);
+    for (int i = 0; i < n; i++)
     {
       names[i] = strdup(pNames[i].c_str());
     }

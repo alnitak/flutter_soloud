@@ -1743,6 +1743,10 @@ PlayerErrors isFilterActive(
 ///
 /// [filterType] filter to get param names.
 /// Returns [PlayerErrors.noError] if no errors and the list of param names.
+///
+/// [names] must have room for one pointer per parameter, and the filter
+/// does not say how many it has beforehand (the parametric EQ has 195):
+/// prefer [getFilterParamNamesBounded].
 @ffi.Native<
   ffi.UnsignedInt Function(
     ffi.UnsignedInt,
@@ -1762,6 +1766,39 @@ PlayerErrors getFilterParamNames(
   ffi.Pointer<ffi.Pointer<ffi.Char>> names,
 ) => PlayerErrors.fromValue(
   _getFilterParamNames(filterType.value, paramsCount, names),
+);
+
+/// Get parameters names of the given filter.
+///
+/// [filterType] filter to get param names.
+/// [paramsCount] receives the number of parameters of the filter, which can
+/// be more than [capacity].
+/// [names] receives the first [capacity] names at most. Each one is
+/// allocated with malloc(): free it with nativeFree(). [names] can be null
+/// when [capacity] is 0, to get the count only.
+/// Returns [PlayerErrors.noError] if no errors.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+    ffi.Int,
+  )
+>(symbol: 'getFilterParamNamesBounded')
+external int _getFilterParamNamesBounded(
+  int filterType,
+  ffi.Pointer<ffi.Int> paramsCount,
+  ffi.Pointer<ffi.Pointer<ffi.Char>> names,
+  int capacity,
+);
+
+PlayerErrors getFilterParamNamesBounded(
+  FilterType filterType,
+  ffi.Pointer<ffi.Int> paramsCount,
+  ffi.Pointer<ffi.Pointer<ffi.Char>> names,
+  int capacity,
+) => PlayerErrors.fromValue(
+  _getFilterParamNamesBounded(filterType.value, paramsCount, names, capacity),
 );
 
 /// Add the filter [filterType] to [soundHash]. If [soundHash]==0 the
