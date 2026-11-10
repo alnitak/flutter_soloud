@@ -1,10 +1,11 @@
 // Robustness tests for the metadata parsers that read lengths straight out of
 // stream data: the M4A box parser (src/audiobuffer/m4a_metadata.cpp), the
-// ID3v2 frame parsers of the MP3 and AAC stream decoders, and the OpusTags
-// parser. Their input is the first bytes of a network stream
-// (StreamDecoder::decode, used by buffer and pull streams). Malformed or
-// hostile lengths must make them stop, never read past the data or exhaust
-// the stack.
+// ID3v2 frame parsers of the MP3 and AAC stream decoders, the OpusTags
+// parser and the FLAC header scanner. Their input is the first bytes of a
+// network stream (StreamDecoder::decode, used by buffer and pull streams).
+// Malformed or hostile lengths must make them stop, never read past the data
+// or exhaust the stack, and metadata that arrives in pieces must decode as
+// if it had arrived whole.
 //
 //   ./test/run_metadata_parsers_test.sh [--asan|--wasm32] [scenario]
 //
@@ -17,11 +18,18 @@
 //   mp3-id3-wrap   an ID3v2.3 frame size that wraps `pos + size` (MP3 stream)
 //   aac-id3-wrap   the same frame in front of an AAC stream
 //   opus-wrap      an OpusTags vendor length that wraps `pos + length`
+//   flac-split-header      a FLAC file whose 64 KiB final metadata block
+//                  arrives in two deliveries decodes as when it arrives whole
+//   flac-seek-split-header the same split, then a seek: the header must have
+//                  been cached for the codec to restart from
+//   flac-truncated-header  data that ends inside the FLAC metadata finishes
+//                  instead of staying pending
 //
 // The *-wrap scenarios other than m4a-large-wrap can only fail with a 32-bit
 // size_t, as in the web build and on armeabi-v7a: run them with --wasm32. On
-// a 64-bit host the sums do not wrap and they pass either way. opus-wrap needs
-// the Xiph libraries, which the --wasm32 build leaves out.
+// a 64-bit host the sums do not wrap and they pass either way. opus-wrap and
+// the flac-* scenarios need the Xiph libraries, which the --wasm32 build
+// leaves out.
 //
 // A scenario that can crash runs in a child process, so a crash is reported
 // as a failure of that scenario.
@@ -31,6 +39,8 @@
 #include "audiobuffer/stream_decoder.h"
 
 #if !defined(NO_XIPH_LIBS)
+#include "audiobuffer/flac_stream_decoder.h"
+#include <FLAC/stream_encoder.h>
 #include <ogg/ogg.h>
 #endif
 #include <pthread.h>
@@ -294,6 +304,169 @@ static void runOpusWrap() {
         EXPECT(meta.oggMetadata.vendor.size() <= 1,
                "a vendor string longer than its packet must not be read");
 }
+
+// ----------------------------------------------------------------- FLAC
+// The FLAC fixture: STREAMINFO, then one final 64 KiB PADDING block (as a
+// large cover picture would be), then the frames of 512 mono samples. Its
+// metadata ends at 42 + 4 + 65536 = 65582. The scenarios split it after 44
+// bytes, inside the padding block's 4-byte header, and after 62 bytes, 16
+// bytes into its payload.
+static constexpr size_t kFlacHeaderEnd = 65582;
+static constexpr size_t kFlacSplits[] = {44, 62};
+
+static FLAC__StreamEncoderWriteStatus collectFlac(
+    const FLAC__StreamEncoder *, const FLAC__byte bytes[], size_t length,
+    unsigned, unsigned, void *opaque) {
+    auto &out = *static_cast<Bytes *>(opaque);
+    out.insert(out.end(), bytes, bytes + length);
+    return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
+}
+
+static Bytes flacWithPadding() {
+    Bytes encoded;
+    FLAC__StreamEncoder *encoder = FLAC__stream_encoder_new();
+    EXPECT(encoder != nullptr, "FLAC encoder allocation");
+    if (encoder == nullptr) return {};
+    FLAC__stream_encoder_set_channels(encoder, 1);
+    FLAC__stream_encoder_set_bits_per_sample(encoder, 16);
+    FLAC__stream_encoder_set_sample_rate(encoder, 44100);
+    FLAC__stream_encoder_set_total_samples_estimate(encoder, 512);
+    const FLAC__StreamEncoderInitStatus status = FLAC__stream_encoder_init_stream(
+        encoder, collectFlac, nullptr, nullptr, nullptr, &encoded);
+    EXPECT(status == FLAC__STREAM_ENCODER_INIT_STATUS_OK, "FLAC encoder init");
+    FLAC__int32 samples[512];
+    for (unsigned i = 0; i < 512; ++i)
+        samples[i] = static_cast<FLAC__int32>(i * 113 % 32768) - 16384;
+    EXPECT(FLAC__stream_encoder_process_interleaved(encoder, samples, 512),
+           "FLAC encoder samples");
+    EXPECT(FLAC__stream_encoder_finish(encoder), "FLAC encoder finish");
+    FLAC__stream_encoder_delete(encoder);
+
+    // Find where the encoder's own metadata ends and its frames begin.
+    size_t frames = 4;
+    for (;;) {
+        if (frames + 4 > encoded.size()) return {};
+        const bool last = (encoded[frames] & 0x80) != 0;
+        const size_t length = (static_cast<size_t>(encoded[frames + 1]) << 16) |
+                              (static_cast<size_t>(encoded[frames + 2]) << 8) |
+                              encoded[frames + 3];
+        frames += 4 + length;
+        if (frames > encoded.size()) return {};
+        if (last) break;
+    }
+    // Keep "fLaC" and STREAMINFO (42 bytes), clear its last-block flag, and
+    // replace the rest of the metadata with the final padding block.
+    Bytes file(encoded.begin(), encoded.begin() + 42);
+    file[4] &= 0x7f;
+    file.insert(file.end(), {0x81, 0x01, 0x00, 0x00});
+    file.resize(file.size() + 65536, 0);
+    file.insert(file.end(), encoded.begin() + frames, encoded.end());
+    return file;
+}
+
+// Ends the data and decodes what the decoder still holds.
+static void drainFlac(FlacDecoderWrapper &decoder, std::vector<float> &output) {
+    decoder.setDataEnded();
+    int rate = 44100, channels = 1;
+    for (int i = 0; i < 8 && decoder.hasPendingData(); ++i) {
+        Bytes none;
+        auto result = decoder.decode(none, &rate, &channels);
+        output.insert(output.end(), result.first.begin(), result.first.end());
+    }
+}
+
+// Delivers [file] whole (split 0) or as its first [split] bytes and then the
+// rest, and returns the samples. StreamDecoder initializes the codec before
+// the first delivery reaches it; [initialized] does the same here.
+static std::vector<float> deliverFlac(FlacDecoderWrapper &decoder, const Bytes &file,
+                                      size_t split, bool initialized) {
+    if (initialized) EXPECT(decoder.initializeDecoder(44100, 1), "FLAC initialize");
+    int rate = 44100, channels = 1;
+    std::vector<float> output;
+    Bytes chunk(file.begin(), file.begin() + (split ? split : file.size()));
+    auto result = decoder.decode(chunk, &rate, &channels);
+    EXPECT(result.second == DecoderError::NoError, "FLAC first delivery status");
+    output.insert(output.end(), result.first.begin(), result.first.end());
+    if (split) {
+        EXPECT(output.empty(), "a partial FLAC header produced samples");
+        chunk.assign(file.begin() + split, file.end());
+        result = decoder.decode(chunk, &rate, &channels);
+        EXPECT(result.second == DecoderError::NoError, "FLAC second delivery status");
+        output.insert(output.end(), result.first.begin(), result.first.end());
+    }
+    return output;
+}
+
+static std::vector<float> decodeFlac(const Bytes &file, size_t split, bool initialized) {
+    FlacDecoderWrapper decoder;
+    std::vector<float> output = deliverFlac(decoder, file, split, initialized);
+    drainFlac(decoder, output);
+    return output;
+}
+
+static void runFlacSplitHeader() {
+    const Bytes file = flacWithPadding();
+    EXPECT(file.size() > kFlacHeaderEnd, "FLAC fixture has no frames");
+    if (file.size() <= kFlacHeaderEnd) return;
+    const std::vector<float> reference = decodeFlac(file, 0, true);
+    EXPECT(reference.size() == 512, "unsplit FLAC: %zu samples", reference.size());
+    for (size_t split : kFlacSplits) {
+        for (bool initialized : {false, true}) {
+            const std::vector<float> output = decodeFlac(file, split, initialized);
+            EXPECT(output == reference,
+                   "FLAC split at %zu (initialized=%d): %zu samples, unsplit %zu",
+                   split, initialized, output.size(), reference.size());
+        }
+    }
+}
+
+// A pull-stream seek restarts the codec from the cached header, followed by
+// the frame bytes from the seek offset.
+static void runFlacSeekSplitHeader() {
+    const Bytes file = flacWithPadding();
+    EXPECT(file.size() > kFlacHeaderEnd, "FLAC fixture has no frames");
+    if (file.size() <= kFlacHeaderEnd) return;
+    const std::vector<float> reference = decodeFlac(file, 0, true);
+    for (size_t split : kFlacSplits) {
+        FlacDecoderWrapper decoder;
+        deliverFlac(decoder, file, split, true);
+        decoder.prepareForSeek(0, kFlacHeaderEnd);
+        Bytes chunk(file.begin() + kFlacHeaderEnd, file.end());
+        int rate = 44100, channels = 1;
+        auto result = decoder.decode(chunk, &rate, &channels);
+        EXPECT(result.second == DecoderError::NoError, "FLAC status after the seek");
+        std::vector<float> output = result.first;
+        drainFlac(decoder, output);
+        EXPECT(output == reference,
+               "FLAC split at %zu, after a seek: %zu samples, expected %zu",
+               split, output.size(), reference.size());
+    }
+}
+
+// A truncated file, or a stream that stops inside a large picture block, ends
+// inside its metadata. The decoder must then stop reporting pending data: the
+// native buffer stream's decode loop polls until hasPendingData() is false.
+static void runFlacTruncatedHeader() {
+    const Bytes file = flacWithPadding();
+    EXPECT(file.size() > kFlacHeaderEnd, "FLAC fixture has no frames");
+    if (file.size() <= kFlacHeaderEnd) return;
+    for (size_t split : kFlacSplits) {
+        for (bool initialized : {false, true}) {
+            FlacDecoderWrapper decoder;
+            if (initialized) EXPECT(decoder.initializeDecoder(44100, 1), "FLAC initialize");
+            int rate = 44100, channels = 1;
+            Bytes chunk(file.begin(), file.begin() + split);
+            auto result = decoder.decode(chunk, &rate, &channels);
+            EXPECT(result.first.empty(), "a partial FLAC header produced samples");
+            std::vector<float> output;
+            drainFlac(decoder, output);
+            EXPECT(output.empty(), "a truncated FLAC header produced samples");
+            EXPECT(!decoder.hasPendingData(),
+                   "FLAC data that ended at %zu, inside the metadata, is still "
+                   "pending after 8 decodes (initialized=%d)", split, initialized);
+        }
+    }
+}
 #endif // !defined(NO_XIPH_LIBS)
 
 // ---------------------------------------------------------------- valid
@@ -392,6 +565,15 @@ int main(int argc, char **argv) {
 #if !defined(NO_XIPH_LIBS)
     if (want("opus-wrap"))
         isolated("opus-wrap", "an OpusTags vendor length that wraps", runOpusWrap);
+    if (want("flac-split-header"))
+        isolated("flac-split-header", "a FLAC header split across deliveries",
+                 runFlacSplitHeader);
+    if (want("flac-seek-split-header"))
+        isolated("flac-seek-split-header", "a seek after a split FLAC header",
+                 runFlacSeekSplitHeader);
+    if (want("flac-truncated-header"))
+        isolated("flac-truncated-header", "data that ends inside the FLAC metadata",
+                 runFlacTruncatedHeader);
 #endif
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);

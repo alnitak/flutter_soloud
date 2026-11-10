@@ -1,6 +1,7 @@
 #if !defined(NO_XIPH_LIBS)
 
 #include "flac_stream_decoder.h"
+#include "metadata_bounds.h"
 #include "../soloud_common.h"
 #include "../simd/simd_pcm.h"
 #include <cstring> // For memcpy
@@ -33,7 +34,7 @@ namespace
         size_t pos = 4;
         while (true)
         {
-            if (pos + 4 > data.size())
+            if (!metadataHasBytes(data.size(), pos, 4))
                 return 0; // need more data
 
             const unsigned char blockType = data[pos];
@@ -42,6 +43,10 @@ namespace
                 (static_cast<size_t>(data[pos + 2]) << 8) |
                 static_cast<size_t>(data[pos + 3]);
 
+            // A delivery can end anywhere inside the metadata. The header is
+            // complete only once every byte of every block has arrived.
+            if (!metadataHasBytes(data.size(), pos + 4, blockSize))
+                return 0;
             pos += 4 + blockSize;
 
             if (blockType & 0x80)
@@ -170,9 +175,22 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
             mHeader.assign(m_audioData.begin(), m_audioData.begin() + headerLen);
             SOLOUD_DEBUG_LOG("[FlacDecoderWrapper] captured %zu header bytes\n", headerLen);
         }
-        else if (m_pFlacDecoder == nullptr)
+        else if (m_dataEnded)
         {
-            // Need the full header before we can initialize the decoder.
+            // The data ended inside the metadata, so the header can never
+            // complete. Drop the input and end the stream, or a drain loop
+            // waiting on hasPendingData() would wait forever.
+            m_audioData.clear();
+            m_read_pos = 0;
+            m_drained = true;
+            return {{}, DecoderError::CodecError};
+        }
+        else
+        {
+            // Wait for the rest of the header even when StreamDecoder has
+            // already initialized the codec: once the codec consumes these
+            // bytes the header can no longer be cached, and a seek restarts
+            // the codec from the cached header.
             return {{}, DecoderError::NoError};
         }
     }
