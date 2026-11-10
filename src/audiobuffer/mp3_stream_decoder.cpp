@@ -200,6 +200,9 @@ void MP3DecoderWrapper::cleanup() {
     isInitialized = false;
   }
   audioData.clear();
+  mSeekPoints.clear();
+  m_seekTableSampleRate = 0;
+  mAfterSeek = false;
   m_read_pos = 0;
   m_audioDataBaseOffset = 0;
   m_seekTableBaseOffset = 0;
@@ -415,7 +418,10 @@ bool MP3DecoderWrapper::hasPendingData() const {
 }
 
 void MP3DecoderWrapper::buildSeekTable() {
-  if (!isInitialized || !mSeekPoints.empty()) {
+  // MP3 frames carry no timestamp: a table built from data that starts at a
+  // seek would count time from the seek. Only the original stream anchors
+  // the table to the file.
+  if (mAfterSeek || !isInitialized || !mSeekPoints.empty()) {
     return;
   }
 
@@ -431,11 +437,29 @@ void MP3DecoderWrapper::buildSeekTable() {
     // Seek point byte positions are relative to the current window start;
     // remember the base so timeToByteOffset can return absolute offsets.
     m_seekTableBaseOffset = m_audioDataBaseOffset;
+    m_seekTableSampleRate = decoder.sampleRate;
   }
 }
 
+void MP3DecoderWrapper::prepareForSeek(uint64_t targetSample,
+                                       uint64_t byteOffset) {
+  (void)targetSample;
+  if (isInitialized) {
+    drmp3_uninit(&decoder);
+    isInitialized = false;
+  }
+  audioData.clear();
+  m_read_pos = 0;
+  m_audioDataBaseOffset = byteOffset;
+  mDataEnded = false;
+  mDrained = false;
+  // Keep mSeekPoints, its base offset and its sample rate: they map times to
+  // offsets in the whole file, which the data fed next does not start.
+  mAfterSeek = true;
+}
+
 bool MP3DecoderWrapper::canSeekToTime(double seconds) const {
-  return isInitialized && !mSeekPoints.empty() && seconds > 0.0;
+  return !mSeekPoints.empty() && m_seekTableSampleRate != 0 && seconds > 0.0;
 }
 
 uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
@@ -447,7 +471,7 @@ uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
   }
 
   const uint64_t targetFrame = static_cast<uint64_t>(
-      std::floor(seconds * decoder.sampleRate));
+      std::floor(seconds * m_seekTableSampleRate));
 
   // Seek points are sorted by pcmFrameIndex; binary-search the last one at or
   // before the target frame.

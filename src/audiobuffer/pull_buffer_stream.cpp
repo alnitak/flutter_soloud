@@ -356,6 +356,8 @@ void PullBufferStream::resetDecoderForSeek(uint64_t targetSample,
   if (type == DetectedType::BUFFER_OGG_OPUS ||
       type == DetectedType::BUFFER_OGG_VORBIS ||
       type == DetectedType::BUFFER_WAV ||
+      type == DetectedType::BUFFER_MP3_STREAM ||
+      type == DetectedType::BUFFER_MP3_WITH_ID3 ||
       type == DetectedType::BUFFER_FLAC) {
     mStreamDecoder->prepareForSeek(targetSample, byteOffset);
   } else {

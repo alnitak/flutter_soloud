@@ -30,6 +30,10 @@ public:
   // Call this when no more data will be added to signal end-of-stream
   void setDataEnded() override;
 
+  /// Restart the codec and the input at [byteOffset] in the file, keeping the
+  /// seek table built from the start of the file.
+  void prepareForSeek(uint64_t targetSample, uint64_t byteOffset) override;
+
   std::pair<std::vector<float>, DecoderError>
   decode(std::vector<unsigned char> &buffer, int *samplerate,
          int *channels, size_t maxOutputSamples = 0) override;
@@ -61,6 +65,11 @@ private:
   /// Value of m_audioDataBaseOffset in effect when mSeekPoints was built;
   /// added to seek point byte positions to get absolute stream offsets.
   uint64_t m_seekTableBaseOffset;
+  /// Sample rate of the frames mSeekPoints counts in; 0 without a table.
+  uint32_t m_seekTableSampleRate = 0;
+  /// Set by prepareForSeek(): the data now starts mid-file, where a seek
+  /// table built from it would count time from the seek, not the file start.
+  bool mAfterSeek = false;
   /// Size of the ID3v2 tag detected at initialization (0 when absent).
   size_t m_id3Size;
   int mIcyMetaInt;
