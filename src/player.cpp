@@ -611,10 +611,49 @@ PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
 #endif
 }
 
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+namespace
+{
+    // What listPlaybackDevices() reports instead of the backend's devices,
+    // while a test has set it. See soloudTestSetPlaybackDevices().
+    std::mutex gTestPlaybackDevicesMutex;
+    bool gTestPlaybackDevicesSet = false;
+    std::vector<std::string> gTestPlaybackDeviceNames;
+} // namespace
+
+/// Test-only: makes Player::listPlaybackDevices() report [count] devices
+/// with these [names], the first one the default, instead of enumerating
+/// the backend. A negative [count] restores real enumeration.
+extern "C" FFI_PLUGIN_EXPORT void soloudTestSetPlaybackDevices(
+    const char *const *names, int count)
+{
+    std::lock_guard<std::mutex> lock(gTestPlaybackDevicesMutex);
+    gTestPlaybackDevicesSet = count >= 0;
+    gTestPlaybackDeviceNames.assign(names, names + (count > 0 ? count : 0));
+}
+#endif
+
 // List available playback devices.
 std::vector<PlaybackDevice> Player::listPlaybackDevices()
 {
     std::vector<PlaybackDevice> ret;
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+    {
+        std::lock_guard<std::mutex> lock(gTestPlaybackDevicesMutex);
+        if (gTestPlaybackDevicesSet)
+        {
+            for (size_t i = 0; i < gTestPlaybackDeviceNames.size(); i++)
+            {
+                PlaybackDevice device{};
+                device.name = gTestPlaybackDeviceNames[i];
+                device.isDefault = i == 0;
+                device.id = (unsigned int)i;
+                ret.push_back(device);
+            }
+            return ret;
+        }
+    }
+#endif
     // Enumerated by the backend so the list comes from the same audio backend
     // the engine opens devices on: the IDs below are only meaningful to that
     // backend, and `init()` / `changeDevice()` hand them straight to it.

@@ -292,7 +292,9 @@ AudioDeviceState getAudioDeviceState() =>
 @ffi.Native<ffi.Void Function(ffi.UnsignedInt)>()
 external void debugTriggerAudioInterruption(int began);
 
-/// List playback devices.
+/// List playback devices, at most 50 of them. This export takes no
+/// capacity, and the web bindings, which still call it, allocate arrays of
+/// 50 entries. Prefer listPlaybackDevicesBounded().
 @ffi.Native<
   ffi.Void Function(
     ffi.Pointer<ffi.Pointer<ffi.Char>>,
@@ -306,6 +308,26 @@ external void listPlaybackDevices(
   ffi.Pointer<ffi.Pointer<ffi.Int>> deviceId,
   ffi.Pointer<ffi.Pointer<ffi.Int>> isDefault,
   ffi.Pointer<ffi.Int> n_devices,
+);
+
+/// List at most [capacity] playback devices into the caller's arrays, each
+/// of which must hold [capacity] entries. [n_devices] is the number
+/// written.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+    ffi.Pointer<ffi.Pointer<ffi.Int>>,
+    ffi.Pointer<ffi.Pointer<ffi.Int>>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+  )
+>()
+external void listPlaybackDevicesBounded(
+  ffi.Pointer<ffi.Pointer<ffi.Char>> devicesName,
+  ffi.Pointer<ffi.Pointer<ffi.Int>> deviceId,
+  ffi.Pointer<ffi.Pointer<ffi.Int>> isDefault,
+  ffi.Pointer<ffi.Int> n_devices,
+  int capacity,
 );
 
 /// Change the playback device.

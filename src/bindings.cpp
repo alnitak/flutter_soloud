@@ -1452,10 +1452,19 @@ extern "C"
     SoLoud::miniaudio_debugTriggerAudioInterruption(began != 0);
   }
 
-  /// List playback devices.
-  FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName, int **deviceId,
-                                             int **isDefault, int *n_devices)
+  /// List at most [capacity] playback devices into the caller's arrays, each
+  /// of which must hold [capacity] entries. [n_devices] is the number
+  /// written.
+  FFI_PLUGIN_EXPORT void listPlaybackDevicesBounded(char **devicesName,
+                                                    int **deviceId,
+                                                    int **isDefault,
+                                                    int *n_devices,
+                                                    int capacity)
   {
+    *n_devices = 0;
+    if (capacity <= 0)
+      return;
+
     // Deliberately not routed through the global `player`: `dispose()` now runs
     // on a worker isolate, so reading that `unique_ptr` here would race with it
     // being reset and replaced. Enumeration needs no player state, so call it
@@ -1465,7 +1474,7 @@ extern "C"
     std::vector<PlaybackDevice> d = Player::listPlaybackDevices();
 
     int numDevices = 0;
-    for (int i = 0; i < (int)d.size(); i++)
+    for (int i = 0; i < (int)d.size() && numDevices < capacity; i++)
     {
       /// Check the length first: the character scan below reads the first 5
       /// bytes, which is only in bounds once the name is known to be longer.
@@ -1496,6 +1505,17 @@ extern "C"
       numDevices++;
     }
     *n_devices = numDevices;
+  }
+
+  /// List playback devices, at most 50 of them. This export takes no
+  /// capacity, and the web bindings, which still call it, allocate arrays of
+  /// 50 entries. Prefer listPlaybackDevicesBounded().
+  FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName, int **deviceId,
+                                             int **isDefault, int *n_devices)
+  {
+    constexpr int kLegacyPlaybackDeviceCapacity = 50;
+    listPlaybackDevicesBounded(devicesName, deviceId, isDefault, n_devices,
+                               kLegacyPlaybackDeviceCapacity);
   }
 
   /// Change the playback device.

@@ -246,10 +246,21 @@ extern "C"
   /// notification callback. This is intentionally absent from the public API.
   FFI_PLUGIN_EXPORT void debugTriggerAudioInterruption(unsigned int began);
 
-  /// List playback devices.
+  /// List playback devices, at most 50 of them. This export takes no
+  /// capacity, and the web bindings, which still call it, allocate arrays of
+  /// 50 entries. Prefer listPlaybackDevicesBounded().
   FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName,
                                              int **deviceId, int **isDefault,
                                              int *n_devices);
+
+  /// List at most [capacity] playback devices into the caller's arrays, each
+  /// of which must hold [capacity] entries. [n_devices] is the number
+  /// written.
+  FFI_PLUGIN_EXPORT void listPlaybackDevicesBounded(char **devicesName,
+                                                    int **deviceId,
+                                                    int **isDefault,
+                                                    int *n_devices,
+                                                    int capacity);
 
   /// Change the playback device.
   ///
