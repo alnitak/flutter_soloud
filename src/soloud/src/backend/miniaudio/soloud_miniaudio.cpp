@@ -1662,17 +1662,52 @@ namespace SoLoud
             }
         } @catch (id) {}
 #elif defined(MA_SUPPORT_COREAUDIO)
-        if (context.backend == ma_backend_coreaudio && gDevice.coreaudio.audioUnitPlayback != nullptr &&
-            context.coreaudio.AudioUnitGetProperty != nullptr)
+        if (context.backend == ma_backend_coreaudio)
         {
             Float64 unitLatency = 0.0;
-            UInt32 dataSize = sizeof(unitLatency);
-            // kAudioUnitProperty_Latency = 12, kAudioUnitScope_Global = 0
-            OSStatus status = ((ma_AudioUnitGetProperty_proc)context.coreaudio.AudioUnitGetProperty)(
-                (AudioUnit)gDevice.coreaudio.audioUnitPlayback, 12, 0, 0, &unitLatency, &dataSize);
-            if (status == noErr && unitLatency > 0.0)
+            if (gDevice.coreaudio.audioUnitPlayback != nullptr &&
+                context.coreaudio.AudioUnitGetProperty != nullptr)
             {
-                return (double)unitLatency;
+                UInt32 dataSize = sizeof(unitLatency);
+                // kAudioUnitProperty_Latency = 12, kAudioUnitScope_Global = 0
+                ((ma_AudioUnitGetProperty_proc)context.coreaudio.AudioUnitGetProperty)(
+                    (AudioUnit)gDevice.coreaudio.audioUnitPlayback, 12, 0, 0, &unitLatency, &dataSize);
+            }
+
+            double deviceLatencySec = 0.0;
+            if (gDevice.coreaudio.deviceObjectIDPlayback != 0 &&
+                context.coreaudio.AudioObjectGetPropertyData != nullptr)
+            {
+                // Query device presentation latency and safety offset frames.
+                // kAudioDevicePropertyLatency = 'ltnc' (0x6c746e63)
+                // kAudioDevicePropertySafetyOffset = 'saft' (0x73616674)
+                // kAudioObjectPropertyScopeOutput = 'outp' (0x6f757470)
+                // kAudioObjectPropertyElementMain = 0
+                AudioObjectPropertyAddress address = { 0x6c746e63, 0x6f757470, 0 };
+                UInt32 latencyFrames = 0;
+                UInt32 propSize = sizeof(latencyFrames);
+                OSStatus err = ((ma_AudioObjectGetPropertyData_proc)context.coreaudio.AudioObjectGetPropertyData)(
+                    (AudioObjectID)gDevice.coreaudio.deviceObjectIDPlayback, &address, 0, nullptr, &propSize, &latencyFrames);
+                if (err == noErr && latencyFrames > 0 && gDevice.sampleRate > 0)
+                {
+                    deviceLatencySec += (double)latencyFrames / (double)gDevice.sampleRate;
+                }
+
+                address.mSelector = 0x73616674; // kAudioDevicePropertySafetyOffset
+                UInt32 safetyFrames = 0;
+                propSize = sizeof(safetyFrames);
+                err = ((ma_AudioObjectGetPropertyData_proc)context.coreaudio.AudioObjectGetPropertyData)(
+                    (AudioObjectID)gDevice.coreaudio.deviceObjectIDPlayback, &address, 0, nullptr, &propSize, &safetyFrames);
+                if (err == noErr && safetyFrames > 0 && gDevice.sampleRate > 0)
+                {
+                    deviceLatencySec += (double)safetyFrames / (double)gDevice.sampleRate;
+                }
+            }
+
+            double totalLatency = (double)unitLatency + deviceLatencySec;
+            if (totalLatency > 0.0)
+            {
+                return totalLatency;
             }
         }
 #endif
