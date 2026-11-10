@@ -3575,6 +3575,12 @@ extern "C"
         {
           return busIdNotFound;
         }
+        else if (busFilters->handle == 0)
+        {
+          // The bus has not been played, so its filters have no live
+          // instance to reach (see BusData::handle).
+          return soundHandleNotFound;
+        }
         else
         {
           busFilters->filters.setFilterParams(handle > 0 ? handle : busFilters->handle, filterType, attributeId, value);
@@ -3634,6 +3640,12 @@ extern "C"
         if (busFilters == nullptr)
         {
           return busIdNotFound;
+        }
+        else if (busFilters->handle == 0)
+        {
+          // The bus has not been played, so its filters have no live
+          // instance to reach (see BusData::handle).
+          return soundHandleNotFound;
         }
         else
         {
@@ -3698,6 +3710,12 @@ extern "C"
         {
           return busIdNotFound;
         }
+        else if (busFilters->handle == 0)
+        {
+          // The bus has not been played, so its filters have no live
+          // instance to reach (see BusData::handle).
+          return soundHandleNotFound;
+        }
         else
         {
           busFilters->filters.fadeFilterParameter(handle > 0 ? handle : busFilters->handle,
@@ -3753,6 +3771,12 @@ extern "C"
         if (busFilters == nullptr)
         {
           return busIdNotFound;
+        }
+        else if (busFilters->handle == 0)
+        {
+          // The bus has not been played, so its filters have no live
+          // instance to reach (see BusData::handle).
+          return soundHandleNotFound;
         }
         else
         {
@@ -4106,6 +4130,9 @@ extern "C"
       auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr)
         return busIdNotFound;
+      // The bus has not been played (see BusData::handle).
+      if (busFilters->handle == 0)
+        return soundHandleNotFound;
       busFilters->filters.setFilterParams(
           handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
           attributeId, value, customFilterId);
@@ -4150,6 +4177,9 @@ extern "C"
       auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr)
         return busIdNotFound;
+      // The bus has not been played (see BusData::handle).
+      if (busFilters->handle == 0)
+        return soundHandleNotFound;
       if (!busFilters->filters.getFilterParams(
               handle > 0 ? handle : busFilters->handle,
               FilterType::CustomFilter, attributeId, filterValue,
@@ -4195,6 +4225,9 @@ extern "C"
       auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr)
         return busIdNotFound;
+      // The bus has not been played (see BusData::handle).
+      if (busFilters->handle == 0)
+        return soundHandleNotFound;
       busFilters->filters.fadeFilterParameter(
           handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
           attributeId, to, time, customFilterId);
@@ -4232,6 +4265,9 @@ extern "C"
       auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr)
         return busIdNotFound;
+      // The bus has not been played (see BusData::handle).
+      if (busFilters->handle == 0)
+        return soundHandleNotFound;
       busFilters->filters.oscillateFilterParameter(
           handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
           attributeId, from, to, time, customFilterId);

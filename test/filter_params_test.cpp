@@ -14,6 +14,11 @@
 //   dispose disposeAllSound() detaches the global filters, so they must no
 //           longer be reported as active and must be able to be added again.
 //
+//   bus     A bus's filters have no live instance until the bus is played:
+//           setting, reading, fading or oscillating one must report
+//           soundHandleNotFound, and must not reach the global filter in
+//           the same slot. Once the bus plays they work.
+//
 // Every scenario opens the default output device through the plugin's
 // initEngine() (miniaudio falls back to its null backend without one); the
 // sounds are waveforms that play paused or at volume 0.
@@ -70,6 +75,28 @@ extern "C"
     enum PlayerErrors isCustomFilterActive(unsigned int soundHash,
                                            unsigned int busId,
                                            int customFilterId, int *index);
+    enum PlayerErrors fadeFilterParameter(unsigned int handle, unsigned int busId,
+                                          enum FilterType filterType,
+                                          int attributeId, float to, float time);
+    enum PlayerErrors oscillateFilterParameter(unsigned int handle,
+                                               unsigned int busId,
+                                               enum FilterType filterType,
+                                               int attributeId, float from,
+                                               float to, float time);
+    enum PlayerErrors setCustomFilterParamDefinition(
+        unsigned int soundHash, unsigned int busId, int customFilterId,
+        unsigned int paramIndex, const char *name, float minVal, float maxVal,
+        float defaultVal);
+    enum PlayerErrors fadeCustomFilterParameter(unsigned int handle,
+                                                unsigned int busId,
+                                                int customFilterId,
+                                                int attributeId, float to,
+                                                float time);
+    enum PlayerErrors oscillateCustomFilterParameter(unsigned int handle,
+                                                     unsigned int busId,
+                                                     int customFilterId,
+                                                     int attributeId, float from,
+                                                     float to, float time);
 }
 
 namespace {
@@ -283,6 +310,93 @@ void testDisposeAllSoundForgetsGlobalFilters() {
     dispose();
 }
 
+// ---- bus --------------------------------------------------------------------
+
+void testUnplayedBusFilters() {
+    std::printf("bus: a bus's filters are out of reach until it plays\n");
+    if (!initPluginEngine())
+        return;
+
+    // Global filters in the slots the bus's filters will use: an echo in
+    // slot 0 and custom filter 0 in slot 1.
+    EXPECT(addFilter(0, 0, EchoFilter) == noError, "addFilter globally");
+    EXPECT(setFilterParams(0, 0, EchoFilter, kEchoWet, 0.25f) == noError,
+           "set the global echo wet to 0.25");
+    EXPECT(addCustomFilter(0, 0, 0) == noError, "addCustomFilter globally");
+    EXPECT(setCustomFilterParams(0, 0, 0, 1, 7.0f) == noError,
+           "set the global custom filter's parameter 1 to 7");
+
+    const unsigned int bus = createBus();
+    EXPECT(addFilter(0, bus, EchoFilter) == noError, "addFilter on the bus");
+    EXPECT(addCustomFilter(0, bus, 0) == noError, "addCustomFilter on the bus");
+
+    PlayerErrors e = setFilterParams(0, bus, EchoFilter, kEchoWet, 0.75f);
+    EXPECT(e == soundHandleNotFound, "setting the bus's echo gives error %d", e);
+    float value = -1.0f;
+    e = getFilterParams(0, bus, EchoFilter, kEchoWet, &value);
+    EXPECT(e == soundHandleNotFound,
+           "reading the bus's echo gives error %d, value %g", e, value);
+    e = fadeFilterParameter(0, bus, EchoFilter, kEchoWet, 0.75f, 1.0f);
+    EXPECT(e == soundHandleNotFound, "fading the bus's echo gives error %d", e);
+    e = oscillateFilterParameter(0, bus, EchoFilter, kEchoWet, 0.5f, 0.75f,
+                                 1.0f);
+    EXPECT(e == soundHandleNotFound,
+           "oscillating the bus's echo gives error %d", e);
+
+    e = setCustomFilterParams(0, bus, 0, 1, 5.0f);
+    EXPECT(e == soundHandleNotFound,
+           "setting the bus's custom filter gives error %d", e);
+    value = -1.0f;
+    e = getCustomFilterParams(0, bus, 0, 1, &value);
+    EXPECT(e == soundHandleNotFound,
+           "reading the bus's custom filter gives error %d, value %g", e,
+           value);
+    e = fadeCustomFilterParameter(0, bus, 0, 1, 5.0f, 1.0f);
+    EXPECT(e == soundHandleNotFound,
+           "fading the bus's custom filter gives error %d", e);
+    e = oscillateCustomFilterParameter(0, bus, 0, 1, 4.0f, 5.0f, 1.0f);
+    EXPECT(e == soundHandleNotFound,
+           "oscillating the bus's custom filter gives error %d", e);
+    // A parameter definition is kept for when the bus plays.
+    e = setCustomFilterParamDefinition(0, bus, 0, 1, "Depth", 0.0f, 10.0f,
+                                       3.0f);
+    EXPECT(e == noError, "defining the bus's custom parameter gives error %d",
+           e);
+
+    // None of that reached the global filters.
+    value = -1.0f;
+    e = getFilterParams(0, 0, EchoFilter, kEchoWet, &value);
+    EXPECT(e == noError && value == 0.25f,
+           "the global echo wet reads back as error %d, value %g", e, value);
+    value = -1.0f;
+    e = getCustomFilterParams(0, 0, 0, 1, &value);
+    EXPECT(e == noError && value == 7.0f,
+           "the global custom parameter reads back as error %d, value %g", e,
+           value);
+
+    // Once the bus plays its filters work, starting from the definition.
+    playBus(bus);
+    value = -1.0f;
+    e = getCustomFilterParams(0, bus, 0, 1, &value);
+    EXPECT(e == noError && value == 3.0f,
+           "the bus's custom parameter starts as error %d, value %g", e,
+           value);
+    EXPECT(setFilterParams(0, bus, EchoFilter, kEchoWet, 0.75f) == noError,
+           "set the playing bus's echo wet to 0.75");
+    value = -1.0f;
+    e = getFilterParams(0, bus, EchoFilter, kEchoWet, &value);
+    EXPECT(e == noError && value == 0.75f,
+           "the playing bus's echo wet reads back as error %d, value %g", e,
+           value);
+    value = -1.0f;
+    e = getFilterParams(0, 0, EchoFilter, kEchoWet, &value);
+    EXPECT(e == noError && value == 0.25f,
+           "the global echo wet then reads back as error %d, value %g", e,
+           value);
+
+    dispose();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -297,6 +411,8 @@ int main(int argc, char **argv) {
         testNoValueMeansMissing();
     if (wanted("dispose"))
         testDisposeAllSoundForgetsGlobalFilters();
+    if (wanted("bus"))
+        testUnplayedBusFilters();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;
