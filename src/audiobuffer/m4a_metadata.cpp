@@ -192,8 +192,15 @@ static void parseStsdEntry(const unsigned char *data, size_t size, M4aMetadata &
     }
 }
 
+// Real metadata trees are a few levels deep. Each level of nesting costs only
+// 8 bytes of input, so the depth is bounded to bound the stack the scan of an
+// untrusted stream can use.
+static constexpr unsigned kMaxBoxDepth = 32;
+
 // Recursive box scanner
-static void scanBoxes(const unsigned char *data, size_t size, M4aMetadata &meta) {
+static void scanBoxes(const unsigned char *data, size_t size, M4aMetadata &meta,
+                      unsigned depth = 0) {
+    if (depth > kMaxBoxDepth) return;
     size_t offset = 0;
     while (offset + 8 <= size) {
         uint32_t boxSize = readBe32(data + offset);
@@ -223,7 +230,7 @@ static void scanBoxes(const unsigned char *data, size_t size, M4aMetadata &meta)
             memcmp(fourcc, "minf", 4) == 0 ||
             memcmp(fourcc, "stbl", 4) == 0) {
             // Recurse into container boxes
-            scanBoxes(payload, payloadSize, meta);
+            scanBoxes(payload, payloadSize, meta, depth + 1);
         } else if (memcmp(fourcc, "meta", 4) == 0) {
             // QuickTime/MP4 'meta' is a FullBox (has 4 bytes flags/version: 0x00000000)
             size_t metaSkip = 0;
@@ -231,7 +238,8 @@ static void scanBoxes(const unsigned char *data, size_t size, M4aMetadata &meta)
                 metaSkip = 4;
             }
             if (payloadSize > metaSkip) {
-                scanBoxes(payload + metaSkip, payloadSize - metaSkip, meta);
+                scanBoxes(payload + metaSkip, payloadSize - metaSkip, meta,
+                          depth + 1);
             }
         } else if (memcmp(fourcc, "ilst", 4) == 0) {
             parseIlst(payload, payloadSize, meta);

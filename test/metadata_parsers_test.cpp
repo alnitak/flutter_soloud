@@ -1,0 +1,316 @@
+// Robustness tests for the metadata parsers that read lengths straight out of
+// stream data: the M4A box parser (src/audiobuffer/m4a_metadata.cpp), the
+// ID3v2 frame parsers of the MP3 and AAC stream decoders, and the OpusTags
+// parser. Their input is the first bytes of a network stream
+// (StreamDecoder::decode, used by buffer and pull streams). Malformed or
+// hostile lengths must make them stop, never read past the data or exhaust
+// the stack.
+//
+//   ./test/run_metadata_parsers_test.sh [--asan|--wasm32] [scenario]
+//
+// Scenarios:
+//   valid        well-formed tags still parse, for every parser below
+//   m4a-nested   4 MiB of nested 'moov' boxes, parsed on a thread with a
+//                1 MiB stack (the iOS main thread and Android's default)
+//
+// A scenario that can crash runs in a child process, so a crash is reported
+// as a failure of that scenario.
+
+#include "audiobuffer/aac_stream_decoder.h"
+#include "audiobuffer/m4a_metadata.h"
+#include "audiobuffer/stream_decoder.h"
+
+#if !defined(NO_XIPH_LIBS)
+#include <ogg/ogg.h>
+#endif
+#include <pthread.h>
+
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+
+#if !defined(__EMSCRIPTEN__)
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
+using Bytes = std::vector<unsigned char>;
+
+static int gAssertions = 0;
+static int gFailures = 0;
+
+#define EXPECT(cond, ...)                                       \
+    do {                                                        \
+        ++gAssertions;                                          \
+        if (!(cond)) {                                          \
+            std::printf("  FAIL [%s:%d] ", __FILE__, __LINE__); \
+            std::printf(__VA_ARGS__);                           \
+            std::printf("\n");                                  \
+            ++gFailures;                                        \
+        }                                                       \
+    } while (0)
+
+static void putBe32(Bytes &out, uint32_t v) {
+    out.push_back((v >> 24) & 0xFF);
+    out.push_back((v >> 16) & 0xFF);
+    out.push_back((v >> 8) & 0xFF);
+    out.push_back(v & 0xFF);
+}
+
+static void putLe32(Bytes &out, uint32_t v) {
+    out.push_back(v & 0xFF);
+    out.push_back((v >> 8) & 0xFF);
+    out.push_back((v >> 16) & 0xFF);
+    out.push_back((v >> 24) & 0xFF);
+}
+
+static void putText(Bytes &out, const char *text) {
+    out.insert(out.end(), text, text + std::strlen(text));
+}
+
+static Bytes cat(Bytes a, const Bytes &b) {
+    a.insert(a.end(), b.begin(), b.end());
+    return a;
+}
+
+// ------------------------------------------------------------------ M4A
+static Bytes box(const char *type, const Bytes &payload) {
+    Bytes out;
+    putBe32(out, static_cast<uint32_t>(8 + payload.size()));
+    out.insert(out.end(), type, type + 4);
+    out.insert(out.end(), payload.begin(), payload.end());
+    return out;
+}
+
+static Bytes ftyp() { return box("ftyp", {'M', '4', 'A', ' ', 0, 0, 0, 0}); }
+
+static Bytes m4aWithTitle(const char *title) {
+    Bytes data = {0, 0, 0, 1, 0, 0, 0, 0};
+    putText(data, title);
+    Bytes meta = {0, 0, 0, 0};
+    meta = cat(meta, box("ilst", box("\xa9nam", box("data", data))));
+    return cat(ftyp(), box("moov", box("udta", box("meta", meta))));
+}
+
+struct ParseJob {
+    const Bytes *data;
+    bool found;
+};
+
+static void *parseOnThread(void *arg) {
+    auto *job = static_cast<ParseJob *>(arg);
+    M4aMetadata meta;
+    job->found = parseM4aMetadata(job->data->data(), job->data->size(), meta);
+    return nullptr;
+}
+
+static void runM4aNested() {
+    // ftyp, then a chain of 'moov' boxes, each the only child of the one
+    // before it: one recursive call per 8 bytes of input.
+    const size_t levels = (4u << 20) / 8;
+    Bytes file = ftyp();
+    const size_t base = file.size();
+    file.resize(base + levels * 8);
+    for (size_t i = 0; i < levels; ++i) {
+        const uint32_t size = static_cast<uint32_t>((levels - i) * 8);
+        unsigned char *p = file.data() + base + i * 8;
+        p[0] = (size >> 24) & 0xFF;
+        p[1] = (size >> 16) & 0xFF;
+        p[2] = (size >> 8) & 0xFF;
+        p[3] = size & 0xFF;
+        std::memcpy(p + 4, "moov", 4);
+    }
+
+    ParseJob job{&file, true};
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, 1u << 20);
+    pthread_t thread;
+    const bool started =
+        pthread_create(&thread, &attr, parseOnThread, &job) == 0;
+    EXPECT(started, "pthread_create failed");
+    if (started)
+        pthread_join(thread, nullptr);
+    pthread_attr_destroy(&attr);
+    EXPECT(!job.found, "a file of empty containers has no metadata");
+}
+
+// ------------------------------------------------------------------ ID3
+// An ID3v2.3 tag (plain 32-bit frame sizes) holding one TIT2 frame. The tag
+// header's own size covers only what is really there.
+static Bytes id3Tag(uint32_t frameSize, const Bytes &frameBody) {
+    Bytes frames;
+    putText(frames, "TIT2");
+    putBe32(frames, frameSize);
+    frames.push_back(0);
+    frames.push_back(0);
+    frames.insert(frames.end(), frameBody.begin(), frameBody.end());
+    frames.resize(frames.size() + 16, 0); // padding
+
+    Bytes tag = {'I', 'D', '3', 3, 0, 0};
+    const uint32_t size = static_cast<uint32_t>(frames.size());
+    tag.push_back((size >> 21) & 0x7F);
+    tag.push_back((size >> 14) & 0x7F);
+    tag.push_back((size >> 7) & 0x7F);
+    tag.push_back(size & 0x7F);
+    return cat(tag, frames);
+}
+
+static Bytes latin1Body(const char *text) {
+    Bytes body = {0}; // ISO-8859-1
+    putText(body, text);
+    return body;
+}
+
+#if !defined(NO_XIPH_LIBS)
+// ----------------------------------------------------------------- Opus
+static Bytes oggPages(const std::vector<Bytes> &packets) {
+    ogg_stream_state os;
+    ogg_stream_init(&os, 0x50f1);
+    Bytes out;
+    for (size_t i = 0; i < packets.size(); ++i) {
+        ogg_packet op{};
+        op.packet = const_cast<unsigned char *>(packets[i].data());
+        op.bytes = static_cast<long>(packets[i].size());
+        op.b_o_s = i == 0;
+        op.granulepos = 0;
+        op.packetno = static_cast<ogg_int64_t>(i);
+        ogg_stream_packetin(&os, &op);
+        ogg_page og;
+        while (ogg_stream_flush(&os, &og)) {
+            out.insert(out.end(), og.header, og.header + og.header_len);
+            out.insert(out.end(), og.body, og.body + og.body_len);
+        }
+    }
+    ogg_stream_clear(&os);
+    return out;
+}
+
+static Bytes opusHead() {
+    Bytes head;
+    putText(head, "OpusHead");
+    head.push_back(1);              // version
+    head.push_back(2);              // channels
+    head.push_back(0x38);           // pre-skip 312, LE
+    head.push_back(0x01);
+    putLe32(head, 48000);           // input sample rate
+    head.push_back(0);              // output gain
+    head.push_back(0);
+    head.push_back(0);              // channel mapping family
+    return head;
+}
+
+static Bytes opusTags(uint32_t vendorLength, const char *vendor,
+                      const char *comment) {
+    Bytes tags;
+    putText(tags, "OpusTags");
+    putLe32(tags, vendorLength);
+    putText(tags, vendor);
+    putLe32(tags, comment ? 1 : 0);
+    if (comment) {
+        putLe32(tags, static_cast<uint32_t>(std::strlen(comment)));
+        putText(tags, comment);
+    }
+    return tags;
+}
+
+static void decodeOpus(const Bytes &tags, std::vector<AudioMetadata> &reported) {
+    Bytes stream = oggPages({opusHead(), tags});
+    StreamDecoder decoder;
+    int sampleRate = 48000, channels = 2;
+    decoder.decode(stream, &sampleRate, &channels,
+                   [&](AudioMetadata meta) { reported.push_back(meta); }, 0);
+}
+#endif // !defined(NO_XIPH_LIBS)
+
+// ---------------------------------------------------------------- valid
+static void testValid() {
+    std::printf("valid: well-formed tags still parse\n");
+    {
+        Bytes file = m4aWithTitle("Box Title");
+        M4aMetadata meta;
+        EXPECT(parseM4aMetadata(file.data(), file.size(), meta), "M4A: no metadata");
+        EXPECT(meta.title == "Box Title", "M4A title '%s'", meta.title.c_str());
+    }
+    {
+        Bytes body = latin1Body("Frame Title");
+        Bytes tag = id3Tag(static_cast<uint32_t>(body.size()), body);
+        AacMetadata meta;
+        size_t id3Size = 0;
+        EXPECT(AACDecoderWrapper::parseId3Tags(tag.data(), tag.size(), meta, id3Size),
+               "AAC ID3: not parsed");
+        EXPECT(meta.title == "Frame Title", "AAC ID3 title '%s'", meta.title.c_str());
+        EXPECT(id3Size == tag.size(), "AAC ID3 size %zu, expected %zu", id3Size, tag.size());
+    }
+#if !defined(NO_XIPH_LIBS)
+    {
+        std::vector<AudioMetadata> reported;
+        decodeOpus(opusTags(6, "vendor", "TITLE=Opus Title"), reported);
+        EXPECT(reported.size() == 1, "Opus: %zu metadata reports", reported.size());
+        if (!reported.empty()) {
+            const auto &ogg = reported[0].oggMetadata;
+            EXPECT(ogg.vendor == "vendor", "Opus vendor '%s'", ogg.vendor.c_str());
+            auto it = ogg.comments.find("TITLE");
+            EXPECT(it != ogg.comments.end() && it->second == "Opus Title",
+                   "Opus TITLE comment missing or wrong");
+        }
+    }
+#endif
+}
+
+// Runs a scenario that can crash the process in a child, so a stack overflow
+// or wild read is reported as a failure instead of ending the run. Under
+// Emscripten (no fork) it runs in-process: a trap or abort ends the run.
+static void isolated(const char *name, const char *what, void (*fn)()) {
+    std::printf("%s: %s\n", name, what);
+#if defined(__EMSCRIPTEN__)
+    fn();
+#else
+    std::fflush(stdout);
+    int fds[2];
+    const bool piped = pipe(fds) == 0;
+    const pid_t pid = fork();
+    if (pid == 0) {
+        gAssertions = 0;
+        gFailures = 0;
+        fn();
+        std::fflush(stdout);
+        // Hand the child's counts back to the parent.
+        if (piped) {
+            const int counts[2] = {gAssertions, gFailures};
+            (void)!write(fds[1], counts, sizeof(counts));
+        }
+        _exit(gFailures == 0 ? 0 : 1);
+    }
+    int counts[2] = {0, 0};
+    if (piped) {
+        close(fds[1]);
+        if (read(fds[0], counts, sizeof(counts)) != sizeof(counts))
+            counts[0] = counts[1] = 0;
+        close(fds[0]);
+    }
+    gAssertions += counts[0];
+    gFailures += counts[1];
+    int status = 0;
+    waitpid(pid, &status, 0);
+    if (WIFSIGNALED(status)) {
+        EXPECT(false, "%s: the parser crashed (signal %d)", name, WTERMSIG(status));
+    } else if (!WIFEXITED(status) || (WEXITSTATUS(status) != 0 && counts[1] == 0)) {
+        EXPECT(false, "%s: exit status %d", name, WEXITSTATUS(status));
+    }
+#endif
+}
+
+int main(int argc, char **argv) {
+    const std::string only = argc > 1 ? argv[1] : "";
+    const auto want = [&](const char *name) { return only.empty() || only == name; };
+
+    if (want("valid")) testValid();
+    if (want("m4a-nested"))
+        isolated("m4a-nested", "4 MiB of nested boxes on a 1 MiB stack", runM4aNested);
+
+    std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
+    return gFailures == 0 ? 0 : 1;
+}
