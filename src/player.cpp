@@ -1650,6 +1650,11 @@ void Player::setWaveform(unsigned int soundHash, int newWaveform)
 
 void Player::setWaveformFreq(unsigned int soundHash, float newFreq)
 {
+    // A NaN or infinite frequency would leave the oscillator's phase
+    // non-finite for good.
+    if (!std::isfinite(newFreq))
+        return;
+
     auto const s = findByHash(soundHash);
 
     if (s == nullptr || s->soundType != TYPE_SYNTH)
