@@ -3634,7 +3634,9 @@ extern "C"
         {
           *filterValue =
               busFilters->filters.getFilterParams(handle > 0 ? handle : busFilters->handle, filterType, attributeId);
-          if (!(isnormal(*filterValue) || isnan(*filterValue)))
+          // Zero is a valid parameter value (a completely dry filter, say);
+          // only a NaN or infinite one is an error.
+          if (!isfinite(*filterValue))
             return filterParameterGetError;
           if (*filterValue == 9999.0f)
             return filterNotFound;
@@ -3650,7 +3652,7 @@ extern "C"
         {
           *filterValue =
               s->filters.get()->getFilterParams(handle, filterType, attributeId);
-          if (!(isnormal(*filterValue) || isnan(*filterValue)))
+          if (!isfinite(*filterValue))
             return filterParameterGetError;
           if (*filterValue == 9999.0f)
             return filterNotFound;
