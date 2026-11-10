@@ -6,6 +6,8 @@
 // allocate 50 entries, so a 51st device was written past them.
 // listPlaybackDevicesBounded() is told the capacity and stops there, and
 // listPlaybackDevices() now stops at the 50 entries its callers allocate.
+// Both drop devices whose names look like garbage, which must not include
+// short real names such as "DAC" or "HDMI".
 //
 // A test hook (soloudTestSetPlaybackDevices(), SOLOUD_LIFECYCLE_TEST_HOOKS)
 // replaces the backend's devices with a list the test chooses. Every array is
@@ -173,6 +175,30 @@ void testLegacyExportListsAFewDevices()
     check(isNumberedPrefix(listInto(50, true), 3), "lists all 3 devices");
 }
 
+/// Names of five bytes or fewer are real devices too. Only a name with a
+/// control character in its first five bytes, or none at all, is dropped.
+void testShortNamesAreListed()
+{
+    std::printf("short device names\n");
+    fakeDevices({"DAC", "HDMI", "USB-A", "\x01" "device", ""});
+    for (bool legacy : {false, true})
+    {
+        const Listing listing = listInto(legacy ? 50 : 8, legacy);
+        const std::string via = legacy ? " (legacy export)" : "";
+        check(listing.count == 3,
+              "lists 3 of the 5 devices" + via + " (got " +
+                  std::to_string(listing.count) + ")");
+        const char *const expected[] = {"DAC", "HDMI", "USB-A"};
+        bool same = (int)listing.devices.size() == 3;
+        for (int i = 0; same && i < 3; i++)
+            same = listing.devices[i].name == expected[i] &&
+                   listing.devices[i].id == i &&
+                   listing.devices[i].isDefault == (i == 0 ? 1 : 0);
+        check(same, "DAC, HDMI and USB-A with ids 0, 1, 2, DAC the default" +
+                        via);
+    }
+}
+
 } // namespace
 
 int main()
@@ -182,6 +208,7 @@ int main()
     testBoundedExportWithNoCapacity();
     testLegacyExportStopsAtFifty();
     testLegacyExportListsAFewDevices();
+    testShortNamesAreListed();
     soloudTestSetPlaybackDevices(nullptr, -1);
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);

@@ -1476,9 +1476,8 @@ extern "C"
     int numDevices = 0;
     for (int i = 0; i < (int)d.size() && numDevices < capacity; i++)
     {
-      /// Check the length first: the character scan below reads the first 5
-      /// bytes, which is only in bounds once the name is known to be longer.
-      if (d[i].name.size() <= 5)
+      /// A device needs a name, but a short one ("DAC", "HDMI") is fine.
+      if (d[i].name.empty())
         continue;
 
       bool hasSpecialChar = false;
@@ -1487,8 +1486,9 @@ extern "C"
       /// ASCII characters with values <0x20 (blank space) which cannot be
       /// real devices and should be ignored. Doesn't happen on my Linux
       /// anymore (maybe was a bug on audio drivers?), but worth checking
-      /// to be sure.
-      for (int n = 0; n < 5; n++)
+      /// to be sure. Only the bytes the name has are scanned: the
+      /// terminating NUL of a shorter name is not a control character.
+      for (size_t n = 0; n < 5 && n < d[i].name.size(); n++)
       {
         if (d[i].name[n] < 0x20 && d[i].name[n] >= 0)
           hasSpecialChar = true;
