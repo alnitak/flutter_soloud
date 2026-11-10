@@ -133,7 +133,12 @@ private:
   Steinberg::FUnknownPtr<Steinberg::Vst::IAudioProcessor> mProcessor;
   Steinberg::IPtr<Vst3ComponentHandler> mComponentHandler;
   Vst3ComponentHandler::PerformEditCallback mOnGuiEditCallback;
+  // Created by the first openEditor() and kept, closed or open, until
+  // shutdown(): the audio thread writes editor telemetry through
+  // mEditorWindowRt, which shutdown() clears under mProcessMutex before the
+  // window is destroyed.
   std::unique_ptr<Vst3EditorWindow> mEditorWindow;
+  std::atomic<Vst3EditorWindow *> mEditorWindowRt{nullptr};
 
   unsigned int mSampleRate = 48000;
   unsigned int mMaxBlockSize = 2048;

@@ -233,11 +233,11 @@ void Vst3PluginInstance::shutdown() {
   mIsProcessing.store(false, std::memory_order_release);
 
   closeEditor();
-  if (mEditorWindow) {
-    mEditorWindow.reset();
-  }
 
   std::lock_guard<std::mutex> procLock(mProcessMutex);
+  // No block is running now, and none will use the window after this.
+  mEditorWindowRt.store(nullptr, std::memory_order_release);
+  mEditorWindow.reset();
   if (mProcessor) {
     mProcessor->setProcessing(false);
   }
@@ -474,8 +474,9 @@ void Vst3PluginInstance::prepareAndProcessBlock(
       }
     } else {
       if (mProcessor->process(mProcessData) == Steinberg::kResultOk) {
-        if (mEditorWindow) {
-          mEditorWindow->writeAudioTelemetry(
+        if (Vst3EditorWindow *editor =
+                mEditorWindowRt.load(std::memory_order_acquire)) {
+          editor->writeAudioTelemetry(
               numCh > 0 ? mInChannelPtrs[0] : nullptr,
               numCh > 1 ? mInChannelPtrs[1]
                         : (numCh > 0 ? mInChannelPtrs[0] : nullptr),
@@ -879,6 +880,7 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
 
   if (!mEditorWindow) {
     mEditorWindow = Vst3EditorWindow::create();
+    mEditorWindowRt.store(mEditorWindow.get(), std::memory_order_release);
   }
   if (!mEditorWindow) {
     return false;
@@ -932,11 +934,10 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
 }
 
 void Vst3PluginInstance::closeEditor() {
+  // The window object stays for the next openEditor(): the audio thread may
+  // be writing telemetry through it (see mEditorWindowRt).
   if (mEditorWindow) {
     mEditorWindow->close();
-#if !defined(__linux__) || defined(__ANDROID__)
-    mEditorWindow.reset();
-#endif
   }
 }
 

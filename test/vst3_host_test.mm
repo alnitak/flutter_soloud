@@ -4,17 +4,25 @@
 // Build & run from the flutter_soloud repo root (macOS only):
 //
 //   ./test/run_vst3_host_test.sh [--asan|--tsan] [test name]
+//
+// The editor tests check threading: run them under --tsan.
 
 #include "vst3/vst3_host.h"
 #include "vst3_mock_plugin.h"
 
+#include <CoreFoundation/CoreFoundation.h>
+
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
+#include <functional>
 #include <string>
+#include <thread>
 #include <vector>
 
 using SoLoud::Vst3HostManager;
@@ -75,6 +83,46 @@ void processEffectBlock(int handle, std::vector<float> &buffer, unsigned int fra
     vst3FilterDspCallback(buffer.data(), frames, frames, 2, kSampleRate, 0.0, nullptr, 0,
                           0, userData(handle));
 }
+
+bool waitFor(const std::function<bool()> &done, std::chrono::milliseconds timeout) {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!done()) {
+        if (std::chrono::steady_clock::now() > deadline)
+            return false;
+        // Runs the editor's poll timer.
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.002, true);
+    }
+    return true;
+}
+
+// Runs an effect block after block the way a filter slot does, until stopped.
+class EffectAudioThread {
+public:
+    explicit EffectAudioThread(int handle) : mHandle(handle), mThread([this] { run(); }) {}
+    ~EffectAudioThread() { stop(); }
+
+    void stop() {
+        mStop.store(true);
+        if (mThread.joinable())
+            mThread.join();
+    }
+    long blocks() const { return mBlocks.load(); }
+
+private:
+    void run() {
+        constexpr unsigned int kFrames = 64;
+        std::vector<float> buffer(2 * kFrames, 0.5f);
+        while (!mStop.load()) {
+            processEffectBlock(mHandle, buffer, kFrames);
+            mBlocks.fetch_add(1);
+        }
+    }
+
+    const int mHandle;
+    std::atomic<bool> mStop{false};
+    std::atomic<long> mBlocks{0};
+    std::thread mThread;
+};
 
 double presetValue(int paramId) { return (paramId + 1) / 1000.0; }
 
@@ -177,6 +225,31 @@ static void testInstrumentOutputIsNeverStale() {
     Vst3HostManager::instance().unloadPlugin(handle);
 }
 
+// Opening and closing the editor while the effect processes. The mock has no
+// editor view, so each open stops at the editor window object, which the
+// audio thread reads every block. Run under --tsan / --asan.
+static void testEditorOpenCloseWhileProcessing() {
+    std::printf("Test: editor open/close while the effect processes\n");
+    const int handle = loadMock(gBundle, "Mock Effect");
+    auto plugin = Vst3HostManager::instance().getPlugin(handle);
+    if (plugin == nullptr)
+        return;
+
+    EffectAudioThread audio(handle);
+    EXPECT(waitFor([&] { return audio.blocks() > 10; }, std::chrono::seconds(5)),
+           "the audio thread did not start");
+    for (int i = 0; i < 2000; ++i) {
+        plugin->openEditor("Mock Effect");
+        plugin->closeEditor();
+    }
+    const long blocks = audio.blocks();
+    audio.stop();
+    EXPECT(blocks > 20, "only %ld blocks ran during the open/close loop", blocks);
+
+    plugin.reset();
+    Vst3HostManager::instance().unloadPlugin(handle);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: %s <directory of the mock bundles> [test]\n", argv[0]);
@@ -187,6 +260,7 @@ int main(int argc, char **argv) {
     const std::pair<const char *, void (*)()> tests[] = {
         {"params", testParameterChangesReachProcessor},
         {"instrument", testInstrumentOutputIsNeverStale},
+        {"editor", testEditorOpenCloseWhileProcessing},
     };
     for (const auto &test : tests)
         if (only.empty() || only == test.first)
