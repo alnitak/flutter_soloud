@@ -1107,6 +1107,7 @@ Player::PendingSound Player::decodeJoinedSources(
     newSound->soundType = TYPE_WAV;
 
     auto *joinedWav = static_cast<SoLoud::Wav *>(newSound->sound.get());
+    // The Wav owns stereoData from here on: it frees it when it rejects it.
     SoLoud::result loadRawRes = joinedWav->loadRawWave(
         stereoData,
         maxFrames * 2,
@@ -1117,7 +1118,6 @@ Player::PendingSound Player::decodeJoinedSources(
     );
     if (loadRawRes != SoLoud::SO_NO_ERROR)
     {
-        delete[] stereoData;
         pending.sound.reset();
     }
 
