@@ -498,16 +498,17 @@ void MixerOutput::setDataCallback(MixerOutputDataCallback callback) {
 
 void MixerOutput::notificationThreadFunc() {
   while (!m_shouldStop.load()) {
-    const size_t available = getAvailableBytes();
-
     // Fixed-size PCM chunk mode: emit exactly m_chunkBytes at a time. The data
     // is copied into a local contiguous buffer, the read position is advanced
     // immediately, and the callback is invoked. Dart must not advance the
     // circular buffer again for these chunks.
+    //
+    // A chunk is consumed here, so nothing else will ever re-arm a latch:
+    // emit every complete chunk that is buffered, as the web path does. A
+    // device block of several chunks, or a pass that runs late, must not
+    // leave a backlog behind.
     if (m_chunkBytes > 0) {
-      if (available >= m_chunkBytes && !m_notified.load()) {
-        m_notified.store(true, std::memory_order_release);
-
+      while (!m_shouldStop.load() && getAvailableBytes() >= m_chunkBytes) {
         size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
         size_t firstPart = std::min(m_chunkBytes, m_bufferSize - readOffset);
         std::memcpy(m_chunkBuffer.data(), m_buffer.data() + readOffset,
@@ -530,13 +531,11 @@ void MixerOutput::notificationThreadFunc() {
         }
       }
 
-      if (available < m_chunkBytes) {
-        m_notified.store(false, std::memory_order_release);
-      }
-
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
+
+    const size_t available = getAvailableBytes();
 
     // Threshold-based mode (used by default and by compressed formats):
     // notify when at least notificationThresholdBytes are available.
