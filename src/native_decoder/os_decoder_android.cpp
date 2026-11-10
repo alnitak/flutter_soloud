@@ -651,15 +651,17 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
         const size_t bytesRead = headerRead > 0 ? static_cast<size_t>(headerRead) : 0;
         if (bytesRead >= 6 && !NativeAudioDecoder::isM4aOrMp4(header, bytesRead)) {
             DetectedType type = DetectedType::BUFFER_UNKNOWN;
-            int syncIdx = NativeAudioDecoder::findAc3Syncword(header, bytesRead);
-            if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= bytesRead) {
-                type = NativeAudioDecoder::isEac3(header + syncIdx, bytesRead - syncIdx)
-                           ? DetectedType::BUFFER_EAC3
-                           : DetectedType::BUFFER_AC3;
+            // An ADTS header at the start identifies AAC. Check it before
+            // looking for AC-3 syncwords, which can occur in AAC payload data.
+            size_t id3Skip = skipId3Header(header, bytesRead);
+            if (NativeAudioDecoder::isAacAdts(header + id3Skip, bytesRead - id3Skip)) {
+                type = DetectedType::BUFFER_AAC;
             } else {
-                size_t id3Skip = skipId3Header(header, bytesRead);
-                if (NativeAudioDecoder::isAacAdts(header + id3Skip, bytesRead - id3Skip)) {
-                    type = DetectedType::BUFFER_AAC;
+                int syncIdx = NativeAudioDecoder::findAc3Syncword(header, bytesRead);
+                if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= bytesRead) {
+                    type = NativeAudioDecoder::isEac3(header + syncIdx, bytesRead - syncIdx)
+                               ? DetectedType::BUFFER_EAC3
+                               : DetectedType::BUFFER_AC3;
                 }
             }
             if (type != DetectedType::BUFFER_UNKNOWN) {
@@ -680,6 +682,14 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
 
     return guardAllocations([&]() -> DecodedAudioData {
         if (!NativeAudioDecoder::isM4aOrMp4(bytes, length)) {
+            // An ADTS header at the start identifies AAC. Check it before
+            // scanning the payload: compressed AAC data can contain 0x0B77.
+            size_t id3Skip = skipId3Header(bytes, length);
+            if (NativeAudioDecoder::isAacAdts(bytes + id3Skip, length - id3Skip)) {
+                return decodeElementaryStream(std::vector<unsigned char>(bytes, bytes + length),
+                                              DetectedType::BUFFER_AAC);
+            }
+
             // Check if the buffer is a raw AC-3 or E-AC-3 elementary stream
             int syncIdx = NativeAudioDecoder::findAc3Syncword(bytes, length);
             if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= length) {
@@ -692,13 +702,6 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
                     return decodeElementaryStream(std::vector<unsigned char>(bytes, bytes + length),
                                                   DetectedType::BUFFER_AC3);
                 }
-            }
-
-            // Check if the buffer is a raw AAC ADTS elementary stream (possibly with ID3)
-            size_t id3Skip = skipId3Header(bytes, length);
-            if (NativeAudioDecoder::isAacAdts(bytes + id3Skip, length - id3Skip)) {
-                return decodeElementaryStream(std::vector<unsigned char>(bytes, bytes + length),
-                                              DetectedType::BUFFER_AAC);
             }
         }
 
