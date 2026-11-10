@@ -91,7 +91,9 @@ public:
     // Optimization: Prebuffering strategy - accumulate packets before starting decode
     if (mConverterInitialized && !mPrebufferComplete) {
       constexpr size_t kMinPrebufferPackets = 3;
-      if (mPacketQueue.size() >= kMinPrebufferPackets) {
+      // Once the data has ended no further packet can arrive: decode and
+      // flush what is queued, however few packets that is.
+      if (mPacketQueue.size() >= kMinPrebufferPackets || mDataEnded) {
         mPrebufferComplete = true;
       } else {
         // Wait for more packets before starting decode

@@ -1,6 +1,8 @@
 #!/bin/bash
 # Build & run the standalone native decoder correctness tests.
 # Run from the flutter_soloud repo root.
+#
+# --asan builds with AddressSanitizer and UndefinedBehaviorSanitizer.
 
 set -e
 
@@ -8,6 +10,11 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 OUT="${TMPDIR:-/tmp}/native_decoder_test"
+SANITIZER=()
+if [ "${1:-}" == "--asan" ]; then
+    SANITIZER=(-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1)
+    OUT="${OUT}_asan"
+fi
 
 PLATFORM_SRCS=()
 PLATFORM_LIBS=()
@@ -19,7 +26,7 @@ else
     PLATFORM_LIBS+=(-ldl)
 fi
 
-c++ -std=c++17 -O2 -Wall \
+c++ -std=c++17 -O2 -Wall "${SANITIZER[@]}" \
     -I src \
     -I src/soloud/include \
     -I src/native_decoder \
