@@ -1518,6 +1518,118 @@ static void testScheduledClicksKeepMarkerRoom() {
     }
 }
 
+// A 16 kHz stream on a 48 kHz engine (the resampling path) with an optional
+// voice filter.
+struct RefillRun {
+    explicit RefillRun(SoLoud::Filter *filter) {
+        EXPECT(engine.init(SoLoud::Soloud::CLIP_ROUNDOFF,
+                           SoLoud::Soloud::NULLDRIVER, 48000, kQuantum,
+                           2) == SoLoud::SO_NO_ERROR,
+               "engine init failed");
+        EXPECT(stream.init(&engine, 16000, 1, BufferType::PCM_F32LE,
+                           16000 * 4) == PlayerErrors::noError,
+               "init failed");
+        if (filter != nullptr) {
+            stream.setFilter(0, filter);
+        }
+        EXPECT(engine.play(stream) != 0, "play failed");
+    }
+    ~RefillRun() { engine.deinit(); }
+    void mix(unsigned int quanta) {
+        std::vector<float> out(kQuantum * 2);
+        for (unsigned int q = 0; q < quanta; ++q) {
+            engine.mix(out.data(), kQuantum);
+            for (unsigned int i = 0; i < kQuantum; ++i) {
+                out2.push_back(out[i * 2]);
+                out2.push_back(out[i * 2 + 1]);
+            }
+        }
+    }
+    void push(const std::vector<float> &v) {
+        stream.pushDataFloat32(v.data(), static_cast<unsigned int>(v.size()));
+    }
+
+    SoLoud::Soloud engine;
+    SoLoud::RealtimeStream stream;
+    std::vector<float> out2; // everything mixed, interleaved stereo
+};
+
+// When frames reach a voice that starved on the resampling path, the part of
+// its current block that underrun silence filled and that it has not played
+// yet is fetched again from the new frames. A voice filter already ran over
+// that silence when the block was fetched: it must not run over the new
+// frames there as well, or its state advances twice (an echo comes early).
+static void testUnderrunRefillKeepsFilterTimeline() {
+    std::printf("Test: RealtimeStream underrun recovery keeps voice filters on time\n");
+
+    // An impulse with a 0.25 s echo. The rest of the stream (silence)
+    // arrives in time, or only after the voice starved.
+    long distance[2] = {0, 0};
+    for (int starve = 0; starve < 2; ++starve) {
+        SoLoud::EchoFilter echo;
+        echo.setParams(0.25f, 0.5f, 0.0f);
+        RefillRun r(&echo);
+        std::vector<float> impulse(1600, 0.0f);
+        impulse[0] = 1.0f;
+        const std::vector<float> zeros(16000, 0.0f);
+        r.push(impulse);
+        if (starve == 0) {
+            r.push(zeros);
+        }
+        r.mix(10);
+        if (starve == 1) {
+            EXPECT(r.stream.getUnderrunCount() == 1,
+                   "the voice should have starved (%u underruns)",
+                   r.stream.getUnderrunCount());
+            r.push(zeros);
+        }
+        r.mix(40);
+        auto peak = [&](size_t from, size_t to) {
+            size_t best = from;
+            for (size_t i = from; i < to && i < r.out2.size() / 2; ++i) {
+                if (std::fabs(r.out2[i * 2]) > std::fabs(r.out2[best * 2])) {
+                    best = i;
+                }
+            }
+            return best;
+        };
+        const size_t at = peak(0, 2400);
+        distance[starve] = static_cast<long>(peak(at + 4800, r.out2.size() / 2)) -
+                           static_cast<long>(at);
+    }
+    std::printf("  echo %ld frames after the impulse when fed in time, %ld after "
+                "an underrun\n", distance[0], distance[1]);
+    EXPECT(std::labs(distance[0] - 12000) <= 3, "echo %ld frames after the impulse, want 12000",
+           distance[0]);
+    EXPECT(std::labs(distance[1] - distance[0]) <= 3,
+           "after an underrun the echo came %ld frames after the impulse, want %ld",
+           distance[1], distance[0]);
+
+    // New frames after an underrun: an unfiltered voice still starts them
+    // inside its current block, a filtered one with its next block (one
+    // block is 512 stream frames, 1536 output frames).
+    for (int filtered = 0; filtered < 2; ++filtered) {
+        SoLoud::BiquadResonantFilter lowpass;
+        lowpass.setParams(SoLoud::BiquadResonantFilter::LOWPASS, 6000.0f, 0.7f);
+        RefillRun r(filtered ? &lowpass : nullptr);
+        r.push(std::vector<float>(1000, kLevel));
+        r.mix(10);  // starves after 3000 output frames
+        const unsigned int pushedAt = static_cast<unsigned int>(r.out2.size() / 2);
+        r.push(std::vector<float>(16000, kLevel));
+        r.mix(4);
+        const long long onset = firstAudible(r.out2, pushedAt);
+        EXPECT(onset >= 0, "new frames never played (filtered %d)", filtered);
+        const long long late = onset - pushedAt;
+        std::printf("  %s voice resumed %lld frames after the push\n",
+                    filtered ? "filtered" : "unfiltered", late);
+        if (filtered) {
+            EXPECT(late <= 1536 + 8, "a filtered voice resumed %lld frames late", late);
+        } else {
+            EXPECT(late <= 8, "an unfiltered voice resumed %lld frames late", late);
+        }
+    }
+}
+
 } // namespace rt_engine
 
 // 6. reset() clears the underrun statistics.
@@ -1568,6 +1680,7 @@ int main() {
     rt_engine::testRollbackKeeps3dState();
     rt_engine::testFastVoiceRollbackKeepsAudio();
     rt_engine::testScheduledClicksKeepMarkerRoom();
+    rt_engine::testUnderrunRefillKeepsFilterTimeline();
     testRealtimeResetClearsUnderrunCount();
 
     std::printf("\n%d assertions, %d failures\n", g_assertions, g_failures);

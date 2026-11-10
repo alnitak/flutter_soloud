@@ -570,13 +570,13 @@ unsigned int RealtimeStream::placeLocked(Soloud &engine, PushTiming timing,
   if (start < engine.mStreamTime) {
     const int ci = engine.retroactiveBegin_internal(start);
     if (ci >= 0) {
-      refillReadAheadLocked(engine, *inst);
+      refillReadAheadLocked(*inst);
       engine.retroactiveEnd_internal(ci);
       rolledBack = true;
     }
   }
   if (!rolledBack) {
-    refillReadAheadLocked(engine, *inst);
+    refillReadAheadLocked(*inst);
   }
   return written;
 }
@@ -643,8 +643,7 @@ time RealtimeStream::queuedAudioEndTimeLocked(const Soloud &engine,
   return t;
 }
 
-void RealtimeStream::refillReadAheadLocked(Soloud &engine,
-                                           RealtimeStreamInstance &inst) {
+void RealtimeStream::refillReadAheadLocked(RealtimeStreamInstance &inst) {
   // Resampling path only: if the voice's current SAMPLE_GRANULARITY block
   // ends in underrun silence that it pulled before these frames arrived,
   // regenerate the unconsumed part of that silence so the new frames are not
@@ -652,6 +651,17 @@ void RealtimeStream::refillReadAheadLocked(Soloud &engine,
   if (inst.mLeftoverSamples == 0 || inst.mResampleData[0] == nullptr ||
       inst.mSilentFramesSinceUnderrun == 0) {
     return;
+  }
+  // Not for a filtered voice: its filters ran over the whole block, silence
+  // included, when the mixer fetched it, so their state is already past the
+  // tail. Filtering a refilled tail would advance them over it twice (an
+  // echo would come early by the refilled length), and leaving it
+  // unfiltered would skip them. Such a voice starts the new frames with its
+  // next block, at most SAMPLE_GRANULARITY frames later.
+  for (unsigned int j = 0; j < FILTERS_PER_STREAM; ++j) {
+    if (inst.mFilter[j] != nullptr) {
+      return;
+    }
   }
   const unsigned int srcPos = inst.mSrcOffset >> kSrcOffsetFracBits;
   if (srcPos >= SAMPLE_GRANULARITY ||
@@ -671,13 +681,6 @@ void RealtimeStream::refillReadAheadLocked(Soloud &engine,
   inst.mSilentFramesSinceUnderrun -= refillCount;
   inst.getAudio(inst.mResampleData[0] + refillStart, refillCount,
                 SAMPLE_GRANULARITY);
-  for (unsigned int j = 0; j < FILTERS_PER_STREAM; ++j) {
-    if (inst.mFilter[j] != nullptr) {
-      inst.mFilter[j]->filter(inst.mResampleData[0] + refillStart, refillCount,
-                              SAMPLE_GRANULARITY, inst.mChannels,
-                              inst.mSamplerate, engine.mStreamTime);
-    }
-  }
 }
 
 void RealtimeStream::resetBuffer() {

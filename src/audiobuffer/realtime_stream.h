@@ -182,7 +182,7 @@ private:
   time queuedAudioEndTimeLocked(const Soloud &engine,
                                 const RealtimeStreamInstance &inst,
                                 uint64_t writeBefore, double voiceSr) const;
-  void refillReadAheadLocked(Soloud &engine, RealtimeStreamInstance &inst);
+  void refillReadAheadLocked(RealtimeStreamInstance &inst);
   void discardUnreadLocked();
   int findVoiceSlotLocked(const Soloud &engine,
                           const RealtimeStreamInstance *inst) const;
