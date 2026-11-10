@@ -661,6 +661,15 @@ namespace SoLoud
 		// held; returns whether the voice-inactive callback is due. Mixes
 		// nothing when the ring has no room for a whole quantum.
 		bool renderRingMixQuantumLocked_internal();
+		// ###### flutter_soloud local patch (device-thread callbacks) ######
+		// Set by renderRingTopUpNoWait_internal() when a quantum it mixed on
+		// the device callback ended voices or made the voice-inactive
+		// callback due: it leaves both to the render worker, which delivers
+		// them in renderRingDeliverDeferred_internal().
+		std::atomic<bool> mRenderRingCallbacksDeferred{false};
+		// Render worker: dispatch the ended voices and call the
+		// voice-inactive callback the device callback left behind, if any.
+		void renderRingDeliverDeferred_internal();
 		// The render worker: a thread that keeps the ring topped up so the
 		// device callback only copies frames out. A device backend sets
 		// mRenderWorkerWanted before init() returns; init() then starts the

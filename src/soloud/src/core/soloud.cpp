@@ -1011,25 +1011,63 @@ namespace SoLoud
 	{
 		if (!mRenderRing.isInited() || mBufferSize == 0)
 			return;
+		// ###### flutter_soloud local patch (device-thread callbacks) ######
+		// This is the device callback. The voices its quanta end, and the
+		// voice-inactive callback they make due, are left to the render
+		// worker (renderRingDeliverDeferred_internal()): the embedder's
+		// callbacks take its own locks (flutter_soloud's wait for the
+		// player's), and the ended-voice dispatch takes the audio mutex
+		// again, blocking. So no unlock here dispatches the queue, as
+		// unlockAudioMutex_internal() would. Any other thread's next unlock
+		// still does; the voice-inactive callback stays due under the mutex
+		// until the worker or the next mix reports it.
+		bool deferred = false;
+		auto unlockLeavingCallbacks = [&]()
+		{
+			if (mVoiceInactiveCallbackPending || mEndedVoiceCount != 0)
+			{
+				deferred = true;
+				mRenderRingCallbacksDeferred.store(true, std::memory_order_release);
+			}
+			mInsideAudioThreadMutex = false;
+			if (mAudioThreadMutex)
+			{
+				Thread::unlockMutex(mAudioThreadMutex);
+			}
+		};
 		while (renderRingWantsQuantum(mRenderRing, aFrames, mBufferSize))
 		{
 			if (!tryLockAudioMutex_internal())
-				return;
+				break;
 			// The worker may have mixed since the check above.
 			if (mEngineReady.load(std::memory_order_acquire) == 0 ||
 				!renderRingWantsQuantum(mRenderRing, aFrames, mBufferSize))
 			{
-				unlockAudioMutex_internal();
-				return;
+				unlockLeavingCallbacks();
+				break;
 			}
-			const bool notifyVoiceInactive = renderRingMixQuantumLocked_internal();
-			unlockAudioMutex_internal();
-
-			auto voiceInactiveCallback =
-				_voiceInactiveCallback.load(std::memory_order_acquire);
-			if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
-				voiceInactiveCallback();
+			if (renderRingMixQuantumLocked_internal())
+				mVoiceInactiveCallbackPending = true;
+			unlockLeavingCallbacks();
 		}
+		if (deferred)
+			wakeRenderWorker_internal();
+	}
+
+	void Soloud::renderRingDeliverDeferred_internal()
+	{
+		if (!mRenderRingCallbacksDeferred.exchange(false, std::memory_order_acq_rel))
+			return;
+		lockAudioMutex_internal();
+		const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
+		mVoiceInactiveCallbackPending = false;
+		// Dispatches the ended voices.
+		unlockAudioMutex_internal();
+
+		auto voiceInactiveCallback =
+			_voiceInactiveCallback.load(std::memory_order_acquire);
+		if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
+			voiceInactiveCallback();
 	}
 
 	// ###### flutter_soloud local patch (render-ahead worker) ######
@@ -1043,6 +1081,8 @@ namespace SoLoud
 		while (!aWorker->mStop.load(std::memory_order_acquire))
 		{
 			aSoloud->renderRingTopUp_internal();
+			// ###### flutter_soloud local patch (device-thread callbacks) ######
+			aSoloud->renderRingDeliverDeferred_internal();
 			std::unique_lock<std::mutex> lock(aWorker->mMutex);
 			// Woken by the device callback after every read. The timeout is
 			// only a safety net (the ring is full while it waits).
