@@ -7,6 +7,7 @@
 @TestOn('browser')
 library;
 
+import 'dart:async';
 import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
@@ -354,4 +355,96 @@ void main() {
     manager.stop();
     await subscription.cancel();
   });
+
+  test('a listener can stop the stream it listens to', () async {
+    final module = CaptureModule()..chunkBytes = 4;
+    final bindings = FlutterSoLoudWeb();
+    await bindings.setDartEventCallbacks();
+    final manager = MixerOutputStreamManager(
+      bindings: bindings,
+      isReady: () => true,
+    );
+    final received = <List<int>>[];
+    var closed = false;
+    manager.start(chunkPCMFrames: 2048).listen((chunk) {
+      received.add(chunk);
+      // Enough recorded: stop from inside the listener.
+      if (received.length == 1) manager.stop();
+    }, onDone: () => closed = true);
+    final first = module.queue([1, 2, 3, 4]);
+    module
+      ..queue([5, 6, 7, 8])
+      ..tail = [9, 10]
+      ..post({'message': 'mixerOutputPacket', 'token': first, 'length': 4});
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(received, [
+      orderedEquals([1, 2, 3, 4]),
+      orderedEquals([5, 6, 7, 8]),
+      orderedEquals([9, 10]),
+    ]);
+    expect(closed, isTrue);
+
+    // The manager starts again.
+    final again = <List<int>>[];
+    final subscription = manager.start(chunkPCMFrames: 2048).listen(again.add);
+    final next = module.queue([11, 12, 13, 14]);
+    module.post({'message': 'mixerOutputPacket', 'token': next, 'length': 4});
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(again, [
+      orderedEquals([11, 12, 13, 14]),
+    ]);
+    manager.stop();
+    await subscription.cancel();
+  });
+
+  test(
+    'a listener that stops and starts again keeps the streams apart',
+    () async {
+      final module = CaptureModule()..chunkBytes = 4;
+      final bindings = FlutterSoLoudWeb();
+      await bindings.setDartEventCallbacks();
+      final manager = MixerOutputStreamManager(
+        bindings: bindings,
+        isReady: () => true,
+      );
+      final first = <List<int>>[];
+      final second = <List<int>>[];
+      var firstClosed = false;
+      StreamSubscription<Uint8List>? secondSubscription;
+      final firstSubscription = manager.start(chunkPCMFrames: 2048).listen((
+        chunk,
+      ) {
+        first.add(chunk);
+        if (secondSubscription == null) {
+          manager.stop();
+          secondSubscription = manager
+              .start(chunkPCMFrames: 2048)
+              .listen(second.add);
+        }
+      }, onDone: () => firstClosed = true);
+      final token = module.queue([1, 2, 3, 4]);
+      module
+        ..tail = [9, 10]
+        ..post({'message': 'mixerOutputPacket', 'token': token, 'length': 4});
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(first, [
+        orderedEquals([1, 2, 3, 4]),
+        orderedEquals([9, 10]),
+      ], reason: 'the old stream ends with its own tail');
+      expect(firstClosed, isTrue);
+      expect(second, isEmpty, reason: 'which the new stream never sees');
+      expect(module.running, isTrue);
+      final next = module.queue([11, 12, 13, 14]);
+      module.post({'message': 'mixerOutputPacket', 'token': next, 'length': 4});
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(second, [
+        orderedEquals([11, 12, 13, 14]),
+      ]);
+      manager.stop();
+      await firstSubscription.cancel();
+      await secondSubscription?.cancel();
+    },
+  );
 }
