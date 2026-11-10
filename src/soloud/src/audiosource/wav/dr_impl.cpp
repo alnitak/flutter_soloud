@@ -11,5 +11,8 @@
 
 #define DR_FLAC_IMPLEMENTATION
 #define DR_FLAC_NO_STDIO
-#define DR_FLAC_NO_CRC
+// ###### flutter_soloud local patch (flac seek) ######
+// No DR_FLAC_NO_CRC: without the frames' checksums dr_flac cannot seek by
+// bisecting the file, and a file without a SEEKTABLE is decoded from its
+// first frame up to the target instead.
 #include "dr_flac.h"
