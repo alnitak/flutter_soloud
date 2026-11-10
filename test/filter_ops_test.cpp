@@ -24,6 +24,13 @@
 //           second play() inside the render-ahead window re-mixes a voice
 //           that carries the filter.
 //
+//   flanger  The flanger's LFO must sweep each channel over the block's
+//           frames from the same phase: two channels with the same input
+//           come out the same, a stereo channel the same as a mono one, and
+//           the output barely depends on the block size the mixer calls it
+//           with (only isolated samples where the delay rounds the other
+//           way).
+//
 // Build and run from the flutter_soloud repository root with:
 //
 //   ./test/run_filter_ops_test.sh [--asan|--tsan] [scenario]
@@ -386,6 +393,64 @@ void testRestoreOfABufferlessSnapshot() {
     checkRemixKeepsTheFilterFresh("flanger", flanger);
 }
 
+// ---- flanger ----------------------------------------------------------------
+
+// Flanges [channels] copies of one signal laid out planar with a stride of
+// kFlangerFrames, calling the filter on blocks of [block] frames the way the
+// mixer does (a pointer into the block, the full stride).
+constexpr unsigned int kFlangerFrames = 8192;
+
+std::vector<float> flange(unsigned int channels, unsigned int block, float freq) {
+    SoLoud::FlangerFilter flanger;
+    flanger.setParams(0.005f, freq);
+    std::unique_ptr<SoLoud::FilterInstance> instance(flanger.createInstance());
+    std::vector<float> buffer(kFlangerFrames * channels);
+    for (unsigned int ch = 0; ch < channels; ++ch)
+        for (unsigned int i = 0; i < kFlangerFrames; ++i)
+            buffer[ch * kFlangerFrames + i] = 0.4f * std::sin(0.13f * static_cast<float>(i));
+    for (unsigned int i = 0; i < kFlangerFrames; i += block)
+        instance->filter(buffer.data() + i, std::min(block, kFlangerFrames - i),
+                         kFlangerFrames, channels, 48000.0f, i / 48000.0);
+    return buffer;
+}
+
+void testFlangerLfoIsPerFrame() {
+    std::printf("flanger: the LFO sweeps every channel alike, in any block size\n");
+
+    for (const float freq : {10.0f, 40.0f}) {
+        const std::vector<float> mono = flange(1, 128, freq);
+        const std::vector<float> stereo = flange(2, 128, freq);
+        const std::vector<float> stereoOneBlock = flange(2, kFlangerFrames, freq);
+
+        int leftRight = 0;
+        int leftMono = 0;
+        for (unsigned int i = 0; i < kFlangerFrames; ++i) {
+            if (stereo[i] != stereo[kFlangerFrames + i])
+                ++leftRight;
+            if (stereo[i] != mono[i])
+                ++leftMono;
+        }
+        EXPECT(leftRight == 0, "%g Hz: %d of %u frames differ between two channels with "
+               "the same input", freq, leftRight, kFlangerFrames);
+        EXPECT(leftMono == 0, "%g Hz: %d of %u stereo frames differ from the mono "
+               "output", freq, leftMono, kFlangerFrames);
+
+        int differ = 0;
+        float worst = 0.0f;
+        for (unsigned int i = 0; i < stereo.size(); ++i) {
+            const float d = std::fabs(stereo[i] - stereoOneBlock[i]);
+            worst = std::max(worst, d);
+            if (d > 1e-6f)
+                ++differ;
+        }
+        std::printf("  %g Hz: %d of %zu samples differ between one block and blocks of "
+                    "128\n", freq, differ, stereo.size());
+        EXPECT(differ < static_cast<int>(stereo.size() / 100),
+               "%g Hz: %d of %zu samples (worst %g) differ between one %u-frame block "
+               "and blocks of 128", freq, differ, stereo.size(), worst, kFlangerFrames);
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -400,6 +465,8 @@ int main(int argc, char **argv) {
         testCompressorStartsFromSilence();
     if (wanted("restore"))
         testRestoreOfABufferlessSnapshot();
+    if (wanted("flanger"))
+        testFlangerLfoIsPerFrame();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;
