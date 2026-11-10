@@ -41,6 +41,9 @@ public:
 
   bool removeFilter(FilterType filterType, int customFilterId = 0);
 
+  /// Remove every filter, as removeFilter() does for one.
+  void removeAllFilters();
+
   SoLoud::CustomFilter *getCustomFilter(int customFilterId);
 
   SoLoud::CustomFilter *getOrCreateCustomFilter(int customFilterId);

@@ -3391,6 +3391,11 @@ interface class SoLoud {
   /// Disposes all audio sources that are currently loaded.
   /// Also stops all sound instances if anything is playing.
   ///
+  /// Every global filter (see [filters]) is deactivated as well: activate
+  /// again the ones that should keep running. A global custom filter keeps
+  /// its parameter definitions but loses its callback, as after
+  /// `deactivate()`, so call `setNativeCallback()` again once it is active.
+  ///
   /// No need to call this method when shutting down the engine.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.

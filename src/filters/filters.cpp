@@ -343,6 +343,15 @@ bool Filters::removeFilter(FilterType filterType, int customFilterId) {
   return true;
 }
 
+void Filters::removeAllFilters() {
+  // From the last one, so no filter has to be shifted down.
+  while (!filters.empty()) {
+    const FilterObject &last = *filters.back();
+    if (!removeFilter(last.type, last.customFilterId))
+      break;
+  }
+}
+
 void Filters::setFilterParams(SoLoud::handle handle, FilterType filterType,
                               int attributeId, float value,
                               int customFilterId) {

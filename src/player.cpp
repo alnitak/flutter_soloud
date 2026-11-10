@@ -3108,6 +3108,9 @@ void Player::stopDeviceAndDestroyAllSounds()
         {
             soloud.setGlobalFilter(i, nullptr);
         }
+        // and forget them, so they are no longer reported as active and can
+        // be added again.
+        mFilters.removeAllFilters();
 
         // Move all sounds out to destroy them after releasing the lock
         mSoundByHandle.clear();

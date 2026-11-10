@@ -11,6 +11,9 @@
 //           parametric EQ band at 9999 Hz) from a voice, a bus, a global
 //           filter and a custom filter. A NaN value is filterParameterGetError.
 //
+//   dispose disposeAllSound() detaches the global filters, so they must no
+//           longer be reported as active and must be able to be added again.
+//
 // Every scenario opens the default output device through the plugin's
 // initEngine() (miniaudio falls back to its null backend without one); the
 // sounds are waveforms that play paused or at volume 0.
@@ -61,6 +64,12 @@ extern "C"
     enum PlayerErrors getCustomFilterParams(unsigned int handle, unsigned int busId,
                                             int customFilterId, int attributeId,
                                             float *filterValue);
+    void disposeAllSound();
+    enum PlayerErrors isFilterActive(unsigned int soundHash, unsigned int busId,
+                                     enum FilterType filterType, int *index);
+    enum PlayerErrors isCustomFilterActive(unsigned int soundHash,
+                                           unsigned int busId,
+                                           int customFilterId, int *index);
 }
 
 namespace {
@@ -229,6 +238,51 @@ void testNoValueMeansMissing() {
     dispose();
 }
 
+// ---- dispose ----------------------------------------------------------------
+
+void testDisposeAllSoundForgetsGlobalFilters() {
+    std::printf("dispose: disposeAllSound() forgets the global filters\n");
+    if (!initPluginEngine())
+        return;
+
+    EXPECT(addFilter(0, 0, EchoFilter) == noError, "addFilter globally");
+    EXPECT(addCustomFilter(0, 0, 2) == noError, "addCustomFilter globally");
+    int index = -2;
+    isFilterActive(0, 0, EchoFilter, &index);
+    EXPECT(index == 0, "the global echo is at index %d before", index);
+
+    disposeAllSound();
+
+    index = -2;
+    isFilterActive(0, 0, EchoFilter, &index);
+    EXPECT(index == -1, "the global echo is at index %d after disposeAllSound",
+           index);
+    index = -2;
+    isCustomFilterActive(0, 0, 2, &index);
+    EXPECT(index == -1,
+           "the global custom filter is at index %d after disposeAllSound",
+           index);
+
+    // Added again, the filters work.
+    PlayerErrors e = addFilter(0, 0, EchoFilter);
+    EXPECT(e == noError, "adding the global echo again gives error %d", e);
+    e = addCustomFilter(0, 0, 2);
+    EXPECT(e == noError, "adding the global custom filter again gives error %d",
+           e);
+    EXPECT(setFilterParams(0, 0, EchoFilter, kEchoWet, 0.5f) == noError,
+           "set the global echo wet to 0.5");
+    float value = -1.0f;
+    e = getFilterParams(0, 0, EchoFilter, kEchoWet, &value);
+    EXPECT(e == noError && value == 0.5f,
+           "the global echo wet reads back as error %d, value %g", e, value);
+    index = -2;
+    isFilterActive(0, 0, EchoFilter, &index);
+    EXPECT(index == 0, "the global echo is at index %d once added again",
+           index);
+
+    dispose();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -241,6 +295,8 @@ int main(int argc, char **argv) {
         testZeroParameterReadsBack();
     if (wanted("missing"))
         testNoValueMeansMissing();
+    if (wanted("dispose"))
+        testDisposeAllSoundForgetsGlobalFilters();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;
