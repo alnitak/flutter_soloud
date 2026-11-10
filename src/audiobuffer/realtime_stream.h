@@ -195,6 +195,10 @@ private:
   /// `readFrame` that a voice at `cursor` has not applied, as the voice does
   /// when it reads there. Returns true if there was one. Audio mutex held.
   bool skipResetsLocked(uint64_t &readFrame, uint64_t &cursor) const noexcept;
+  /// Index of the first marker that the live voice, or a replay from a
+  /// snapshot of it that a rollback can restore, may still apply. Audio
+  /// mutex held.
+  size_t firstNeededMarkerLocked() const noexcept;
   void pruneMarkersLocked() noexcept;
   bool appendMarkerLocked(const TimelineMarker &marker) noexcept;
   /// Oldest ring frame a rollback may still read: older frames may have been
