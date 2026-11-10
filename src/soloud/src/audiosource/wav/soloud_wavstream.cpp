@@ -456,6 +456,14 @@ namespace SoLoud
 
 	bool WavStreamInstance::hasEnded()
 	{
+		// ###### flutter_soloud local patch (wavstream missing file) ######
+		// No file: it could not be opened (deleted or moved since the source
+		// was loaded), or no decoder accepted it. getAudio() plays nothing,
+		// so the voice ends instead of staying silent forever.
+		if (mFile == NULL)
+		{
+			return 1;
+		}
 		// For OGG streams, use the stream ended flag since mSampleCount may not
 		// match actual decoded samples (empty final page in OGG), and for OGG/FLAC
 		// the STREAMINFO total_samples can be 0 so we must not check mOffset >= mSampleCount.

@@ -65,8 +65,14 @@ mFileHandle(fp)
 
 }
 
+	// ###### flutter_soloud local patch (wavstream missing file) ######
+	// Without an open file (open() failed or was never called) read, seek,
+	// pos and eof act as on an empty file instead of passing a null FILE* to
+	// stdio, as length() already did.
 	unsigned int DiskFile::read(unsigned char *aDst, unsigned int aBytes)
 	{
+		if (!mFileHandle)
+			return 0;
 		return (unsigned int)fread(aDst, 1, aBytes, mFileHandle);
 	}
 
@@ -83,11 +89,15 @@ mFileHandle(fp)
 
 	void DiskFile::seek(int aOffset)
 	{
+		if (!mFileHandle)
+			return;
 		fseek(mFileHandle, aOffset, SEEK_SET);
 	}
 
 	unsigned int DiskFile::pos()
 	{
+		if (!mFileHandle)
+			return 0;
 		return (unsigned int)ftell(mFileHandle);
 	}
 
@@ -139,6 +149,8 @@ mFileHandle(fp)
 
 	int DiskFile::eof()
 	{
+		if (!mFileHandle)
+			return 1;
 		return feof(mFileHandle);
 	}
 
