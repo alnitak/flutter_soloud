@@ -454,8 +454,15 @@ void Vst3PluginInstance::prepareAndProcessBlock(
     mProcessData.processContext = &mProcessContext;
 
     if (isInstrument) {
-      if (mProcessor->process(mProcessData) == Steinberg::kResultOk &&
-          copyInstrumentFromScratch) {
+      if (mProcessor->process(mProcessData) != Steinberg::kResultOk) {
+        // The frames are still reported as rendered: make them silent, not
+        // whatever the plugin or the caller left in the buffer.
+        for (unsigned int ch = 0; ch < numCh; ++ch) {
+          std::memset(
+              aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset, 0,
+              chunkSamples * sizeof(float));
+        }
+      } else if (copyInstrumentFromScratch) {
         for (unsigned int ch = 0; ch < numCh; ++ch) {
           float *callerPtr =
               aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
@@ -558,6 +565,11 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
   const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
   prepareAndProcessBlock(aBuffer, aSamplesToRead, aBufferSize, numCh,
                          aSamplerate, aStreamTime, /*isInstrument=*/true);
+  // Channels the plugin was not set up for are silent too.
+  for (unsigned int ch = numCh; ch < aChannels; ++ch) {
+    std::memset(aBuffer + (static_cast<size_t>(ch) * aBufferSize), 0,
+                aSamplesToRead * sizeof(float));
+  }
   return aSamplesToRead;
 }
 

@@ -8,8 +8,10 @@
 #include "vst3/vst3_host.h"
 #include "vst3_mock_plugin.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
 #include <string>
@@ -117,6 +119,64 @@ static void testParameterChangesReachProcessor() {
     Vst3HostManager::instance().unloadPlugin(handle);
 }
 
+// A block the instrument fails to render must come out silent, whether the
+// caller's buffer is aligned for the plug-in (it renders into it directly)
+// or not (it renders into scratch memory). So must a channel the instrument
+// does not render.
+static void testInstrumentOutputIsNeverStale() {
+    std::printf("Test: instrument output is never stale\n");
+    const int handle = loadMock(gBundle, "Mock Instrument");
+    vst3mock::State *state = mockState(gBundle);
+    EXPECT(state != nullptr, "no mock state");
+    if (state == nullptr || handle <= 0)
+        return;
+
+    constexpr unsigned int kFrames = 256;
+    float *storage =
+        static_cast<float *>(std::aligned_alloc(64, sizeof(float) * (3 * kFrames + 64)));
+    // Renders one block into a buffer holding 1.0, starting [firstFloat]
+    // floats into the 64-byte aligned storage.
+    auto render = [&](unsigned int firstFloat, unsigned int channels) {
+        float *buffer = storage + firstFloat;
+        std::fill(buffer, buffer + channels * kFrames, 1.0f);
+        uint32_t ended = 0;
+        const unsigned int frames =
+            vst3SourceDspCallback(buffer, kFrames, kFrames, channels, kSampleRate, 0.0,
+                                  0.0, &ended, userData(handle));
+        EXPECT(frames == kFrames, "rendered %u of %u frames", frames, kFrames);
+        return buffer;
+    };
+    auto allEqual = [](const float *samples, unsigned int count, float value) {
+        for (unsigned int i = 0; i < count; ++i)
+            if (samples[i] != value)
+                return false;
+        return true;
+    };
+
+    const float *out = render(0, 2);
+    EXPECT(allEqual(out, 2 * kFrames, vst3mock::kInstrumentLevel),
+           "a rendered block holds %g, not the instrument's level", out[0]);
+
+    state->failProcess.store(true);
+    out = render(0, 2);
+    EXPECT(allEqual(out, 2 * kFrames, 0.0f),
+           "an aligned buffer holds %g after a failed block, not silence", out[0]);
+    out = render(1, 2);
+    EXPECT(allEqual(out, 2 * kFrames, 0.0f),
+           "an unaligned buffer holds %g after a failed block, not silence", out[0]);
+    state->failProcess.store(false);
+
+    out = render(0, 3);
+    EXPECT(allEqual(out, 2 * kFrames, vst3mock::kInstrumentLevel),
+           "a three-channel block holds %g, not the instrument's level", out[0]);
+    EXPECT(allEqual(out + 2 * kFrames, kFrames, 0.0f),
+           "the third channel of a stereo instrument holds %g, not silence",
+           out[2 * kFrames]);
+
+    std::free(storage);
+    Vst3HostManager::instance().unloadPlugin(handle);
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         std::fprintf(stderr, "usage: %s <directory of the mock bundles> [test]\n", argv[0]);
@@ -126,6 +186,7 @@ int main(int argc, char **argv) {
     const std::string only = argc > 2 ? argv[2] : "";
     const std::pair<const char *, void (*)()> tests[] = {
         {"params", testParameterChangesReachProcessor},
+        {"instrument", testInstrumentOutputIsNeverStale},
     };
     for (const auto &test : tests)
         if (only.empty() || only == test.first)
