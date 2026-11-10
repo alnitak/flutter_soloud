@@ -1665,6 +1665,9 @@ interface class SoLoud {
   );
 
   /// Stops the mixer output capture stream and releases associated resources.
+  ///
+  /// It stops only a capture this isolate started: one started from a worker
+  /// isolate with `SoLoudIsolate.startMixerOutputStream` keeps running.
   void stopMixerOutputStream() => _mixerOutputStreamManager.stop();
 
   /// Whether mixer output capture is currently active.

@@ -1,5 +1,6 @@
-// Web capture messages against a stand-in for the wasm module, which has the
-// capture exports, a heap and the event worker but no audio. Run with:
+// Web capture messages and stops against a stand-in for the wasm module,
+// which has the capture exports, a heap and the event worker but no audio.
+// Run with:
 //
 //   flutter test --platform chrome test/web_mixer_output_packet_test.dart
 @TestOn('browser')
@@ -11,6 +12,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/bindings/bindings_player_web.dart';
 import 'package:flutter_soloud/src/enums.dart';
+import 'package:flutter_soloud/src/mixer_output_stream_manager.dart';
 import 'package:test/test.dart';
 import 'package:web/web.dart' as web;
 
@@ -32,10 +34,17 @@ class CaptureModule {
       ..['_setMixerOutputCallback'] = ((int callback) {}).toJS
       ..['_startMixerCapture'] =
           ((int f, int r, int c, int size, int threshold, int chunk) {
+            if (running) return PlayerErrors.playerAlreadyInited.value;
+            running = true;
             captureId++;
             return PlayerErrors.noError.value;
           }).toJS
-      ..['_stopMixerCapture'] = (() {}).toJS;
+      ..['_stopMixerCapture'] = (() {
+        running = false;
+        stops++;
+      }).toJS
+      ..['_isMixerCaptureRunning'] = (() => running ? 1 : 0).toJS
+      ..['_getMixerCaptureAvailableBytes'] = (() => 0).toJS;
     if (withPackets) {
       module
         ..['_getMixerCaptureId'] = (() => captureId).toJS
@@ -57,6 +66,8 @@ class CaptureModule {
   final allocations = <int, int>{};
   final packets = <int, ({int id, List<int> bytes})>{};
   int captureId = 0;
+  bool running = false;
+  int stops = 0;
   var _top = 8;
   var _nextToken = 0;
 
@@ -165,6 +176,28 @@ void main() {
       orderedEquals([9, 8, 7, 6]),
     ]);
     bindings.stopMixerOutputCapture();
+    await subscription.cancel();
+  });
+
+  test('a manager whose binding started nothing stops nothing', () async {
+    // The capture another manager, on a binding of its own, started.
+    final module = CaptureModule()..running = true;
+    final bindings = FlutterSoLoudWeb();
+    await bindings.setDartEventCallbacks();
+    MixerOutputStreamManager(bindings: bindings, isReady: () => true).stop();
+    expect(module.stops, 0);
+    expect(module.running, isTrue);
+
+    // Its own capture it does stop.
+    final manager = MixerOutputStreamManager(
+      bindings: bindings,
+      isReady: () => true,
+    );
+    module.running = false;
+    final subscription = manager.start(chunkPCMFrames: 2048).listen((_) {});
+    manager.stop();
+    expect(module.stops, 1);
+    expect(module.running, isFalse);
     await subscription.cancel();
   });
 }

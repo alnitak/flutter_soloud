@@ -413,9 +413,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   }
 
   @override
-  void stopMixerOutputCapture() {
+  void stopMixerOutputCapture({bool onlyOwned = false}) {
+    final id = _mixerCaptureId;
     _mixerCaptureId = null;
-    native.stopMixerCapture();
+    if (!onlyOwned ||
+        (id != null &&
+            native.isMixerCaptureRunning() != 0 &&
+            native.getMixerCaptureId() == id)) {
+      native.stopMixerCapture();
+    }
     // An open port keeps this isolate alive. Native code discards what is
     // posted to it once closed, and the next start what it was sent but
     // never handled.

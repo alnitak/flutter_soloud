@@ -142,8 +142,12 @@ abstract class FlutterSoLoud {
   );
 
   /// Stop capturing the master mixer output.
+  ///
+  /// Only one capture runs at a time, whichever isolate started it. With
+  /// [onlyOwned] this stops only a capture this binding started and that is
+  /// still the running one, so it cannot end another isolate's capture.
   @mustBeOverridden
-  void stopMixerOutputCapture();
+  void stopMixerOutputCapture({bool onlyOwned = false});
 
   /// Whether mixer output capture is currently active.
   @mustBeOverridden

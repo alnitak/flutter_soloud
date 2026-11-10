@@ -64,6 +64,10 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   /// older wasm build, which has no capture id to read.
   int? _mixerCaptureId;
 
+  /// Whether this binding started the capture, which an older wasm build
+  /// cannot name by id.
+  bool _ownsMixerCapture = false;
+
   /// Serializes native engine lifecycle calls (initEngine / changeDevice /
   /// deinit / disposeAllSound).
   ///
@@ -301,18 +305,27 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
       notificationThresholdBytes,
       chunkPCMFrames,
     );
-    if (ret == PlayerErrors.noError.value &&
-        wasmHasExport('_getMixerCaptureId')) {
-      _mixerCaptureId = wasmGetMixerCaptureId().toUnsigned(32);
+    if (ret == PlayerErrors.noError.value) {
+      _ownsMixerCapture = true;
+      if (wasmHasExport('_getMixerCaptureId')) {
+        _mixerCaptureId = wasmGetMixerCaptureId().toUnsigned(32);
+      }
     }
     return PlayerErrors.values[ret];
   }
 
   @override
-  void stopMixerOutputCapture() {
+  void stopMixerOutputCapture({bool onlyOwned = false}) {
+    final id = _mixerCaptureId;
+    final owned =
+        _ownsMixerCapture &&
+        (id == null || wasmGetMixerCaptureId().toUnsigned(32) == id);
     _mixerOutputChunkMode = false;
     _mixerCaptureId = null;
-    wasmStopMixerCapture();
+    _ownsMixerCapture = false;
+    if (!onlyOwned || owned) {
+      wasmStopMixerCapture();
+    }
   }
 
   @override

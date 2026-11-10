@@ -116,7 +116,9 @@ class MixerOutputStreamManager {
   void stop() {
     _subscription?.cancel();
     _subscription = null;
-    bindings.stopMixerOutputCapture();
+    // Only one capture runs at a time: a manager without one of its own (a
+    // worker isolate stopping defensively, say) must not end another's.
+    bindings.stopMixerOutputCapture(onlyOwned: true);
 
     // Flush any captured data that did not reach the notification threshold.
     // The native side keeps the buffer alive after stopping so we can copy the

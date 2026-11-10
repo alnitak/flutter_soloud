@@ -2,7 +2,7 @@
 // delivers its packets to the isolate whose start was admitted. That isolate
 // can end while the capture runs (Isolate.run returning, Isolate.exit,
 // Isolate.kill), and another isolate's start, refused or not yet admitted,
-// must not take the running capture's packets over.
+// must not take the running capture's packets over, nor its stop end it.
 @TestOn('vm')
 library;
 
@@ -43,6 +43,13 @@ String _startInWorker() {
 String _prepareAndReturn() {
   SoLoudIsolate.instance.bindings.registerMixerOutputCallback();
   return 'prepared';
+}
+
+/// A worker that never started a capture stops its stream anyway, as cleanup
+/// code does.
+String _stopInWorker() {
+  SoLoudIsolate.instance.stopMixerOutputStream();
+  return 'stopped';
 }
 
 Future<void> _waitUntil(bool Function() done) async {
@@ -128,6 +135,29 @@ void main() {
       greaterThan(before),
       reason: 'the main stream keeps its chunks after the refusal',
     );
+    soloud.stopMixerOutputStream();
+    await subscription.cancel();
+    soloud.deinit();
+  });
+
+  test("an idle worker's stop leaves the main capture running", () async {
+    final soloud = SoLoud.instance;
+    await soloud.init();
+    var chunks = 0;
+    final subscription = soloud
+        .startMixerOutputStream(chunkPCMFrames: 2048)
+        .listen((_) => chunks++);
+    await _waitUntil(() => chunks > 0);
+
+    expect(await Isolate.run(_stopInWorker), 'stopped');
+    expect(
+      soloud.isMixerOutputStreamRunning,
+      isTrue,
+      reason: 'the worker had no capture of its own to stop',
+    );
+    final before = chunks;
+    await _waitUntil(() => chunks > before);
+    expect(chunks, greaterThan(before), reason: 'the main stream keeps going');
     soloud.stopMixerOutputStream();
     await subscription.cancel();
     soloud.deinit();

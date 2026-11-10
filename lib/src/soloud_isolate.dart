@@ -98,6 +98,9 @@ class SoLoudIsolate {
   );
 
   /// Stops the mixer output capture stream and releases associated resources.
+  ///
+  /// It stops only a capture this isolate started: another isolate's keeps
+  /// running.
   @experimental
   void stopMixerOutputStream() => _mixerOutputStreamManager.stop();
 
