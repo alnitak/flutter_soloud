@@ -301,94 +301,97 @@ void MixerOutput::onAudioData(const float *data, unsigned int frames) {
   }
 
   const size_t bytesToWrite = totalSamples * m_bytesPerSample;
-
-  // Make sure we do not overwrite unread data. If the user chose a buffer
-  // that is too small, drop the oldest data by advancing the read offset.
-  size_t writeOffset = m_writeOffset.load(std::memory_order_relaxed);
-  size_t readOffset = m_readOffset.load(std::memory_order_acquire);
-  size_t available = (writeOffset >= readOffset)
-                         ? writeOffset - readOffset
-                         : m_bufferSize - (readOffset - writeOffset);
-
-  size_t freeSpace = m_bufferSize - available;
-  if (bytesToWrite > freeSpace) {
-    size_t drop = bytesToWrite - freeSpace;
-    if (m_bytesPerFrame > 1) {
-      const size_t rem = drop % m_bytesPerFrame;
-      if (rem != 0) {
-        drop += m_bytesPerFrame - rem;
-      }
+  {
+    std::lock_guard<MixerOutputMutex> lock(m_bufferMutex);
+    const uint64_t oldWrite = m_writeOffset.load(std::memory_order_relaxed);
+    const uint64_t newWrite = oldWrite + bytesToWrite;
+    // A block larger than the ring keeps only its newest bytes. The ring and
+    // the block are both whole frames, so what is skipped is too.
+    const size_t kept = std::min(bytesToWrite, m_bufferSize);
+    const size_t skipped = bytesToWrite - kept;
+    const size_t offset =
+        static_cast<size_t>((oldWrite + skipped) % m_bufferSize);
+    const size_t first = std::min(kept, m_bufferSize - offset);
+    convertPcm(data + skipped / m_bytesPerSample, m_buffer.data() + offset,
+               first / m_bytesPerSample, m_format);
+    if (first < kept) {
+      convertPcm(data + (skipped + first) / m_bytesPerSample, m_buffer.data(),
+                 (kept - first) / m_bytesPerSample, m_format);
     }
-    readOffset = (readOffset + std::min(drop, available)) % m_bufferSize;
-    m_readOffset.store(readOffset, std::memory_order_release);
+    // An overrun drops only the oldest bytes: the reader keeps the newest
+    // m_bufferSize of them.
+    advanceReadForWriteLocked(newWrite);
+    m_writeOffset.store(newWrite, std::memory_order_release);
   }
-
-  // Write the converted PCM data into the circular buffer, handling wrap.
-  size_t firstChunk = std::min(bytesToWrite, m_bufferSize - writeOffset);
-  convertPcm(data, m_buffer.data() + writeOffset, firstChunk / m_bytesPerSample,
-             m_format);
-
-  if (firstChunk < bytesToWrite) {
-    size_t secondChunk = bytesToWrite - firstChunk;
-    convertPcm(data + (firstChunk / m_bytesPerSample), m_buffer.data(),
-               secondChunk / m_bytesPerSample, m_format);
-  }
-
-  m_writeOffset.store((writeOffset + bytesToWrite) % m_bufferSize,
-                      std::memory_order_release);
 
 #ifdef __EMSCRIPTEN__
   processNotifications();
 #endif
 }
 
-#ifdef __EMSCRIPTEN__
-void MixerOutput::processNotifications() {
+void MixerOutput::advanceReadForWriteLocked(uint64_t newWrite) {
+  if (newWrite <= m_bufferSize) {
+    return;
+  }
+  const uint64_t oldest = newWrite - m_bufferSize;
+  if (m_readOffset.load(std::memory_order_relaxed) < oldest) {
+    m_readOffset.store(oldest, std::memory_order_release);
+  }
+}
+
+bool MixerOutput::notifyOnePacket(size_t minimum, size_t fixedBytes) {
   const MixerOutputDataCallback callback =
       m_callback.load(std::memory_order_acquire);
   if (callback == nullptr) {
-    return;
+    return false;
   }
 
-  // Fixed-size PCM chunk mode: emit every complete chunk. The data is copied
-  // into m_chunkBuffer, the read position is advanced immediately, and the
-  // callback is invoked. Dart must not advance the circular buffer again for
-  // these chunks.
-  if (m_chunkBytes > 0) {
-    while (getAvailableBytes() >= m_chunkBytes) {
-      const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
-      const size_t firstPart =
-          std::min(m_chunkBytes, m_bufferSize - readOffset);
-      std::memcpy(m_chunkBuffer.data(), m_buffer.data() + readOffset,
-                  firstPart);
-
-      if (firstPart < m_chunkBytes) {
-        const size_t secondPart = m_chunkBytes - firstPart;
-        std::memcpy(m_chunkBuffer.data() + firstPart, m_buffer.data(),
-                    secondPart);
-      }
-
-      m_readOffset.store((readOffset + m_chunkBytes) % m_bufferSize,
-                         std::memory_order_release);
-      callback(m_chunkBuffer.data(), m_chunkBytes);
+  uint8_t *data = nullptr;
+  size_t length = 0;
+  {
+    std::lock_guard<MixerOutputMutex> lock(m_bufferMutex);
+    const uint64_t read = m_readOffset.load(std::memory_order_relaxed);
+    const size_t available = static_cast<size_t>(
+        m_writeOffset.load(std::memory_order_relaxed) - read);
+    if (available < minimum || (fixedBytes == 0 && m_notified.load())) {
+      return false;
     }
-    m_notified.store(false, std::memory_order_release);
+    const size_t offset = static_cast<size_t>(read % m_bufferSize);
+    if (fixedBytes > 0) {
+      // Fixed-size PCM chunk mode: copy exactly one chunk into a contiguous
+      // buffer and consume it here. Dart must not advance the read position
+      // again for these chunks.
+      length = fixedBytes;
+      const size_t first = std::min(length, m_bufferSize - offset);
+      std::memcpy(m_chunkBuffer.data(), m_buffer.data() + offset, first);
+      if (first < length) {
+        std::memcpy(m_chunkBuffer.data() + first, m_buffer.data(),
+                    length - first);
+      }
+      m_readOffset.store(read + length, std::memory_order_release);
+      data = m_chunkBuffer.data();
+    } else {
+      // Threshold mode (the default, and every compressed format): hand over
+      // the contiguous unread bytes. The consumer acknowledges them with
+      // advanceReadPosition(), which re-arms the notification.
+      length = std::min(available, m_bufferSize - offset);
+      data = m_buffer.data() + offset;
+      m_notified.store(true, std::memory_order_release);
+    }
+  }
+  callback(data, length);
+  return true;
+}
+
+#ifdef __EMSCRIPTEN__
+void MixerOutput::processNotifications() {
+  if (m_chunkBytes > 0) {
+    // Emit every complete chunk.
+    while (notifyOnePacket(m_chunkBytes, m_chunkBytes)) {
+    }
     return;
   }
-
-  // Threshold-based mode (used by default and by compressed formats):
-  // notify when at least notificationThresholdBytes are available.
-  const size_t available = getAvailableBytes();
-  if (available >= m_notificationThreshold && !m_notified.load()) {
-    m_notified.store(true, std::memory_order_release);
-    const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
-    const size_t length = std::min(available, m_bufferSize - readOffset);
-    callback(m_buffer.data() + readOffset, length);
-  }
-
-  if (available < m_notificationThreshold) {
-    m_notified.store(false, std::memory_order_release);
-  }
+  notifyOnePacket(m_notificationThreshold, 0);
 }
 #endif
 
@@ -397,29 +400,22 @@ void MixerOutput::writeToBuffer(const uint8_t *data, size_t bytes) {
     return;
   }
 
-  size_t writeOffset = m_writeOffset.load(std::memory_order_relaxed);
-  size_t readOffset = m_readOffset.load(std::memory_order_acquire);
-  size_t available = (writeOffset >= readOffset)
-                         ? writeOffset - readOffset
-                         : m_bufferSize - (readOffset - writeOffset);
-
-  size_t freeSpace = m_bufferSize - available;
-  if (bytes > freeSpace) {
-    const size_t drop = bytes - freeSpace;
-    readOffset = (readOffset + drop) % m_bufferSize;
-    m_readOffset.store(readOffset, std::memory_order_release);
+  std::lock_guard<MixerOutputMutex> lock(m_bufferMutex);
+  const uint64_t oldWrite = m_writeOffset.load(std::memory_order_relaxed);
+  const uint64_t newWrite = oldWrite + bytes;
+  // Bytes that do not fit at all are the oldest of this write: skip them
+  // rather than write past the ring.
+  const size_t kept = std::min(bytes, m_bufferSize);
+  const size_t skipped = bytes - kept;
+  const size_t offset =
+      static_cast<size_t>((oldWrite + skipped) % m_bufferSize);
+  const size_t first = std::min(kept, m_bufferSize - offset);
+  std::memcpy(m_buffer.data() + offset, data + skipped, first);
+  if (first < kept) {
+    std::memcpy(m_buffer.data(), data + skipped + first, kept - first);
   }
-
-  size_t firstChunk = std::min(bytes, m_bufferSize - writeOffset);
-  std::memcpy(m_buffer.data() + writeOffset, data, firstChunk);
-
-  if (firstChunk < bytes) {
-    size_t secondChunk = bytes - firstChunk;
-    std::memcpy(m_buffer.data(), data + firstChunk, secondChunk);
-  }
-
-  m_writeOffset.store((writeOffset + bytes) % m_bufferSize,
-                      std::memory_order_release);
+  advanceReadForWriteLocked(newWrite);
+  m_writeOffset.store(newWrite, std::memory_order_release);
 }
 
 void MixerOutput::encoderThreadFunc() {
@@ -464,16 +460,17 @@ uint8_t *MixerOutput::getBufferPointer() {
 size_t MixerOutput::getBufferSize() const { return m_bufferSize; }
 
 size_t MixerOutput::getAvailableBytes() const {
-  const size_t writeOffset = m_writeOffset.load(std::memory_order_acquire);
-  const size_t readOffset = m_readOffset.load(std::memory_order_acquire);
-  if (writeOffset >= readOffset) {
-    return writeOffset - readOffset;
-  }
-  return m_bufferSize - (readOffset - writeOffset);
+  std::lock_guard<MixerOutputMutex> lock(m_bufferMutex);
+  return static_cast<size_t>(m_writeOffset.load(std::memory_order_relaxed) -
+                             m_readOffset.load(std::memory_order_relaxed));
 }
 
 size_t MixerOutput::getReadOffset() const {
-  return m_readOffset.load(std::memory_order_acquire);
+  if (m_bufferSize == 0) {
+    return 0;
+  }
+  return static_cast<size_t>(m_readOffset.load(std::memory_order_acquire) %
+                             m_bufferSize);
 }
 
 void MixerOutput::advanceReadPosition(size_t bytes) {
@@ -481,11 +478,12 @@ void MixerOutput::advanceReadPosition(size_t bytes) {
     return;
   }
 
-  const size_t available = getAvailableBytes();
+  std::lock_guard<MixerOutputMutex> lock(m_bufferMutex);
+  const uint64_t readOffset = m_readOffset.load(std::memory_order_relaxed);
+  const size_t available = static_cast<size_t>(
+      m_writeOffset.load(std::memory_order_relaxed) - readOffset);
   const size_t toAdvance = std::min(bytes, available);
-  const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
-  m_readOffset.store((readOffset + toAdvance) % m_bufferSize,
-                     std::memory_order_release);
+  m_readOffset.store(readOffset + toAdvance, std::memory_order_release);
 
   if (toAdvance > 0) {
     m_notified.store(false, std::memory_order_release);
@@ -498,62 +496,23 @@ void MixerOutput::setDataCallback(MixerOutputDataCallback callback) {
 
 void MixerOutput::notificationThreadFunc() {
   while (!m_shouldStop.load()) {
-    // Fixed-size PCM chunk mode: emit exactly m_chunkBytes at a time. The data
-    // is copied into a local contiguous buffer, the read position is advanced
-    // immediately, and the callback is invoked. Dart must not advance the
-    // circular buffer again for these chunks.
-    //
-    // A chunk is consumed here, so nothing else will ever re-arm a latch:
-    // emit every complete chunk that is buffered, as the web path does. A
-    // device block of several chunks, or a pass that runs late, must not
-    // leave a backlog behind.
+    // Fixed-size PCM chunk mode: emit exactly m_chunkBytes at a time, every
+    // complete chunk that is buffered, as the web path does. A chunk is
+    // consumed when it is emitted, so a device block of several chunks, or a
+    // pass that runs late, must not leave a backlog behind.
     if (m_chunkBytes > 0) {
-      while (!m_shouldStop.load() && getAvailableBytes() >= m_chunkBytes) {
-        size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
-        size_t firstPart = std::min(m_chunkBytes, m_bufferSize - readOffset);
-        std::memcpy(m_chunkBuffer.data(), m_buffer.data() + readOffset,
-                    firstPart);
-
-        if (firstPart < m_chunkBytes) {
-          size_t secondPart = m_chunkBytes - firstPart;
-          std::memcpy(m_chunkBuffer.data() + firstPart, m_buffer.data(),
-                      secondPart);
-        }
-
-        const size_t newReadOffset =
-            (readOffset + m_chunkBytes) % m_bufferSize;
-        m_readOffset.store(newReadOffset, std::memory_order_release);
-
-        const MixerOutputDataCallback callback =
-            m_callback.load(std::memory_order_acquire);
-        if (callback != nullptr) {
-          callback(m_chunkBuffer.data(), m_chunkBytes);
-        }
+      while (!m_shouldStop.load() &&
+             notifyOnePacket(m_chunkBytes, m_chunkBytes)) {
       }
 
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
       continue;
     }
 
-    const size_t available = getAvailableBytes();
-
     // Threshold-based mode (used by default and by compressed formats):
-    // notify when at least notificationThresholdBytes are available.
-    if (available >= m_notificationThreshold && !m_notified.load()) {
-      m_notified.store(true, std::memory_order_release);
-
-      const MixerOutputDataCallback callback =
-          m_callback.load(std::memory_order_acquire);
-      if (callback != nullptr) {
-        const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
-        const size_t length = std::min(available, m_bufferSize - readOffset);
-        callback(m_buffer.data() + readOffset, length);
-      }
-    }
-
-    if (available < m_notificationThreshold) {
-      m_notified.store(false, std::memory_order_release);
-    }
+    // notify when at least notificationThresholdBytes are available. The
+    // consumer's acknowledgement re-arms it.
+    notifyOnePacket(m_notificationThreshold, 0);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
@@ -561,6 +520,5 @@ void MixerOutput::notificationThreadFunc() {
 
 size_t MixerOutput::contiguousAvailable() const {
   const size_t available = getAvailableBytes();
-  const size_t readOffset = m_readOffset.load(std::memory_order_relaxed);
-  return std::min(available, m_bufferSize - readOffset);
+  return std::min(available, m_bufferSize - getReadOffset());
 }

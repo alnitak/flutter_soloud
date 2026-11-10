@@ -5,12 +5,34 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <vector>
 
 #include "../enums.h"
 #include "mixer_output_encoder.h"
 #include "pcm_queue.h"
+
+/// Guards the capture ring's positions and the bytes a copy is reading.
+///
+/// Held only across bounded byte copies and offset updates: no allocation,
+/// callback, join or encoder work runs under it. An AudioWorklet thread must
+/// not wait on a futex, so the web build spins instead.
+#ifdef __EMSCRIPTEN__
+class MixerOutputMutex {
+ public:
+  void lock() {
+    while (m_flag.test_and_set(std::memory_order_acquire)) {
+    }
+  }
+  void unlock() { m_flag.clear(std::memory_order_release); }
+
+ private:
+  std::atomic_flag m_flag = ATOMIC_FLAG_INIT;
+};
+#else
+using MixerOutputMutex = std::mutex;
+#endif
 
 /// Callback used to notify Dart that new mixer output data is available.
 /// [data] points to the start of the contiguous unread region in the
@@ -101,6 +123,16 @@ class MixerOutput {
   MixerOutput &operator=(const MixerOutput &) = delete;
 
   void notificationThreadFunc();
+  /// Hand the consumer one notification when at least [minimum] bytes are
+  /// buffered. [fixedBytes] > 0 copies and consumes exactly that many bytes
+  /// (fixed-chunk mode); 0 points at the contiguous unread bytes and leaves
+  /// them for the consumer to acknowledge (threshold mode). Returns whether a
+  /// notification was sent.
+  bool notifyOnePacket(size_t minimum, size_t fixedBytes);
+  /// A write that ends at [newWrite] keeps only the newest [m_bufferSize]
+  /// bytes: move the read position past whatever it overwrote. Caller holds
+  /// [m_bufferMutex].
+  void advanceReadForWriteLocked(uint64_t newWrite);
   void encoderThreadFunc();
   size_t contiguousAvailable() const;
   bool isCompressedFormat() const;
@@ -136,8 +168,8 @@ class MixerOutput {
   /// session; [stop] retires the session first and then waits, off the audio
   /// thread, for that count to reach zero before destroying anything.
   ///
-  /// The callback side is lock-free and allocation-free, as a real-time
-  /// callback must be.
+  /// This admission check is lock-free and allocation-free. The ring write
+  /// that follows it waits at most for another bounded copy (m_bufferMutex).
   static constexpr uint64_t kNoCaptureSession = 0;
   alignas(64) std::atomic<uint64_t> m_activeSession{kNoCaptureSession};
   std::atomic<uint64_t> m_nextSession{1};
@@ -188,10 +220,20 @@ class MixerOutput {
   size_t m_chunkBytes = 0;
   std::vector<uint8_t> m_chunkBuffer;
 
+  /// The ring's positions are byte counts since the capture started, reduced
+  /// modulo [m_bufferSize] only to index [m_buffer]. With wrapped offsets a
+  /// full ring and an empty one both read `write == read`; here a full ring
+  /// has `write - read == m_bufferSize`. 64-bit on 32-bit targets too, so a
+  /// long capture cannot wrap them.
+  ///
+  /// Writers that overrun the reader move the read position forward, so
+  /// every update of either position, and every copy out of the ring, runs
+  /// under [m_bufferMutex].
+  mutable MixerOutputMutex m_bufferMutex;
   std::vector<uint8_t> m_buffer;
   size_t m_bufferSize = 0;
-  alignas(64) std::atomic<size_t> m_writeOffset{0};
-  alignas(64) std::atomic<size_t> m_readOffset{0};
+  alignas(64) std::atomic<uint64_t> m_writeOffset{0};
+  alignas(64) std::atomic<uint64_t> m_readOffset{0};
 
   size_t m_notificationThreshold = 4096;
   std::atomic<bool> m_notified{false};
