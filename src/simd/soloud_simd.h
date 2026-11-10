@@ -574,6 +574,8 @@ inline f32x4 fast_log2(f32x4 x) noexcept {
   return f32x4(std::log2(x.v[0]), std::log2(x.v[1]), std::log2(x.v[2]),
                std::log2(x.v[3]));
 #endif
+#if defined(SOLOUD_SIMD_SSE2) || defined(SOLOUD_SIMD_NEON) || \
+    defined(SOLOUD_SIMD_WASM)
   // Minimax polynomial for log2(1 + y) on [-0.29289322, +0.41421356]:
   f32x4 p = f32x4::splat(-0.20599502f);
   p = fma(f32x4::splat(0.28116748f), p, y);
@@ -582,6 +584,7 @@ inline f32x4 fast_log2(f32x4 x) noexcept {
   p = fma(f32x4::splat(-0.72134752f), p, y);
   p = fma(f32x4::splat(1.44269504f), p, y);
   return fma(ef, p, y);
+#endif
 }
 
 inline f32x4 fast_exp2(f32x4 x) noexcept {
@@ -617,6 +620,8 @@ inline f32x4 fast_exp2(f32x4 x) noexcept {
   return f32x4(std::exp2(x.v[0]), std::exp2(x.v[1]), std::exp2(x.v[2]),
                std::exp2(x.v[3]));
 #endif
+#if defined(SOLOUD_SIMD_SSE2) || defined(SOLOUD_SIMD_NEON) || \
+    defined(SOLOUD_SIMD_WASM)
   // Minimax polynomial for 2^f on [-0.5, 0.5] (exact 1.0f at f == 0.0f):
   f32x4 p = f32x4::splat(0.0013333558f);
   p = fma(f32x4::splat(0.0096181291f), p, f);
@@ -625,6 +630,7 @@ inline f32x4 fast_exp2(f32x4 x) noexcept {
   p = fma(f32x4::splat(0.6931471806f), p, f);
   p = fma(f32x4::splat(1.0f), p, f);
   return mul(scale, p);
+#endif
 }
 
 /// Fast scalar companions using the same minimax polynomials for tail loops.
