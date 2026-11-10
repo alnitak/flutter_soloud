@@ -360,13 +360,14 @@ bool OpusOutputEncoder::resampleTo48k(const float *input, size_t samples) {
     phase += ratio;
   }
 
-  const size_t consumedFrames = static_cast<size_t>(phase);
-  if (consumedFrames > 0) {
-    const size_t start = (consumedFrames - 1) * m_channels;
-    m_resamplerLastFrame.assign(m_combineScratch.begin() + start,
-                                m_combineScratch.begin() + start + m_channels);
-  }
-  m_resamplerPhase = phase - static_cast<double>(consumedFrames);
+  // The loop stopped at the first position that needs a frame after this
+  // block. Carry the block's last frame, which becomes frame 0 of the next
+  // combined block, and rebase the phase on it.
+  const size_t lastFrame = combinedFrames - 1;
+  m_resamplerLastFrame.assign(
+      m_combineScratch.begin() + lastFrame * m_channels,
+      m_combineScratch.begin() + combinedFrames * m_channels);
+  m_resamplerPhase = phase - static_cast<double>(lastFrame);
 
   return true;
 }

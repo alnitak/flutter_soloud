@@ -8,7 +8,10 @@
 //     pre-skip plus the captured samples, and the stream decodes at least that
 //     many (RFC 7845 sections 4 and 5.1);
 //   * preskip: the decoded audio, with pre-skip samples dropped, lines up with
-//     the captured audio.
+//     the captured audio;
+//   * resampler: a ramp captured at 44.1, 22.05 or 96 kHz and resampled to
+//     48 kHz in device-sized blocks stays a ramp, in every channel (linear
+//     interpolation of a linear signal is exact).
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -32,7 +35,10 @@
 #include <ogg/ogg.h>
 #include <opus/opus.h>
 
+// The resampler is private; reach its state from here only.
+#define private public
 #include "mixeroutput/opus_output_encoder.cpp"
+#undef private
 
 namespace {
 
@@ -289,12 +295,71 @@ void preSkipAlignsTheDecodedAudio()
            skip, bestLag);
 }
 
+void resamplerKeepsARampARamp()
+{
+    std::printf("resampler: a ramp stays a ramp across block boundaries\n");
+    struct Case
+    {
+        int rate;
+        int channels;
+        size_t block;
+    };
+    for (const Case c : {Case{44100, 1, 512}, Case{44100, 2, 441},
+                         Case{22050, 2, 256}, Case{96000, 1, 480}})
+    {
+        OpusOutputEncoder encoder;
+        EXPECT(encoder.initialize(c.rate, c.channels),
+               "resampler: initialize %d Hz, %d channels", c.rate, c.channels);
+        // Channel 0 counts input frames up, channel 1 counts them down.
+        const double ratio = c.rate / 48000.0;
+        std::vector<float> out;
+        std::vector<float> in(c.block * c.channels);
+        for (size_t b = 0; b < 8; ++b)
+        {
+            for (size_t i = 0; i < c.block; ++i)
+                for (int ch = 0; ch < c.channels; ++ch)
+                    in[i * c.channels + ch] =
+                        (ch == 0 ? 1.0f : -1.0f) *
+                        static_cast<float>(b * c.block + i);
+            encoder.resampleTo48k(in.data(), in.size());
+            out.insert(out.end(), encoder.m_resampledBuffer.begin(),
+                       encoder.m_resampledBuffer.end());
+        }
+        // Output frame j is input position j * ratio.
+        const size_t frames = out.size() / c.channels;
+        double worst = 0;
+        size_t worstAt = 0;
+        for (size_t j = 0; j < frames; ++j)
+            for (int ch = 0; ch < c.channels; ++ch)
+            {
+                const double expected = (ch == 0 ? 1.0 : -1.0) * j * ratio;
+                const double error = std::fabs(out[j * c.channels + ch] -
+                                               expected);
+                if (error > worst)
+                {
+                    worst = error;
+                    worstAt = j;
+                }
+            }
+        const size_t expectedFrames =
+            static_cast<size_t>((8 * c.block - 1) / ratio) + 1;
+        EXPECT(frames + 1 >= expectedFrames && frames <= expectedFrames,
+               "resampler: %d Hz in %zu-frame blocks gives %zu frames, "
+               "expected about %zu",
+               c.rate, c.block, frames, expectedFrames);
+        EXPECT(worst < 1e-2,
+               "resampler: %d Hz, %d channels, in %zu-frame blocks must stay "
+               "a ramp, worst error %.3f input frames at output frame %zu",
+               c.rate, c.channels, c.block, worst, worstAt);
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv)
 {
     const char *only = argc > 1 ? argv[1] : nullptr;
-    const char *const kScenarios[] = {"granule", "preskip"};
+    const char *const kScenarios[] = {"granule", "preskip", "resampler"};
     if (only != nullptr)
     {
         bool known = false;
@@ -313,6 +378,8 @@ int main(int argc, char **argv)
         granulePositionsCountDecodedSamples();
     if (wanted("preskip"))
         preSkipAlignsTheDecodedAudio();
+    if (wanted("resampler"))
+        resamplerKeepsARampARamp();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;
