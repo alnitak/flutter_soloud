@@ -251,6 +251,7 @@ bool parseTopLevel(uint64_t fileSize, ReadAt readAt, M4aGaplessInfo &out) {
     uint64_t pos = 0;
     bool first = true;
     bool sawMoov = false;
+    bool sawMdat = false;
     while (pos + 8 <= fileSize) {
         unsigned char header[16];
         if (!readAt(pos, header, 8)) return false;
@@ -259,16 +260,27 @@ bool parseTopLevel(uint64_t fileSize, ReadAt readAt, M4aGaplessInfo &out) {
         const uint32_t type = be32(header + 4);
         if (first && type != fourcc("ftyp")) return false;
         first = false;
+        bool fits = true;
         if (size == 1) {
-            if (!readAt(pos + 8, header + 8, 8)) return false;
-            size = be64(header + 8);
-            headerSize = 16;
+            fits = pos + 16 <= fileSize && readAt(pos + 8, header + 8, 8);
+            if (fits) {
+                size = be64(header + 8);
+                headerSize = 16;
+            }
         } else if (size == 0) {
             // Box extends to the end of the file.
             size = fileSize - pos;
         }
         // Also guarantees pos + size can't overflow and always advances.
-        if (size < headerSize || size > fileSize - pos) return false;
+        if (!fits || size < headerSize || size > fileSize - pos) {
+            // No whole box here. When it is not an `mdat`, and `moov` and an
+            // `mdat` came whole before it, these are bytes past the end of
+            // the movie (an appended ID3v1 tag, padding, a trailing box cut
+            // off), and `moov` is as good as it was. Otherwise the file was
+            // cut short, and `moov` may describe audio it no longer has.
+            return sawMoov && sawMdat && type != fourcc("mdat");
+        }
+        if (type == fourcc("mdat")) sawMdat = true;
         if (type == fourcc("moov") && !sawMoov) {
             const uint64_t payload = size - headerSize;
             if (payload > kMaxMoovSize) return false;
@@ -279,7 +291,10 @@ bool parseTopLevel(uint64_t fileSize, ReadAt readAt, M4aGaplessInfo &out) {
         }
         pos += size;
     }
-    return sawMoov && pos == fileSize;
+    // Any bytes left are too few for a box header: bytes past the end of the
+    // movie, as above, if `moov` and an `mdat` came whole before them, and
+    // otherwise a file cut short.
+    return sawMoov && sawMdat;
 }
 
 } // namespace
