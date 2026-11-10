@@ -114,7 +114,7 @@ public:
 private:
   void updateProcessContext(unsigned int aSamples, float aSamplerate,
                             double aTime) noexcept;
-  void drainPendingParamChanges() noexcept;
+  void drainPendingParamChanges(Steinberg::int32 maxQueues) noexcept;
   void drainPendingMidiEvents(unsigned int maxSampleOffset) noexcept;
   void prepareAndProcessBlock(float *aBuffer, unsigned int aSamples,
                               unsigned int aBufferSize, unsigned int numCh,

@@ -97,8 +97,16 @@ public:
   Steinberg::tresult PLUGIN_API addPoint(Steinberg::int32 sampleOffset,
                                          Steinberg::Vst::ParamValue value,
                                          Steinberg::int32 &index) override {
-    if (mPointCount >= kMaxPoints) {
-      return Steinberg::kResultFalse;
+    // A value at the offset of the last point replaces it, as in the SDK's
+    // ParameterValueQueue (every host change is at offset 0). Once the queue
+    // is full the last point takes the newest value, so the parameter still
+    // ends where it was set.
+    if (mPointCount > 0 && (mOffsets[mPointCount - 1] == sampleOffset ||
+                            mPointCount >= kMaxPoints)) {
+      index = mPointCount - 1;
+      mOffsets[index] = sampleOffset;
+      mValues[index] = value;
+      return Steinberg::kResultTrue;
     }
     index = mPointCount;
     mOffsets[mPointCount] = sampleOffset;

@@ -312,9 +312,13 @@ void Vst3PluginInstance::updateProcessContext(unsigned int aSamples,
   mContinuousSamples += static_cast<int64_t>(aSamples);
 }
 
-void Vst3PluginInstance::drainPendingParamChanges() noexcept {
+void Vst3PluginInstance::drainPendingParamChanges(
+    Steinberg::int32 maxQueues) noexcept {
+  // Stop once the block's parameter queues are used up: the rest stay
+  // queued for the next block rather than being popped and dropped.
   Vst3ParamChangeEvent evt;
-  while (mPendingParamQueue.pop(evt)) {
+  while (mInputParamChanges.getParameterCount() < maxQueues &&
+         mPendingParamQueue.pop(evt)) {
     Steinberg::int32 queueIdx = 0;
     if (auto *q = mInputParamChanges.addParameterData(evt.paramId, queueIdx)) {
       Steinberg::int32 ptIdx = 0;
@@ -502,7 +506,10 @@ void Vst3PluginInstance::processAudioEffectBlock(
   mInputEvents.clear();
   mBlockMidiCount = 0;
 
-  drainPendingParamChanges();
+  // Leave a queue for each mapped slot parameter forwarded below.
+  drainPendingParamChanges(PreallocatedParameterChanges::kMaxQueues -
+                           static_cast<Steinberg::int32>(
+                               mMappedSlotParams.size()));
 
   // Forward mapped SoLoud CustomFilterSlot parameters (1..7 / 1..15) when
   // automated by SoLoud's Fader or LFO (indicated by aParamChangedMask)
@@ -545,7 +552,7 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
   mOutputParamChanges.clear();
   mInputEvents.clear();
 
-  drainPendingParamChanges();
+  drainPendingParamChanges(PreallocatedParameterChanges::kMaxQueues);
   drainPendingMidiEvents(aSamplesToRead);
 
   const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
