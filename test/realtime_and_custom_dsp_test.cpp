@@ -604,35 +604,100 @@ static bool remixFrom(RingRig &rig, double when) {
 static void testResetSurvivesRemix() {
     std::printf("Test: RealtimeStream reset is not undone by a re-mix\n");
 
-    RingRig rig;
-    SoLoud::RealtimeStream stream;
-    EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
-                       16384) == PlayerErrors::noError,
-           "init failed");
-    EXPECT(rig.engine.play(stream) != 0, "play failed");
+    // With 20000 frames queued the reset discards more than the stream's
+    // history holds; the replay skips them all, so it is still possible.
+    // Refilled with 20000 new frames, the ring (32768 frames) no longer holds
+    // the reset point's frame at all. A push scheduled 200 frames after the
+    // reset point records a gap marker after the reset marker.
+    struct Case {
+        unsigned int queued;
+        unsigned int refill;
+        unsigned int scheduled;
+    };
+    for (const Case c : {Case{8000, 0, 0}, Case{20000, 0, 0},
+                         Case{20000, 20000, 0}, Case{20000, 0, 300}}) {
+        RingRig rig;
+        SoLoud::RealtimeStream stream;
+        EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                           16384) == PlayerErrors::noError,
+               "init failed");
+        EXPECT(rig.engine.play(stream) != 0, "play failed");
 
-    std::vector<float> chunk(8000, kLevel);
-    EXPECT(stream.pushDataFloat32(chunk.data(), 8000) == 8000, "push failed");
-    rig.topUp();          // mixes stream frames [0, 4096)
-    rig.discard(2048);    // playhead at 2048
-    const double resetTime = rig.engine.getEngineTime();  // ring frame 4096
+        std::vector<float> chunk(c.queued, kLevel);
+        EXPECT(stream.pushDataFloat32(chunk.data(), c.queued) == c.queued,
+               "push failed");
+        rig.topUp();          // mixes stream frames [0, 4096)
+        rig.discard(2048);    // playhead at 2048
+        const double resetTime = rig.engine.getEngineTime();  // ring frame 4096
 
-    stream.resetBuffer(); // discards stream frames [4096, 8000)
-    EXPECT(stream.getAvailableToRead() == 0, "reset left %u frames",
-           stream.getAvailableToRead());
-    rig.topUp();          // mixes [4096, 6144): the stream is dry
+        stream.resetBuffer(); // discards stream frames [4096, queued)
+        EXPECT(stream.getAvailableToRead() == 0, "reset left %u frames",
+               stream.getAvailableToRead());
+        rig.topUp();          // mixes [4096, 6144): the stream is dry
 
-    // The discarded frames freed their ring space, so a re-mix from before
-    // the reset could replay overwritten history: it must be refused.
-    EXPECT(!remixFrom(rig, rig.engine.getPlayheadTime()),
-           "re-mix from before the reset should be refused");
-    // A re-mix from the reset point is fine and must not replay them.
-    EXPECT(remixFrom(rig, resetTime), "re-mix from the reset point failed");
+        if (c.refill > 0) {
+            // New audio of the opposite sign.
+            std::vector<float> fresh(c.refill, -kLevel);
+            EXPECT(stream.pushDataFloat32(fresh.data(), c.refill) == c.refill,
+                   "refill failed");
+        }
+        if (c.scheduled > 0) {
+            std::vector<float> later(c.scheduled, kLevel);
+            EXPECT(stream.pushDataScheduledFloat32(resetTime + frameTime(200),
+                                                   later.data(),
+                                                   c.scheduled) == c.scheduled,
+                   "scheduled push failed");
+        }
 
-    const std::vector<float> buf = rig.readAll();  // starts at ring frame 2048
-    EXPECT(audible(buf, 0, 2040), "audio mixed before the reset should remain");
-    EXPECT(silent(buf, 2048 + 70, static_cast<unsigned int>(buf.size() / 2)),
-           "discarded frames replayed by the re-mix");
+        // The discarded frames freed their ring space, so a re-mix from
+        // before the reset could replay overwritten history: it must be
+        // refused.
+        EXPECT(!remixFrom(rig, rig.engine.getPlayheadTime()),
+               "re-mix from before the reset should be refused (%u queued)",
+               c.queued);
+        // A re-mix from the reset point is fine and must not replay them.
+        EXPECT(remixFrom(rig, resetTime),
+               "re-mix from the reset point failed (%u queued)", c.queued);
+
+        const std::vector<float> buf = rig.readAll();  // starts at ring frame 2048
+        const unsigned int frames = static_cast<unsigned int>(buf.size() / 2);
+        EXPECT(audible(buf, 0, 2040),
+               "audio mixed before the reset should remain (%u queued)",
+               c.queued);
+        if (c.refill == 0) {
+            // Window frame 2248 is 200 frames after the reset point.
+            EXPECT(silent(buf, 2048 + 70, c.scheduled > 0 ? 2244 : frames),
+                   "discarded frames replayed by the re-mix (%u queued)",
+                   c.queued);
+            if (c.scheduled > 0) {
+                const long long onset = firstAudible(buf, 2048 + 70);
+                EXPECT(onset >= 2244 && onset <= 2252,
+                       "scheduled push at window frame %lld, want 2248 "
+                       "(%u queued)",
+                       onset, c.queued);
+                EXPECT(audible(buf, 2252, 2248 + c.scheduled - 4),
+                       "scheduled push cut short (%u queued)", c.queued);
+                EXPECT(silent(buf, 2248 + c.scheduled + 70, frames),
+                       "audio after the scheduled push (%u queued)", c.queued);
+            }
+            continue;
+        }
+        // The re-mix plays the new frames from the reset point on.
+        unsigned int discarded = 0;
+        for (unsigned int i = 2048 + 70; i < frames; ++i) {
+            if (left(buf, i) > -kThreshold) {
+                ++discarded;
+            }
+        }
+        EXPECT(discarded == 0 && frames > 2048 + 70,
+               "%u frames after the reset point are not the new audio "
+               "(%u queued, %u refilled)",
+               discarded, c.queued, c.refill);
+        EXPECT(stream.getAvailableToRead() <= c.refill,
+               "%u frames left to read after the re-mix, more than the %u "
+               "refilled",
+               stream.getAvailableToRead(), c.refill);
+    }
 }
 
 // A reset while the voice waits out a scheduled gap cancels the gap; a
@@ -1174,6 +1239,397 @@ static void testRollbackKeeps3dState() {
     rig.engine.stopAll();
 }
 
+// A realtime stream whose producer keeps the ring full of a ramp: stream
+// frame i plays (i % 60000) * 1e-5, so audio from another frame shows.
+struct RampStreamRig {
+    explicit RampStreamRig(float speed) {
+        EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                           32768) == PlayerErrors::noError,
+               "init failed");
+        h = rig.engine.play(stream);
+        EXPECT(h != 0, "play failed");
+        rig.engine.setRelativePlaySpeed(h, speed);
+    }
+    void fill() {
+        std::vector<float> chunk(1024);
+        for (;;) {
+            for (unsigned int i = 0; i < chunk.size(); ++i) {
+                chunk[i] = static_cast<float>((pushed + i) % 60000) * 1e-5f;
+            }
+            const unsigned int n = stream.pushDataFloat32(chunk.data(), 1024);
+            pushed += n;
+            if (n < 1024) {
+                break;
+            }
+        }
+    }
+
+    RingRig rig;
+    SoLoud::RealtimeStream stream;
+    SoLoud::handle h = 0;
+    uint64_t pushed = 0;
+};
+
+// The stream's history covers the render-ahead window at the voice's base
+// rate. A voice played faster reads more stream frames per mixed frame, so
+// the read position of an older checkpoint may already hold newer audio: a
+// rollback to it must be refused, not replay that audio.
+static void testFastVoiceRollbackKeepsAudio() {
+    std::printf("Test: RealtimeStream rollbacks of a fast voice keep its audio\n");
+
+    const float speeds[] = {1.0f, 1.5f, 2.0f};
+    // How far the playhead is past the previous mix: it picks the checkpoint
+    // a rollback from the playhead restores.
+    const unsigned int consumed[] = {512, 1024, 1536, 2048, 2560, 3072, 3584};
+    unsigned int changed = 0;
+    unsigned int refusedAtBaseRate = 0;
+    unsigned int refused = 0;
+    unsigned int runs = 0;
+    for (float speed : speeds) {
+        for (unsigned int c : consumed) {
+            for (int trigger = 0; trigger < 2; ++trigger) {
+                // Identical engines; only A re-mixes its window.
+                RampStreamRig a(speed);
+                RampStreamRig b(speed);
+                for (RampStreamRig *r : {&a, &b}) {
+                    r->fill();
+                    r->rig.topUp();
+                    r->fill();
+                    r->rig.discard(c);
+                    r->rig.topUp();
+                    r->fill();
+                }
+                if (trigger == 0) {
+                    ++runs;
+                    if (!remixFrom(a.rig, a.rig.playhead())) {
+                        ++refused;
+                        if (speed == 1.0f) {
+                            ++refusedAtBaseRate;
+                        }
+                    }
+                } else {
+                    // The same speed again: a retroactive change at the
+                    // playhead that must leave the audio as it was.
+                    a.rig.engine.setRelativePlaySpeed(a.h, speed);
+                }
+                const std::vector<float> wa = a.rig.readAll();
+                const std::vector<float> wb = b.rig.readAll();
+                bool same = wa.size() == wb.size();
+                for (size_t i = 0; same && i < wa.size(); ++i) {
+                    same = std::fabs(wa[i] - wb[i]) <= 1e-6f;
+                }
+                if (!same) {
+                    ++changed;
+                    std::fprintf(stderr,
+                                 "  speed %.2f, %u frames consumed, %s: the "
+                                 "re-mixed window differs\n",
+                                 speed, c,
+                                 trigger == 0 ? "re-mix from the playhead"
+                                              : "setRelativePlaySpeed");
+                }
+            }
+        }
+    }
+    std::printf("  %u of %u re-mixes from the playhead refused\n", refused,
+                runs);
+    EXPECT(changed == 0, "%u re-mixed windows replayed other audio", changed);
+    EXPECT(refusedAtBaseRate == 0,
+           "%u re-mixes at the base rate refused (the history covers them)",
+           refusedAtBaseRate);
+}
+
+// Every scheduled push that leaves a gap records a timeline marker, and the
+// table holds 256. Gaps do not move the read cursor, so the markers a feeder
+// of short chunks with gaps (a click track, grains) leaves behind must still
+// make room, or every scheduled push is refused once the table is full.
+static void testScheduledClicksKeepMarkerRoom() {
+    std::printf("Test: RealtimeStream scheduled clicks never run out of markers\n");
+
+    // No render-ahead: 64-frame clicks four times a second.
+    {
+        SoLoud::Soloud engine;
+        EXPECT(engine.init(SoLoud::Soloud::CLIP_ROUNDOFF,
+                           SoLoud::Soloud::NULLDRIVER, 48000, kQuantum,
+                           2) == SoLoud::SO_NO_ERROR,
+               "engine init failed");
+        SoLoud::RealtimeStream stream;
+        EXPECT(stream.init(&engine, 48000, 1, BufferType::PCM_F32LE, 48000) ==
+                   PlayerErrors::noError,
+               "init failed");
+        EXPECT(engine.play(stream) != 0, "play failed");
+        std::vector<float> click(64, kLevel);
+        std::vector<float> out(kQuantum * 2);
+        unsigned int accepted = 0;
+        for (unsigned int k = 0; k < 400; ++k) {
+            if (stream.pushDataScheduledFloat32(engine.getEngineTime() + 0.01,
+                                                click.data(), 64) == 64) {
+                ++accepted;
+            }
+            for (unsigned int f = 0; f < 12000; f += kQuantum) {
+                engine.mix(out.data(), kQuantum);
+            }
+        }
+        EXPECT(accepted == 400, "%u of 400 scheduled clicks accepted (no render-ahead)",
+               accepted);
+        engine.deinit();
+    }
+
+    // Render-ahead: 8-frame clicks one quantum apart. The stream's history
+    // spans far more of them than the table holds.
+    {
+        RingRig rig;
+        SoLoud::RealtimeStream stream;
+        EXPECT(stream.init(&rig.engine, kSampleRate, 1, BufferType::PCM_F32LE,
+                           kSampleRate) == PlayerErrors::noError,
+               "init failed");
+        EXPECT(rig.engine.play(stream) != 0, "play failed");
+        rig.topUp();
+        std::vector<float> click(8, kLevel);
+        unsigned int accepted = 0;
+        long long lastOnset = -1;
+        for (unsigned int k = 0; k < 400; ++k) {
+            rig.discard(kQuantum);
+            const double at = rig.playhead() + frameTime(2000);
+            if (stream.pushDataScheduledFloat32(at, click.data(), 8) == 8) {
+                ++accepted;
+            }
+            rig.topUp();
+            if (k == 399) {
+                // The click before it is at window frame 976.
+                lastOnset = firstAudible(rig.readAll(), 1500);
+            }
+        }
+        EXPECT(accepted == 400, "%u of 400 scheduled clicks accepted (render-ahead)",
+               accepted);
+        EXPECT(lastOnset >= 1996 && lastOnset <= 2004,
+               "last click at window frame %lld, want 2000", lastOnset);
+    }
+
+    // Render-ahead: 300 one-frame clicks three frames apart, all in the
+    // quantum after the playhead. A rollback to the checkpoint there replays
+    // the markers of all of them, more than the table holds, so once it is
+    // full a click must be refused rather than accepted and played late.
+    // Every accepted click plays in its slot, and a re-mix leaves the window
+    // as it was.
+    {
+        RampStreamRig a(1.0f);
+        RampStreamRig b(1.0f);
+        unsigned int accepted = 0;
+        std::vector<char> acceptedByA(300, 0);
+        std::vector<float> click(1, kLevel);
+        for (RampStreamRig *r : {&a, &b}) {
+            r->rig.topUp();
+            r->rig.discard(kQuantum);
+            const double playhead = r->rig.playhead();
+            for (unsigned int k = 0; k < 300; ++k) {
+                const bool ok = r->stream.pushDataScheduledFloat32(
+                                    playhead + frameTime(60 + 3 * k),
+                                    click.data(), 1) == 1;
+                accepted += ok ? 1 : 0;
+                if (r == &a) {
+                    acceptedByA[k] = ok;
+                }
+            }
+        }
+        EXPECT(accepted >= 2 * SoLoud::RealtimeStream::kMaxTimelineMarkers,
+               "%u of 600 dense scheduled clicks accepted", accepted);
+        remixFrom(a.rig, a.rig.playhead());
+        std::vector<float> wa = a.rig.readAll();  // starts at the playhead
+        const std::vector<float> wb = b.rig.readAll();
+        bool same = wa.size() == wb.size();
+        for (size_t i = 0; same && i < wa.size(); ++i) {
+            same = wa[i] == wb[i];
+        }
+        EXPECT(same, "re-mix changed the dense clicks");
+
+        // Where the clicks land, in this window and the next.
+        a.rig.topUp();
+        const std::vector<float> next = a.rig.readAll();
+        wa.insert(wa.end(), next.begin(), next.end());
+        const unsigned int frames = static_cast<unsigned int>(wa.size() / 2);
+        std::vector<char> expected(frames, 0);
+        unsigned int missing = 0;
+        long long lastSlot = -1;
+        for (unsigned int k = 0; k < 300; ++k) {
+            const unsigned int slot = 60 + 3 * k;
+            if (!acceptedByA[k] || slot >= frames) {
+                continue;
+            }
+            if (left(wa, slot) < 0.2f) {
+                ++missing;
+            }
+            // The click, then its fade over the gap.
+            for (unsigned int i = slot; i < slot + 3 && i < frames; ++i) {
+                expected[i] = 1;
+            }
+            lastSlot = slot;
+        }
+        // The voice runs dry after the last click and fades out.
+        for (long long i = lastSlot; i >= 0 && i < lastSlot + 65 && i < frames;
+             ++i) {
+            expected[i] = 1;
+        }
+        unsigned int stray = 0;
+        long long firstStray = -1;
+        for (unsigned int i = 0; i < frames; ++i) {
+            if (!expected[i] && std::fabs(left(wa, i)) > kThreshold) {
+                ++stray;
+                if (firstStray < 0) {
+                    firstStray = i;
+                }
+            }
+        }
+        EXPECT(missing == 0 && stray == 0,
+               "%u accepted clicks missing from their slots, %u frames of "
+               "audio elsewhere (first at frame %lld after the playhead)",
+               missing, stray, firstStray);
+    }
+
+    // A reset while the table is full of markers that rollbacks from before
+    // the reset need is recorded all the same: the discarded frames never
+    // play, in a re-mix from the reset point either.
+    {
+        RampStreamRig r(1.0f);
+        r.rig.topUp();
+        r.rig.discard(kQuantum);  // playhead at ring frame 1024
+        const double playhead = r.rig.playhead();
+        std::vector<float> click(1, kLevel);
+        for (unsigned int k = 0; k < 300; ++k) {
+            r.stream.pushDataScheduledFloat32(playhead + frameTime(60 + 3 * k),
+                                              click.data(), 1);
+        }
+        // Follows the clicks; the voice reads part of it by the mix head.
+        std::vector<float> chunk(4000, kLevel);
+        EXPECT(r.stream.pushDataFloat32(chunk.data(), 4000) == 4000,
+               "push after the clicks failed");
+        const double resetTime = r.rig.engine.getEngineTime();  // ring frame 4096
+        r.stream.resetBuffer();
+        EXPECT(r.stream.getAvailableToRead() == 0, "reset left %u frames",
+               r.stream.getAvailableToRead());
+        r.rig.topUp();  // mixes past the reset point: the stream is dry
+        remixFrom(r.rig, resetTime);
+        const std::vector<float> buf = r.rig.readAll();  // starts at the playhead
+        EXPECT(silent(buf, 3072 + 70, static_cast<unsigned int>(buf.size() / 2)),
+               "discarded frames played after a reset with the marker table "
+               "full");
+        EXPECT(r.stream.getAvailableToRead() == 0,
+               "%u discarded frames back after a re-mix",
+               r.stream.getAvailableToRead());
+    }
+}
+
+// A 16 kHz stream on a 48 kHz engine (the resampling path) with an optional
+// voice filter.
+struct RefillRun {
+    explicit RefillRun(SoLoud::Filter *filter) {
+        EXPECT(engine.init(SoLoud::Soloud::CLIP_ROUNDOFF,
+                           SoLoud::Soloud::NULLDRIVER, 48000, kQuantum,
+                           2) == SoLoud::SO_NO_ERROR,
+               "engine init failed");
+        EXPECT(stream.init(&engine, 16000, 1, BufferType::PCM_F32LE,
+                           16000 * 4) == PlayerErrors::noError,
+               "init failed");
+        if (filter != nullptr) {
+            stream.setFilter(0, filter);
+        }
+        EXPECT(engine.play(stream) != 0, "play failed");
+    }
+    ~RefillRun() { engine.deinit(); }
+    void mix(unsigned int quanta) {
+        std::vector<float> out(kQuantum * 2);
+        for (unsigned int q = 0; q < quanta; ++q) {
+            engine.mix(out.data(), kQuantum);
+            for (unsigned int i = 0; i < kQuantum; ++i) {
+                out2.push_back(out[i * 2]);
+                out2.push_back(out[i * 2 + 1]);
+            }
+        }
+    }
+    void push(const std::vector<float> &v) {
+        stream.pushDataFloat32(v.data(), static_cast<unsigned int>(v.size()));
+    }
+
+    SoLoud::Soloud engine;
+    SoLoud::RealtimeStream stream;
+    std::vector<float> out2; // everything mixed, interleaved stereo
+};
+
+// When frames reach a voice that starved on the resampling path, the part of
+// its current block that underrun silence filled and that it has not played
+// yet is fetched again from the new frames. A voice filter already ran over
+// that silence when the block was fetched: it must not run over the new
+// frames there as well, or its state advances twice (an echo comes early).
+static void testUnderrunRefillKeepsFilterTimeline() {
+    std::printf("Test: RealtimeStream underrun recovery keeps voice filters on time\n");
+
+    // An impulse with a 0.25 s echo. The rest of the stream (silence)
+    // arrives in time, or only after the voice starved.
+    long distance[2] = {0, 0};
+    for (int starve = 0; starve < 2; ++starve) {
+        SoLoud::EchoFilter echo;
+        echo.setParams(0.25f, 0.5f, 0.0f);
+        RefillRun r(&echo);
+        std::vector<float> impulse(1600, 0.0f);
+        impulse[0] = 1.0f;
+        const std::vector<float> zeros(16000, 0.0f);
+        r.push(impulse);
+        if (starve == 0) {
+            r.push(zeros);
+        }
+        r.mix(10);
+        if (starve == 1) {
+            EXPECT(r.stream.getUnderrunCount() == 1,
+                   "the voice should have starved (%u underruns)",
+                   r.stream.getUnderrunCount());
+            r.push(zeros);
+        }
+        r.mix(40);
+        auto peak = [&](size_t from, size_t to) {
+            size_t best = from;
+            for (size_t i = from; i < to && i < r.out2.size() / 2; ++i) {
+                if (std::fabs(r.out2[i * 2]) > std::fabs(r.out2[best * 2])) {
+                    best = i;
+                }
+            }
+            return best;
+        };
+        const size_t at = peak(0, 2400);
+        distance[starve] = static_cast<long>(peak(at + 4800, r.out2.size() / 2)) -
+                           static_cast<long>(at);
+    }
+    std::printf("  echo %ld frames after the impulse when fed in time, %ld after "
+                "an underrun\n", distance[0], distance[1]);
+    EXPECT(std::labs(distance[0] - 12000) <= 3, "echo %ld frames after the impulse, want 12000",
+           distance[0]);
+    EXPECT(std::labs(distance[1] - distance[0]) <= 3,
+           "after an underrun the echo came %ld frames after the impulse, want %ld",
+           distance[1], distance[0]);
+
+    // New frames after an underrun: an unfiltered voice still starts them
+    // inside its current block, a filtered one with its next block (one
+    // block is 512 stream frames, 1536 output frames).
+    for (int filtered = 0; filtered < 2; ++filtered) {
+        SoLoud::BiquadResonantFilter lowpass;
+        lowpass.setParams(SoLoud::BiquadResonantFilter::LOWPASS, 6000.0f, 0.7f);
+        RefillRun r(filtered ? &lowpass : nullptr);
+        r.push(std::vector<float>(1000, kLevel));
+        r.mix(10);  // starves after 3000 output frames
+        const unsigned int pushedAt = static_cast<unsigned int>(r.out2.size() / 2);
+        r.push(std::vector<float>(16000, kLevel));
+        r.mix(4);
+        const long long onset = firstAudible(r.out2, pushedAt);
+        EXPECT(onset >= 0, "new frames never played (filtered %d)", filtered);
+        const long long late = onset - pushedAt;
+        std::printf("  %s voice resumed %lld frames after the push\n",
+                    filtered ? "filtered" : "unfiltered", late);
+        if (filtered) {
+            EXPECT(late <= 1536 + 8, "a filtered voice resumed %lld frames late", late);
+        } else {
+            EXPECT(late <= 8, "an unfiltered voice resumed %lld frames late", late);
+        }
+    }
+}
+
 } // namespace rt_engine
 
 // 6. reset() clears the underrun statistics.
@@ -1222,6 +1678,9 @@ int main() {
     rt_engine::testRollbackKeepsUnjournaledVoiceState();
     rt_engine::testConfigureBeforeMixKeepsRollbacks();
     rt_engine::testRollbackKeeps3dState();
+    rt_engine::testFastVoiceRollbackKeepsAudio();
+    rt_engine::testScheduledClicksKeepMarkerRoom();
+    rt_engine::testUnderrunRefillKeepsFilterTimeline();
     testRealtimeResetClearsUnderrunCount();
 
     std::printf("\n%d assertions, %d failures\n", g_assertions, g_failures);

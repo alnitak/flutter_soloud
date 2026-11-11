@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 
+#include "../device_lifecycle_test_hooks.h"
 #include "../soloud_common.h"
 #include "metadata_ffi.h"
 #include "realtime_ring_buffer.h"
@@ -17,6 +18,22 @@
 #endif
 
 namespace SoLoud {
+
+namespace {
+/// Holds SoLoud's audio mutex for a scope.
+class AudioMutexLock {
+public:
+  explicit AudioMutexLock(Soloud &aSoloud) : mSoloud(aSoloud) {
+    mSoloud.lockAudioMutex_internal();
+  }
+  ~AudioMutexLock() { mSoloud.unlockAudioMutex_internal(); }
+  AudioMutexLock(const AudioMutexLock &) = delete;
+  AudioMutexLock &operator=(const AudioMutexLock &) = delete;
+
+private:
+  Soloud &mSoloud;
+};
+} // namespace
 
 #ifdef MA_ENABLE_AUDIO_WORKLETS
 // Main-thread entry points for the stream event callbacks. On the
@@ -117,6 +134,42 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
     return 0;
   }
 
+  // A play position a delivery resolved for a pending seek (see
+  // PullBufferStream::applyPendingSeek()). The mixer owns the position, so it
+  // applies it here, before this block advances it.
+  if (mParent->mStreamPositionPending.exchange(false,
+                                               std::memory_order_acquire)) {
+    mStreamPosition =
+        mParent->mPendingStreamPosition.load(std::memory_order_relaxed);
+  }
+
+  // A seek or a rewind that found a delivery decoding (see deferMove()) is
+  // applied by the first block that gets the decode mutex. Until then the
+  // voice plays silence, not the audio from before the move, and reports the
+  // block as read, so that a looping voice is not rewound over a deferred
+  // seek.
+  if (mParent->mDeferredMove.load(std::memory_order_acquire) !=
+      PullStreamMove::None) {
+    std::unique_lock<std::mutex> lock(mParent->mDecodeMutex, std::try_to_lock);
+    if (!lock.owns_lock()) {
+      for (unsigned int ch = 0; ch < mChannels; ++ch) {
+        std::memset(aBuffer + ch * aBufferSize, 0,
+                    sizeof(float) * aSamplesToRead);
+      }
+      return aSamplesToRead;
+    }
+    const PullStreamMove move = mParent->mDeferredMove.load();
+    if (move == PullStreamMove::Rewind) {
+      rewindLocked();
+      mStreamPosition = 0.0;
+    } else if (move == PullStreamMove::Seek) {
+      seekLocked(mParent->mDeferredSeekTime.load(std::memory_order_relaxed));
+    }
+    // The blocks of silence moved SoLoud's count of the frames read too.
+    mSourceSamplePosition =
+        static_cast<uint64_t>(std::floor(mStreamPosition * mBaseSamplerate));
+  }
+
   // Refresh the stream format under the decode mutex: the main thread updates
   // mPCMformat when the decoder reports the real sample rate/channels. If the
   // mutex is contended, keep the last known values for this callback.
@@ -146,7 +199,7 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
     for (unsigned int ch = 0; ch < mChannels; ++ch) {
       std::memset(aBuffer + ch * aBufferSize, 0, sizeof(float) * aSamplesToRead);
     }
-    mParent->requestMoreDataIfNeeded();
+    mParent->requestMoreDataIfNeeded(/*aFromMixer*/ true);
     return 0;
   }
 
@@ -154,6 +207,7 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   // planar layout the SoLoud mixer expects without an intermediate scratch copy.
   const size_t readFrames = mParent->mCircularBuffer.readPlanar(
       aBuffer, aBufferSize, framesToRequest, mChannels);
+  SOLOUD_TEST_BARRIER(pullSamplesRead);
   const size_t readSamples = readFrames * mChannels;
   mParent->mDecodedSamplesRead += readSamples;
 
@@ -167,7 +221,7 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   // acquire the Soloud mixer lock and would deadlock with the thread that
   // is currently calling getAudio(). Buffering checks are done when the user
   // adds data or marks the end of the stream (main thread).
-  mParent->requestMoreDataIfNeeded();
+  mParent->requestMoreDataIfNeeded(/*aFromMixer*/ true);
   return readFrames;
 }
 
@@ -183,7 +237,29 @@ result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
     return SO_NO_ERROR;
   }
 
-  const double totalLength = mParent->getLength();
+  {
+    // Held for the whole seek, so a delivery decoding on another thread never
+    // has the decoder, the buffers or the offsets reset under it. SoLoud
+    // applies seeks with its audio mutex held, often on the mixer, which must
+    // never wait for a delivery's decode: a seek that finds the mutex held
+    // is left for the mixer's next getAudio() to apply.
+    std::unique_lock<std::mutex> lock(mParent->mDecodeMutex, std::try_to_lock);
+    if (!lock.owns_lock()) {
+      deferMove(PullStreamMove::Seek, aSeconds);
+      return SO_NO_ERROR;
+    }
+    seekLocked(aSeconds);
+  }
+
+  mParent->requestMoreDataIfNeeded(/*aFromMixer*/ true);
+  return SO_NO_ERROR;
+}
+
+void PullBufferStreamInstance::seekLocked(double aSeconds) {
+  // This seek supersedes one deferred earlier.
+  mParent->mDeferredMove.store(PullStreamMove::None);
+
+  const double totalLength = mParent->getLengthLocked();
   if (totalLength > 0.0 && aSeconds > totalLength) {
     aSeconds = totalLength;
   }
@@ -193,107 +269,139 @@ result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
                  mParent->mPCMformat.channels));
 
   bool didInBufferSeek = false;
-  {
-    std::lock_guard<std::mutex> lock(mParent->mDecodeMutex);
 
-    // Move decoded samples that did not fit earlier into the circular buffer so
-    // they become part of the seekable range.
-    mParent->drainBacklogLocked();
+  // Move decoded samples that did not fit earlier into the circular buffer so
+  // they become part of the seekable range.
+  mParent->drainBacklogLocked();
 
-    // The visual red bar is the circular-buffer window:
-    // [read + available - capacity, read + available]. As the playhead advances,
-    // read grows and available shrinks, so the window stays steady until new
-    // data is decoded. Seeking anywhere inside this window should be in-buffer.
-    const uint64_t bufferedEnd =
-        mParent->mDecodedSamplesRead + mParent->mCircularBuffer.available();
-    const uint64_t bufferedStart = bufferedEnd > mParent->mCircularBuffer.capacity()
-        ? bufferedEnd - mParent->mCircularBuffer.capacity()
-        : 0;
+  // The visual red bar is the circular-buffer window:
+  // [read + available - capacity, read + available]. As the playhead advances,
+  // read grows and available shrinks, so the window stays steady until new
+  // data is decoded. Seeking anywhere inside this window should be in-buffer.
+  const uint64_t bufferedEnd =
+      mParent->mDecodedSamplesRead + mParent->mCircularBuffer.available();
+  const uint64_t bufferedStart = bufferedEnd > mParent->mCircularBuffer.capacity()
+      ? bufferedEnd - mParent->mCircularBuffer.capacity()
+      : 0;
 
-    // mBufferStartTime marks the logical start of valid decoded data (set by
-    // out-of-buffer seeks). The physical circular buffer can still hold older
-    // samples before this point, so clamp the seek window to the logical start
-    // to prevent seeking into stale decoded audio.
-    const uint64_t logicalStartSamples = mParent->mBufferStartTime > 0.0
-        ? static_cast<uint64_t>(std::floor(mParent->mBufferStartTime *
-                                           mParent->mPCMformat.sampleRate *
-                                           mParent->mPCMformat.channels))
-        : 0;
-    const uint64_t effectiveStart = std::max(bufferedStart, logicalStartSamples);
+  // mBufferStartTime marks the logical start of valid decoded data (set by
+  // out-of-buffer seeks). The physical circular buffer can still hold older
+  // samples before this point, so clamp the seek window to the logical start
+  // to prevent seeking into stale decoded audio.
+  const uint64_t logicalStartSamples = mParent->mBufferStartTime > 0.0
+      ? static_cast<uint64_t>(std::floor(mParent->mBufferStartTime *
+                                         mParent->mPCMformat.sampleRate *
+                                         mParent->mPCMformat.channels))
+      : 0;
+  const uint64_t effectiveStart = std::max(bufferedStart, logicalStartSamples);
 
-    if (targetSample >= effectiveStart && targetSample <= bufferedEnd) {
-      if (targetSample >= mParent->mDecodedSamplesRead) {
-        // Forward in-buffer seek: advance the read pointer to the target.
-        const size_t advance = targetSample - mParent->mDecodedSamplesRead;
-        const size_t before = mParent->mCircularBuffer.available();
-        mParent->mCircularBuffer.advanceRead(advance);
-        const size_t after = mParent->mCircularBuffer.available();
-        mParent->mDecodedSamplesRead += before - after;
+  if (targetSample >= effectiveStart && targetSample <= bufferedEnd) {
+    if (targetSample >= mParent->mDecodedSamplesRead) {
+      // Forward in-buffer seek: advance the read pointer to the target.
+      const size_t advance = targetSample - mParent->mDecodedSamplesRead;
+      const size_t before = mParent->mCircularBuffer.available();
+      mParent->mCircularBuffer.advanceRead(advance);
+      const size_t after = mParent->mCircularBuffer.available();
+      mParent->mDecodedSamplesRead += before - after;
+    } else {
+      // Backward in-buffer seek: restore samples that are still physically
+      // in the circular buffer. rewindRead() enforces the safe rewind limit
+      // (before the first wrap it will not cross into uninitialized data).
+      const size_t desiredRewind =
+          mParent->mDecodedSamplesRead - targetSample;
+      const size_t rewound = mParent->mCircularBuffer.rewindRead(desiredRewind);
+      if (rewound == desiredRewind) {
+        mParent->mDecodedSamplesRead = targetSample;
       } else {
-        // Backward in-buffer seek: restore samples that are still physically
-        // in the circular buffer. rewindRead() enforces the safe rewind limit
-        // (before the first wrap it will not cross into uninitialized data).
-        const size_t desiredRewind =
-            mParent->mDecodedSamplesRead - targetSample;
-        const size_t rewound = mParent->mCircularBuffer.rewindRead(desiredRewind);
-        if (rewound == desiredRewind) {
-          mParent->mDecodedSamplesRead = targetSample;
-        } else {
-          // Not enough data is still physically present; fall through to the
-          // out-of-buffer seek path.
-        }
+        // Not enough data is still physically present; fall through to the
+        // out-of-buffer seek path.
       }
-      if (mParent->mDecodedSamplesRead == targetSample) {
-        mStreamPosition = aSeconds;
-        mParent->mWaitingForData.store(false);
-        didInBufferSeek = true;
-      }
+    }
+    if (mParent->mDecodedSamplesRead == targetSample) {
+      mStreamPosition = aSeconds;
+      mParent->mWaitingForData.store(false);
+      didInBufferSeek = true;
     }
   }
 
-  if (didInBufferSeek) {
-    mParent->requestMoreDataIfNeeded();
-    return SO_NO_ERROR;
+  if (!didInBufferSeek) {
+    // Out-of-buffer seek: move the play head to the target, request data
+    // from the encoded byte offset, and mark a pending seek.
+    const uint64_t newOffset =
+        mParent->timeToEncodedByteOffsetLocked(aSeconds);
+
+    if (newOffset == 0) {
+      // The decoder does not yet know how to map this time to an encoded
+      // byte offset. Keep the current play head and buffer, request more
+      // data, and let applyPendingSeek retry once the mapping is available.
+      mParent->mPendingSeek.store(true);
+      mParent->mPendingSeekTime = aSeconds;
+      mParent->mPendingSeekByteOffset = 0;
+    } else {
+      SOLOUD_TEST_BARRIER(pullSeekDiscarding);
+      // Discard the currently buffered decoded range without zeroing the
+      // underlying memory, matching the circular-buffer plan.
+      mParent->resetBufferWindow(targetSample, targetSample, aSeconds,
+                                 newOffset, newOffset);
+      mStreamPosition = aSeconds;
+      mParent->mPendingSeek.store(true);
+      mParent->mPendingSeekTime = aSeconds;
+      mParent->mPendingSeekByteOffset = newOffset;
+      mParent->mDataIsEnded.store(false);
+      mParent->mWaitingForData.store(false);
+      mParent->resetDecoderForSeek(targetSample, newOffset);
+      // The buffer was just discarded, so this leaves the seek pending
+      // until data at the target has been decoded.
+      mParent->applyPendingSeek(/*aUnderAudioMutex*/ true);
+    }
   }
 
-  // Out-of-buffer seek: move the play head to the target, request data from
-  // the encoded byte offset, and mark a pending seek.
-  const uint64_t newOffset = mParent->timeToEncodedByteOffset(aSeconds);
-
-  if (newOffset == 0) {
-    // The decoder does not yet know how to map this time to an encoded byte
-    // offset. Keep the current play head and buffer, request more data, and
-    // let applyPendingSeek retry once the mapping is available.
-    mParent->mPendingSeek.store(true);
-    mParent->mPendingSeekTime = aSeconds;
-    mParent->mPendingSeekByteOffset = 0;
-    mParent->requestMoreDataIfNeeded();
-    return SO_NO_ERROR;
-  }
-
-  // Discard the currently buffered decoded range without zeroing the
-  // underlying memory, matching the circular-buffer plan.
-  mParent->resetBufferWindow(targetSample, targetSample, aSeconds, newOffset,
-                             newOffset);
-  mStreamPosition = aSeconds;
-  mParent->mPendingSeek.store(true);
-  mParent->mPendingSeekTime = aSeconds;
-  mParent->mPendingSeekByteOffset = newOffset;
-  mParent->mDataIsEnded.store(false);
-  mParent->mWaitingForData.store(false);
-  mParent->resetDecoderForSeek(targetSample);
-  mParent->applyPendingSeek();
-  return SO_NO_ERROR;
+  // This seek decides the play position: drop one a delivery resolved for
+  // an earlier seek that the mixer has not applied yet.
+  mParent->mStreamPositionPending.store(false, std::memory_order_relaxed);
 }
 
 result PullBufferStreamInstance::rewind() {
   if (mParent == nullptr || !mParent->isValid()) {
     return INVALID_PARAMETER;
   }
+  {
+    // As in seek(): held so a delivery never decodes into a half-reset
+    // stream, or with a decoder this replaces, and only tried: the mixer
+    // rewinds a looping voice at its end and on a short read.
+    std::unique_lock<std::mutex> lock(mParent->mDecodeMutex, std::try_to_lock);
+    if (!lock.owns_lock()) {
+      deferMove(PullStreamMove::Rewind, 0.0);
+      return SO_NO_ERROR;
+    }
+    rewindLocked();
+  }
+  mStreamPosition = 0.0;
+  mParent->requestMoreDataIfNeeded(/*aFromMixer*/ true);
+  return SO_NO_ERROR;
+}
+
+void PullBufferStreamInstance::rewindLocked() {
+  mParent->mDeferredMove.store(PullStreamMove::None);
+  // Nothing has been played since the start, so the buffer already holds the
+  // stream from 0: what a delivery that a deferred rewind waited for decoded,
+  // say. Discarding it would only ask for the same data again, and a looping
+  // voice still waiting for its first data rewinds on every block.
+  if (mParent->mDecodedSamplesRead == 0 && mParent->mBufferStartTime == 0.0 &&
+      !mParent->mPendingSeek.load()) {
+    mParent->mStreamPositionPending.store(false, std::memory_order_relaxed);
+    return;
+  }
+  SOLOUD_TEST_BARRIER(pullSeekDiscarding);
   // Rewind: discard the currently buffered decoded range without zeroing the
   // underlying memory so the circular buffer can continue from the start.
   mParent->resetBufferWindow(0, 0, 0.0, 0, 0);
-  mStreamPosition = 0.0;
+  // Rewinding discards even a completely delivered stream. Reopen the feed
+  // as an out-of-buffer seek does: otherwise hasEnded() sees an empty ended
+  // buffer, so the voice stops (or, looping, stays silent), and every later
+  // delivery is refused. This covers the mixer's rewind of a looping voice
+  // at its end too.
+  mParent->mDataIsEnded.store(false);
   mParent->mPendingSeek.store(false);
   mParent->mPendingSeekTime = 0.0;
   mParent->mPendingSeekByteOffset = 0;
@@ -302,14 +410,27 @@ result PullBufferStreamInstance::rewind() {
     mParent->mStreamDecoder = std::make_unique<StreamDecoder>();
     mParent->mStreamDecoder->setTotalAudioSizeBytes(mParent->mAudioSizeBytes);
   }
+  mParent->mStreamPositionPending.store(false, std::memory_order_relaxed);
   mParent->mWaitingForData.store(false);
-  mParent->requestMoreDataIfNeeded();
-  return SO_NO_ERROR;
+}
+
+void PullBufferStreamInstance::deferMove(PullStreamMove aMove,
+                                         double aSeconds) {
+  // SoLoud's audio mutex is held, as for every seek and rewind, so a later
+  // move simply replaces this one. The voice reports the new position now;
+  // getAudio() plays silence until it has applied the move.
+  mParent->mDeferredSeekTime.store(aSeconds, std::memory_order_relaxed);
+  mParent->mDeferredMove.store(aMove, std::memory_order_release);
+  mStreamPosition = aSeconds;
 }
 
 bool PullBufferStreamInstance::hasEnded() {
   if (mParent == nullptr || !mParent->isValid()) {
     return true;
+  }
+  // A deferred seek or rewind still has to reopen the stream.
+  if (mParent->mDeferredMove.load() != PullStreamMove::None) {
+    return false;
   }
   return mParent->isDataEnded() && mParent->mCircularBuffer.empty() &&
          mParent->mDecodedBacklogSize.load(std::memory_order_relaxed) == 0;
@@ -349,14 +470,17 @@ void PullBufferStream::resetProbeState() {
   mTailProbeBuffer.clear();
 }
 
-void PullBufferStream::resetDecoderForSeek(uint64_t targetSample) {
+void PullBufferStream::resetDecoderForSeek(uint64_t targetSample,
+                                           uint64_t byteOffset) {
   if (mPCMformat.dataType != BufferType::AUTO || !mStreamDecoder) return;
   const DetectedType type = mStreamDecoder->getWrapperType();
   if (type == DetectedType::BUFFER_OGG_OPUS ||
       type == DetectedType::BUFFER_OGG_VORBIS ||
       type == DetectedType::BUFFER_WAV ||
+      type == DetectedType::BUFFER_MP3_STREAM ||
+      type == DetectedType::BUFFER_MP3_WITH_ID3 ||
       type == DetectedType::BUFFER_FLAC) {
-    mStreamDecoder->prepareForSeek(targetSample);
+    mStreamDecoder->prepareForSeek(targetSample, byteOffset);
   } else {
     mStreamDecoder = std::make_unique<StreamDecoder>();
   }
@@ -456,6 +580,14 @@ PlayerErrors PullBufferStream::setPullBufferStream(
     mDurationProbeState = DurationProbeState::Done;
     finishDurationProbe(mProbedDuration);
   }
+  {
+    // Nothing else uses the stream yet; locked only to keep the rule that
+    // deferred callbacks are taken under the decode mutex.
+    std::unique_lock<std::mutex> lock(mDecodeMutex);
+    DeferredCallbacks callbacks = takeDeferredCallbacksLocked();
+    lock.unlock();
+    deliverDeferredCallbacks(callbacks);
+  }
 
 // On the web the Dart callback is stored on globalThis after the WASM call
 // returns, so we cannot request data from inside the C++ call. The web binding
@@ -469,35 +601,53 @@ PlayerErrors PullBufferStream::setPullBufferStream(
 }
 
 void PullBufferStream::resetPullBufferStream() {
-  mCircularBuffer.clear();
-  mEncodedBuffer.clear();
-  mDecodeScratch.clear();
-  mDecodedBacklog.clear();
-  mDecodedBacklogSize.store(0, std::memory_order_relaxed);
-  mTotalReceivedBytes = 0;
-  mSequentialReadOffset = 0;
-  mDecodedSamplesRead = 0;
-  mDecodedSamplesWritten = 0;
-  mBufferStartTime = 0.0;
-  mDataIsEnded.store(false);
-  mIsBuffering.store(false);
-  mWaitingForData.store(false);
-  mMetadataReceived.store(false);
-  mPendingSeek.store(false);
-  mPendingSeekTime = 0.0;
-  mPendingSeekByteOffset = 0;
-  resetProbeState();
-  if (mPCMformat.dataType == BufferType::AUTO) {
-    mStreamDecoder = std::make_unique<StreamDecoder>();
-    mStreamDecoder->setTotalAudioSizeBytes(mAudioSizeBytes);
-    mDurationProbeState = DurationProbeState::Probing;
-  } else {
-    mDurationProbeState = DurationProbeState::Done;
+  {
+    // Held so the mixer, which decodes and drains under it, and a delivery
+    // never find the decoder or the buffers replaced mid-use.
+    std::lock_guard<std::mutex> lock(mDecodeMutex);
+    // The mixer takes samples from the circular buffer and counts them as
+    // read with only the audio mutex held (getAudio() must not wait for a
+    // delivery decoding under the decode mutex). Holding the audio mutex
+    // keeps a reset from landing between that read and its count, which
+    // would leave the reset stream claiming samples it does not have. It is
+    // taken after the decode mutex, so that a reset waiting for a delivery's
+    // decode does not hold the mixer up meanwhile: nothing holding the audio
+    // mutex waits for the decode mutex (see its declaration).
+    AudioMutexLock audioLock(mThePlayer->soloud);
+    mCircularBuffer.clear();
+    mEncodedBuffer.clear();
+    mDecodeScratch.clear();
+    mDecodedBacklog.clear();
+    mDecodedBacklogSize.store(0, std::memory_order_relaxed);
+    mTotalReceivedBytes = 0;
+    mSequentialReadOffset = 0;
+    mDecodedSamplesRead = 0;
+    mDecodedSamplesWritten = 0;
+    mBufferStartTime = 0.0;
+    mDataIsEnded.store(false);
+    mIsBuffering.store(false);
+    mWaitingForData.store(false);
+    mMetadataReceived.store(false);
+    mPendingSeek.store(false);
+    mPendingSeekTime = 0.0;
+    mPendingSeekByteOffset = 0;
+    mSeekCompletedSinceCheck.store(false);
+    mStreamPositionPending.store(false, std::memory_order_relaxed);
+    mDeferredMove.store(PullStreamMove::None);
+    mDeferredCallbacks = DeferredCallbacks();
+    resetProbeState();
+    if (mPCMformat.dataType == BufferType::AUTO) {
+      mStreamDecoder = std::make_unique<StreamDecoder>();
+      mStreamDecoder->setTotalAudioSizeBytes(mAudioSizeBytes);
+      mDurationProbeState = DurationProbeState::Probing;
+    } else {
+      mDurationProbeState = DurationProbeState::Done;
+    }
   }
   requestMoreDataIfNeeded();
 }
 
-void PullBufferStream::setDataIsEnded() {
+void PullBufferStream::setDataIsEndedLocked() {
   if (mStreamDecoder) {
     mStreamDecoder->setDataEnded();
   }
@@ -508,7 +658,7 @@ void PullBufferStream::setDataIsEnded() {
   do {
     lastCircularSize = mCircularBuffer.available();
     lastBacklogSize = mDecodedBacklog.size();
-    decodePendingData();
+    decodePendingDataLocked();
   } while (mCircularBuffer.available() != lastCircularSize ||
            mDecodedBacklog.size() != lastBacklogSize);
   mDataIsEnded.store(true);
@@ -518,11 +668,17 @@ void PullBufferStream::setDataIsEnded() {
       mStreamDecoder->getDuration() > 0.0) {
     finishDurationProbe(mStreamDecoder->getDuration());
   }
-
-  checkBuffering();
+  // addAudioData(), the only caller, runs the buffering check once it has
+  // released the decode mutex.
 }
 
-double PullBufferStream::getBufferStartTime() const {
+void PullBufferStream::getBufferTimeRange(double &startTime, double &endTime) const {
+  std::lock_guard<std::mutex> lock(mDecodeMutex);
+  startTime = getBufferStartTimeLocked();
+  endTime = getBufferEndTimeLocked();
+}
+
+double PullBufferStream::getBufferStartTimeLocked() const {
   const unsigned int sampleRate = mPCMformat.sampleRate;
   const unsigned int channels = mPCMformat.channels;
   if (sampleRate == 0 || channels == 0) return 0.0;
@@ -533,7 +689,7 @@ double PullBufferStream::getBufferStartTime() const {
   // decoded end) stays constant until new data is loaded. The red bar drawn
   // from [startTime, endTime] therefore stays steady and the playhead moves
   // inside it until the trigger position requests more data.
-  const double endTime = getBufferEndTime();
+  const double endTime = getBufferEndTimeLocked();
   const double startTimeFromCapacity =
       endTime - static_cast<double>(mCircularBuffer.capacity()) /
                     static_cast<double>(sampleRate * channels);
@@ -548,21 +704,26 @@ double PullBufferStream::getBufferStartTime() const {
     startTime = std::max(startTime, mBufferStartTime);
   }
 
-  const double totalLength = getLength();
+  const double totalLength = getLengthLocked();
   if (totalLength > 0.0) {
     return std::max(0.0, std::min(startTime, totalLength));
   }
   return std::max(0.0, startTime);
 }
 
-double PullBufferStream::getBufferEndTime() const {
+double PullBufferStream::getBufferEndTimeLocked() const {
   const unsigned int sampleRate = mPCMformat.sampleRate;
   const unsigned int channels = mPCMformat.channels;
   if (sampleRate == 0 || channels == 0) return 0.0;
-  const double endTime = static_cast<double>(mDecodedSamplesRead +
-                                              mCircularBuffer.available()) /
+  // The mixer takes samples from the circular buffer before it adds them to
+  // mDecodedSamplesRead, without the decode mutex, so the sum of the two can
+  // come out a block short. The samples written minus the backlog not yet in
+  // the buffer is the same end, and both change only under the decode mutex
+  // held here.
+  const double endTime = static_cast<double>(mDecodedSamplesWritten -
+                                              mDecodedBacklog.size()) /
                          static_cast<double>(sampleRate * channels);
-  const double totalLength = getLength();
+  const double totalLength = getLengthLocked();
   if (totalLength > 0.0) {
     return std::min(endTime, totalLength);
   }
@@ -576,86 +737,110 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
     return PlayerErrors::streamEndedAlready;
   }
   if (aDataLen == 0) {
-    decodePendingData();
-    return PlayerErrors::noError;
-  }
-
-  const bool isSequential = (aOffset == 0 || aOffset == mSequentialReadOffset);
-
-  // Once the duration has been found, discard late tail chunks that were
-  // already in flight when the probe finished. They are not needed for
-  // playback and would otherwise be fed to the main decoder out of order.
-  // Sequential data that happens to fall in the tail range (e.g. after a
-  // seek or when normal playback reaches the end of the file) must still be
-  // accepted.
-  if (mDurationProbeState == DurationProbeState::Done &&
-      aOffset >= mDurationProbeTailRangeStart.load() &&
-      aOffset < mDurationProbeTailRangeEnd.load() && !isSequential) {
-    mWaitingForData.store(false);
-    requestMoreDataIfNeeded();
-    return PlayerErrors::noError;
-  }
-
-  uint64_t effectiveOffset = aOffset;
-  if (aOffset == 0) {
-    effectiveOffset = mSequentialReadOffset;
-  }
-
-  // If this chunk falls inside the requested Ogg tail-probe range, do not
-  // store it in the circular buffer; accumulate it in a temporary probe
-  // buffer and discard it once the duration is known.
-  if (mDurationProbeState == DurationProbeState::TailRequested &&
-      aOffset >= mDurationProbeTailRangeStart.load() &&
-      aOffset < mDurationProbeTailRangeEnd.load()) {
+    DeferredCallbacks callbacks;
     {
       std::lock_guard<std::mutex> lock(mDecodeMutex);
+      decodePendingDataLocked();
+      callbacks = takeDeferredCallbacksLocked();
+    }
+    deliverDeferredCallbacks(callbacks);
+    // A seek this decode completed resumes playback through the check.
+    if (mSeekCompletedSinceCheck.load())
+      checkBuffering();
+    return PlayerErrors::noError;
+  }
+
+  bool isSequential = false;
+  {
+    // The decoder and the bookkeeping below are guarded by the decode mutex
+    // (see its declaration). It is released between queueing the bytes and
+    // decoding them, so the mixer can decode them meanwhile.
+    std::unique_lock<std::mutex> lock(mDecodeMutex);
+
+    isSequential = (aOffset == 0 || aOffset == mSequentialReadOffset);
+
+    // Once the duration has been found, discard late tail chunks that were
+    // already in flight when the probe finished. They are not needed for
+    // playback and would otherwise be fed to the main decoder out of order.
+    // Sequential data that happens to fall in the tail range (e.g. after a
+    // seek or when normal playback reaches the end of the file) must still be
+    // accepted.
+    if (mDurationProbeState == DurationProbeState::Done &&
+        aOffset >= mDurationProbeTailRangeStart.load() &&
+        aOffset < mDurationProbeTailRangeEnd.load() && !isSequential) {
+      lock.unlock();
+      mWaitingForData.store(false);
+      requestMoreDataIfNeeded();
+      return PlayerErrors::noError;
+    }
+
+    uint64_t effectiveOffset = aOffset;
+    if (aOffset == 0) {
+      effectiveOffset = mSequentialReadOffset;
+    }
+
+    // If this chunk falls inside the requested Ogg tail-probe range, do not
+    // store it in the circular buffer; accumulate it in a temporary probe
+    // buffer and discard it once the duration is known.
+    if (mDurationProbeState == DurationProbeState::TailRequested &&
+        aOffset >= mDurationProbeTailRangeStart.load() &&
+        aOffset < mDurationProbeTailRangeEnd.load()) {
       const auto *bytes = static_cast<const unsigned char *>(aData);
       mTailProbeBuffer.insert(mTailProbeBuffer.end(), bytes, bytes + aDataLen);
       mTotalReceivedBytes += aDataLen;
+      if (aOffset == mNextTailOffset.load()) {
+        mNextTailOffset.store(aOffset + aDataLen);
+      }
+      SOLOUD_DEBUG_LOG(
+          "[PullBuffer] addAudioData tail probe len=%u offset=%llu "
+          "nextTailOffset=%llu\n",
+          aDataLen, static_cast<unsigned long long>(aOffset),
+          static_cast<unsigned long long>(mNextTailOffset));
+      probeDurationFromOggTail(aOffset);
+      DeferredCallbacks callbacks = takeDeferredCallbacksLocked();
+      lock.unlock();
+      deliverDeferredCallbacks(callbacks);
+      mWaitingForData.store(false);
+      requestMoreDataIfNeeded();
+      return PlayerErrors::noError;
     }
-    if (aOffset == mNextTailOffset.load()) {
-      mNextTailOffset.store(aOffset + aDataLen);
-    }
-    SOLOUD_DEBUG_LOG(
-        "[PullBuffer] addAudioData tail probe len=%u offset=%llu "
-        "nextTailOffset=%llu\n",
-        aDataLen, static_cast<unsigned long long>(aOffset),
-        static_cast<unsigned long long>(mNextTailOffset));
-    probeDurationFromOggTail(aOffset);
-    mWaitingForData.store(false);
-    requestMoreDataIfNeeded();
-    return PlayerErrors::noError;
-  }
 
-  {
-    std::lock_guard<std::mutex> lock(mDecodeMutex);
     const auto *bytes = static_cast<const unsigned char *>(aData);
     mEncodedBuffer.insert(mEncodedBuffer.end(), bytes, bytes + aDataLen);
     mTotalReceivedBytes += aDataLen;
+    if (isSequential && effectiveOffset == mSequentialReadOffset) {
+      mSequentialReadOffset += aDataLen;
+    }
+    if (mDurationProbeState == DurationProbeState::BuildingSeekTable) {
+      ++mSeekTableBuildChunks;
+    }
   }
-  if (isSequential && effectiveOffset == mSequentialReadOffset) {
-    mSequentialReadOffset += aDataLen;
-  }
-  if (mDurationProbeState == DurationProbeState::BuildingSeekTable) {
-    ++mSeekTableBuildChunks;
+  SOLOUD_TEST_BARRIER(pullDataQueued);
+
+  DeferredCallbacks callbacks;
+  {
+    std::lock_guard<std::mutex> lock(mDecodeMutex);
+    // If the sequential feed has reached the declared end of the file, mark
+    // the stream as ended so the decoder can flush its final frames and the
+    // voice can finish cleanly. Callers no longer need to explicitly call
+    // setDataIsEnded once the total audioSizeBytes is known.
+    if (mSequentialReadOffset >= mAudioSizeBytes) {
+      setDataIsEndedLocked();
+    }
+
+    decodePendingDataLocked();
+
+    // After decoding the first sequential chunk, try to determine the total
+    // duration from the format header for formats that provide it.
+    if (mDurationProbeState == DurationProbeState::Probing && isSequential) {
+      probeDurationFromFirstChunk();
+    }
+    callbacks = takeDeferredCallbacksLocked();
   }
 
-  // If the sequential feed has reached the declared end of the file, mark
-  // the stream as ended so the decoder can flush its final frames and the
-  // voice can finish cleanly. Callers no longer need to explicitly call
-  // setDataIsEnded once the total audioSizeBytes is known.
-  if (mSequentialReadOffset >= mAudioSizeBytes) {
-    setDataIsEnded();
-  }
-
-  decodePendingData();
-
-  // After decoding the first sequential chunk, try to determine the total
-  // duration from the format header for formats that provide it.
-  if (mDurationProbeState == DurationProbeState::Probing && isSequential) {
-    probeDurationFromFirstChunk();
-  }
-
+  // With the decode mutex released: the callbacks run Dart synchronously on
+  // the web, and the check calls into the Player.
+  deliverDeferredCallbacks(callbacks);
   checkBuffering();
   // New data has arrived, so we are no longer waiting for the previous
   // request. Reset the flag before checking whether another request is needed
@@ -663,11 +848,6 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
   mWaitingForData.store(false);
   requestMoreDataIfNeeded();
   return PlayerErrors::noError;
-}
-
-void PullBufferStream::getBufferTimeRange(double &startTime, double &endTime) const {
-  startTime = getBufferStartTime();
-  endTime = getBufferEndTime();
 }
 
 void PullBufferStream::probeDurationFromFirstChunk() {
@@ -700,7 +880,8 @@ void PullBufferStream::probeDurationFromFirstChunk() {
       mNextTailOffset.store(tailOffset);
       mSeekTableBuildChunks = 0;
       mDurationProbeState = DurationProbeState::BuildingSeekTable;
-      requestMoreDataIfNeeded();
+      // The delivery running this probe asks for the next chunk once it has
+      // released the decode mutex.
     }
     break;
   }
@@ -789,10 +970,25 @@ void PullBufferStream::probeDurationFromOggTail(uint64_t aOffset) {
 void PullBufferStream::finishDurationProbe(double duration) {
   mProbedDuration = duration;
   mDurationProbeState = DurationProbeState::Done;
-  callOnAudioDurationCallback(duration);
+  mDeferredCallbacks.hasDuration = true;
+  mDeferredCallbacks.duration = duration;
 }
 
-void PullBufferStream::decodePendingDataLocked() {
+PullBufferStream::DeferredCallbacks
+PullBufferStream::takeDeferredCallbacksLocked() {
+  DeferredCallbacks taken;
+  std::swap(taken, mDeferredCallbacks);
+  return taken;
+}
+
+void PullBufferStream::deliverDeferredCallbacks(DeferredCallbacks &aCallbacks) {
+  for (AudioMetadata &metadata : aCallbacks.metadata)
+    callOnMetadataCallback(metadata);
+  if (aCallbacks.hasDuration)
+    callOnAudioDurationCallback(aCallbacks.duration);
+}
+
+void PullBufferStream::decodePendingDataLocked(bool aUnderAudioMutex) {
   // First, move any previously decoded samples that did not fit into the
   // circular buffer. If the circular buffer is still full, we cannot accept
   // any newly decoded samples either, so stop here.
@@ -829,8 +1025,9 @@ void PullBufferStream::decodePendingDataLocked() {
     int channels = mThePlayer->mChannels;
     auto [decoded, error] = mStreamDecoder->decode(
         mEncodedBuffer, &sampleRate, &channels, [&](AudioMetadata meta) {
+          // Reported once the caller has released the decode mutex.
           if (this->mOnMetadataCallback != nullptr)
-            this->callOnMetadataCallback(meta);
+            this->mDeferredCallbacks.metadata.push_back(std::move(meta));
         }, maxAllowedSamples);
 
     switch (error) {
@@ -873,7 +1070,7 @@ void PullBufferStream::decodePendingDataLocked() {
       }
       // Once decoded, the encoded data is consumed from the pending buffer.
       mEncodedBuffer.clear();
-      applyPendingSeek();
+      applyPendingSeek(aUnderAudioMutex);
 
       // For formats whose duration becomes known only after decoding (e.g.
       // small Ogg files once the EOS page is seen), report it now.
@@ -932,6 +1129,7 @@ void PullBufferStream::decodePendingDataLocked() {
     default:
       break;
     }
+    SOLOUD_TEST_BARRIER(pullDecoding);
 
     // Account for every sample that was converted, even if the circular
     // buffer cannot hold them all right now.
@@ -949,28 +1147,27 @@ void PullBufferStream::decodePendingDataLocked() {
     SOLOUD_DEBUG_LOG(
         "[PullBuffer] decodePendingData PCM frames=%zu written=%zu backlog=%zu\n",
         framesToProcess, written, mDecodedBacklog.size());
-    applyPendingSeek();
+    applyPendingSeek(aUnderAudioMutex);
   }
 }
 
-void PullBufferStream::decodePendingData() {
-  std::lock_guard<std::mutex> lock(mDecodeMutex);
-  decodePendingDataLocked();
-}
-
 void PullBufferStream::tryDecodePendingData() {
+  // Only the mixer calls this, from getAudio(), with the audio mutex held.
   std::unique_lock<std::mutex> lock(mDecodeMutex, std::try_to_lock);
   if (!lock.owns_lock()) return;
-  decodePendingDataLocked();
+  decodePendingDataLocked(/*aUnderAudioMutex*/ true);
+  DeferredCallbacks callbacks = takeDeferredCallbacksLocked();
+  lock.unlock();
+  deliverDeferredCallbacks(callbacks);
 }
 
-void PullBufferStream::applyPendingSeek() {
+void PullBufferStream::applyPendingSeek(bool aUnderAudioMutex) {
   if (!mPendingSeek.load()) return;
 
   // If we haven't resolved the encoded byte offset yet, try again now that
   // more data may have arrived.
   if (mPendingSeekByteOffset == 0) {
-    const uint64_t newOffset = timeToEncodedByteOffset(mPendingSeekTime);
+    const uint64_t newOffset = timeToEncodedByteOffsetLocked(mPendingSeekTime);
     if (newOffset == 0) {
       // Still unknown; the caller will request more data to build the table.
       return;
@@ -983,10 +1180,17 @@ void PullBufferStream::applyPendingSeek() {
                    mPCMformat.channels));
     resetBufferWindow(targetSample, targetSample, mPendingSeekTime, newOffset,
                       newOffset);
-    if (auto *instance = mInstance.load(); instance != nullptr) {
-      instance->mStreamPosition = mPendingSeekTime;
+    if (aUnderAudioMutex) {
+      if (auto *instance = mInstance.load(); instance != nullptr) {
+        instance->mStreamPosition = mPendingSeekTime;
+      }
+    } else {
+      // The mixer advances the voice's position every block, so a delivery
+      // must not write it: the mixer's next getAudio() applies this.
+      mPendingStreamPosition.store(mPendingSeekTime, std::memory_order_relaxed);
+      mStreamPositionPending.store(true, std::memory_order_release);
     }
-    resetDecoderForSeek(targetSample);
+    resetDecoderForSeek(targetSample, newOffset);
     mPendingSeekByteOffset = newOffset;
     mDataIsEnded.store(false);
     mWaitingForData.store(false);
@@ -998,17 +1202,18 @@ void PullBufferStream::applyPendingSeek() {
   }
 
   mPendingSeek.store(false);
+  SOLOUD_TEST_BARRIER(pullSeekCompleted);
   // The play head was already moved by seek() or by the offset-resolution block
-  // above; now that data is here we can resume normal playback.
-  checkBuffering();
+  // above; now that data is here, normal playback can resume. The buffering
+  // check that resumes it is left to the delivery that brought the data (see
+  // checkBuffering()): this can run on the mixer, and under mDecodeMutex.
+  mSeekCompletedSinceCheck.store(true);
 }
 
 void PullBufferStream::drainBacklog() {
-  // The audio thread calls this while the SoLoud mixer lock is held. The main
-  // thread may hold the decode mutex while calling back into the player (e.g.
-  // checkBuffering() -> setPause()). Use a try-lock to avoid a lock-order
-  // inversion deadlock; if the main thread is busy, the backlog will be drained
-  // on the next audio callback.
+  // The audio thread calls this while the SoLoud mixer lock is held, and must
+  // not wait for a delivery that is decoding. Use a try-lock; if the decode
+  // mutex is busy, the backlog will be drained on the next audio callback.
   std::unique_lock<std::mutex> lock(mDecodeMutex, std::try_to_lock);
   if (!lock.owns_lock()) return;
   drainBacklogLocked();
@@ -1027,27 +1232,46 @@ void PullBufferStream::drainBacklogLocked() {
   }
 }
 
-void PullBufferStream::requestMoreDataIfNeeded() {
+void PullBufferStream::requestMoreDataIfNeeded(bool aFromMixer) {
+  uint64_t offset = 0;
+  {
+    std::unique_lock<std::mutex> lock(mDecodeMutex, std::defer_lock);
+    if (aFromMixer) {
+      // The mixer never waits for a delivery, which asks for more itself once
+      // it is done.
+      if (!lock.try_lock()) return;
+    } else {
+      lock.lock();
+    }
+    if (!nextDataRequestLocked(offset)) return;
+  }
+  // Called after releasing the decode mutex: on the web's main thread the
+  // callback runs Dart synchronously, and Dart may deliver data from it.
+  callOnMoreDataIsNeededCallback(offset);
+}
+
+bool PullBufferStream::nextDataRequestLocked(uint64_t &aOffset) {
   auto callback = mOnMoreDataIsNeededCallback.load();
-  if (callback == nullptr) return;
-  if (mDataIsEnded.load()) return;
-  if (mWaitingForData.load()) return;
+  if (callback == nullptr) return false;
+  // Disposed while a pinned delivery finishes (see pin()).
+  if (mIsDestroyed.load()) return false;
+  if (mDataIsEnded.load()) return false;
+  if (mWaitingForData.load()) return false;
   // The sequential feed has already reached the declared end of the file;
   // there is no more data to request.
-  if (mSequentialReadOffset >= mAudioSizeBytes) return;
+  if (mSequentialReadOffset >= mAudioSizeBytes) return false;
 
   // A pending seek has the highest priority so it can resolve quickly and
   // does not get stuck behind the duration-probe tail. Once the seek offset
   // is known, mSequentialReadOffset is already set to that offset, so
   // requesting it continues the stream from the seek point.
   if (mPendingSeek.load()) {
-    const uint64_t offset = mSequentialReadOffset;
+    aOffset = mSequentialReadOffset;
     mWaitingForData.store(true);
     SOLOUD_DEBUG_LOG(
         "[PullBuffer] requestMoreDataIfNeeded pending seek offset=%llu\n",
-        static_cast<unsigned long long>(offset));
-    callOnMoreDataIsNeededCallback(offset);
-    return;
+        static_cast<unsigned long long>(aOffset));
+    return true;
   }
 
   // While building the Ogg seek table, request a few sequential chunks before
@@ -1061,16 +1285,14 @@ void PullBufferStream::requestMoreDataIfNeeded() {
         decoderBlocked) {
       mDurationProbeState = DurationProbeState::TailRequested;
       mSeekTableBuildChunks = 0;
-      requestMoreDataIfNeeded();
-      return;
+      return nextDataRequestLocked(aOffset);
     }
     mWaitingForData.store(true);
-    const uint64_t offset = mSequentialReadOffset;
+    aOffset = mSequentialReadOffset;
     SOLOUD_DEBUG_LOG(
         "[PullBuffer] requestMoreDataIfNeeded build seek table offset=%llu\n",
-        static_cast<unsigned long long>(offset));
-    callOnMoreDataIsNeededCallback(offset);
-    return;
+        static_cast<unsigned long long>(aOffset));
+    return true;
   }
 
   // If the available data is below the ahead threshold, request more.
@@ -1080,7 +1302,7 @@ void PullBufferStream::requestMoreDataIfNeeded() {
       mCircularBuffer.available() +
       mDecodedBacklogSize.load(std::memory_order_relaxed);
   const size_t capacity = mCircularBuffer.capacity();
-  if (capacity == 0) return;
+  if (capacity == 0) return false;
   const double fraction = std::clamp(mBufferTriggerPosition, 0.0, 1.0);
   const size_t aheadThresholdSamples =
       static_cast<size_t>((1.0 - fraction) * capacity);
@@ -1091,41 +1313,76 @@ void PullBufferStream::requestMoreDataIfNeeded() {
   if (mDurationProbeState == DurationProbeState::TailRequested &&
       availablePlusBacklog > aheadThresholdSamples) {
     if (mNextTailOffset.load() >= mDurationProbeTailRangeEnd.load()) {
-      return;
+      return false;
     }
     mWaitingForData.store(true);
-    const uint64_t offset = mNextTailOffset.load();
+    aOffset = mNextTailOffset.load();
     SOLOUD_DEBUG_LOG(
         "[PullBuffer] requestMoreDataIfNeeded tail offset=%llu\n",
-        static_cast<unsigned long long>(offset));
-    callOnMoreDataIsNeededCallback(offset);
-    return;
+        static_cast<unsigned long long>(aOffset));
+    return true;
   }
 
   if (availablePlusBacklog > aheadThresholdSamples) {
-    return;
+    return false;
   }
 
   mWaitingForData.store(true);
-  const uint64_t offset = mSequentialReadOffset;
+  aOffset = mSequentialReadOffset;
   SOLOUD_DEBUG_LOG(
       "[PullBuffer] requestMoreDataIfNeeded offset=%llu "
       "availablePlusBacklog=%zu capacity=%zu\n",
-      static_cast<unsigned long long>(offset), availablePlusBacklog, capacity);
-  callOnMoreDataIsNeededCallback(offset);
+      static_cast<unsigned long long>(aOffset), availablePlusBacklog, capacity);
+  return true;
+}
+
+void PullBufferStream::pin() {
+  std::lock_guard<std::mutex> lock(mPinMutex);
+  ++mPins;
+}
+
+void PullBufferStream::unpin() {
+  std::lock_guard<std::mutex> lock(mPinMutex);
+  if (--mPins == 0) mUnpinned.notify_all();
+}
+
+void PullBufferStream::waitUntilUnpinned() {
+  std::unique_lock<std::mutex> lock(mPinMutex);
+  mUnpinned.wait(lock, [this] { return mPins == 0; });
 }
 
 void PullBufferStream::checkBuffering() {
+  SOLOUD_TEST_BARRIER(pullBufferingCheckEntered);
+  // The sound's handle list is read and the voice paused under sounds_mutex,
+  // which a play() and a voice's end hold while they update the list, taken
+  // before the audio mutex as everywhere. A delivery runs this pinned and
+  // without it (see pin()); once the sound is disposed its voices are gone.
+  std::lock_guard<std::recursive_mutex> soundsLock(mThePlayer->sounds_mutex);
+  if (!isValid()) return;
   if (mParent == nullptr || mParent->handle.empty()) return;
-  if (mBaseSamplerate == 0.0f || mPCMformat.channels == 0) return;
 
-  const size_t availableSamples = mCircularBuffer.available();
-  const size_t backlogSamples = mDecodedBacklog.size();
+  // The figures the decision needs, read under the decode mutex; the Player
+  // calls below run without it (see its declaration).
+  float baseSamplerate = 0.0f;
+  unsigned int channels = 0;
+  size_t availableSamples = 0;
+  size_t backlogSamples = 0;
+  size_t capacitySamples = 0;
+  {
+    std::lock_guard<std::mutex> lock(mDecodeMutex);
+    mSeekCompletedSinceCheck.store(false);
+    baseSamplerate = mBaseSamplerate;
+    channels = mPCMformat.channels;
+    availableSamples = mCircularBuffer.available();
+    backlogSamples = mDecodedBacklog.size();
+    capacitySamples = mCircularBuffer.capacity();
+  }
+  if (baseSamplerate == 0.0f || channels == 0) return;
+
   const size_t availablePlusBacklog = availableSamples + backlogSamples;
   const double availableTime =
       static_cast<double>(availablePlusBacklog) /
-      (static_cast<double>(mBaseSamplerate) *
-       static_cast<double>(mPCMformat.channels));
+      (static_cast<double>(baseSamplerate) * static_cast<double>(channels));
 
   // Pause when the decoded audio is nearly exhausted; resume once we have a
   // comfortable amount ahead again. The backlog is counted as available so
@@ -1133,9 +1390,8 @@ void PullBufferStream::checkBuffering() {
   // The thresholds are capped relative to the circular buffer capacity so
   // very small buffers can still reach the resume threshold and start playing.
   const double bufferCapacityTime =
-      static_cast<double>(mCircularBuffer.capacity()) /
-      (static_cast<double>(mBaseSamplerate) *
-       static_cast<double>(mPCMformat.channels));
+      static_cast<double>(capacitySamples) /
+      (static_cast<double>(baseSamplerate) * static_cast<double>(channels));
   const double kBufferingResumeTime = std::min(0.5, bufferCapacityTime * 0.8);
   const double kBufferingPauseTime = std::min(0.05, bufferCapacityTime * 0.1);
 
@@ -1330,6 +1586,11 @@ AudioSourceInstance *PullBufferStream::createInstance() {
 }
 
 SoLoud::time PullBufferStream::getLength() const {
+  std::lock_guard<std::mutex> lock(mDecodeMutex);
+  return getLengthLocked();
+}
+
+SoLoud::time PullBufferStream::getLengthLocked() const {
   if (mPCMformat.dataType == BufferType::AUTO) {
     // Use the probed duration once known; otherwise the length is unknown.
     return mProbedDuration;
@@ -1342,6 +1603,7 @@ SoLoud::time PullBufferStream::getLength() const {
 }
 
 SoLoud::time PullBufferStream::getBufferedLength() const {
+  std::lock_guard<std::mutex> lock(mDecodeMutex);
   const size_t availableSamples = mCircularBuffer.available();
   if (mBaseSamplerate == 0.0f || mPCMformat.channels == 0) return 0.0;
   return static_cast<double>(availableSamples) /
@@ -1349,7 +1611,7 @@ SoLoud::time PullBufferStream::getBufferedLength() const {
           static_cast<double>(mPCMformat.channels));
 }
 
-uint64_t PullBufferStream::timeToEncodedByteOffset(double seconds) {
+uint64_t PullBufferStream::timeToEncodedByteOffsetLocked(double seconds) {
   if (seconds <= 0.0) return 0;
   if (mPCMformat.dataType == BufferType::AUTO) {
     if (mStreamDecoder) {

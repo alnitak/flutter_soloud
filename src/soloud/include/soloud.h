@@ -658,8 +658,18 @@ namespace SoLoud
 		// worker fell behind. Never waits for another thread.
 		void renderRingTopUpNoWait_internal(unsigned int aFrames);
 		// Mix one engine quantum and append it to the ring. Audio mutex
-		// held; returns whether the voice-inactive callback is due.
+		// held; returns whether the voice-inactive callback is due. Mixes
+		// nothing when the ring has no room for a whole quantum.
 		bool renderRingMixQuantumLocked_internal();
+		// ###### flutter_soloud local patch (device-thread callbacks) ######
+		// Set by renderRingTopUpNoWait_internal() when a quantum it mixed on
+		// the device callback ended voices or made the voice-inactive
+		// callback due: it leaves both to the render worker, which delivers
+		// them in renderRingDeliverDeferred_internal().
+		std::atomic<bool> mRenderRingCallbacksDeferred{false};
+		// Render worker: dispatch the ended voices and call the
+		// voice-inactive callback the device callback left behind, if any.
+		void renderRingDeliverDeferred_internal();
 		// The render worker: a thread that keeps the ring topped up so the
 		// device callback only copies frames out. A device backend sets
 		// mRenderWorkerWanted before init() returns; init() then starts the
@@ -735,6 +745,13 @@ namespace SoLoud
 		// Engine time of the sample currently reaching the device. Caller
 		// must hold the audio mutex.
 		time playheadTimeLocked_internal();
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// Test builds only: called by playheadTimeLocked_internal() before
+		// it reads the ring, so a test can read the ring there as the
+		// device may, which takes no lock.
+		void (*mPlayheadTestHook)(Soloud *aSoloud) = nullptr;
+#endif
 		// Bodies of getScheduledDelaySamples/getClockedDelaySamples with the
 		// audio mutex already held by the caller.
 		unsigned int getScheduledDelaySamplesLocked_internal(time aEngineTime);
@@ -976,6 +993,11 @@ namespace SoLoud
 		unsigned long long mRemixStartPos;
 		time mRemixOldStreamTime;
 		time mRemixCheckpointTime;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The event time the rollback is placed at: the caller's, moved up to
+		// the playhead retroactiveBegin_internal read. Never before
+		// mRemixCheckpointTime.
+		time mRemixEventTime;
 		// Flags; see Soloud::FLAGS
 		unsigned int mFlags;
 		// Global volume. Applied before clipping.

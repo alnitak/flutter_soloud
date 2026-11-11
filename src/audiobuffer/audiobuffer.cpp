@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 
+#include "../device_lifecycle_test_hooks.h"
 #include "../soloud_common.h"
 #include "../simd/simd_pcm.h"
 #include "audiobuffer.h"
@@ -19,6 +20,22 @@
 // TODO: readSamplesFromBuffer as for waveform
 
 namespace SoLoud {
+namespace {
+/// Holds SoLoud's audio mutex for a scope.
+class AudioMutexLock {
+public:
+  explicit AudioMutexLock(Soloud &aSoloud) : mSoloud(aSoloud) {
+    mSoloud.lockAudioMutex_internal();
+  }
+  ~AudioMutexLock() { mSoloud.unlockAudioMutex_internal(); }
+  AudioMutexLock(const AudioMutexLock &) = delete;
+  AudioMutexLock &operator=(const AudioMutexLock &) = delete;
+
+private:
+  Soloud &mSoloud;
+};
+} // namespace
+
 std::mutex check_buffer_mutex;
 
 #ifdef MA_ENABLE_AUDIO_WORKLETS
@@ -80,7 +97,11 @@ BufferStreamInstance::BufferStreamInstance(BufferStream *aParent) {
   mParent = aParent;
   mOffset = 0;
   samplerateAlreadySet = false;
-  if (mParent != nullptr && mParent->autoTypeSamplerate != 0.f) {
+  if (mParent == nullptr) return;
+  // The first decode and a reset change these under the buffer mutex.
+  std::lock_guard<std::recursive_mutex> lock(mParent->mBuffer.bufferMutex);
+  mFormatGeneration = mParent->mFormatGeneration;
+  if (mParent->autoTypeSamplerate != 0.f) {
     mBaseSamplerate = mParent->autoTypeSamplerate;
     mSamplerate = mParent->autoTypeSamplerate;
     mChannels = mParent->autoTypeChannels;
@@ -95,6 +116,7 @@ class BufferStreamSourceStateSnapshot : public SoLoud::SourceStateSnapshot {
 public:
   unsigned int mOffset;
   bool samplerateAlreadySet;
+  uint64_t formatGeneration;
 };
 
 static const char kBufferStreamSnapshotKind = 0;
@@ -109,6 +131,7 @@ SoLoud::SourceStateSnapshot *BufferStreamInstance::captureSourceState() {
   s->mKind = &kBufferStreamSnapshotKind;
   s->mOffset = mOffset;
   s->samplerateAlreadySet = samplerateAlreadySet;
+  s->formatGeneration = mFormatGeneration;
   return s;
 }
 
@@ -122,6 +145,7 @@ bool BufferStreamInstance::captureSourceStateInto(
   auto *s = static_cast<BufferStreamSourceStateSnapshot *>(aState);
   s->mOffset = mOffset;
   s->samplerateAlreadySet = samplerateAlreadySet;
+  s->formatGeneration = mFormatGeneration;
   return true;
 }
 
@@ -133,6 +157,7 @@ void BufferStreamInstance::restoreSourceState(
   }
   mOffset = s->mOffset;
   samplerateAlreadySet = s->samplerateAlreadySet;
+  mFormatGeneration = s->formatGeneration;
 }
 
 
@@ -151,13 +176,26 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
   std::lock_guard<std::recursive_mutex> lock(mParent->mBuffer.bufferMutex);
 
+  // A reset of the stream lets a new source, maybe in another format, be
+  // delivered: the format this voice adopted is stale then. Only a reset
+  // advances the generation, so seeks and loop restarts keep the adopted
+  // format. A voice snapshot keeps the generation too, so restoring one
+  // taken before a reset still re-reads the format.
+  if (mFormatGeneration != mParent->mFormatGeneration) {
+    mFormatGeneration = mParent->mFormatGeneration;
+    samplerateAlreadySet = false;
+  }
+
   // When using BufferType::AUTO, samplerate and channels are got from the
   // stream. Hence we need to update them regardless of how are set by
   // setBufferStream. But these parameters need to be set after the play
   // function is called and the instance of this class is created.
   if (!samplerateAlreadySet && mParent->autoTypeSamplerate != 0.f) {
     mBaseSamplerate = mParent->autoTypeSamplerate;
-    mSamplerate = mParent->autoTypeSamplerate;
+    // The mixing rate includes the voice's relative play speed (doppler
+    // too), as updateVoiceRelativePlaySpeed_internal() sets it: adopting the
+    // source's format must keep it.
+    mSamplerate = mBaseSamplerate * mOverallRelativePlaySpeed;
     mChannels = mParent->autoTypeChannels;
     samplerateAlreadySet = true;
   } else if (mChannels == 0 && mParent->mChannels > 0) {
@@ -207,22 +245,15 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
 
         mParent->mIsBuffering = true;
 
-        SoLoud::handle handle = 0;
-        if (mParent->mParent != nullptr && !mParent->mParent->handle.empty()) {
-          for (size_t i = 0; i < mParent->mParent->handle.size(); ++i) {
-            if ((mParent->mParent->handle[i].handle >> 12) == this->mPlayIndex) {
-              handle = mParent->mParent->handle[i].handle;
-              mParent->mParent->handle[i].isUserPaused = false;
-              break;
-            }
-          }
-          if (handle == 0) {
-            handle = mParent->mParent->handle[0].handle;
-            mParent->mParent->handle[0].isUserPaused = false;
-          }
-        }
-
-        mParent->callOnBufferingCallback(true, handle, mStreamPosition);
+        // The mixer leaves the sound's handle list alone: sounds_mutex
+        // guards it, and the mixer must not wait for that. The handle comes
+        // from SoLoud's voice table instead, whose audio mutex it holds, and
+        // the list's user-paused flag, which a user pause can leave set on a
+        // voice unpaused through its group, is cleared by the next buffering
+        // check (BufferStream::takeBufferingPause()).
+        mPausedForBuffering.store(true);
+        mParent->callOnBufferingCallback(true, findOwnHandleLocked(),
+                                         mStreamPosition);
       }
     }
 
@@ -264,6 +295,17 @@ unsigned int BufferStreamInstance::getAudio(float *aBuffer,
   }
 
   return samplesToRead;
+}
+
+SoLoud::handle BufferStreamInstance::findOwnHandleLocked() const {
+  if (mParent == nullptr || mParent->mThePlayer == nullptr)
+    return 0;
+  const SoLoud::Soloud &soloud = mParent->mThePlayer->soloud;
+  for (unsigned int i = 0; i < soloud.mHighestVoice; ++i) {
+    if (soloud.mVoice[i] == this)
+      return soloud.getHandleFromVoice_internal(i);
+  }
+  return 0;
 }
 
 result BufferStreamInstance::seek(double aSeconds, float *mScratch,
@@ -400,17 +442,28 @@ PlayerErrors BufferStream::setBufferStream(
 }
 
 void BufferStream::resetBuffer() {
+  // Joined before either lock below is taken.
   stopBackgroundDecode();
   buffer.clear();
-  mBuffer.clear();
-  mSampleCount = 0;
-  mBytesReceived = 0;
-  mUncompressedBytesReceived = 0;
-  mBytesConsumed = 0;
-  dataIsEnded = false;
-  mIsBuffering = true;
-  autoTypeChannels = 0;
-  autoTypeSamplerate = 0.f;
+  {
+    // The mixer reads the buffer, the counters and the detected format with
+    // the audio mutex and the buffer mutex held, taken in that order; so are
+    // they here (the caller holds sounds_mutex, taken before both). Only a
+    // reset advances the format generation: a voice still playing re-reads
+    // the format of whatever is delivered next.
+    AudioMutexLock audioLock(mThePlayer->soloud);
+    std::lock_guard<std::recursive_mutex> lock(mBuffer.bufferMutex);
+    mBuffer.clear();
+    mSampleCount = 0;
+    mBytesReceived = 0;
+    mUncompressedBytesReceived = 0;
+    mBytesConsumed = 0;
+    dataIsEnded = false;
+    mIsBuffering = true;
+    autoTypeChannels = 0;
+    autoTypeSamplerate = 0.f;
+    ++mFormatGeneration;
+  }
   if (streamDecoder) {
     streamDecoder = std::make_unique<StreamDecoder>();
     streamDecoder->setBufferIcyMetaInt(mIcyMetaInt);
@@ -486,7 +539,10 @@ void BufferStream::setDataIsEnded() {
                                            decoded.size(), &allDataAdded) *
                            sizeof(float);
           }
-          checkBuffering(static_cast<unsigned int>(bytesWritten));
+          SOLOUD_TEST_BARRIER(bufferStreamBackgroundDecoded);
+          if (!checkBufferingFromDecodeThread(
+                  static_cast<unsigned int>(bytesWritten)))
+            break;
           mUncompressedBytesReceived += bytesWritten;
           mSampleCount += static_cast<unsigned int>(bytesWritten / sizeof(float));
 
@@ -586,6 +642,9 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
 
     if (!decoded.empty()) {
       if (autoTypeSamplerate == 0.f) {
+        // Under the buffer mutex, which the mixer holds while it reads them
+        // (BufferStreamInstance::getAudio()).
+        std::lock_guard<std::recursive_mutex> lock(mBuffer.bufferMutex);
         if (sampleRate != -1) {
           mPCMformat.sampleRate = sampleRate;
           mBaseSamplerate = sampleRate;
@@ -635,9 +694,52 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
   return PlayerErrors::noError;
 }
 
+void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
+  if (mThePlayer == nullptr) return;
+  mThePlayer->runWithSoundsLock(
+      [&] { checkBufferingHoldingSoundsLock(afterAddingBytesCount); });
+}
+
+bool BufferStream::checkBufferingFromDecodeThread(
+    unsigned int afterAddingBytesCount) {
+#ifdef __EMSCRIPTEN__
+  checkBuffering(afterAddingBytesCount);
+  return true;
+#else
+  if (mThePlayer == nullptr) return true;
+  // A reset or a disposal holds sounds_mutex while it stops this thread and
+  // waits for it, so the thread only tries the mutex, and gives up once it
+  // is being stopped. A disposal marks the stream destroyed under the mutex,
+  // before it releases it to destroy the sound: checked again once the
+  // mutex is held, so the sound's handle list is never read as it goes.
+  const auto stopping = [this] {
+    return mIsDestroyed.load() || mStopBackgroundDecode.load();
+  };
+  return mThePlayer->runWithSoundsLock(
+      [&] { checkBufferingHoldingSoundsLock(afterAddingBytesCount); },
+      stopping);
+#endif
+}
+
+bool BufferStream::takeBufferingPause(SoLoud::handle aHandle) {
+  if (mThePlayer == nullptr) return false;
+  SoLoud::Soloud &soloud = mThePlayer->soloud;
+  bool taken = false;
+  soloud.lockAudioMutex_internal();
+  const int voice = soloud.getVoiceFromHandle_internal(aHandle);
+  if (voice >= 0 && soloud.mVoice[voice] != nullptr &&
+      soloud.mVoice[voice]->mAudioSourceID == mAudioSourceID) {
+    taken = static_cast<BufferStreamInstance *>(soloud.mVoice[voice])
+                ->mPausedForBuffering.exchange(false);
+  }
+  soloud.unlockAudioMutex_internal();
+  return taken;
+}
+
 /// Check if some handles was paused for buffering and unpause them or restart
 /// them if needed after adding [afterAddingBytesCount] bytes.
-void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
+void BufferStream::checkBufferingHoldingSoundsLock(
+    unsigned int afterAddingBytesCount) {
   std::lock_guard<std::mutex> lock(check_buffer_mutex);
 
   if (mThePlayer == nullptr || mParent == nullptr) return;
@@ -654,6 +756,9 @@ void BufferStream::checkBuffering(unsigned int afterAddingBytesCount) {
   for (size_t i = 0; i < mParent->handle.size(); i++) {
     SoLoud::handle handle = mParent->handle[i].handle;
     if (!mThePlayer->isValidHandle(handle)) continue;
+    // Paused by the mixer for running out of data, so it was playing: a
+    // pause by the user no longer holds it.
+    if (takeBufferingPause(handle)) mParent->handle[i].isUserPaused = false;
 
     SoLoud::time pos = mBuffer.bufferingType == BufferingType::RELEASED
                            ? getStreamTimeConsumed()

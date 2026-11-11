@@ -98,18 +98,50 @@ void RealtimeStreamInstance::restoreSourceState(SourceStateSnapshot *aState) {
   if (snap == nullptr) {
     return;
   }
-  if (mParent != nullptr) {
-    mParent->mRingBuffer.setReadFrame(snap->mReadFrame);
-  }
   mSilentFramesSinceUnderrun = snap->mSilentFramesSinceUnderrun;
   mMarkerCursor = snap->mMarkerCursor;
   mSubQuantumDelayFrames = snap->mSubQuantumDelayFrames;
   mWasUnderrun = snap->mWasUnderrun;
   mLastSample = snap->mLastSample;
   if (mParent != nullptr) {
-    mParent->mVoiceStarved.store(mSilentFramesSinceUnderrun > 0,
-                                 std::memory_order_relaxed);
+    RealtimeStream &stream = *mParent;
+    uint64_t readFrame = snap->mReadFrame;
+    // canRestoreSourceState() lets a snapshot this old through only when a
+    // reset recorded at its read position skips the frames there. The
+    // producer may have overwritten them, and setReadFrame() would clamp the
+    // cursor into the discarded frames that follow: apply the reset now, as
+    // the voice's first read would.
+    if (readFrame < stream.oldestReplayableFrameLocked()) {
+      uint64_t cursor = mMarkerCursor;
+      if (stream.skipResetsLocked(readFrame, cursor)) {
+        mMarkerCursor = cursor;
+        mSubQuantumDelayFrames = 0;
+        mSilentFramesSinceUnderrun = 0;
+        mWasUnderrun = true;
+      }
+    }
+    stream.mRingBuffer.setReadFrame(readFrame);
+    stream.mVoiceStarved.store(mSilentFramesSinceUnderrun > 0,
+                               std::memory_order_relaxed);
   }
+}
+
+bool RealtimeStreamInstance::canRestoreSourceState(
+    SourceStateSnapshot *aState) {
+  const auto *snap = static_cast<const RealtimeStreamSnapshot *>(aState);
+  if (snap == nullptr || mParent == nullptr) {
+    return true;
+  }
+  const RealtimeStream &stream = *mParent;
+  // The first ring frame a replay from the snapshot reads. A reset recorded
+  // right at that point skips the frames it discarded unread.
+  uint64_t firstRead = snap->mReadFrame;
+  uint64_t cursor = snap->mMarkerCursor;
+  stream.skipResetsLocked(firstRead, cursor);
+  // The history covers the render-ahead window at the stream's base rate; a
+  // voice played faster consumes more stream frames per mixed frame, and its
+  // older snapshots point at frames that may hold newer audio already.
+  return firstRead >= stream.oldestReplayableFrameLocked();
 }
 
 void RealtimeStreamInstance::fadeToSilence(float *aBuffer,
@@ -286,6 +318,7 @@ unsigned int RealtimeStreamInstance::getAudio(float *aBuffer,
   if (!underran) {
     stream.mVoiceStarved.store(false, std::memory_order_relaxed);
   }
+  stream.mReadHighWater = std::max(stream.mReadHighWater, ring.getReadFrame());
   return aSamplesToRead;
 }
 
@@ -335,6 +368,7 @@ PlayerErrors RealtimeStream::init(Soloud *aEngine, unsigned int sampleRate,
   mChannels = channels;
   mUnderrunCount.store(0, std::memory_order_relaxed);
   mMarkerCount = 0;
+  mReadHighWater = 0;
 
   // The history window must cover every frame a retroactive re-mix can
   // rewind over. The render ring holds up to renderAhead + one quantum of
@@ -536,13 +570,13 @@ unsigned int RealtimeStream::placeLocked(Soloud &engine, PushTiming timing,
   if (start < engine.mStreamTime) {
     const int ci = engine.retroactiveBegin_internal(start);
     if (ci >= 0) {
-      refillReadAheadLocked(engine, *inst);
+      refillReadAheadLocked(*inst);
       engine.retroactiveEnd_internal(ci);
       rolledBack = true;
     }
   }
   if (!rolledBack) {
-    refillReadAheadLocked(engine, *inst);
+    refillReadAheadLocked(*inst);
   }
   return written;
 }
@@ -609,8 +643,7 @@ time RealtimeStream::queuedAudioEndTimeLocked(const Soloud &engine,
   return t;
 }
 
-void RealtimeStream::refillReadAheadLocked(Soloud &engine,
-                                           RealtimeStreamInstance &inst) {
+void RealtimeStream::refillReadAheadLocked(RealtimeStreamInstance &inst) {
   // Resampling path only: if the voice's current SAMPLE_GRANULARITY block
   // ends in underrun silence that it pulled before these frames arrived,
   // regenerate the unconsumed part of that silence so the new frames are not
@@ -618,6 +651,17 @@ void RealtimeStream::refillReadAheadLocked(Soloud &engine,
   if (inst.mLeftoverSamples == 0 || inst.mResampleData[0] == nullptr ||
       inst.mSilentFramesSinceUnderrun == 0) {
     return;
+  }
+  // Not for a filtered voice: its filters ran over the whole block, silence
+  // included, when the mixer fetched it, so their state is already past the
+  // tail. Filtering a refilled tail would advance them over it twice (an
+  // echo would come early by the refilled length), and leaving it
+  // unfiltered would skip them. Such a voice starts the new frames with its
+  // next block, at most SAMPLE_GRANULARITY frames later.
+  for (unsigned int j = 0; j < FILTERS_PER_STREAM; ++j) {
+    if (inst.mFilter[j] != nullptr) {
+      return;
+    }
   }
   const unsigned int srcPos = inst.mSrcOffset >> kSrcOffsetFracBits;
   if (srcPos >= SAMPLE_GRANULARITY ||
@@ -637,13 +681,6 @@ void RealtimeStream::refillReadAheadLocked(Soloud &engine,
   inst.mSilentFramesSinceUnderrun -= refillCount;
   inst.getAudio(inst.mResampleData[0] + refillStart, refillCount,
                 SAMPLE_GRANULARITY);
-  for (unsigned int j = 0; j < FILTERS_PER_STREAM; ++j) {
-    if (inst.mFilter[j] != nullptr) {
-      inst.mFilter[j]->filter(inst.mResampleData[0] + refillStart, refillCount,
-                              SAMPLE_GRANULARITY, inst.mChannels,
-                              inst.mSamplerate, engine.mStreamTime);
-    }
-  }
 }
 
 void RealtimeStream::resetBuffer() {
@@ -671,46 +708,49 @@ void RealtimeStream::discardUnreadLocked() {
     while (mMarkerCount > 0 && mMarkers[mMarkerCount - 1].frame >= readFrame) {
       --mMarkerCount;
     }
-    // Record the discard so that a re-mix replaying from a checkpoint taken
-    // before it skips the discarded frames instead of playing them.
     if (inst != nullptr && writeFrame > readFrame) {
-      pruneMarkersLocked();
-      if (mMarkerCount == kMaxTimelineMarkers) {
-        // Every remaining marker is behind the read cursor, kept only for
-        // re-mix replays: drop the oldest to make room.
-        std::move(mMarkers.begin() + 1, mMarkers.begin() + mMarkerCount,
-                  mMarkers.begin());
-        --mMarkerCount;
+      // Jumping the read cursor over the discarded frames frees their ring
+      // space, so the producer may overwrite the frames consumed just before
+      // this point, which a re-mix from an older checkpoint would replay.
+      // Retire those checkpoints. The one at the current mix head (captured
+      // at the end of the last mix, i.e. at this very point) stays usable: a
+      // replay from it reaches the reset marker before reading anything.
+      if (mEngine != nullptr && mEngine->isRenderAheadEnabled() &&
+          mEngine->mSamplerate > 0) {
+        const time resetTime =
+            mEngine->mStreamTime -
+            0.5 / static_cast<time>(mEngine->mSamplerate);
+        for (MixCheckpoint &cp : mEngine->mCheckpointPool) {
+          if (cp.mSerial != 0 && cp.mTime < resetTime) {
+            cp.mRestorable = false;
+          }
+        }
       }
+      // Record the discard so that a re-mix replaying from a checkpoint
+      // taken before it skips the discarded frames instead of playing them.
+      // Every marker left is behind the read cursor. With the older
+      // checkpoints retired, only the one at the mix head can still need
+      // some, if an underrun refill has read on since it was taken. Should
+      // those fill the table, give up every rollback rather than the reset.
       TimelineMarker marker;
       marker.frame = readFrame;
       marker.skipTo = writeFrame;
       marker.reset = true;
       resetMarker = appendMarkerLocked(marker);
-      if (resetMarker) {
-        resetSeq = mMarkers[mMarkerCount - 1].seq;
-      }
-    }
-
-    // Jumping the read cursor over the discarded frames frees their ring
-    // space, so the producer may overwrite the frames consumed just before
-    // this point, which a re-mix from an older checkpoint would replay.
-    // Retire those checkpoints. The one at the current mix head (captured at
-    // the end of the last mix, i.e. at this very point) stays usable: a
-    // replay from it reaches the reset marker before reading anything.
-    if (resetMarker && mEngine != nullptr && mEngine->isRenderAheadEnabled() &&
-        mEngine->mSamplerate > 0) {
-      const time resetTime =
-          mEngine->mStreamTime - 0.5 / static_cast<time>(mEngine->mSamplerate);
-      for (MixCheckpoint &cp : mEngine->mCheckpointPool) {
-        if (cp.mSerial != 0 && cp.mTime < resetTime) {
+      if (!resetMarker && mEngine != nullptr) {
+        for (MixCheckpoint &cp : mEngine->mCheckpointPool) {
           cp.mRestorable = false;
         }
+        resetMarker = appendMarkerLocked(marker);
+      }
+      if (resetMarker) {
+        resetSeq = mMarkers[mMarkerCount - 1].seq;
       }
     }
   }
 
   mRingBuffer.reset();
+  mReadHighWater = std::max(mReadHighWater, mRingBuffer.getReadFrame());
   if (inst != nullptr) {
     inst->mSubQuantumDelayFrames = 0;
     inst->mSilentFramesSinceUnderrun = 0;
@@ -738,6 +778,18 @@ int RealtimeStream::findVoiceSlotLocked(
   return -1;
 }
 
+uint64_t RealtimeStream::oldestReplayableFrameLocked() const noexcept {
+  // The producer never writes more than capacityFrames() past the read
+  // cursor it last saw, so only frames more than historyFrames() behind the
+  // furthest read position can have been overwritten, or can be while a
+  // rollback rewinds the cursor. A re-mix can leave the cursor behind that
+  // position (a retroactive slowdown reads fewer frames).
+  const uint64_t newest =
+      std::max(mRingBuffer.getReadFrame(), mReadHighWater);
+  const uint64_t history = mRingBuffer.historyFrames();
+  return newest > history ? newest - history : 0;
+}
+
 size_t RealtimeStream::findPendingMarker(uint64_t readFrame,
                                          uint64_t cursor) const noexcept {
   // Markers are sorted by both seq and frame. One the voice already applied
@@ -750,19 +802,83 @@ size_t RealtimeStream::findPendingMarker(uint64_t readFrame,
   return i;
 }
 
+bool RealtimeStream::skipResetsLocked(uint64_t &readFrame,
+                                      uint64_t &cursor) const noexcept {
+  bool skipped = false;
+  for (size_t mi = findPendingMarker(readFrame, cursor);
+       mi < mMarkerCount && mMarkers[mi].frame == readFrame &&
+       mMarkers[mi].reset;
+       mi = findPendingMarker(readFrame, cursor)) {
+    readFrame = std::max(readFrame, mMarkers[mi].skipTo);
+    cursor = mMarkers[mi].seq + 1;
+    skipped = true;
+  }
+  return skipped;
+}
+
+size_t RealtimeStream::firstNeededMarkerLocked() const noexcept {
+  const RealtimeStreamInstance *inst =
+      mInstance.load(std::memory_order_acquire);
+  if (inst == nullptr) {
+    // A new voice starts past every marker.
+    return mMarkerCount;
+  }
+  // The live voice applies the markers it has not applied or passed yet.
+  size_t first =
+      findPendingMarker(mRingBuffer.getReadFrame(), inst->mMarkerCursor);
+  const int slot =
+      mEngine != nullptr ? findVoiceSlotLocked(*mEngine, inst) : -1;
+  if (slot < 0) {
+    return first;
+  }
+  // So does a replay from a snapshot of the voice that a rollback can still
+  // restore: one held by a restorable checkpoint, or the voice's birth,
+  // replayed by a rollback to a restorable checkpoint before it.
+  const auto replays = [&](const SourceStateSnapshot *state) {
+    if (state != nullptr && state->mKind == &kRealtimeStreamSnapshotKind) {
+      const auto *snap = static_cast<const RealtimeStreamSnapshot *>(state);
+      first = std::min(first, findPendingMarker(snap->mReadFrame,
+                                                snap->mMarkerCursor));
+    }
+  };
+  const Soloud &engine = *mEngine;
+  const unsigned int voiceSlot = static_cast<unsigned int>(slot);
+  const size_t poolSize = engine.mCheckpointPool.size();
+  bool restorable = false;
+  time oldestRestorable = 0;
+  for (const MixCheckpoint &cp : engine.mCheckpointPool) {
+    if (cp.mSerial == 0 || cp.mSerial + poolSize <= engine.mCheckpointCounter ||
+        !cp.mRestorable) {
+      continue;
+    }
+    if (!restorable || cp.mTime < oldestRestorable) {
+      oldestRestorable = cp.mTime;
+      restorable = true;
+    }
+    for (const CheckpointVoice &cv : cp.mVoices) {
+      if (cv.mSlot == voiceSlot && cv.mPlayIndex == inst->mPlayIndex) {
+        replays(cv.mSourceState);
+      }
+    }
+  }
+  if (restorable) {
+    for (const RetroJournalEntry &e : engine.mRetroJournal) {
+      if (e.mType == RetroJournalEntry::BIRTH && e.mRestorable &&
+          e.mTime >= oldestRestorable && e.mSlot == voiceSlot &&
+          e.mPlayIndex == inst->mPlayIndex) {
+        replays(e.mBirth.mSourceState);
+      }
+    }
+  }
+  return first;
+}
+
 void RealtimeStream::pruneMarkersLocked() noexcept {
-  // A re-mix can only rewind the read cursor to a frame still held in the
-  // ring, so markers further back than the ring's capacity are unreachable.
-  const uint64_t readFrame = mRingBuffer.getReadFrame();
-  const uint64_t capacity = mRingBuffer.rawCapacityFrames();
-  if (readFrame <= capacity) {
-    return;
-  }
-  const uint64_t oldestReachable = readFrame - capacity;
-  size_t drop = 0;
-  while (drop < mMarkerCount && mMarkers[drop].frame < oldestReachable) {
-    ++drop;
-  }
+  // Drop the markers that neither the live voice nor a replay a rollback
+  // can start will apply again; they come first, as markers are sorted. A
+  // bound in ring frames would not do: gaps don't move the read cursor, so a
+  // click track's markers stay within any such bound long after they played.
+  const size_t drop = firstNeededMarkerLocked();
   if (drop > 0) {
     std::move(mMarkers.begin() + drop, mMarkers.begin() + mMarkerCount,
               mMarkers.begin());
@@ -773,6 +889,9 @@ void RealtimeStream::pruneMarkersLocked() noexcept {
 bool RealtimeStream::appendMarkerLocked(const TimelineMarker &marker) noexcept {
   pruneMarkersLocked();
   if (mMarkerCount == kMaxTimelineMarkers) {
+    // Every marker is still ahead of the live voice or of a replay a
+    // rollback can start: too many gaps are pending. Dropping one would
+    // leave the push, or another retroactive event, to be placed late.
     return false;
   }
   mMarkers[mMarkerCount] = marker;

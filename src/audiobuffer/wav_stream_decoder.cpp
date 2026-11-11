@@ -263,7 +263,9 @@ double WavDecoderWrapper::getDuration() const {
          static_cast<double>(decoder.sampleRate);
 }
 
-void WavDecoderWrapper::prepareForSeek(uint64_t targetSample) {
+void WavDecoderWrapper::prepareForSeek(uint64_t targetSample,
+                                       uint64_t byteOffset) {
+  (void)byteOffset; // Offsets come from the header, which is kept.
   if (isInitialized) {
     // Capture the header before uninitializing, if it wasn't already captured
     // during a previous decode() call.

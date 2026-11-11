@@ -1168,6 +1168,112 @@ void testGaplessParser() {
             std::fclose(in);
         }
     }
+    // Bytes after the last box, an appended ID3v1 tag, padding or a box cut
+    // off after the audio, are no reason to drop the gapless info, whether
+    // `moov` comes before `mdat` (aac_lc_stereo_48000.m4a) or after it.
+    {
+        std::vector<unsigned char> id3v1(128, 0);
+        std::memcpy(id3v1.data(), "TAG", 3);
+        // A `free` box that says 100 bytes, of which 12 are there.
+        const std::vector<unsigned char> cutBox = {0, 0, 0, 100, 'f', 'r', 'e', 'e', 0, 0, 0, 0};
+        const struct {
+            const char *what;
+            std::vector<unsigned char> bytes;
+        } trailers[] = {
+            {"3 zero bytes", std::vector<unsigned char>(3, 0)},
+            {"a 128-byte ID3v1 tag", id3v1},
+            {"16 zero bytes", std::vector<unsigned char>(16, 0)},
+            {"a cut-off box", cutBox},
+        };
+        const std::string trailedPath = std::string(tmp ? tmp : "/tmp") + "/native_stream_trailed.m4a";
+        for (const Case &c : cases) {
+            std::vector<unsigned char> file;
+            if (FILE *in = std::fopen((gAssetDir + "/" + c.file).c_str(), "rb")) {
+                unsigned char chunk[65536];
+                size_t n;
+                while ((n = std::fread(chunk, 1, sizeof(chunk), in)) > 0) file.insert(file.end(), chunk, chunk + n);
+                std::fclose(in);
+            }
+            EXPECT(!file.empty(), "%s: could not be read", c.file);
+            if (file.empty()) continue;
+            for (const auto &t : trailers) {
+                FILE *out = std::fopen(trailedPath.c_str(), "wb");
+                if (!out) continue;
+                std::fwrite(file.data(), 1, file.size(), out);
+                std::fwrite(t.bytes.data(), 1, t.bytes.size(), out);
+                std::fclose(out);
+                M4aGaplessInfo trailed;
+                EXPECT(parseM4aGapless(trailedPath, trailed), "%s + %s: parse failed", c.file, t.what);
+                uint64_t delay = 0, valid = 0;
+                EXPECT(trailed.resolve(c.rate, delay, valid) && delay == c.delay && valid == c.valid,
+                       "%s + %s: delay %llu valid %llu, expected %llu %llu", c.file, t.what,
+                       (unsigned long long)delay, (unsigned long long)valid, (unsigned long long)c.delay,
+                       (unsigned long long)c.valid);
+            }
+        }
+        std::remove(trailedPath.c_str());
+    }
+    // Cut short anywhere else, an M4A has no gapless info to give.
+    {
+        // Whether the first [keep] bytes of [file] (or all but -[keep]) parse.
+        const auto truncatedParses = [&](const char *file, long keep) {
+            const std::string truncPath = std::string(tmp ? tmp : "/tmp") + "/native_stream_trunc2.m4a";
+            bool parsed = false;
+            if (FILE *in = std::fopen((gAssetDir + "/" + file).c_str(), "rb")) {
+                std::fseek(in, 0, SEEK_END);
+                const long len = std::ftell(in);
+                std::fseek(in, 0, SEEK_SET);
+                std::vector<unsigned char> buf(static_cast<size_t>(keep < 0 ? len + keep : keep));
+                if (std::fread(buf.data(), 1, buf.size(), in) == buf.size()) {
+                    if (FILE *out = std::fopen(truncPath.c_str(), "wb")) {
+                        std::fwrite(buf.data(), 1, buf.size(), out);
+                        std::fclose(out);
+                        M4aGaplessInfo truncated;
+                        parsed = parseM4aGapless(truncPath, truncated);
+                        std::remove(truncPath.c_str());
+                    }
+                }
+                std::fclose(in);
+            }
+            return parsed;
+        };
+        // Its `moov`, 1114 bytes, comes last.
+        EXPECT(!truncatedParses("aac_lc_mono_44100.m4a", -100), "M4A truncated inside a trailing moov must be rejected");
+        // Its `moov` ends at 1242, and `mdat` starts at 4088 after a `free` box.
+        EXPECT(!truncatedParses("aac_lc_stereo_48000.m4a", 2000),
+               "fast-start M4A truncated before mdat must be rejected");
+        // Cut 0 to 7 bytes past the start of a box, too few for its header, a
+        // file parses only when `moov` and an `mdat` came whole before the
+        // cut: in these files, which end in one of them, never.
+        for (const Case &c : cases) {
+            std::vector<unsigned char> file;
+            if (FILE *in = std::fopen((gAssetDir + "/" + c.file).c_str(), "rb")) {
+                unsigned char chunk[65536];
+                size_t n;
+                while ((n = std::fread(chunk, 1, sizeof(chunk), in)) > 0) file.insert(file.end(), chunk, chunk + n);
+                std::fclose(in);
+            }
+            // The bundled files' top-level boxes all have 32-bit sizes.
+            uint64_t moovEnd = 0, mdatEnd = 0;
+            std::vector<uint64_t> starts;
+            for (uint64_t pos = 0, size = 0; pos + 8 <= file.size(); pos += size) {
+                size = (uint64_t)file[pos] << 24 | file[pos + 1] << 16 | file[pos + 2] << 8 | file[pos + 3];
+                if (size < 8 || size > file.size() - pos) break;
+                if (pos > 0) starts.push_back(pos);
+                if (std::memcmp(&file[pos + 4], "moov", 4) == 0) moovEnd = pos + size;
+                if (std::memcmp(&file[pos + 4], "mdat", 4) == 0 && mdatEnd == 0) mdatEnd = pos + size;
+            }
+            EXPECT(starts.size() == 3, "%s: %zu boxes after ftyp, expected 3", c.file, starts.size());
+            for (const uint64_t start : starts) {
+                for (uint64_t k = 0; k < 8; k++) {
+                    const uint64_t cut = start + k;
+                    const bool whole = moovEnd != 0 && mdatEnd != 0 && moovEnd <= cut && mdatEnd <= cut;
+                    EXPECT(truncatedParses(c.file, (long)cut) == whole, "%s cut at %llu: %s", c.file,
+                           (unsigned long long)cut, whole ? "parse failed" : "must be rejected");
+                }
+            }
+        }
+    }
     EXPECT(!parseM4aGapless(gAssetDir + "/does-not-exist.m4a", info), "missing file");
 }
 

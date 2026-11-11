@@ -102,6 +102,10 @@ class Bus {
 
   /// The filters for this bus.
   ///
+  /// They can be activated before the bus plays, but their parameters can be
+  /// set, read, faded or oscillated only once it plays (see [playOnEngine]):
+  /// until then that throws a [SoLoudCppException].
+  ///
   /// Please see [SoLoud.filters]
   late FiltersSingle filters;
 

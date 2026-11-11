@@ -38,6 +38,18 @@ namespace SoLoud
 	// quantum-tick granularity (~4 samples at 44.1 kHz).
 	static const double RETRO_FADE_TIME = 1e-4;
 
+	// ###### flutter_soloud local patch (fade starting values) ######
+	// The value a voice parameter has at voice time aTime: what its fader
+	// gives then, or aSet when no fader is running. Evaluates a copy, since
+	// Fader::get() updates the fader.
+	static float faderValueAt(const Fader &aFader, float aSet, time aTime)
+	{
+		if (aFader.mActive <= 0)
+			return aSet;
+		Fader f = aFader;
+		return f.get(aTime);
+	}
+
 	// Delete the heap snapshots owned by a checkpoint slot, preparing it for
 	// reuse or teardown. CheckpointVoice/MixCheckpoint stay POD-copyable on
 	// purpose (no destructors), so cleanup is explicit.
@@ -897,6 +909,10 @@ namespace SoLoud
 	time Soloud::playheadTimeLocked_internal()
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+		if (mPlayheadTestHook != nullptr)
+			mPlayheadTestHook(this);
+#endif
 		time t = mStreamTime;
 		if (isRenderAheadEnabled() && mRenderRing.isInited() && mSamplerate > 0)
 			t -= (time)mRenderRing.availableToRead() / (time)mSamplerate;
@@ -1351,6 +1367,8 @@ namespace SoLoud
 		mRemixOldStreamTime = mStreamTime;
 		mRemixWritePos = mRenderRing.getWritePosition();
 		mRemixCheckpointTime = cp.mTime;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		mRemixEventTime = aEventTime;
 		// The rewrite starts at the checkpoint's ring write position (the
 		// beginning of the quantum starting at cp.mTime).
 		mRemixStartPos = cp.mRingWritePosition;
@@ -1469,6 +1487,13 @@ namespace SoLoud
 		const int ci = retroactiveBegin_internal(aEventTime);
 		if (ci < 0)
 			return false;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The device reads the ring without the audio mutex: since the
+		// playhead was read above, it may have moved past aEventTime and
+		// past a checkpoint, which retroactiveBegin_internal() then
+		// restored. Start the voice where that re-mix placed the event, at
+		// the newer playhead: never before the checkpoint.
+		aEventTime = mRemixEventTime;
 
 		// The voice this event inserted survived the restore (the checkpoint
 		// predates it, so it was left running); retarget its start to the
@@ -1562,17 +1587,47 @@ namespace SoLoud
 		// meanwhile. A zero aDuration is a step change (RETRO_FADE_TIME keeps
 		// Fader::get() off its 0-duration NaN path).
 		const time dur = aDuration > 0 ? aDuration : RETRO_FADE_TIME;
+		// ###### flutter_soloud local patch (retroactive speed) ######
+		// The mixer sets a voice's speed once per quantum, for all of it. A
+		// speed change inside the quantum the device is playing would re-mix
+		// that quantum from its start at the new speed, and the device would
+		// skip or repeat the source by (new - old speed) * (playhead -
+		// quantum start) frames. Start it at the next quantum boundary
+		// instead, the end of that quantum: up to there the re-mix plays
+		// what the device has been playing. Two changes inside one quantum
+		// so land together, and the later one replaces the earlier one.
+		if (aParam == RetroJournalEntry::PARAM_SPEED)
+		{
+			const long long q = (long long)mBufferSize;
+			const long long frames = (long long)floor(
+				(mRemixEventTime - mRemixCheckpointTime) * (time)mSamplerate + 0.5);
+			// A voice that starts at or after the playhead has played nothing
+			// the device heard, so nothing can skip: change it at the event.
+			if ((long long)v->mDelaySamples < frames)
+				t = mRemixCheckpointTime + (time)((frames + q - 1) / q * q) / (time)mSamplerate;
+		}
 		const time voiceTime = v->mStreamTime + (t - mRemixCheckpointTime);
+		// ###### flutter_soloud local patch (fade starting values) ######
+		// Start from the value the voice has where the re-mix becomes
+		// audible: at the playhead, or at the checkpoint when that is later.
+		// The restore put the voice back at the checkpoint, and a fade
+		// running there, or a change the journal replayed, may have moved
+		// it on by the playhead. Until the event time the new fader holds
+		// that value, as a scheduled fade does on the direct mix path.
+		const time liveTime = v->mStreamTime +
+			(playhead > mRemixCheckpointTime ? playhead - mRemixCheckpointTime : 0);
 		switch (aParam)
 		{
 		case RetroJournalEntry::PARAM_VOLUME:
-			v->mVolumeFader.setScheduled(v->mSetVolume, aValue, dur, voiceTime);
+			v->mVolumeFader.setScheduled(faderValueAt(v->mVolumeFader, v->mSetVolume, liveTime), aValue, dur, voiceTime);
 			break;
 		case RetroJournalEntry::PARAM_PAN:
-			v->mPanFader.setScheduled(v->mPan, aValue, dur, voiceTime);
+			v->mPanFader.setScheduled(faderValueAt(v->mPanFader, v->mPan, liveTime), aValue, dur, voiceTime);
 			break;
 		case RetroJournalEntry::PARAM_SPEED:
-			v->mRelativePlaySpeedFader.setScheduled(v->mSetRelativePlaySpeed, aValue, dur, voiceTime);
+			// From the speed the voice has at the start time, which the
+			// quantum ending there plays at.
+			v->mRelativePlaySpeedFader.setScheduled(faderValueAt(v->mRelativePlaySpeedFader, v->mSetRelativePlaySpeed, voiceTime), aValue, dur, voiceTime);
 			break;
 		case RetroJournalEntry::PARAM_PAUSE:
 			v->mPauseScheduler.setScheduled(1, 0, dur, voiceTime);

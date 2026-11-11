@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/audio_visualization_data.dart';
+import 'package:flutter_soloud/src/bindings/android_engine_lifecycle.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
     if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
@@ -701,6 +702,20 @@ interface class SoLoud {
       }
     }
 
+    // Android only: tell the plugin this isolate uses the native library, so
+    // its engine-teardown hooks never skip the claim and the callbacks about
+    // to be created. Sent here: isInited() above has loaded the library, so
+    // the plugin's later load is a refcount bump, and nothing that a teardown
+    // must undo exists yet. Once acknowledged on this isolate, or found to
+    // have no plugin to go to (as under flutter test), it is not sent again,
+    // and off Android it never is, so none of those suspends here.
+    if (AndroidEngineLifecycle.isPending) {
+      await const AndroidEngineLifecycle().markNativeLibraryInUse();
+      if (initializationGeneration != _lifecycleGeneration) {
+        await _waitForInitializationTeardownAndThrow();
+      }
+    }
+
     // Claims the native engine for this FlutterEngine before the device open is
     // dispatched. Only iOS has to go through the platform to do it, and only
     // there does this become a suspension point -- everywhere else the claim is
@@ -1076,6 +1091,13 @@ interface class SoLoud {
       _lifecycleGeneration++;
     }
     _nativeCallbacksInitialized = false;
+    // Ends this isolate's stream with what its capture still owed it.
+    if (_mixerOutputStreamManager.hasStream) {
+      _mixerOutputStreamManager.stop();
+    }
+    // A capture still running is another isolate's, or was started without
+    // the stream manager, and ends with the engine. Another isolate's stream
+    // closes when that isolate stops it or starts again.
     if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
       _controller.soLoudFFI.stopMixerOutputCapture();
     }
@@ -1601,9 +1623,9 @@ interface class SoLoud {
   /// [format] the desired output format. PCM formats are supported on all
   /// platforms. Compressed formats (Opus, Vorbis, FLAC, WAV) are available when
   /// the plugin is built with Xiph libraries. The default is PCM F32LE and
-  /// it is the only format that doesn't require conversion (when [sampleRate]
-  /// and [channels] are set to -1) on the native side, so it is
-  /// the most efficient and preferred on mobile.
+  /// it is the only format that doesn't require sample conversion on the
+  /// native side, so it is the most efficient and preferred on mobile. Every
+  /// format uses the engine sample rate and channel count.
   ///
   /// **WAV caveat:** When [format] is [MixerOutputFormat.wav], the stream emits
   /// a 44-byte header followed by PCM chunks incrementally, just like the other
@@ -1612,9 +1634,13 @@ interface class SoLoud {
   /// [stopMixerOutputStream] and overwrite the first 44 bytes of the saved file
   /// with the returned header.
   ///
-  /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
+  /// [sampleRate] must be the engine sample rate, or -1 to follow it. Capture
+  /// does not resample: another rate throws
+  /// [SoLoudInvalidParameterException].
   ///
-  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// [channels] must be the engine channel count, or -1 to follow it. Capture
+  /// does not remix channels: another count throws
+  /// [SoLoudInvalidParameterException].
   ///
   /// [bufferSizeBytes] total size of the circular capture buffer.
   ///
@@ -1646,6 +1672,9 @@ interface class SoLoud {
   );
 
   /// Stops the mixer output capture stream and releases associated resources.
+  ///
+  /// It stops only a capture this isolate started: one started from a worker
+  /// isolate with `SoLoudIsolate.startMixerOutputStream` keeps running.
   void stopMixerOutputStream() => _mixerOutputStreamManager.stop();
 
   /// Whether mixer output capture is currently active.
@@ -2553,6 +2582,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle play(
     AudioSource sound, {
     int busId = 0,
@@ -2695,6 +2727,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle playClocked(
     AudioSource sound,
     Duration soundTime, {
@@ -2983,6 +3018,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle playScheduled(
     AudioSource sound,
     Duration atTime, {
@@ -3390,6 +3428,11 @@ interface class SoLoud {
 
   /// Disposes all audio sources that are currently loaded.
   /// Also stops all sound instances if anything is playing.
+  ///
+  /// Every global filter (see [filters]) is deactivated as well: activate
+  /// again the ones that should keep running. A global custom filter keeps
+  /// its parameter definitions but loses its callback, as after
+  /// `deactivate()`, so call `setNativeCallback()` again once it is active.
   ///
   /// No need to call this method when shutting down the engine.
   ///
@@ -4513,6 +4556,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle play3d(
     AudioSource sound,
     double posX,
@@ -4639,6 +4685,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle play3dClocked(
     AudioSource sound,
     Duration soundTime,
@@ -4762,6 +4811,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   ///
   /// The schedule is expressed in samples against the engine clock, which only
   /// advances while the output device is mixing, so a voice scheduled against a
@@ -5300,6 +5352,10 @@ interface class SoLoud {
   ///   inaudible); a 2D voice faded to zero volume keeps playing.
   /// - [autoDispose]: Whether to dispose the source automatically when all
   ///   voices finish (default `false`).
+  /// - [singleInstance]: Whether playing the source stops the voice already
+  ///   playing it (default `false`). Use it when the callback renders one
+  ///   shared state, such as a synthesizer: every voice calls it once per
+  ///   mix.
   @experimental
   AudioSource createCustomAudioSource({
     int sampleRate = 48000,
@@ -5312,6 +5368,7 @@ interface class SoLoud {
     bool mustTickWhenInaudible = true,
     bool killWhenInaudible = false,
     bool autoDispose = false,
+    bool singleInstance = false,
   }) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
@@ -5326,6 +5383,7 @@ interface class SoLoud {
       onInstanceDestroyedAddress: onInstanceDestroyedAddress,
       userdataAddress: userdataAddress,
       webJsFunctionName: webJsFunctionName,
+      singleInstance: singleInstance,
     );
     _logPlayerError(ret.error, from: 'createCustomAudioSource() result');
     if (ret.error != PlayerErrors.noError) {

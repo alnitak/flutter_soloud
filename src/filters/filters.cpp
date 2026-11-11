@@ -343,6 +343,15 @@ bool Filters::removeFilter(FilterType filterType, int customFilterId) {
   return true;
 }
 
+void Filters::removeAllFilters() {
+  // From the last one, so no filter has to be shifted down.
+  while (!filters.empty()) {
+    const FilterObject &last = *filters.back();
+    if (!removeFilter(last.type, last.customFilterId))
+      break;
+  }
+}
+
 void Filters::setFilterParams(SoLoud::handle handle, FilterType filterType,
                               int attributeId, float value,
                               int customFilterId) {
@@ -350,7 +359,10 @@ void Filters::setFilterParams(SoLoud::handle handle, FilterType filterType,
   if (index < 0)
     return;
   if (mBusData != nullptr) {
-    /// bus filter
+    /// bus filter, on the bus's voice. A bus that has not been played has no
+    /// voice (handle 0), and handle 0 would set the global filter instead.
+    if (mBusData->handle == 0)
+      return;
     mSoloud->setFilterParameter(mBusData->handle, index, attributeId, value);
   } else {
     /// global or single sound filter
@@ -358,21 +370,24 @@ void Filters::setFilterParams(SoLoud::handle handle, FilterType filterType,
   }
 }
 
-float Filters::getFilterParams(SoLoud::handle handle, FilterType filterType,
-                               int attributeId, int customFilterId) {
+bool Filters::getFilterParams(SoLoud::handle handle, FilterType filterType,
+                              int attributeId, float *value,
+                              int customFilterId) {
   int index = isFilterActive(filterType, customFilterId);
-  if (index < 0)
-    return 9999.0f;
+  // For a bus, handle 0 would address the global filters (see above).
+  if (index < 0 || (mBusData != nullptr && handle == 0))
+    return false;
 
-  float ret = mSoloud->getFilterParameter(handle, index, attributeId);
-  return ret;
+  *value = mSoloud->getFilterParameter(handle, index, attributeId);
+  return true;
 }
 
 void Filters::fadeFilterParameter(SoLoud::handle handle, FilterType filterType,
                                   int attributeId, float to, float time,
                                   int customFilterId) {
   int index = isFilterActive(filterType, customFilterId);
-  if (index < 0)
+  // For a bus, handle 0 would address the global filters (see above).
+  if (index < 0 || (mBusData != nullptr && handle == 0))
     return;
 
   mSoloud->fadeFilterParameter(handle, index, attributeId, to, time);
@@ -383,7 +398,8 @@ void Filters::oscillateFilterParameter(SoLoud::handle handle,
                                        float from, float to, float time,
                                        int customFilterId) {
   int index = isFilterActive(filterType, customFilterId);
-  if (index < 0)
+  // For a bus, handle 0 would address the global filters (see above).
+  if (index < 0 || (mBusData != nullptr && handle == 0))
     return;
 
   mSoloud->oscillateFilterParameter(handle, index, attributeId, from, to, time);

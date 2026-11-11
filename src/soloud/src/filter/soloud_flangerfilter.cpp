@@ -71,6 +71,11 @@ namespace SoLoud
 		const float wetHalf = 0.5f * mParam[FlangerFilter::WET];
 		const unsigned int startOffset = mOffset % len;
 
+		// ###### flutter_soloud local patch (flanger LFO per frame) ######
+		// Every channel runs the LFO over this block's frames from the same
+		// phase. Stock SoLoud let each channel carry on from where the
+		// previous one ended, so with more than one channel the LFO ran
+		// that many times too fast and its phase depended on the block size.
 		for (unsigned int i = 0; i < aChannels; i++)
 		{
 			float *dBuf = mBuffer + (size_t)i * (size_t)len;
@@ -94,8 +99,8 @@ namespace SoLoud
 				if (++wrOfs >= len)
 					wrOfs = 0;
 			}
-			mIndex += inc * (double)aSamples;
 		}
+		mIndex += inc * (double)aSamples;
 		mOffset = (startOffset + aSamples) % len;
 	}
 
@@ -186,6 +191,13 @@ namespace SoLoud
 				mBuffer = new float[s->floats()];
 			}
 			memcpy(mBuffer, s->mBuffer, sizeof(float) * s->floats());
+		}
+		else if (mBuffer)
+		{
+			// The snapshot predates the first block, when the delay line was
+			// still empty: silence the live one rather than replay what it
+			// heard since. Its storage is kept, so nothing is allocated here.
+			memset(mBuffer, 0, sizeof(float) * (size_t)mBufferLength * (size_t)mBufferChannels);
 		}
 	}
 

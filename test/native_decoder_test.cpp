@@ -5,8 +5,14 @@
 #include "../src/audiobuffer/metadata_ffi.h"
 #include <cassert>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
+#include <iterator>
+#include <string>
 #include <vector>
 #include <cmath>
 #include <iostream>
@@ -675,6 +681,118 @@ void testAdtsWithAc3LikeBytes() {
     std::cout << "  Passed!" << std::endl;
 }
 
+#if defined(__APPLE__)
+// A 16-bit stereo PCM WAV of a 440 Hz tone.
+static std::vector<unsigned char> makeToneWav(unsigned int frames) {
+    const uint32_t dataBytes = frames * 2 * 2;
+    std::vector<unsigned char> wav(44 + dataBytes, 0);
+    auto put32 = [&wav](size_t at, uint32_t v) { std::memcpy(wav.data() + at, &v, 4); };
+    auto put16 = [&wav](size_t at, uint16_t v) { std::memcpy(wav.data() + at, &v, 2); };
+    std::memcpy(wav.data(), "RIFF", 4);
+    put32(4, 36 + dataBytes);
+    std::memcpy(wav.data() + 8, "WAVEfmt ", 8);
+    put32(16, 16);
+    put16(20, 1);     // PCM
+    put16(22, 2);     // channels
+    put32(24, 44100); // sample rate
+    put32(28, 44100 * 2 * 2);
+    put16(32, 4);
+    put16(34, 16);
+    std::memcpy(wav.data() + 36, "data", 4);
+    put32(40, dataBytes);
+    for (unsigned int i = 0; i < frames; ++i) {
+        const int16_t s = static_cast<int16_t>(
+            8000.0 * std::sin(2.0 * M_PI * 440.0 * i / 44100.0));
+        std::memcpy(wav.data() + 44 + i * 4, &s, 2);
+        std::memcpy(wav.data() + 44 + i * 4 + 2, &s, 2);
+    }
+    return wav;
+}
+
+// The first [count] ADTS frames of [adts], or nothing if it has fewer.
+static std::vector<unsigned char> firstAdtsFrames(const std::vector<unsigned char> &adts,
+                                                  int count) {
+    size_t pos = 0;
+    for (int i = 0; i < count; ++i) {
+        if (pos + 7 > adts.size() || adts[pos] != 0xFF || (adts[pos + 1] & 0xF0) != 0xF0)
+            return {};
+        // frame_length: the 13 bits from bit 30 of the header.
+        const size_t length = ((adts[pos + 3] & 0x03) << 11) | (adts[pos + 4] << 3) |
+                              (adts[pos + 5] >> 5);
+        if (length < 7 || length > adts.size() - pos)
+            return {};
+        pos += length;
+    }
+    return std::vector<unsigned char>(adts.begin(), adts.begin() + pos);
+}
+#endif
+
+// The Apple AAC decoder waits for 3 packets before it starts decoding. A
+// whole stream of 2 packets must still decode once its end is signalled, and
+// stop reporting pending data. Apple only: the fixture is made with afconvert.
+bool testShortAacStreamDrains() {
+    std::cout << "[Test] A two-packet AAC stream drains after its end..." << std::endl;
+#if defined(__APPLE__)
+    const char *tmp = std::getenv("TMPDIR");
+    const std::string dir = tmp != nullptr ? tmp : "/tmp";
+    const std::string wavPath = dir + "/native_decoder_short_aac.wav";
+    const std::string aacPath = dir + "/native_decoder_short_aac.aac";
+    {
+        const std::vector<unsigned char> wav = makeToneWav(44100 / 4);
+        std::ofstream out(wavPath, std::ios::binary);
+        out.write(reinterpret_cast<const char *>(wav.data()),
+                  static_cast<std::streamsize>(wav.size()));
+    }
+    const std::string command =
+        "afconvert -f adts -d aac '" + wavPath + "' '" + aacPath + "' >/dev/null 2>&1";
+    const int converted = std::system(command.c_str());
+    std::ifstream in(aacPath, std::ios::binary);
+    const std::vector<unsigned char> whole((std::istreambuf_iterator<char>(in)),
+                                           std::istreambuf_iterator<char>());
+    std::remove(wavPath.c_str());
+    std::remove(aacPath.c_str());
+    if (converted != 0) {
+        std::cout << "  FAIL: afconvert could not make the AAC fixture" << std::endl;
+        return false;
+    }
+    std::vector<unsigned char> twoPackets = firstAdtsFrames(whole, 2);
+    if (twoPackets.empty()) {
+        std::cout << "  FAIL: the fixture has fewer than two ADTS packets" << std::endl;
+        return false;
+    }
+
+    AACDecoderWrapper decoder;
+    if (!decoder.initializeDecoder(44100, 2)) {
+        std::cout << "  FAIL: the decoder did not initialize" << std::endl;
+        return false;
+    }
+    int sampleRate = 0;
+    int channels = 0;
+    size_t decoded = decoder.decode(twoPackets, &sampleRate, &channels).first.size();
+    decoder.setDataEnded();
+    std::vector<unsigned char> none;
+    int drains = 0;
+    for (; drains < 20 && decoder.hasPendingData(); ++drains)
+        decoded += decoder.decode(none, &sampleRate, &channels).first.size();
+
+    bool ok = true;
+    if (decoder.hasPendingData()) {
+        std::cout << "  FAIL: still pending after " << drains << " drains" << std::endl;
+        ok = false;
+    }
+    if (decoded == 0) {
+        std::cout << "  FAIL: the two packets decoded to no samples" << std::endl;
+        ok = false;
+    }
+    if (ok)
+        std::cout << "  Passed! (" << decoded << " samples)" << std::endl;
+    return ok;
+#else
+    std::cout << "  Skipped (Apple only)" << std::endl;
+    return true;
+#endif
+}
+
 int main() {
     std::cout << "Running Native Decoder C++ Tests..." << std::endl;
     testHeaderSniffing();
@@ -685,6 +803,10 @@ int main() {
     testMp3VsAacDetection();
     testMp3MetadataEmission();
     testAdtsWithAc3LikeBytes();
+    if (!testShortAacStreamDrains()) {
+        std::cout << "Native Decoder C++ Tests FAILED" << std::endl;
+        return 1;
+    }
     std::cout << "All Native Decoder C++ Tests passed successfully!" << std::endl;
     return 0;
 }

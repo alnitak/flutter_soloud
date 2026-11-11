@@ -41,6 +41,9 @@ public:
 
   bool removeFilter(FilterType filterType, int customFilterId = 0);
 
+  /// Remove every filter, as removeFilter() does for one.
+  void removeAllFilters();
+
   SoLoud::CustomFilter *getCustomFilter(int customFilterId);
 
   SoLoud::CustomFilter *getOrCreateCustomFilter(int customFilterId);
@@ -52,8 +55,12 @@ public:
                        int attributeId, float value, int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
-  float getFilterParams(SoLoud::handle handle, FilterType filterType,
-                        int attributeId, int customFilterId = 0);
+  /// Stores the parameter in [value] and returns true, or returns false and
+  /// leaves [value] alone if the filter is not active (or, for a bus, if
+  /// [handle] is 0). Every float is a possible parameter value, so none can
+  /// stand for a missing filter.
+  bool getFilterParams(SoLoud::handle handle, FilterType filterType,
+                       int attributeId, float *value, int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
   void fadeFilterParameter(SoLoud::handle handle, FilterType filterType,
@@ -96,7 +103,10 @@ struct BusData {
   // instance."
   // This implies that only one handle is needed for each bus and it is stored
   // here.
-  SoLoud::handle handle; // set when bus is played on engine
+  // Set when bus is played on engine, 0 until then. The bus's live filters
+  // belong to that voice, and handle 0 would address the global filters
+  // instead, so they cannot be reached while it is 0.
+  SoLoud::handle handle = 0;
   Filters filters;
   // The bus's visualization, or null while it is disabled. Owned here rather
   // than by the BusInstance, which the engine deletes whenever it stops the

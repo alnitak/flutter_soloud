@@ -46,7 +46,7 @@ public:
     double getDuration() const override;
     int preSkip() const override { return static_cast<int>(opusInfo.pre_skip); }
     int granuleSampleRate() const override { return 48000; }
-    void prepareForSeek(uint64_t targetSample) override;
+    void prepareForSeek(uint64_t targetSample, uint64_t byteOffset) override;
 
 private:
     void getMetadata(ogg_packet* packet);

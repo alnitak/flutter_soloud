@@ -23,6 +23,7 @@ import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
+import 'package:meta/meta.dart';
 import 'package:native_toolchain_c/native_toolchain_c.dart';
 
 /// The asset id is `package:flutter_soloud/src/bindings.cpp`, matching the
@@ -792,31 +793,203 @@ final class XiphLink {
   static const String _prebuildVersionFileName =
       'flutter_soloud_prebuild_version.txt';
 
-  static String _baseUrlForTag(String tag) => tag == 'latest'
-      ? 'https://github.com/$_prebuildRepo/releases/latest/download'
-      : 'https://github.com/$_prebuildRepo/releases/download/$tag';
+  /// The last file written into an install, VST3's too, holding its release
+  /// tag; see [_isInstalled]. Not the version file: the archives carry one of
+  /// their own, which an extraction cut short can leave behind.
+  static const String _installMarkerFileName =
+      'flutter_soloud_prebuild_installed.txt';
 
-  static File _getVersionFile(Directory dir) {
-    final file = File('${dir.path}/$_prebuildVersionFileName');
-    if (file.existsSync()) return file;
-    return File('${dir.path}/version.txt');
+  /// Where the prebuilt archives are downloaded from in place of the GitHub
+  /// release, for VST3's too: a local server, for tests. Null in a build.
+  @visibleForTesting
+  static String? debugBaseUrl;
+
+  static String _baseUrlForTag(String tag) =>
+      debugBaseUrl ??
+      (tag == 'latest'
+          ? 'https://github.com/$_prebuildRepo/releases/latest/download'
+          : 'https://github.com/$_prebuildRepo/releases/download/$tag');
+
+  /// [_ensurePrebuildInclude], for tests.
+  @visibleForTesting
+  static Future<Directory> debugEnsurePrebuildInclude(
+    Uri packageRoot,
+    String tag,
+  ) => _ensurePrebuildInclude(packageRoot, tag);
+
+  /// [_ensurePrebuildPlatform] for a .tar.gz archive, for tests.
+  @visibleForTesting
+  static Future<Directory> debugEnsurePrebuildPlatform({
+    required Uri packageRoot,
+    required OS os,
+    required Architecture arch,
+    required String subDir,
+    required String archiveName,
+    required bool Function(Directory dir) validator,
+    String tag = _defaultPrebuildTag,
+  }) => _ensurePrebuildPlatform(
+    packageRoot: packageRoot,
+    os: os,
+    arch: arch,
+    subDir: subDir,
+    archiveName: archiveName,
+    isZip: false,
+    validator: validator,
+    tag: tag,
+  );
+
+  /// [_downloadWithHttpClient], for tests.
+  @visibleForTesting
+  static Future<String?> debugDownloadWithHttpClient(
+    String url,
+    File file, {
+    Duration deadline = _downloadDeadline,
+  }) => _downloadWithHttpClient(url, file, deadline: deadline);
+
+  /// Whether [dir] holds a complete install of [tag] that [validator]
+  /// accepts.
+  ///
+  /// An install is only ever put in place whole: extracted into a staging
+  /// directory, marked last, then renamed into place (see
+  /// [_downloadAndInstall]). The marker tells it from what an extraction in
+  /// place, as this hook used to do, can leave when it is cut short: every
+  /// file a validator looks for, with the last one truncated. A directory
+  /// without the marker is downloaded again.
+  static bool _isInstalled(
+    Directory dir,
+    String tag,
+    bool Function(Directory dir) validator,
+  ) {
+    final marker = File('${dir.path}/$_installMarkerFileName');
+    if (!marker.existsSync()) return false;
+    if (tag != 'latest') {
+      final v = marker.readAsStringSync().trim();
+      if (v != tag && 'v$v' != tag) return false;
+    }
+    return validator(dir);
   }
 
-  static bool _hasHeaders(Directory dir, [String targetTag = 'latest']) {
-    if (!dir.existsSync()) return false;
-    if (targetTag != 'latest') {
-      final versionFile = _getVersionFile(dir);
-      if (versionFile.existsSync()) {
-        final v = versionFile.readAsStringSync().trim();
-        if (v != targetTag && 'v$v' != targetTag) return false;
+  /// Downloads the archive at [url], extracts it into a new staging directory
+  /// in [parent], and has [install] move what it needs from there into place
+  /// with [_moveIntoPlace]. The staging directory is then deleted with
+  /// whatever is left in it, so a download or an extraction that fails or is
+  /// cut short leaves nothing where a build looks. Returns the release tag
+  /// the download resolved to, if any.
+  ///
+  /// The archive goes into a directory inside the staging directory, not into
+  /// the staging directory itself: createTempSync() makes that one private
+  /// (0700), and an install that is the extracted archive would keep the
+  /// mode. The inner one gets the mode the umask gives a new directory, as
+  /// an extraction in place did, and the files keep the modes tar gives them.
+  static Future<String?> _downloadAndInstall(
+    String url,
+    Directory parent, {
+    required bool isZip,
+    required void Function(Directory extracted, String? resolvedTag) install,
+  }) async {
+    parent.createSync(recursive: true);
+    final staging = parent.createTempSync('.staging-');
+    try {
+      final extracted = Directory('${staging.path}/archive')..createSync();
+      final resolvedTag = await _downloadAndExtract(
+        url,
+        extracted,
+        isZip: isZip,
+      );
+      install(extracted, resolvedTag);
+      return resolvedTag;
+    } finally {
+      if (staging.existsSync()) {
+        staging.deleteSync(recursive: true);
       }
     }
-    return File('${dir.path}/ogg/ogg.h').existsSync() &&
-        File('${dir.path}/ogg/config_types.h').existsSync() &&
-        File('${dir.path}/vorbis/codec.h').existsSync() &&
-        File('${dir.path}/opus/opus.h').existsSync() &&
-        File('${dir.path}/FLAC/all.h').existsSync();
   }
+
+  /// Marks [staged], extracted in full, as an install of [resolvedTag] (or
+  /// [tag]), and renames it to [target], unless [target] holds an install of
+  /// [tag] by then; see [_isInstalled]. The marker is written last.
+  ///
+  /// Other invocations of the hook, for the build's other architectures or
+  /// another build of the same app, can install the same [target] at the
+  /// same time. So a rename that fails because [target] is there is not an
+  /// error when [target] is installed by then, and what is there is only
+  /// replaced when it is not an install: what an older hook or an older
+  /// release left. It is moved into the staging directory, to be deleted
+  /// with it, rather than deleted where a build could see it half gone.
+  static void _moveIntoPlace(
+    Directory staged,
+    Directory target,
+    String tag,
+    bool Function(Directory dir) validator, {
+    String? resolvedTag,
+  }) {
+    final installedTag = resolvedTag ?? tag;
+    File(
+      '${staged.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$installedTag\n');
+    File(
+      '${staged.path}/$_installMarkerFileName',
+    ).writeAsStringSync('$installedTag\n');
+    FileSystemException? lastError;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      if (_isInstalled(target, tag, validator)) return;
+      try {
+        // Fails while target is there (on POSIX, unless it is empty).
+        staged.renameSync(target.path);
+        return;
+      } on FileSystemException catch (error) {
+        lastError = error;
+      }
+      if (_isInstalled(target, tag, validator)) return;
+      try {
+        target.renameSync('${staged.path}.replaced$attempt');
+      } on FileSystemException catch (error) {
+        // Moved or replaced by another invocation meanwhile: look again.
+        lastError = error;
+      }
+    }
+    if (!_isInstalled(target, tag, validator)) throw lastError!;
+  }
+
+  /// How long a staging directory, and everything directly in it, must go
+  /// unmodified to count as left behind by a build that was killed. A live
+  /// one is younger than that: each download is limited to a few minutes and
+  /// starts a new file in it.
+  static const Duration _staleStagingAge = Duration(hours: 1);
+
+  /// Deletes the staging directories in [parent] that builds killed part-way
+  /// left behind (see [_staleStagingAge]). Safe while other invocations
+  /// install, as theirs are never that old. Best effort: what cannot be read
+  /// or deleted is left.
+  static void _pruneStaleStaging(Directory parent) {
+    final cutoff = DateTime.now().subtract(_staleStagingAge);
+    final List<FileSystemEntity> entries;
+    try {
+      entries = parent.listSync(followLinks: false);
+    } on FileSystemException {
+      return;
+    }
+    for (final entry in entries) {
+      final name = entry.path.substring(parent.path.length + 1);
+      if (entry is! Directory || !name.startsWith('.staging-')) continue;
+      try {
+        final stale = [
+          entry,
+          ...entry.listSync(followLinks: false),
+        ].every((e) => e.statSync().modified.isBefore(cutoff));
+        if (stale) entry.deleteSync(recursive: true);
+      } on FileSystemException {
+        // Deleted meanwhile, by another invocation.
+      }
+    }
+  }
+
+  static bool _hasHeaders(Directory dir) =>
+      File('${dir.path}/ogg/ogg.h').existsSync() &&
+      File('${dir.path}/ogg/config_types.h').existsSync() &&
+      File('${dir.path}/vorbis/codec.h').existsSync() &&
+      File('${dir.path}/opus/opus.h').existsSync() &&
+      File('${dir.path}/FLAC/all.h').existsSync();
 
   static Future<Directory> _ensurePrebuildInclude(
     Uri packageRoot, [
@@ -825,24 +998,37 @@ final class XiphLink {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/include'),
     );
-    if (_hasHeaders(cacheDir, tag)) return cacheDir;
+    _pruneStaleStaging(cacheDir.parent);
+    if (_isInstalled(cacheDir, tag, _hasHeaders)) return cacheDir;
 
     print(
       '[flutter_soloud] Downloading Xiph headers ($tag) from '
       '$_prebuildRepo...',
     );
-    if (cacheDir.existsSync()) {
-      cacheDir.deleteSync(recursive: true);
-    }
-    final resolvedTag = await _downloadAndExtract(
-      '${_baseUrlForTag(tag)}/xiph-include.tar.gz',
-      cacheDir,
+    final url = '${_baseUrlForTag(tag)}/xiph-include.tar.gz';
+    final resolvedTag = await _downloadAndInstall(
+      url,
+      cacheDir.parent,
       isZip: false,
+      install: (Directory extracted, String? resolvedTag) {
+        if (_hasHeaders(extracted)) {
+          _moveIntoPlace(
+            extracted,
+            cacheDir,
+            tag,
+            _hasHeaders,
+            resolvedTag: resolvedTag,
+          );
+        }
+      },
     );
+    if (!_isInstalled(cacheDir, tag, _hasHeaders)) {
+      throw StateError(
+        'Downloaded the Xiph headers from $url, but validation failed in '
+        '${cacheDir.path}.',
+      );
+    }
     final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
 
     File.fromUri(
         packageRoot.resolve(
@@ -867,43 +1053,54 @@ final class XiphLink {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/$subDir'),
     );
-    final versionFile = _getVersionFile(cacheDir);
-    if (tag != 'latest' && versionFile.existsSync()) {
-      final v = versionFile.readAsStringSync().trim();
-      if (v != tag && 'v$v' != tag) {
-        if (cacheDir.existsSync()) {
-          cacheDir.deleteSync(recursive: true);
-        }
-      }
-    }
-    if (validator(cacheDir)) return cacheDir;
+    _pruneStaleStaging(cacheDir.parent);
+    if (_isInstalled(cacheDir, tag, validator)) return cacheDir;
 
     print(
       '[flutter_soloud] Downloading prebuilt Xiph libraries ($tag) '
       'for $os ($arch)...',
     );
-    final extractTarget = (os == OS.android)
-        ? Directory.fromUri(
-            packageRoot.resolve(
-              '.dart_tool/flutter_soloud/xiph/prebuild/android',
-            ),
-          )
-        : cacheDir;
-    final resolvedTag = await _downloadAndExtract(
-      '${_baseUrlForTag(tag)}/$archiveName',
-      extractTarget,
+    final url = '${_baseUrlForTag(tag)}/$archiveName';
+    await _downloadAndInstall(
+      url,
+      cacheDir.parent,
       isZip: isZip,
+      install: (Directory extracted, String? resolvedTag) {
+        if (os != OS.android) {
+          if (validator(extracted)) {
+            _moveIntoPlace(
+              extracted,
+              cacheDir,
+              tag,
+              validator,
+              resolvedTag: resolvedTag,
+            );
+          }
+          return;
+        }
+        // The Android archive holds a directory per ABI. Install each one
+        // that is not installed yet, so that the build's other ABIs need no
+        // download of their own, and leave the installed ones alone.
+        for (final staged in extracted.listSync().whereType<Directory>()) {
+          final name = staged.path.substring(extracted.path.length + 1);
+          final target = Directory('${cacheDir.parent.path}/$name');
+          if (validator(staged)) {
+            _moveIntoPlace(
+              staged,
+              target,
+              tag,
+              validator,
+              resolvedTag: resolvedTag,
+            );
+          }
+        }
+      },
     );
-    final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
 
-    if (!validator(cacheDir)) {
+    if (!_isInstalled(cacheDir, tag, validator)) {
       throw StateError(
-        'Downloaded prebuilt Xiph libraries for $os ($arch) from '
-        '${_baseUrlForTag(tag)}/$archiveName, but validation failed in '
-        '${cacheDir.path}.',
+        'Downloaded prebuilt Xiph libraries for $os ($arch) from $url, but '
+        'validation failed in ${cacheDir.path}.',
       );
     }
     return cacheDir;
@@ -923,6 +1120,79 @@ final class XiphLink {
       return _cachedHasCurl = (res.exitCode == 0);
     } catch (_) {
       return _cachedHasCurl = false;
+    }
+  }
+
+  /// The limit on one whole download attempt, curl's `-m 60`.
+  static const Duration _downloadDeadline = Duration(seconds: 60);
+
+  /// Downloads [url] into [file] with Dart's HttpClient, the fallback for
+  /// when curl is unavailable or failed. Returns the release tag a redirect
+  /// resolved to, if any. Throws when the transfer fails or is empty, and a
+  /// [TimeoutException] when it is not complete within [deadline].
+  static Future<String?> _downloadWithHttpClient(
+    String url,
+    File file, {
+    Duration deadline = _downloadDeadline,
+  }) async {
+    String? resolvedTag;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..userAgent = _browserUserAgent;
+    // The timeouts below cover the connection and the response headers but
+    // not the body, which can stall for good after them. Like curl's -m 60,
+    // this bounds the whole attempt: closing the client ends a transfer in
+    // flight with an error.
+    var timedOut = false;
+    final deadlineTimer = Timer(deadline, () {
+      timedOut = true;
+      client.close(force: true);
+    });
+    try {
+      final uri = Uri.parse(url);
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 15));
+      request.headers.set(HttpHeaders.acceptHeader, _browserAcceptHeader);
+      request.headers.set(HttpHeaders.acceptLanguageHeader, 'en-US,en;q=0.9');
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException(
+          'HTTP ${response.statusCode} (${response.reasonPhrase})',
+          uri: uri,
+        );
+      }
+
+      for (final r in response.redirects) {
+        final match = RegExp(
+          '/releases/download/([^/]+)/',
+        ).firstMatch(r.location.toString());
+        if (match != null) {
+          resolvedTag = match.group(1);
+          break;
+        }
+      }
+
+      final sink = file.openWrite();
+      await response.pipe(sink);
+      if (!file.existsSync() || file.lengthSync() == 0) {
+        throw const FileSystemException('Downloaded file is empty');
+      }
+      return resolvedTag;
+    } catch (_) {
+      if (timedOut) {
+        throw TimeoutException(
+          'Download not complete within ${deadline.inSeconds} s',
+          deadline,
+        );
+      }
+      rethrow;
+    } finally {
+      deadlineTimer.cancel();
+      client.close();
     }
   }
 
@@ -1023,55 +1293,13 @@ final class XiphLink {
         }
         try {
           print('[flutter_soloud] Trying Dart HttpClient download...');
-          final client = HttpClient()
-            ..connectionTimeout = const Duration(seconds: 15)
-            ..userAgent = _browserUserAgent;
-          try {
-            final uri = Uri.parse(url);
-            final request = await client
-                .getUrl(uri)
-                .timeout(const Duration(seconds: 15));
-            request.headers.set(HttpHeaders.acceptHeader, _browserAcceptHeader);
-            request.headers.set(
-              HttpHeaders.acceptLanguageHeader,
-              'en-US,en;q=0.9',
-            );
-            final response = await request.close().timeout(
-              const Duration(seconds: 20),
-            );
-
-            if (response.statusCode != HttpStatus.ok) {
-              throw HttpException(
-                'HTTP ${response.statusCode} (${response.reasonPhrase})',
-                uri: uri,
-              );
-            }
-
-            for (final r in response.redirects) {
-              final match = RegExp(
-                '/releases/download/([^/]+)/',
-              ).firstMatch(r.location.toString());
-              if (match != null) {
-                resolvedTag = match.group(1);
-                break;
-              }
-            }
-
-            final sink = tempFile.openWrite();
-            await response.pipe(sink);
-            if (tempFile.existsSync() && tempFile.lengthSync() > 0) {
-              downloadSuccess = true;
-              print(
-                '[flutter_soloud] Download completed successfully '
-                '(${tempFile.lengthSync()} bytes).',
-              );
-              break;
-            } else {
-              throw const FileSystemException('Downloaded file is empty');
-            }
-          } finally {
-            client.close();
-          }
+          resolvedTag = await _downloadWithHttpClient(url, tempFile);
+          downloadSuccess = true;
+          print(
+            '[flutter_soloud] Download completed successfully '
+            '(${tempFile.lengthSync()} bytes).',
+          );
+          break;
         } catch (e) {
           lastError = e;
           print('[flutter_soloud] Dart HttpClient download failed: $e');
@@ -2088,12 +2316,40 @@ final class Vst3Link {
 
   static const String _prebuildRepo = 'alnitak/flutter_soloud_prebuilds';
   static const String _defaultPrebuildTag = 'latest';
-  static const String _prebuildVersionFileName =
-      'flutter_soloud_prebuild_version.txt';
 
-  static String _baseUrlForTag(String tag) => tag == 'latest'
-      ? 'https://github.com/$_prebuildRepo/releases/latest/download'
-      : 'https://github.com/$_prebuildRepo/releases/download/$tag';
+  static String _baseUrlForTag(String tag) =>
+      XiphLink.debugBaseUrl ??
+      (tag == 'latest'
+          ? 'https://github.com/$_prebuildRepo/releases/latest/download'
+          : 'https://github.com/$_prebuildRepo/releases/download/$tag');
+
+  /// [_ensureVst3Include], for tests.
+  @visibleForTesting
+  static Future<Directory> debugEnsureVst3Include(
+    Uri packageRoot,
+    String tag,
+  ) => _ensureVst3Include(packageRoot, tag);
+
+  /// [_ensureVst3Platform] for a .tar.gz archive, for tests.
+  @visibleForTesting
+  static Future<Directory> debugEnsureVst3Platform({
+    required Uri packageRoot,
+    required OS os,
+    required Architecture arch,
+    required String subDir,
+    required String archiveName,
+    required bool Function(Directory dir) validator,
+    String tag = _defaultPrebuildTag,
+  }) => _ensureVst3Platform(
+    packageRoot: packageRoot,
+    os: os,
+    arch: arch,
+    subDir: subDir,
+    archiveName: archiveName,
+    isZip: false,
+    validator: validator,
+    tag: tag,
+  );
 
   static Future<Vst3Link> forPrebuild(BuildInput input) async {
     final code = input.config.code;
@@ -2184,21 +2440,13 @@ final class Vst3Link {
     }
   }
 
-  static bool _hasHeaders(Directory dir, [String targetTag = 'latest']) {
-    if (!dir.existsSync()) return false;
-    if (targetTag != 'latest') {
-      final versionFile = File('${dir.path}/$_prebuildVersionFileName');
-      if (versionFile.existsSync()) {
-        final v = versionFile.readAsStringSync().trim();
-        if (v != targetTag && 'v$v' != targetTag) return false;
-      }
-    }
-    return File(
-          '${dir.path}/pluginterfaces/vst/ivstaudioprocessor.h',
-        ).existsSync() &&
-        File('${dir.path}/public.sdk/source/vst/hosting/module.h').existsSync();
-  }
+  static bool _hasHeaders(Directory dir) =>
+      File(
+        '${dir.path}/pluginterfaces/vst/ivstaudioprocessor.h',
+      ).existsSync() &&
+      File('${dir.path}/public.sdk/source/vst/hosting/module.h').existsSync();
 
+  /// Installs like XiphLink._ensurePrebuildInclude().
   static Future<Directory> _ensureVst3Include(
     Uri packageRoot, [
     String tag = _defaultPrebuildTag,
@@ -2206,24 +2454,36 @@ final class Vst3Link {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/vst3/prebuild/include'),
     );
-    if (_hasHeaders(cacheDir, tag)) return cacheDir;
+    XiphLink._pruneStaleStaging(cacheDir.parent);
+    if (XiphLink._isInstalled(cacheDir, tag, _hasHeaders)) return cacheDir;
 
     print(
       '[flutter_soloud] Downloading VST3 headers ($tag) from '
       '$_prebuildRepo...',
     );
-    if (cacheDir.existsSync()) {
-      cacheDir.deleteSync(recursive: true);
-    }
-    final resolvedTag = await XiphLink._downloadAndExtract(
-      '${_baseUrlForTag(tag)}/vst3-include.tar.gz',
-      cacheDir,
+    final url = '${_baseUrlForTag(tag)}/vst3-include.tar.gz';
+    await XiphLink._downloadAndInstall(
+      url,
+      cacheDir.parent,
       isZip: false,
+      install: (Directory extracted, String? resolvedTag) {
+        if (_hasHeaders(extracted)) {
+          XiphLink._moveIntoPlace(
+            extracted,
+            cacheDir,
+            tag,
+            _hasHeaders,
+            resolvedTag: resolvedTag,
+          );
+        }
+      },
     );
-    final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
+    if (!XiphLink._isInstalled(cacheDir, tag, _hasHeaders)) {
+      throw StateError(
+        'Downloaded the VST3 headers from $url, but validation failed in '
+        '${cacheDir.path}.',
+      );
+    }
     return cacheDir;
   }
 
@@ -2240,39 +2500,35 @@ final class Vst3Link {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/vst3/prebuild/$subDir'),
     );
-    final versionFile = File('${cacheDir.path}/$_prebuildVersionFileName');
-    if (tag != 'latest' && versionFile.existsSync()) {
-      final v = versionFile.readAsStringSync().trim();
-      if (v != tag && 'v$v' != tag) {
-        if (cacheDir.existsSync()) {
-          cacheDir.deleteSync(recursive: true);
-        }
-      }
-    }
-    if (validator(cacheDir)) return cacheDir;
+    XiphLink._pruneStaleStaging(cacheDir.parent);
+    if (XiphLink._isInstalled(cacheDir, tag, validator)) return cacheDir;
 
     print(
       '[flutter_soloud] Downloading prebuilt VST3 library ($tag) '
       'for $os ($arch)...',
     );
-    if (cacheDir.existsSync()) {
-      cacheDir.deleteSync(recursive: true);
-    }
-    final resolvedTag = await XiphLink._downloadAndExtract(
-      '${_baseUrlForTag(tag)}/$archiveName',
-      cacheDir,
+    final url = '${_baseUrlForTag(tag)}/$archiveName';
+    await XiphLink._downloadAndInstall(
+      url,
+      cacheDir.parent,
       isZip: isZip,
+      install: (Directory extracted, String? resolvedTag) {
+        if (validator(extracted)) {
+          XiphLink._moveIntoPlace(
+            extracted,
+            cacheDir,
+            tag,
+            validator,
+            resolvedTag: resolvedTag,
+          );
+        }
+      },
     );
-    final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
 
-    if (!validator(cacheDir)) {
+    if (!XiphLink._isInstalled(cacheDir, tag, validator)) {
       throw StateError(
-        'Downloaded prebuilt VST3 library for $os ($arch) from '
-        '${_baseUrlForTag(tag)}/$archiveName, but validation failed in '
-        '${cacheDir.path}.',
+        'Downloaded prebuilt VST3 library for $os ($arch) from $url, but '
+        'validation failed in ${cacheDir.path}.',
       );
     }
     return cacheDir;

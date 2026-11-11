@@ -900,19 +900,32 @@ namespace SoLoud
 		if (!isRenderAheadEnabled() || !mRenderRing.isInited() || mSamplerate == 0)
 			return 0;
 		// Frames mixed ahead of the device read head right now, plus one
-		// device period of cushion inside the backend.
-		unsigned long long buffered = mRenderRing.availableToRead();
+		// device period of cushion inside the backend. This thread owns
+		// neither ring counter (no audio mutex either).
+		unsigned long long buffered = mRenderRing.availableToReadForObserver();
 		return (time)(buffered + mDevicePeriodFrames) / (time)mSamplerate;
 	}
 
 	time Soloud::getHardwareOutputLatency()
 	{
+#if defined(WITH_MINIAUDIO)
 		return (time)miniaudio_getHardwareOutputLatency();
+#else
+		// No other backend reports a hardware latency.
+		return 0;
+#endif
 	}
 
 	bool Soloud::renderRingMixQuantumLocked_internal()
 	{
 		SOLOUD_ASSERT(mInsideAudioThreadMutex);
+		// ###### flutter_soloud local patch (render-ahead ring writers) ######
+		// The callers check under the mutex that a whole quantum fits (see
+		// renderRingWantsQuantum()). Never mix one that does not: write()
+		// would drop its end, and the mix clock would stay ahead of the ring.
+		SOLOUD_ASSERT(mRenderRing.availableToWrite() >= mBufferSize);
+		if (mRenderRing.availableToWrite() < mBufferSize)
+			return false;
 		unsigned int stride = (mBufferSize + 15) & ~0xf;
 		time buffertime = (time)mBufferSize / (time)mSamplerate;
 		float globalVolume[2];
@@ -955,17 +968,32 @@ namespace SoLoud
 		return notifyVoiceInactive;
 	}
 
+	// ###### flutter_soloud local patch (render-ahead ring writers) ######
+	// Whether the ring holds fewer than aFrames frames and has room for a
+	// whole engine quantum. The render worker and the device callback (when
+	// the worker fell behind) both append to the ring, so a check made
+	// before taking the audio mutex can be out of date by the time it is
+	// held: the other writer may have appended a quantum meanwhile, and
+	// RenderRing::write() would drop whatever no longer fits. Every writer
+	// holds the mutex, so checked again under it, the answer holds until
+	// the quantum is written.
+	static bool renderRingWantsQuantum(const RenderRing &aRing, unsigned int aFrames, unsigned int aQuantum)
+	{
+		return aRing.availableToRead() < aFrames && aRing.availableToWrite() >= aQuantum;
+	}
+
 	void Soloud::renderRingTopUp_internal()
 	{
 		if (!mRenderRing.isInited() || mBufferSize == 0)
 			return;
-		while (mRenderRing.availableToRead() < mRenderAheadFrames &&
-			mRenderRing.availableToWrite() >= mBufferSize)
+		while (renderRingWantsQuantum(mRenderRing, mRenderAheadFrames, mBufferSize))
 		{
 			lockAudioMutex_internal();
 			// deinit() clears mEngineReady and then takes the audio mutex
-			// once: no quantum may start after that.
-			if (mEngineReady.load(std::memory_order_acquire) == 0)
+			// once: no quantum may start after that. The device callback may
+			// have mixed while this thread waited for the mutex.
+			if (mEngineReady.load(std::memory_order_acquire) == 0 ||
+				!renderRingWantsQuantum(mRenderRing, mRenderAheadFrames, mBufferSize))
 			{
 				unlockAudioMutex_internal();
 				return;
@@ -984,24 +1012,63 @@ namespace SoLoud
 	{
 		if (!mRenderRing.isInited() || mBufferSize == 0)
 			return;
-		while (mRenderRing.availableToRead() < aFrames &&
-			mRenderRing.availableToWrite() >= mBufferSize)
+		// ###### flutter_soloud local patch (device-thread callbacks) ######
+		// This is the device callback. The voices its quanta end, and the
+		// voice-inactive callback they make due, are left to the render
+		// worker (renderRingDeliverDeferred_internal()): the embedder's
+		// callbacks take its own locks (flutter_soloud's wait for the
+		// player's), and the ended-voice dispatch takes the audio mutex
+		// again, blocking. So no unlock here dispatches the queue, as
+		// unlockAudioMutex_internal() would. Any other thread's next unlock
+		// still does; the voice-inactive callback stays due under the mutex
+		// until the worker or the next mix reports it.
+		bool deferred = false;
+		auto unlockLeavingCallbacks = [&]()
+		{
+			if (mVoiceInactiveCallbackPending || mEndedVoiceCount != 0)
+			{
+				deferred = true;
+				mRenderRingCallbacksDeferred.store(true, std::memory_order_release);
+			}
+			mInsideAudioThreadMutex = false;
+			if (mAudioThreadMutex)
+			{
+				Thread::unlockMutex(mAudioThreadMutex);
+			}
+		};
+		while (renderRingWantsQuantum(mRenderRing, aFrames, mBufferSize))
 		{
 			if (!tryLockAudioMutex_internal())
-				return;
-			if (mEngineReady.load(std::memory_order_acquire) == 0)
+				break;
+			// The worker may have mixed since the check above.
+			if (mEngineReady.load(std::memory_order_acquire) == 0 ||
+				!renderRingWantsQuantum(mRenderRing, aFrames, mBufferSize))
 			{
-				unlockAudioMutex_internal();
-				return;
+				unlockLeavingCallbacks();
+				break;
 			}
-			const bool notifyVoiceInactive = renderRingMixQuantumLocked_internal();
-			unlockAudioMutex_internal();
-
-			auto voiceInactiveCallback =
-				_voiceInactiveCallback.load(std::memory_order_acquire);
-			if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
-				voiceInactiveCallback();
+			if (renderRingMixQuantumLocked_internal())
+				mVoiceInactiveCallbackPending = true;
+			unlockLeavingCallbacks();
 		}
+		if (deferred)
+			wakeRenderWorker_internal();
+	}
+
+	void Soloud::renderRingDeliverDeferred_internal()
+	{
+		if (!mRenderRingCallbacksDeferred.exchange(false, std::memory_order_acq_rel))
+			return;
+		lockAudioMutex_internal();
+		const bool notifyVoiceInactive = mVoiceInactiveCallbackPending;
+		mVoiceInactiveCallbackPending = false;
+		// Dispatches the ended voices.
+		unlockAudioMutex_internal();
+
+		auto voiceInactiveCallback =
+			_voiceInactiveCallback.load(std::memory_order_acquire);
+		if (notifyVoiceInactive && voiceInactiveCallback != nullptr)
+			voiceInactiveCallback();
 	}
 
 	// ###### flutter_soloud local patch (render-ahead worker) ######
@@ -1015,6 +1082,8 @@ namespace SoLoud
 		while (!aWorker->mStop.load(std::memory_order_acquire))
 		{
 			aSoloud->renderRingTopUp_internal();
+			// ###### flutter_soloud local patch (device-thread callbacks) ######
+			aSoloud->renderRingDeliverDeferred_internal();
 			std::unique_lock<std::mutex> lock(aWorker->mMutex);
 			// Woken by the device callback after every read. The timeout is
 			// only a safety net (the ring is full while it waits).
@@ -1136,17 +1205,31 @@ namespace SoLoud
 	unsigned int Soloud::readRenderRingForDevice_internal(float *aBuffer, unsigned int aFrames)
 	{
 		const bool worker = isRenderWorkerRunning_internal();
+		const unsigned int channels = mRenderRing.getChannels();
+		// ###### flutter_soloud local patch (long device reads) ######
+		// Read in parts, mixing or waiting for more in between: a callback
+		// can ask for more frames than the render-ahead window or the whole
+		// ring holds, and only reading makes room for the rest.
+		unsigned int got = worker ? mRenderRing.read(aBuffer, aFrames) : 0;
 		if (!worker)
 		{
 			// No worker (none wanted, or it could not be started): mix here.
-			renderRingTopUp_internal();
+			do
+			{
+				renderRingTopUp_internal();
+				const unsigned int n = mRenderRing.read(aBuffer + (size_t)got * channels, aFrames - got);
+				if (n == 0)
+					break;
+				got += n;
+			} while (got < aFrames);
 		}
 #if !defined(__EMSCRIPTEN__)
-		else if (mRenderRing.availableToRead() < aFrames)
+		else if (got < aFrames)
 		{
-			// The worker fell behind: mix what this read needs, but only if
-			// the audio mutex is free right now.
-			renderRingTopUpNoWait_internal(aFrames);
+			// The worker fell behind: mix what the rest of this read needs,
+			// but only if the audio mutex is free right now.
+			renderRingTopUpNoWait_internal(aFrames - got);
+			got += mRenderRing.read(aBuffer + (size_t)got * channels, aFrames - got);
 			// Some backends deliver callbacks in back-to-back bursts (AAudio's
 			// non-low-latency path fires several callbacks within a
 			// millisecond), which drains the whole render-ahead window faster
@@ -1155,7 +1238,7 @@ namespace SoLoud
 			// needs: wait a bounded time for them (re-trying the lock in case
 			// the mutex frees up) rather than emitting silence. The bound
 			// keeps a long API-thread hold from stalling the device.
-			if (mRenderRing.availableToRead() < aFrames && mSamplerate > 0)
+			if (got < aFrames && mSamplerate > 0)
 			{
 				const long long budgetUs =
 					(long long)aFrames * 1000000LL / (2LL * (long long)mSamplerate);
@@ -1165,18 +1248,17 @@ namespace SoLoud
 				{
 					wakeRenderWorker_internal();
 					std::this_thread::yield();
-					renderRingTopUpNoWait_internal(aFrames);
-				} while (mRenderRing.availableToRead() < aFrames &&
+					renderRingTopUpNoWait_internal(aFrames - got);
+					got += mRenderRing.read(aBuffer + (size_t)got * channels, aFrames - got);
+				} while (got < aFrames &&
 					std::chrono::steady_clock::now() < deadline);
 			}
 		}
 #endif
-		const unsigned int got = mRenderRing.read(aBuffer, aFrames);
 		if (worker)
 			wakeRenderWorker_internal();
 		if (got < aFrames)
 		{
-			const unsigned int channels = mRenderRing.getChannels();
 			memset(aBuffer + (size_t)got * channels, 0,
 				(size_t)(aFrames - got) * channels * sizeof(float));
 		}
@@ -2710,6 +2792,11 @@ namespace SoLoud
 					step = 0;
 				unsigned int step_fixed = (int)floor(step * FIXPOINT_FRAC_MUL);
 				unsigned int outofs = 0;
+				// ###### flutter_soloud local patch (voice tail) ######
+				// Whether the latest read is the first to come back empty (see
+				// the auto-stop below). A voice still alive after such a read
+				// is still in that block, or its source has not ended.
+				bool firstEmptyRead = voice->mSourceDrained;
 			
 				if (voice->mDelaySamples)
 				{
@@ -2788,6 +2875,7 @@ namespace SoLoud
 					// mResampleData lookahead, so once the source ends everything it
 					// produced is already output in this pass.
 					voice->mSourceDrained = (readcount < directSamples) || voice->hasEnded();
+					firstEmptyRead = false;
 					if (readcount < directSamples)
 					{
 						unsigned int k;
@@ -2839,6 +2927,7 @@ namespace SoLoud
 						// ###### flutter_soloud local patch (voice tail) ######
 						// Nothing came back: everything read before this block has
 						// been resampled, so the voice may now be auto-stopped.
+						firstEmptyRead = readcount == 0 && !voice->mSourceDrained;
 						voice->mSourceDrained = readcount == 0;
 
                         // Clear remaining of the resample data if the full scratch wasn't used
@@ -2986,8 +3075,14 @@ namespace SoLoud
 				// Wait for a read after the end to come back empty, so all of
 				// that block is output: the voice outlives its last sample by
 				// the silent rest of the block, at most one more pass at the
-				// usual buffer sizes.
-				else if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained)
+				// usual buffer sizes. Catmull-Rom outputs a source sample two
+				// positions after it, one later than linear: the last sample
+				// of the block before the first empty one comes out at
+				// position 1 of the empty one, so wait until a position at or
+				// after that is output.
+				else if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained &&
+					!(firstEmptyRead && aResampler == RESAMPLER_CATMULLROM &&
+					  (unsigned long long)voice->mSrcOffset < (unsigned long long)FIXPOINT_FRAC_MUL + step_fixed))
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}
@@ -3003,6 +3098,9 @@ namespace SoLoud
 				float step = voice->mSamplerate / aSamplerate;
 				int step_fixed = (int)floor(step * FIXPOINT_FRAC_MUL);
 				unsigned int outofs = 0;
+				// ###### flutter_soloud local patch (voice tail) ######
+				// As in the audible branch.
+				bool firstEmptyRead = voice->mSourceDrained;
 
 				if (voice->mDelaySamples)
 				{
@@ -3058,6 +3156,7 @@ namespace SoLoud
 								voice->mResampleData[0], SAMPLE_GRANULARITY,
 								SAMPLE_GRANULARITY);
 						}
+						firstEmptyRead = readcount == 0 && !voice->mSourceDrained;
 						voice->mSourceDrained = readcount == 0;
 
 						// ###### flutter_soloud local patch (resampler carry) ######
@@ -3115,7 +3214,9 @@ namespace SoLoud
 				// clear voice if the sound is over
 				// ###### flutter_soloud local patch (voice tail) ######
 				// Once a read after the end came back empty, as above.
-				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained)
+				if (!(voice->mFlags & (AudioSourceInstance::LOOPING | AudioSourceInstance::DISABLE_AUTOSTOP)) && voice->hasEnded() && voice->mSourceDrained &&
+					!(firstEmptyRead && aResampler == RESAMPLER_CATMULLROM &&
+					  (unsigned long long)voice->mSrcOffset < (unsigned long long)FIXPOINT_FRAC_MUL + (unsigned int)step_fixed))
 				{
 					stopVoice_internal(mActiveVoice[i]);
 				}

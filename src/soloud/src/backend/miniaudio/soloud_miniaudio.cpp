@@ -536,19 +536,158 @@ namespace SoLoud
         return result;
     }
 
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+    // For the AAudio close race test: the probe streams a temporary
+    // enumeration context closed, the ones of those it waited for, and the
+    // backend that context last used.
+    static std::atomic<unsigned int> gEnumerationProbeCloses{0};
+    static std::atomic<unsigned int> gEnumerationProbeWaits{0};
+    static std::atomic<int> gEnumerationBackend{-1};
+    unsigned int miniaudio_testEnumerationProbeCloses() { return gEnumerationProbeCloses.load(); }
+    unsigned int miniaudio_testEnumerationProbeWaits() { return gEnumerationProbeWaits.load(); }
+    int miniaudio_testEnumerationBackend() { return gEnumerationBackend.load(); }
+#endif
+
+    // Oboe's bounds on the wait before a close (kMinDelayBeforeCloseMillis,
+    // kMaxDelayBeforeCloseMillis).
+    constexpr ma_int64 kMinDelayBeforeCloseMs = 10;
+    constexpr ma_int64 kMaxDelayBeforeCloseMs = 100;
+
+    /// Stop [pStream] and wait about one burst, before it is closed. Ported
+    /// from Oboe's close workaround (google/oboe 8c13e5e2:
+    /// AudioStreamAAudio::close() and requestStop_l(), and
+    /// AudioStream::calculateDefaultDelayBeforeCloseMillis()).
+    ///
+    /// On Android 11 and earlier a legacy (non-MMAP) stream is an AudioTrack
+    /// whose callbacks hold a raw pointer to the stream: its audio data, and
+    /// the route changes it registers for when it is opened, started or not.
+    /// AAudioStream_close() deletes the stream at once, so a callback already
+    /// being delivered then runs on a freed stream and crashes the process,
+    /// in AudioStreamLegacy_callback() or AudioStreamLegacy::
+    /// onAudioDeviceUpdate(). From Android 12 the stream is reference counted
+    /// and closing it only drops a reference. Stopping it and waiting lets the
+    /// callbacks in flight finish first.
+    ///
+    /// miniaudio closes AAudio streams directly on every path: a device's
+    /// uninit, the reroute job after a disconnect, and the streams it opens to
+    /// probe a device. Each goes through its context's AAudioStream_close, so
+    /// the wait is added there, in closeAAudioStream() for the engine and a
+    /// scoped close hook for temporary enumeration contexts. miniaudio is
+    /// unchanged.
+    ///
+    /// As in Oboe, a device stream gets it on every SDK. A probe, which is
+    /// never started, gets it only on SDK <= 30, where the raw-pointer
+    /// callback exists: enumeration runs on the caller's thread, for
+    /// flutter_soloud the UI thread, and on an API 36 emulator the wait added
+    /// about 65 ms to each.
+    ///
+    /// Oboe also leaves a stream that is already stopping or stopped alone on
+    /// SDK <= 27 (O_MR1). That case never arises here: init_platform_context(),
+    /// which creates every context whose streams come through here, picks
+    /// AAudio only from API 30.
+    ///
+    /// Never called on an AAudio callback thread, where AAudio refuses stop
+    /// and close: miniaudio closes streams only on application threads and on
+    /// its job thread.
+    ///
+    /// Calls through [aContext]'s function table, the one the stream was
+    /// opened with: a temporary enumeration context can exist before the
+    /// engine's, whose table is then still empty.
+    static void stopAndWaitBeforeClose(ma_context *aContext, ma_AAudioStream *pStream)
+    {
+        // The result is ignored, as in Oboe's close().
+        ((MA_PFN_AAudioStream_requestStop)
+             aContext->aaudio.AAudioStream_requestStop)(pStream);
+
+        const ma_int64 framesPerBurst =
+            ((MA_PFN_AAudioStream_getFramesPerBurst)
+                 aContext->aaudio.AAudioStream_getFramesPerBurst)(pStream);
+        const ma_int64 sampleRate =
+            ((MA_PFN_AAudioStream_getSampleRate)
+                 aContext->aaudio.AAudioStream_getSampleRate)(pStream);
+        ma_int64 delayMs = kMinDelayBeforeCloseMs;
+        if (framesPerBurst > 0 && sampleRate > 0)
+            delayMs = std::clamp<ma_int64>(1 + framesPerBurst * 1000 / sampleRate,
+                                           kMinDelayBeforeCloseMs,
+                                           kMaxDelayBeforeCloseMs);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+    }
+
     static ma_aaudio_result_t closeAAudioStream(ma_AAudioStream *pStream)
     {
+        bool deviceStream;
         {
             std::lock_guard<std::mutex> lock(gAAudioStreamGate);
-            gOpenDeviceStreams.erase(std::remove(gOpenDeviceStreams.begin(),
-                                                 gOpenDeviceStreams.end(),
-                                                 pStream),
-                                     gOpenDeviceStreams.end());
+            const auto closed = std::remove(gOpenDeviceStreams.begin(),
+                                            gOpenDeviceStreams.end(), pStream);
+            deviceStream = closed != gOpenDeviceStreams.end();
+            gOpenDeviceStreams.erase(closed, gOpenDeviceStreams.end());
         }
         // Not under the lock: closing joins the stream's callback thread,
-        // which may be waiting for it in gateAAudioStreamError().
+        // which may be waiting for it in gateAAudioStreamError(). Already out
+        // of gOpenDeviceStreams, so an error the stream reports while it is
+        // stopped and waited out queues no reroute.
+        if (deviceStream || ma_android_sdk_version() <= 30)
+            stopAndWaitBeforeClose(&context, pStream);
         return gCloseAAudioStream(pStream);
     }
+
+    // Before engine init, enumeration uses a temporary context. Its streams
+    // never pass through the global context's close hook, and the global
+    // function table may still be empty. Keep a close-only hook scoped to
+    // that context, using its own function pointers. Enumeration opens and
+    // closes its probes synchronously on its caller, so thread-local state
+    // carries the context through AAudio's context-free close signature. No
+    // device or reroute hook is installed on this short-lived context.
+    struct EnumerationCloseContext
+    {
+        ma_context *context = nullptr;
+        MA_PFN_AAudioStream_close close = nullptr;
+    };
+    static thread_local EnumerationCloseContext tEnumerationClose;
+
+    static ma_aaudio_result_t closeEnumerationAAudioStream(ma_AAudioStream *pStream)
+    {
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+        gEnumerationProbeCloses.fetch_add(1);
+#endif
+        if (ma_android_sdk_version() <= 30)
+        {
+            stopAndWaitBeforeClose(tEnumerationClose.context, pStream);
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+            gEnumerationProbeWaits.fetch_add(1);
+#endif
+        }
+        return tEnumerationClose.close(pStream);
+    }
+
+    class ScopedEnumerationAAudioClose
+    {
+    public:
+        explicit ScopedEnumerationAAudioClose(ma_context &aContext)
+            : mPrevious(tEnumerationClose)
+        {
+            if (aContext.backend != ma_backend_aaudio)
+                return;
+            mContext = &aContext;
+            mClose = (MA_PFN_AAudioStream_close)aContext.aaudio.AAudioStream_close;
+            tEnumerationClose = {mContext, mClose};
+            aContext.aaudio.AAudioStream_close = (ma_proc)closeEnumerationAAudioStream;
+        }
+        ~ScopedEnumerationAAudioClose()
+        {
+            if (mContext == nullptr)
+                return;
+            mContext->aaudio.AAudioStream_close = (ma_proc)mClose;
+            tEnumerationClose = mPrevious;
+        }
+        ScopedEnumerationAAudioClose(const ScopedEnumerationAAudioClose &) = delete;
+        ScopedEnumerationAAudioClose &operator=(const ScopedEnumerationAAudioClose &) = delete;
+    private:
+        EnumerationCloseContext mPrevious;
+        ma_context *mContext = nullptr;
+        MA_PFN_AAudioStream_close mClose = nullptr;
+    };
 
     static void setAAudioErrorCallback(ma_AAudioStreamBuilder *pBuilder,
                                        ma_AAudioStream_errorCallback callback,
@@ -652,6 +791,7 @@ namespace SoLoud
         {
             soloud_platform_log("miniaudio: closing an AAudio stream a failed "
                                 "device initialization left open\n");
+            stopAndWaitBeforeClose(&context, pStream);
             gCloseAAudioStream(pStream);
         }
 #endif
@@ -1200,7 +1340,15 @@ namespace SoLoud
         ma_result result = init_platform_context(&enumerationContext);
         if (result != MA_SUCCESS)
             return result;
-        result = copy_playback_devices(&enumerationContext, aDevices);
+#if defined(MA_HAS_AAUDIO) && defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+        gEnumerationBackend.store(enumerationContext.backend);
+#endif
+        {
+#if defined(MA_HAS_AAUDIO)
+            const ScopedEnumerationAAudioClose closeHook(enumerationContext);
+#endif
+            result = copy_playback_devices(&enumerationContext, aDevices);
+        }
         ma_context_uninit(&enumerationContext);
         return result;
     }
@@ -1661,7 +1809,7 @@ namespace SoLoud
                 }
             }
         } @catch (id) {}
-#elif defined(MA_SUPPORT_COREAUDIO)
+#elif defined(MA_HAS_COREAUDIO)
         if (context.backend == ma_backend_coreaudio)
         {
             Float64 unitLatency = 0.0;

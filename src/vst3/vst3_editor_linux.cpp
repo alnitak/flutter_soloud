@@ -9,7 +9,9 @@
 #include "vst3_editor_window.h"
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -323,11 +325,23 @@ public:
     close();
     guiSymbols().load();
 
-    static std::atomic<uint32_t> sShmCounter{0};
-    const std::string shmPath =
-        "/tmp/soloud_vst3_shm_" + std::to_string(getpid()) + "_" +
-        std::to_string(++sShmCounter) + ".bin";
-    const int fd = ::open(shmPath.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0600);
+    // A new file under a random name, created with O_EXCL and mode 0600 by
+    // mkstemp(), in the per-user runtime directory when there is one: a
+    // predictable name in /tmp could be taken first, by a symlink say.
+    const char *const shmDirs[] = {::getenv("XDG_RUNTIME_DIR"),
+                                   ::getenv("TMPDIR"), "/tmp"};
+    std::string shmPath;
+    int fd = -1;
+    for (const char *dir : shmDirs) {
+      if (dir == nullptr || dir[0] != '/') {
+        continue;
+      }
+      shmPath = std::string(dir) + "/soloud_vst3_shm_XXXXXX";
+      fd = ::mkstemp(&shmPath[0]);
+      if (fd >= 0) {
+        break;
+      }
+    }
     if (fd < 0) {
       return false;
     }
@@ -441,39 +455,13 @@ public:
     }
 
     mIsOpen.store(true, std::memory_order_release);
+    publishRemoteShm(mShm);
     if (guiSymbols().g_timeout_add && mRemotePollTimerId == 0) {
       mRemotePollTimerId =
           guiSymbols().g_timeout_add(8, &onRemotePollStatic, this);
     }
     return true;
 #endif
-  }
-
-  void notifyParameterChanged(uint32_t paramId,
-                              double normalizedValue) override {
-    if (mShm == nullptr || !mIsOpen.load(std::memory_order_acquire)) {
-      return;
-    }
-    const uint32_t w = mShm->hostToGuiWrite.load(std::memory_order_relaxed);
-    const uint32_t r = mShm->hostToGuiRead.load(std::memory_order_acquire);
-    if (w - r < kVst3EditorParamQueueSize) {
-      auto &slot = mShm->hostToGuiQueue[w % kVst3EditorParamQueueSize];
-      slot.paramId = paramId;
-      slot.reserved = 0;
-      slot.value = normalizedValue;
-      mShm->hostToGuiWrite.store(w + 1, std::memory_order_release);
-    }
-  }
-
-  void writeAudioTelemetry(const float *inL, const float *inR,
-                           const float *outL, const float *outR,
-                           int32_t numSamples,
-                           double sampleRate) noexcept override {
-    if (!mIsOpen.load(std::memory_order_acquire)) {
-      return;
-    }
-    writeVst3EditorShmTelemetry(mShm, inL, inR, outL, outR, numSamples,
-                                sampleRate);
   }
 
   bool open(Steinberg::IPlugView *plugView, const char *title) override {
@@ -650,32 +638,10 @@ public:
       mShm->hostClosed.store(1, std::memory_order_release);
     }
     if (mHelperPid > 0) {
-      int st = 0;
-      bool reaped = false;
-      for (int i = 0; i < 30; ++i) {
-        if (::waitpid(mHelperPid, &st, WNOHANG) == mHelperPid) {
-          reaped = true;
-          break;
-        }
-        ::usleep(5000);
-      }
-      if (!reaped) {
-        ::kill(mHelperPid, SIGTERM);
-        for (int i = 0; i < 20; ++i) {
-          if (::waitpid(mHelperPid, &st, WNOHANG) == mHelperPid) {
-            reaped = true;
-            break;
-          }
-          ::usleep(5000);
-        }
-        if (!reaped) {
-          ::kill(mHelperPid, SIGKILL);
-          ::waitpid(mHelperPid, &st, 0);
-        }
-      }
-      mHelperPid = 0;
+      reapHelper();
     }
     if (mShm != nullptr) {
+      retireRemoteShm();
       ::munmap(mShm, sizeof(SoLoudVst3EditorShm));
       mShm = nullptr;
     }
@@ -934,20 +900,66 @@ private:
     return 1; // G_SOURCE_CONTINUE
   }
 
+  // True once the helper has been reaped, or once it is no longer a child
+  // of this process to reap (ECHILD: the app reaps children itself, with
+  // SIGCHLD ignored or a waitpid(-1) of its own).
+  static bool helperGone(pid_t pid) {
+    int st = 0;
+    pid_t r;
+    do {
+      r = ::waitpid(pid, &st, WNOHANG);
+    } while (r < 0 && errno == EINTR);
+    return r != 0;
+  }
+
+  // Waits for the helper to exit, sending SIGTERM after 150 ms and SIGKILL
+  // after 250 ms if it does not: it is always reaped. A signal only follows
+  // a check that the helper is still an unreaped child of this process.
+  void reapHelper() {
+    const pid_t pid = mHelperPid;
+    mHelperPid = 0;
+    if (pid <= 0) {
+      return;
+    }
+    for (int i = 0; i < 50; ++i) {
+      if (helperGone(pid)) {
+        return;
+      }
+      if (i == 30) {
+        ::kill(pid, SIGTERM);
+      }
+      ::usleep(5000);
+    }
+    if (helperGone(pid)) {
+      return;
+    }
+    ::kill(pid, SIGKILL);
+    int st = 0;
+    while (::waitpid(pid, &st, 0) < 0 && errno == EINTR) {
+    }
+  }
+
   static int onRemotePollStatic(void *userData) {
     auto *self = static_cast<Vst3EditorWindowLinux *>(userData);
     if (self == nullptr || self->mShm == nullptr || self->mHelperPid <= 0) {
       return 0; // G_SOURCE_REMOVE
     }
     int status = 0;
-    const pid_t wres = ::waitpid(self->mHelperPid, &status, WNOHANG);
-    if (wres == self->mHelperPid ||
+    pid_t wres;
+    do {
+      wres = ::waitpid(self->mHelperPid, &status, WNOHANG);
+    } while (wres < 0 && errno == EINTR);
+    // wres < 0: no longer a child to reap (ECHILD), so it has exited.
+    if (wres != 0 ||
         self->mShm->helperClosed.load(std::memory_order_acquire) != 0) {
       self->mRemotePollTimerId = 0;
-      if (wres != self->mHelperPid && self->mHelperPid > 0) {
-        ::waitpid(self->mHelperPid, &status, WNOHANG);
+      if (wres == 0) {
+        // It reported closing but has not exited yet: wait for it as
+        // close() does, or it is never reaped.
+        self->reapHelper();
       }
       self->mHelperPid = 0;
+      self->retireRemoteShm();
       ::munmap(self->mShm, sizeof(SoLoudVst3EditorShm));
       self->mShm = nullptr;
       if (!self->mShmPath.empty()) {

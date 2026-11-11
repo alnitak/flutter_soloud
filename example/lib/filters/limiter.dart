@@ -168,6 +168,11 @@ class _LimiterExampleState extends State<LimiterExample> {
             ElevatedButton(
               onPressed: () async {
                 await SoLoud.instance.disposeAllSources();
+                // It deactivates the global filters as well.
+                if (!mounted) return;
+                setState(() {
+                  isFilterActive = limiter.isActive;
+                });
               },
               child: const Text('stop all'),
             ),

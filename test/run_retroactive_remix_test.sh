@@ -1,7 +1,8 @@
 #!/bin/bash
 # Build and run the standalone native retroactive re-mix tests (Phase 3a of
 # the retroactive re-mixing feature). Uses the null backend, so no audio
-# hardware is needed.
+# hardware is needed. SOLOUD_RETRO_TEST_HOOKS compiles in the hook the tests
+# use to read the ring where the device may.
 
 set -e
 
@@ -24,6 +25,7 @@ fi
 c++ -std=c++17 -O2 -Wall -Wextra -pthread \
     -DWITH_NULL \
     -DNO_XIPH_LIBS \
+    -DSOLOUD_RETRO_TEST_HOOKS \
     -I src \
     -I src/native_decoder \
     -I src/audiobuffer \

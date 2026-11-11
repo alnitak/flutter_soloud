@@ -43,6 +43,9 @@ public:
 
   SourceStateSnapshot *captureSourceState() override;
   void restoreSourceState(SourceStateSnapshot *aState) override;
+  /// False once the frames a replay from `aState` would read may have been
+  /// overwritten by the producer (see the definition).
+  bool canRestoreSourceState(SourceStateSnapshot *aState) override;
   bool captureSourceStateInto(SourceStateSnapshot *aState) override;
 
   friend class RealtimeStream;
@@ -179,7 +182,7 @@ private:
   time queuedAudioEndTimeLocked(const Soloud &engine,
                                 const RealtimeStreamInstance &inst,
                                 uint64_t writeBefore, double voiceSr) const;
-  void refillReadAheadLocked(Soloud &engine, RealtimeStreamInstance &inst);
+  void refillReadAheadLocked(RealtimeStreamInstance &inst);
   void discardUnreadLocked();
   int findVoiceSlotLocked(const Soloud &engine,
                           const RealtimeStreamInstance *inst) const;
@@ -188,8 +191,19 @@ private:
   /// cursor is `cursor` and whose read cursor is at `readFrame`, or
   /// mMarkerCount if none. Audio mutex held.
   size_t findPendingMarker(uint64_t readFrame, uint64_t cursor) const noexcept;
+  /// Moves `readFrame` and `cursor` past the reset markers recorded at
+  /// `readFrame` that a voice at `cursor` has not applied, as the voice does
+  /// when it reads there. Returns true if there was one. Audio mutex held.
+  bool skipResetsLocked(uint64_t &readFrame, uint64_t &cursor) const noexcept;
+  /// Index of the first marker that the live voice, or a replay from a
+  /// snapshot of it that a rollback can restore, may still apply. Audio
+  /// mutex held.
+  size_t firstNeededMarkerLocked() const noexcept;
   void pruneMarkersLocked() noexcept;
   bool appendMarkerLocked(const TimelineMarker &marker) noexcept;
+  /// Oldest ring frame a rollback may still read: older frames may have been
+  /// overwritten. Audio mutex held.
+  uint64_t oldestReplayableFrameLocked() const noexcept;
 
   Soloud *mEngine = nullptr;
   BufferType mFormat = BufferType::PCM_F32LE;
@@ -207,6 +221,9 @@ private:
   /// Sequence number for the next marker. Atomic only because a new
   /// instance reads it outside the audio mutex.
   std::atomic<uint64_t> mNextMarkerSeq{1};
+  /// Furthest the ring's read cursor has been; a re-mix can leave the cursor
+  /// behind it. Audio mutex held.
+  uint64_t mReadHighWater = 0;
 };
 
 } // namespace SoLoud

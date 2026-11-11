@@ -843,6 +843,423 @@ void testLongIdleNoStreamTimeOrRingDrift()
            first);
 }
 
+// ---- Fade starting values ---------------------------------------------------
+
+enum class FadePath { Direct, RingFallback, RingRetroactive };
+
+const char* fadePathName(FadePath path)
+{
+    switch (path) {
+    case FadePath::Direct: return "direct mix";
+    case FadePath::RingFallback: return "ring, non-restorable source";
+    default: return "ring, retroactive";
+    }
+}
+
+// A voice group whose two voices differ in volume, pan and speed. A fade on
+// the group must start each voice from its own value, on the direct mix path
+// and on both ring paths: a restorable source takes the retroactive re-mix,
+// a non-restorable one its going-forward fallback. Every voice used to fade
+// from the first voice's value, read through the group handle, and was set
+// to the target at once when the target was that value.
+void testGroupFadesStartFromEachVoice()
+{
+    constexpr double kFade = 4.0;
+    const FadePath paths[] = {FadePath::Direct, FadePath::RingFallback,
+                              FadePath::RingRetroactive};
+    const char* const ops[] = {"fadeVolume(0.6)", "fadeVolume(0.2), voice 1's volume",
+                               "fadePan(0)", "fadeRelativePlaySpeed(1.5)",
+                               "scheduleFadeAt(playhead, 0.6)"};
+    for (FadePath path : paths) {
+        for (int op = 0; op < 5; ++op) {
+            SoLoud::Soloud engine;
+            if (path != FadePath::Direct)
+                engine.setRenderAheadConfig(kDevicePeriod, kRenderAhead);
+            const SoLoud::result result =
+                engine.init(SoLoud::Soloud::CLIP_ROUNDOFF,
+                            SoLoud::Soloud::NULLDRIVER, kSampleRate, kQuantum, 2);
+            EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+            PulseSource pulse(1 << 22, 0.5f);
+            NonRestorableDcSource dc;
+            SoLoud::AudioSource& source =
+                path == FadePath::RingFallback ? static_cast<SoLoud::AudioSource&>(dc)
+                                               : static_cast<SoLoud::AudioSource&>(pulse);
+            const SoLoud::handle h1 = engine.play(source, 0.2f, -1.0f);
+            const SoLoud::handle h2 = engine.play(source, 1.0f, 1.0f);
+            engine.setRelativePlaySpeed(h2, 2.0f);
+            const SoLoud::handle group = engine.createVoiceGroup();
+            engine.addVoiceToGroup(group, h1);
+            engine.addVoiceToGroup(group, h2);
+            std::vector<float> buf(kQuantum * 2);
+            auto advance = [&] {
+                if (path == FadePath::Direct) {
+                    engine.mix(buf.data(), kQuantum);
+                } else {
+                    engine.renderRingTopUp_internal();
+                    engine.mRenderRing.read(buf.data(), kQuantum);
+                }
+            };
+            for (int i = 0; i < 6; ++i)
+                advance();
+
+            switch (op) {
+            case 0: engine.fadeVolume(group, 0.6f, kFade); break;
+            case 1: engine.fadeVolume(group, 0.2f, kFade); break;
+            case 2: engine.fadePan(group, 0.0f, kFade); break;
+            case 3: engine.fadeRelativePlaySpeed(group, 1.5f, kFade); break;
+            default:
+                engine.scheduleFadeAt(group, engine.getPlayheadTime(), 0.6f, kFade, false);
+                break;
+            }
+
+            // Voice 1 has its own fade, except where it already is at the
+            // target; voice 2 always does.
+            for (int v = (op == 1 ? 1 : 0); v < 2; ++v) {
+                const SoLoud::handle h = v == 0 ? h1 : h2;
+                const int slot = engine.getVoiceFromHandle_internal(h);
+                EXPECT(slot >= 0, "%s, %s: voice %d is gone", fadePathName(path), ops[op], v + 1);
+                if (slot < 0)
+                    continue;
+                const SoLoud::AudioSourceInstance* voice = engine.mVoice[slot];
+                const SoLoud::Fader& fader = op == 2   ? voice->mPanFader
+                                             : op == 3 ? voice->mRelativePlaySpeedFader
+                                                       : voice->mVolumeFader;
+                const float own = op == 2 ? (v == 0 ? -1.0f : 1.0f)
+                                  : op == 3 ? (v == 0 ? 1.0f : 2.0f)
+                                            : (v == 0 ? 0.2f : 1.0f);
+                EXPECT(fader.mActive > 0 && std::fabs(fader.mFrom - own) < 1e-4f &&
+                           std::fabs(fader.mTime - kFade) < 1e-6,
+                       "%s, %s: voice %d fades from %f over %f s (active %d), "
+                       "want from its own %f over %f s",
+                       fadePathName(path), ops[op], v + 1, fader.mFrom, fader.mTime,
+                       fader.mActive, own, kFade);
+            }
+            // A few quanta into the fade, voice 2 is still near its own value.
+            for (int i = 0; i < 4; ++i)
+                advance();
+            const float now = op == 2 ? engine.getPan(h2)
+                              : op == 3 ? engine.getRelativePlaySpeed(h2)
+                                        : engine.getVolume(h2);
+            const float own2 = op == 2 ? 1.0f : op == 3 ? 2.0f : 1.0f;
+            EXPECT(std::fabs(now - own2) < 0.1f,
+                   "%s, %s: voice 2 is at %f a few quanta into a %f s fade from %f",
+                   fadePathName(path), ops[op], now, kFade, own2);
+            engine.deinit();
+        }
+    }
+}
+
+// A fade the retroactive re-mix places at the playhead starts from the
+// voice's value there. The re-mix restores the checkpoint at or before the
+// playhead, and the fade used to start from the value restored with it,
+// leaving out what changed the voice since: a setVolume() earlier in the
+// same quantum, or the part of a running fade between the checkpoint and
+// the playhead.
+void testRetroactiveFadeStartsFromTheLiveValue()
+{
+    // setVolume(0), then a fade in before the next checkpoint: the fade
+    // started from the volume before the setVolume(), and the voice was
+    // back at full volume at once.
+    {
+        Rig rig;
+        PulseSource a(1 << 20, 1.0f);
+        const SoLoud::handle h = rig.engine.play(a);
+        rig.topUp();
+        rig.discard(2100);  // playhead mid-quantum (checkpoints at 2048 and 3072)
+        rig.engine.setVolume(h, 0.0f);
+        rig.discard(200);
+        rig.engine.fadeVolume(h, 1.0f, 1.0);
+
+        const int slot = rig.engine.getVoiceFromHandle_internal(h);
+        EXPECT(slot >= 0, "the voice is gone");
+        if (slot >= 0) {
+            const SoLoud::Fader& fader = rig.engine.mVoice[slot]->mVolumeFader;
+            EXPECT(fader.mActive > 0 && std::fabs(fader.mFrom) < 1e-4f,
+                   "the fade in after setVolume(0) starts from %f (active %d), want 0",
+                   fader.mFrom, fader.mActive);
+        }
+        // Past the quantum holding the playhead (window frame 3072 - 2300 =
+        // 772) the voice is a few hundredths into its fade in.
+        const std::vector<float> out = rig.readAll();
+        float peak = 0;
+        for (size_t i = 800; i < 1000 && i * 2 < out.size(); ++i)
+            peak = std::max(peak, std::fabs(out[i * 2]));
+        EXPECT(out.size() >= 2000 && peak < 0.05f,
+               "%f just after a 1 s fade in from silence started", peak);
+    }
+    // A fade on top of one running since before the checkpoint: the voice
+    // jumped back to where that fade was at the checkpoint.
+    {
+        Rig rig;
+        PulseSource a(1 << 20, 1.0f);
+        const SoLoud::handle h = rig.engine.play(a);
+        const double fade = 8192.0 / kSampleRate;
+        rig.engine.fadeVolume(h, 0.0f, fade);  // nothing mixed yet: from the write head
+        rig.topUp();
+        rig.discard(2500);
+        rig.engine.fadeVolume(h, 1.0f, 1.0);   // retroactive, at the playhead
+
+        const int slot = rig.engine.getVoiceFromHandle_internal(h);
+        EXPECT(slot >= 0, "the voice is gone");
+        if (slot >= 0) {
+            const SoLoud::Fader& fader = rig.engine.mVoice[slot]->mVolumeFader;
+            const double atPlayhead = 1.0 - (2500.0 / kSampleRate) / fade;
+            EXPECT(fader.mActive > 0 && std::fabs(fader.mFrom - atPlayhead) < 1e-3,
+                   "the new fade starts from %f (active %d), the voice is at %f "
+                   "at the playhead", fader.mFrom, fader.mActive, atPlayhead);
+        }
+    }
+}
+
+// A fade to the value a voice has at the write head, but not yet at the
+// playhead, still fades from the playhead. A 30 ms fade to 0.25 has finished
+// at the write head while the playhead is 9 ms into it. fadeVolume(h, 0.25,
+// 1 s) compared 0.25 with the write head's value and set the voice to it at
+// the playhead, so the output dropped to half within one quantum, while
+// scheduleFadeAt(h, playhead, 0.25, 1 s) faded. The two must give the same
+// output, and fadePan and fadeRelativePlaySpeed must fade too.
+void testFadeToTheWriteHeadValueFades()
+{
+    const double shortFade = 0.03;  // 1323 frames, from the playhead at 2100
+    std::vector<float> outs[2];
+    for (int scheduled = 0; scheduled < 2; ++scheduled) {
+        Rig rig;
+        PulseSource a(1 << 20, 0.5f);
+        const SoLoud::handle h = rig.engine.play(a);
+        rig.topUp();
+        rig.discard(2100);
+        rig.engine.fadeVolume(h, 0.25f, shortFade);
+        rig.discard(400);
+        if (scheduled)
+            rig.engine.scheduleFadeAt(h, rig.engine.getPlayheadTime(), 0.25f, 1.0, false);
+        else
+            rig.engine.fadeVolume(h, 0.25f, 1.0);
+        outs[scheduled] = rig.readAll();
+    }
+    float worst = outs[0].size() == outs[1].size() ? 0.0f : 1.0f;
+    for (size_t i = 0; i < outs[0].size() && i < outs[1].size(); ++i)
+        worst = std::max(worst, std::fabs(outs[0][i] - outs[1][i]));
+    EXPECT(worst < 1e-6f,
+           "fadeVolume(h, 0.25, 1 s) differs from scheduleFadeAt(h, playhead, "
+           "0.25, 1 s) by up to %f", worst);
+    EXPECT(outs[0].size() > 1000 && outs[0][800] > 0.9f * outs[0][0],
+           "fadeVolume(h, 0.25, 1 s) drops the voice from %f to %f in 400 frames",
+           outs[0].size() > 0 ? outs[0][0] : 0.0f,
+           outs[0].size() > 800 ? outs[0][800] : 0.0f);
+
+    for (int speed = 0; speed < 2; ++speed) {
+        Rig rig;
+        PulseSource a(1 << 20, 0.5f);
+        const SoLoud::handle h = rig.engine.play(a);
+        rig.topUp();
+        // A speed change starts at the end of the quantum the device is
+        // playing: the short speed fade, from the playhead at 1500, at 2048,
+        // and the long one, from 2500, at 3072.
+        rig.discard(speed ? 1500 : 2100);
+        if (speed)
+            rig.engine.fadeRelativePlaySpeed(h, 1.5f, shortFade);
+        else
+            rig.engine.fadePan(h, 0.5f, shortFade);
+        rig.discard(speed ? 1000 : 400);
+        if (speed)
+            rig.engine.fadeRelativePlaySpeed(h, 1.5f, 1.0);
+        else
+            rig.engine.fadePan(h, 0.5f, 1.0);
+        const int slot = rig.engine.getVoiceFromHandle_internal(h);
+        EXPECT(slot >= 0, "the voice is gone");
+        if (slot < 0)
+            continue;
+        const SoLoud::AudioSourceInstance* voice = rig.engine.mVoice[slot];
+        const SoLoud::Fader& fader =
+            speed ? voice->mRelativePlaySpeedFader : voice->mPanFader;
+        // Where the short fade is where the long one starts: 400 frames in
+        // for the pan, 1024 for the speed.
+        const float live = speed ? 1.0f + 0.5f * 1024.0f / 1323.0f
+                                 : 0.5f * 400.0f / 1323.0f;
+        EXPECT(fader.mActive > 0 && std::fabs(fader.mTime - 1.0) < 1e-6 &&
+                   std::fabs(fader.mFrom - live) < 0.01f,
+               "%s to the write-head value: fades from %f over %f s (active %d), "
+               "want from %f over 1 s",
+               speed ? "fadeRelativePlaySpeed" : "fadePan", fader.mFrom,
+               fader.mTime, fader.mActive, live);
+    }
+}
+
+// ---- Speed changes --------------------------------------------------------
+
+// Counts its frames: source frame i is (i + 1) / 4096, so the output shows
+// which source frame plays where. Restorable, like PulseSource.
+class CountInstance final : public SoLoud::AudioSourceInstance {
+public:
+    unsigned int getAudio(float* buffer, unsigned int samplesToRead,
+                          unsigned int bufferSize) override {
+        for (unsigned int ch = 0; ch < mChannels; ++ch)
+            for (unsigned int i = 0; i < samplesToRead; ++i)
+                buffer[ch * bufferSize + i] = (float)(offset_ + i + 1) / 4096.0f;
+        offset_ += samplesToRead;
+        return samplesToRead;
+    }
+    bool hasEnded() override { return false; }
+    SoLoud::result rewind() override {
+        offset_ = 0;
+        mStreamPosition = 0;
+        return SoLoud::SO_NO_ERROR;
+    }
+    SoLoud::SourceStateSnapshot* captureSourceState() override {
+        auto* s = new PulseSnapshot();
+        s->offset = offset_;
+        return s;
+    }
+    void restoreSourceState(SoLoud::SourceStateSnapshot* state) override {
+        offset_ = static_cast<PulseSnapshot*>(state)->offset;
+    }
+
+private:
+    unsigned int offset_ = 0;
+};
+
+class CountSource final : public SoLoud::AudioSource {
+public:
+    CountSource() {
+        mBaseSamplerate = static_cast<float>(kSampleRate);
+        mChannels = 1;
+    }
+    SoLoud::AudioSourceInstance* createInstance() override {
+        return new CountInstance();
+    }
+};
+
+// A speed change at the playhead neither skips nor repeats the source. The
+// mixer sets a voice's speed once per quantum, for all of it, so the change
+// cannot start inside the quantum the device is playing. With the playhead
+// at 2900, 852 frames into the quantum from 2048, setRelativePlaySpeed(h, 2)
+// re-mixed that quantum from 2048 at speed 2, and the device skipped about
+// 850 source frames. The rest of that quantum must play as it would have,
+// and the new speed from its end, at 3072, on. The same holds while a speed
+// fade runs: the quantum keeps the speed the fade has at its end.
+void testSpeedChangeAtThePlayheadDoesNotSkip()
+{
+    constexpr unsigned int kPlayhead = 2900;
+    constexpr unsigned int kRest = 3072 - kPlayhead;  // to the quantum's end
+    float step = 0.0f;  // output per source frame at speed 1
+    for (int fading = 0; fading < 2; ++fading) {
+        const float to = fading ? 1.0f : 2.0f;
+        std::vector<float> outs[2];
+        for (int change = 0; change < 2; ++change) {
+            Rig rig;
+            CountSource count;
+            const SoLoud::handle h = rig.engine.play(count);
+            if (fading)
+                rig.engine.fadeRelativePlaySpeed(h, 2.0f, 0.5);
+            rig.topUp();
+            rig.discard(kPlayhead);
+            if (change)
+                rig.engine.setRelativePlaySpeed(h, to);
+            outs[change] = rig.readAll();
+        }
+        const std::vector<float>& before = outs[0];
+        const std::vector<float>& after = outs[1];
+        if (!fading && before.size() > 2 * kRest)
+            step = before[2 * kRest] - before[2 * kRest - 2];
+        float worst = before.size() == after.size() ? 0.0f : 1.0f;
+        for (size_t i = 0; i < 2 * kRest && i < before.size() && i < after.size(); ++i)
+            worst = std::max(worst, std::fabs(after[i] - before[i]));
+        EXPECT(worst < 1e-5f,
+               "%s: the change moves the rest of the quantum at the playhead "
+               "by up to %f source frames",
+               fading ? "fading" : "steady", step > 0.0f ? worst / step : -1.0f);
+        for (unsigned int k : {kRest + 8, kRest + 600}) {
+            const float speed = step > 0.0f && after.size() > 2 * k + 2
+                ? (after[2 * k + 2] - after[2 * k]) / step : -1.0f;
+            EXPECT(std::fabs(speed - to) < 1e-3f,
+                   "%s: speed %f at %u frames past the playhead, want %f",
+                   fading ? "fading" : "steady", speed, k, to);
+        }
+    }
+}
+
+// A voice played at the playhead and given a new speed right away, the
+// random-pitch sound-effect pattern, plays at that speed from its first
+// frame: the device has heard none of it, so nothing can skip, and the
+// change must not wait for the end of the quantum.
+void testSpeedChangeOfANewVoiceStartsAtOnce()
+{
+    std::vector<float> outs[2];
+    for (int change = 0; change < 2; ++change) {
+        Rig rig;
+        rig.topUp();
+        rig.discard(2900);  // 852 frames into the quantum from 2048
+        CountSource count;
+        const SoLoud::handle h = rig.engine.play(count);
+        if (change)
+            rig.engine.setRelativePlaySpeed(h, 2.0f);
+        outs[change] = rig.readAll();
+    }
+    for (unsigned int k : {40u, 100u, 160u}) {
+        const float base = outs[0].size() > 2 * k + 2
+            ? outs[0][2 * k + 2] - outs[0][2 * k] : 0.0f;
+        const float speed = base > 0.0f && outs[1].size() > 2 * k + 2
+            ? (outs[1][2 * k + 2] - outs[1][2 * k]) / base : -1.0f;
+        EXPECT(std::fabs(speed - 2.0f) < 1e-3f,
+               "new voice: speed %f at its frame %u, want 2", speed, k);
+    }
+}
+
+// ---- Device reads during an event -------------------------------------------
+
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+int gPlayheadReads = 0;
+int gDeviceReadsBefore = 0;
+constexpr unsigned int kDeviceFrames = 16;
+
+// The device, reading the ring right before the gDeviceReadsBefore-th
+// playhead read.
+void deviceReadsBeforePlayhead(SoLoud::Soloud* engine)
+{
+    if (++gPlayheadReads != gDeviceReadsBefore)
+        return;
+    std::vector<float> tmp(kDeviceFrames * 2);
+    engine->mRenderRing.read(tmp.data(), kDeviceFrames);
+}
+
+// A retroactive play() starts the voice at the playhead even when the device,
+// which takes no lock, reads the ring while play() holds the audio mutex. The
+// playhead is 8 frames short of the checkpoint at 2048 and the device reads
+// 16 frames, before each of the playhead reads in turn. When it read after
+// the voice's start time was taken and before the rollback read the playhead
+// again, the rollback restored the checkpoint at 2048, after that start time:
+// the start delay came out as -8 frames and was cast to unsigned, which is
+// undefined behaviour. Built with clang on arm64 it gave a delay of about
+// 2^32 frames, so the voice never started; a build that saturates to 0
+// starts it 8 frames before the playhead.
+void testRetroactivePlayWhileTheDeviceReads()
+{
+    for (int before = 1; before <= 6; ++before) {
+        Rig rig;
+        rig.topUp();
+        rig.discard(2040);
+        CountSource count;
+        gPlayheadReads = 0;
+        gDeviceReadsBefore = before;
+        rig.engine.mPlayheadTestHook = deviceReadsBeforePlayhead;
+        rig.engine.play(count);
+        rig.engine.mPlayheadTestHook = nullptr;
+
+        // The voice's output frame at the playhead. With the linear
+        // resampler its output frame j is source frame j - 1, so once the
+        // rewrite's 32-frame crossfade at the playhead is over,
+        // out[k] = g * (k + j) / 4096.
+        const std::vector<float> out = rig.readAll();
+        const float step = out.size() >= 84 ? out[82] - out[80] : 0.0f;
+        const long frame = step > 1e-7f ? std::lround(out[80] / step) - 40 : -1;
+        EXPECT(frame == 0,
+               "device read before playhead read %d: the playhead is at output "
+               "frame %ld of the new voice (-1: silent), want 0",
+               before, frame);
+    }
+}
+#endif
+
 } // namespace
 
 int main()
@@ -866,6 +1283,14 @@ int main()
     testSubSampleMicrosecondRoundingNoSpuriousRollback();
     testRepeatedRollbacksDoNotDoubleExtendStopSamplesLeft();
     testLongIdleNoStreamTimeOrRingDrift();
+    testGroupFadesStartFromEachVoice();
+    testRetroactiveFadeStartsFromTheLiveValue();
+    testFadeToTheWriteHeadValueFades();
+    testSpeedChangeAtThePlayheadDoesNotSkip();
+    testSpeedChangeOfANewVoiceStartsAtOnce();
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+    testRetroactivePlayWhileTheDeviceReads();
+#endif
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);

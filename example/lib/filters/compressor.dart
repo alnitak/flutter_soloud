@@ -169,6 +169,11 @@ class _CompressorExampleState extends State<CompressorExample> {
             ElevatedButton(
               onPressed: () async {
                 await SoLoud.instance.disposeAllSources();
+                // It deactivates the global filters as well.
+                if (!mounted) return;
+                setState(() {
+                  isFilterActive = compressor.isActive;
+                });
               },
               child: const Text('stop all'),
             ),

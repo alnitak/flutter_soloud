@@ -16,6 +16,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -26,6 +27,8 @@
 #include <vector>
 
 namespace SoLoud {
+class BufferStream;
+class PullBufferStream;
 class RealtimeStream;
 }
 
@@ -1172,6 +1175,29 @@ public:
   unsigned int mChannels;
 
 private:
+  // Their buffering checks lock sounds_mutex (see their checkBuffering()).
+  friend class SoLoud::BufferStream;
+  friend class SoLoud::PullBufferStream;
+
+  /// @brief Run [work] holding sounds_mutex: a BufferStream's buffering check,
+  /// which reads and updates its sound's handle list, from a caller that may
+  /// not hold it yet. With [cancelled], for a thread that must not wait for
+  /// the mutex unconditionally (a BufferStream's background decode thread,
+  /// which a reset or a disposal stops and joins while holding it): tries the
+  /// mutex until it gets it or [cancelled] returns true, and checks
+  /// [cancelled] again once it holds it.
+  /// @return whether [work] ran.
+  bool runWithSoundsLock(const std::function<void()> &work,
+                         const std::function<bool()> &cancelled = nullptr);
+
+  /// Looks the pull stream [hash] up under sounds_mutex and pins it (see
+  /// PullBufferStream::pin()) into [stream]; the caller unpins it.
+  PlayerErrors pinPullBufferStream(unsigned int hash,
+                                   SoLoud::PullBufferStream *&stream);
+  /// Waits, without sounds_mutex, until no call pins [sound]'s pull stream:
+  /// a disposal, which has removed the sound, calls it before destroying it.
+  void waitForPinnedCalls(ActiveSound *sound);
+
   std::mutex remove_handle_mutex;
   mutable std::recursive_mutex sounds_mutex; // Protects sounds, mSoundByHash, and mSoundByHandle
   std::unordered_map<unsigned int, ActiveSound *> mSoundByHash;

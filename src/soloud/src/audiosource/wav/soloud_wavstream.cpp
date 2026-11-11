@@ -141,7 +141,11 @@ namespace SoLoud
 			if (mParent->mFiletype == WAVSTREAM_OGG)
 			{
 				mCodec.mOgg = new MBOggDecoder();
-				if (!mCodec.mOgg->open(mFile))
+				// ###### flutter_soloud local patch (chained opus length) ######
+				// A voice never asks its decoder for the length, which
+				// WavStream::loadogg() got once: skip the scan that finds it,
+				// all of a chained Opus file, at every play().
+				if (!mCodec.mOgg->open(mFile, false))
 				{
 					delete mCodec.mOgg;
 					mCodec.mOgg = 0;
@@ -265,7 +269,10 @@ namespace SoLoud
 						}
 					}
 					if (got < blockSize)
+					{
+						mStreamEnded = mFile->eof() != 0;
 						break;
+					}
 				}
 				mOffset += offset;
 				return offset;
@@ -302,7 +309,10 @@ namespace SoLoud
 						}
 					}
 					if (got < blockSize)
+					{
+						mStreamEnded = mFile->eof() != 0;
 						break;
+					}
 				}
 				mOffset += offset;
 				return offset;
@@ -357,7 +367,10 @@ namespace SoLoud
 						}
 					}
 					if (got < blockSize)
+					{
+						mStreamEnded = mFile->eof() != 0;
 						break;
+					}
 				}
 				mOffset += offset;
 				return offset;
@@ -372,6 +385,7 @@ namespace SoLoud
 		if (mCodec.mOgg)
 		{
 			int pos = (int)floor(mBaseSamplerate * aSeconds + 0.5);
+			mStreamEnded = false;
 
 			switch (mParent->mFiletype)
 			{
@@ -380,7 +394,6 @@ namespace SoLoud
 				mCodec.mOgg->seek(pos);
 				mOffset = pos;
 				mStreamPosition = float(pos / mBaseSamplerate);
-				mStreamEnded = false;
 				return 0;
 #endif
 			case WAVSTREAM_FLAC:
@@ -456,10 +469,24 @@ namespace SoLoud
 
 	bool WavStreamInstance::hasEnded()
 	{
+		// ###### flutter_soloud local patch (wavstream missing file) ######
+		// No file: it could not be opened (deleted or moved since the source
+		// was loaded), or no decoder accepted it. getAudio() plays nothing,
+		// so the voice ends instead of staying silent forever.
+		if (mFile == NULL)
+		{
+			return 1;
+		}
 		// For OGG streams, use the stream ended flag since mSampleCount may not
 		// match actual decoded samples (empty final page in OGG), and for OGG/FLAC
 		// the STREAMINFO total_samples can be 0 so we must not check mOffset >= mSampleCount.
-		if (mParent->mFiletype == WAVSTREAM_OGG)
+		// ###### flutter_soloud local patch (wavstream end of file) ######
+		// The other formats set the flag too, when a read comes up short at
+		// the end of the file: the file was truncated while the voice played,
+		// or holds less than its header says, and mOffset would never reach
+		// mSampleCount. A short read before the end of the file, at a frame
+		// that does not decode, is not the end: the next read goes on after it.
+		if (mParent->mFiletype == WAVSTREAM_OGG || mStreamEnded)
 		{
 			return mStreamEnded;
 		}

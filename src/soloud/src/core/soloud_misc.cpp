@@ -24,6 +24,7 @@ freely, subject to the following restrictions:
 
 #include "soloud_misc.h"
 #include <math.h>
+#include <string.h>
 
 namespace SoLoud
 {
@@ -65,6 +66,29 @@ namespace SoLoud
 				static const FourierWaveTables kTables;
 				return kTables;
 			}
+
+			// Linear interpolation in a table of kSize + 1 entries over one
+			// period. The phase wraps into [0, 1), but p - floorf(p) rounds to
+			// 1.0f for a tiny negative p, which would read one entry past the
+			// table. A NaN or infinite p (the float to int conversion of the
+			// position is undefined for it) starts the period over. The bit test
+			// is immune to fast-math flags that fold NaN comparisons.
+			float lookupFourierTable(const float *aTable, float p)
+			{
+				unsigned int bits;
+				memcpy(&bits, &p, sizeof(bits));
+				float wrapped = 0.0f;
+				if ((bits & 0x7F800000u) != 0x7F800000u)
+				{
+					wrapped = p - floorf(p);
+					if (!(wrapped < 1.0f))
+						wrapped = 0.0f;
+				}
+				const float pos = wrapped * static_cast<float>(FourierWaveTables::kSize);
+				const int idx = static_cast<int>(pos);
+				const float frac = pos - static_cast<float>(idx);
+				return aTable[idx] + frac * (aTable[idx + 1] - aTable[idx]);
+			}
 		}
 
 		float generateWaveform(int aWaveform, float p)
@@ -91,23 +115,9 @@ namespace SoLoud
 			case Soloud::WAVE_HUMPS:
 				return (p < 0.5f ? sinf(p * kTwoPi) * 0.5f : 0.0f) - 0.5f;
 			case Soloud::WAVE_FSQUARE:
-				{
-					const FourierWaveTables &tbl = getFourierWaveTables();
-					const float wrapped = p - floorf(p);
-					const float pos = wrapped * static_cast<float>(FourierWaveTables::kSize);
-					const int idx = static_cast<int>(pos);
-					const float frac = pos - static_cast<float>(idx);
-					return tbl.fsquare[idx] + frac * (tbl.fsquare[idx + 1] - tbl.fsquare[idx]);
-				}
+				return lookupFourierTable(getFourierWaveTables().fsquare, p);
 			case Soloud::WAVE_FSAW:
-				{
-					const FourierWaveTables &tbl = getFourierWaveTables();
-					const float wrapped = p - floorf(p);
-					const float pos = wrapped * static_cast<float>(FourierWaveTables::kSize);
-					const int idx = static_cast<int>(pos);
-					const float frac = pos - static_cast<float>(idx);
-					return tbl.fsaw[idx] + frac * (tbl.fsaw[idx + 1] - tbl.fsaw[idx]);
-				}
+				return lookupFourierTable(getFourierWaveTables().fsaw, p);
 			}
 		}
 

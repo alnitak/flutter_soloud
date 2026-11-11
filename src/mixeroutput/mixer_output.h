@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -12,10 +13,34 @@
 #include "mixer_output_encoder.h"
 #include "pcm_queue.h"
 
+/// Guards the capture ring's positions and the bytes a copy is reading.
+///
+/// Held only across bounded byte copies and offset updates: no allocation,
+/// callback, join or encoder work runs under it. An AudioWorklet thread must
+/// not wait on a futex, so the web build spins instead.
+#ifdef __EMSCRIPTEN__
+class MixerOutputMutex {
+ public:
+  void lock() {
+    while (m_flag.test_and_set(std::memory_order_acquire)) {
+    }
+  }
+  void unlock() { m_flag.clear(std::memory_order_release); }
+
+ private:
+  std::atomic_flag m_flag = ATOMIC_FLAG_INIT;
+};
+#else
+using MixerOutputMutex = std::mutex;
+#endif
+
 /// Callback used to notify Dart that new mixer output data is available.
-/// [data] points to the start of the contiguous unread region in the
-/// circular buffer. [length] is the number of valid bytes, which may be
-/// smaller than the notification threshold when the buffer wraps.
+/// [data] is an opaque token for an immutable packet of [length] bytes, not
+/// an address to read: the consumer claims it once with
+/// [MixerOutput::takePacket] and frees the bytes that returns with free().
+/// A packet stays valid after the next one is emitted and after the capture
+/// is stopped or restarted, until it is claimed or discarded. Tokens are
+/// never reused, so a stale notification cannot claim a newer packet.
 ///
 /// A plain function pointer rather than a `std::function` so it can be stored
 /// in an atomic: [setDataCallback] is called from lifecycle paths -- engine
@@ -44,8 +69,11 @@ class MixerOutput {
   /// Start capturing mixer output.
   ///
   /// [format] the desired output format.
-  /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
-  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// [sampleRate] the sample rate of the mix [onAudioData] is fed, resolved
+  /// by the caller.
+  /// [channels] the channel count of that mix, resolved by the caller. No
+  /// resampling or channel conversion happens here: every frame handed to
+  /// [onAudioData] must hold exactly this many samples.
   /// [bufferSizeBytes] the total size of the circular buffer.
   /// [notificationThresholdBytes] how many bytes must be available before
   /// the Dart callback is triggered. Used for compressed formats.
@@ -86,6 +114,43 @@ class MixerOutput {
   /// proxied asynchronously to the main thread).
   uint32_t captureId() const { return m_captureId.load(); }
 
+  /// Claim the packet behind [token]: returns its bytes, which the caller
+  /// frees with free(), and sets [captureId] to the capture that produced it
+  /// and [length], when not null, to its size. Returns nullptr for a token
+  /// already claimed or discarded. Claiming a threshold-mode packet
+  /// acknowledges its bytes in the ring of the capture that is still running,
+  /// which re-arms the notification; a later capture's ring is not touched.
+  static uint8_t *takePacket(uint8_t *token, uint32_t &captureId,
+                             size_t *length);
+  /// Free a packet nobody will claim. Its ring bytes stay unacknowledged.
+  static void discardPacket(uint8_t *token);
+  /// Free every unclaimed packet, for a consumer that went away.
+  static void discardPackets();
+  /// Publish a copy of [length] bytes as a packet of [captureId] and return
+  /// its token, or nullptr when the pending queue is full. [readThrough],
+  /// when not 0, is the ring position claiming it acknowledges.
+  static uint8_t *copyPacket(const uint8_t *data, size_t length,
+                             uint32_t captureId, uint64_t readThrough = 0);
+  /// Hand over the fixed chunks of the stopped capture [captureId] that were
+  /// notified but never claimed: one copy of them, in the order they were
+  /// notified, which the caller frees with free(), and [length] set to its
+  /// size (nullptr and 0 when there are none). Its threshold packets are
+  /// retired too, adding nothing: their bytes are still in the ring, where
+  /// copyStoppedTail() finds them. A late notification then finds nothing
+  /// to claim. [chunkLength], when not null, is set to the size of one of
+  /// the chunks. Does nothing while that capture is still running.
+  static uint8_t *takeStoppedPackets(uint32_t captureId, size_t &length,
+                                     size_t *chunkLength = nullptr);
+  /// Copy the stopped capture's unread ring bytes, oldest first, less any a
+  /// claimed packet already delivered, and mark them read. Returns a copy the
+  /// caller frees with free() and sets [length] to its size (nullptr and 0
+  /// while running, or when nothing is unread). The caller keeps start(),
+  /// which replaces the ring, out meanwhile.
+  uint8_t *copyStoppedTail(size_t &length);
+  /// Bytes in each fixed chunk of the current (or last) capture; 0 in
+  /// threshold mode.
+  size_t chunkBytes() const { return m_chunkBytes; }
+
   /// Encoder currently in use, or nullptr for PCM formats.
   MixerOutputEncoder *encoder() const { return m_encoder.get(); }
 
@@ -101,6 +166,16 @@ class MixerOutput {
   MixerOutput &operator=(const MixerOutput &) = delete;
 
   void notificationThreadFunc();
+  /// Hand the consumer one packet when at least [minimum] bytes are buffered.
+  /// [fixedBytes] > 0 copies and consumes exactly that many bytes
+  /// (fixed-chunk mode); 0 copies the contiguous unread bytes, at most
+  /// 64 KiB of whole frames, and leaves them in the ring until the packet is
+  /// claimed (threshold mode). Returns whether a packet was sent.
+  bool notifyOnePacket(size_t minimum, size_t fixedBytes);
+  /// A write that ends at [newWrite] keeps only the newest [m_bufferSize]
+  /// bytes: move the read position past whatever it overwrote. Caller holds
+  /// [m_bufferMutex].
+  void advanceReadForWriteLocked(uint64_t newWrite);
   void encoderThreadFunc();
   size_t contiguousAvailable() const;
   bool isCompressedFormat() const;
@@ -136,8 +211,8 @@ class MixerOutput {
   /// session; [stop] retires the session first and then waits, off the audio
   /// thread, for that count to reach zero before destroying anything.
   ///
-  /// The callback side is lock-free and allocation-free, as a real-time
-  /// callback must be.
+  /// This admission check is lock-free and allocation-free. The ring write
+  /// that follows it waits at most for another bounded copy (m_bufferMutex).
   static constexpr uint64_t kNoCaptureSession = 0;
   alignas(64) std::atomic<uint64_t> m_activeSession{kNoCaptureSession};
   std::atomic<uint64_t> m_nextSession{1};
@@ -188,10 +263,20 @@ class MixerOutput {
   size_t m_chunkBytes = 0;
   std::vector<uint8_t> m_chunkBuffer;
 
+  /// The ring's positions are byte counts since the capture started, reduced
+  /// modulo [m_bufferSize] only to index [m_buffer]. With wrapped offsets a
+  /// full ring and an empty one both read `write == read`; here a full ring
+  /// has `write - read == m_bufferSize`. 64-bit on 32-bit targets too, so a
+  /// long capture cannot wrap them.
+  ///
+  /// Writers that overrun the reader move the read position forward, so
+  /// every update of either position, and every copy out of the ring, runs
+  /// under [m_bufferMutex].
+  mutable MixerOutputMutex m_bufferMutex;
   std::vector<uint8_t> m_buffer;
   size_t m_bufferSize = 0;
-  alignas(64) std::atomic<size_t> m_writeOffset{0};
-  alignas(64) std::atomic<size_t> m_readOffset{0};
+  alignas(64) std::atomic<uint64_t> m_writeOffset{0};
+  alignas(64) std::atomic<uint64_t> m_readOffset{0};
 
   size_t m_notificationThreshold = 4096;
   std::atomic<bool> m_notified{false};

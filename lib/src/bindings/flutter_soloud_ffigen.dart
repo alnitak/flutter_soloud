@@ -66,14 +66,17 @@ external void retireDartCallbacksFinalizer(ffi.Pointer<ffi.Void> token);
 /// Start capturing the master mixer output.
 ///
 /// [format] the output format from the MixerOutputFormat enum.
-/// [sampleRate] desired sample rate, or <=0 to use the engine sample rate.
-/// [channels] desired channel count, or <=0 to use the engine channel count.
+/// [sampleRate] the engine sample rate, or <=0 to follow it. Capture does
+/// not resample: another rate is refused with invalidParameter.
+/// [channels] the engine channel count, or <=0 to follow it. Capture does
+/// not remix: another count is refused with invalidParameter.
 /// [bufferSizeBytes] size of the circular buffer in bytes.
 /// [notificationThresholdBytes] number of available bytes before a callback
 /// is fired.
 /// [chunkPCMFrames] fixed PCM chunk size in frames, or 0 to disable chunk
 /// mode.
-/// Returns [PlayerErrors.noError] if success.
+/// Returns [PlayerErrors.noError] if success, backendNotInited without an
+/// initialized engine.
 @ffi.Native<
   ffi.UnsignedInt Function(ffi.Int, ffi.Int, ffi.Int, ffi.Int, ffi.Int, ffi.Int)
 >(symbol: 'startMixerCapture')
@@ -104,9 +107,115 @@ PlayerErrors startMixerCapture(
   ),
 );
 
+/// Start capturing like [startMixerCapture], delivering each packet token
+/// to the Dart native [port] (a `RawReceivePort`'s) with Dart_PostInteger,
+/// which is resolved from [apiData], `NativeApi.initializeApiDLData`.
+/// Unlike a NativeCallable, a port can be posted to after its isolate has
+/// ended: the post is refused, and the next start stops that capture.
+///
+/// The port is published only once the start is admitted, so a refused
+/// start leaves a running capture's listener alone. [ownerEngineId] names
+/// the FlutterEngine of the calling isolate, or -1 to join the live
+/// registration. [captureId] receives the id of the capture started.
+/// Returns invalidParameter for an [apiData] without Dart_PostInteger or a
+/// port of 0, and otherwise what [startMixerCapture] returns.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Int64,
+  )
+>(symbol: 'startMixerCaptureOnPort')
+external int _startMixerCaptureOnPort(
+  int format,
+  int sampleRate,
+  int channels,
+  int bufferSizeBytes,
+  int notificationThresholdBytes,
+  int chunkPCMFrames,
+  ffi.Pointer<ffi.UnsignedInt> captureId,
+  ffi.Pointer<ffi.Void> apiData,
+  int port,
+  int ownerEngineId,
+);
+
+PlayerErrors startMixerCaptureOnPort(
+  int format,
+  int sampleRate,
+  int channels,
+  int bufferSizeBytes,
+  int notificationThresholdBytes,
+  int chunkPCMFrames,
+  ffi.Pointer<ffi.UnsignedInt> captureId,
+  ffi.Pointer<ffi.Void> apiData,
+  int port,
+  int ownerEngineId,
+) => PlayerErrors.fromValue(
+  _startMixerCaptureOnPort(
+    format,
+    sampleRate,
+    channels,
+    bufferSizeBytes,
+    notificationThresholdBytes,
+    chunkPCMFrames,
+    captureId,
+    apiData,
+    port,
+    ownerEngineId,
+  ),
+);
+
 /// Stop capturing the master mixer output.
 @ffi.Native<ffi.Void Function()>()
 external void stopMixerCapture();
+
+/// Stop the capture [captureId] names, unless another start has superseded
+/// it, and return what its listener has not been given: the chunks notified
+/// but never claimed, then the unread tail, copied under the capture
+/// lifecycle lock. A superseded capture's own unclaimed chunks come back and
+/// the newer capture keeps running. Free with nativeFree(). [chunkBytes]
+/// receives the size of a fixed chunk when the capture emitted them (0
+/// otherwise) and [length] the size of the result; nullptr when empty.
+@ffi.Native<
+  ffi.Pointer<ffi.UnsignedChar> Function(
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Size>,
+    ffi.Pointer<ffi.Size>,
+  )
+>()
+external ffi.Pointer<ffi.UnsignedChar> stopMixerCaptureAndDrain(
+  int captureId,
+  ffi.Pointer<ffi.Size> chunkBytes,
+  ffi.Pointer<ffi.Size> length,
+);
+
+/// Claim the capture packet a mixer output notification names by [token].
+/// Returns its bytes, which the caller frees with nativeFree(), and sets
+/// [captureId] to the capture that produced it and [length] to its size;
+/// returns nullptr for a token already claimed or discarded.
+@ffi.Native<
+  ffi.Pointer<ffi.UnsignedChar> Function(
+    ffi.Pointer<ffi.UnsignedChar>,
+    ffi.Pointer<ffi.UnsignedInt>,
+    ffi.Pointer<ffi.Size>,
+  )
+>()
+external ffi.Pointer<ffi.UnsignedChar> takeMixerOutputPacket(
+  ffi.Pointer<ffi.UnsignedChar> token,
+  ffi.Pointer<ffi.UnsignedInt> captureId,
+  ffi.Pointer<ffi.Size> length,
+);
+
+/// The id of the current (or last) mixer capture. Each start changes it.
+@ffi.Native<ffi.UnsignedInt Function()>()
+external int getMixerCaptureId();
 
 /// Returns 1 if mixer capture is running, 0 otherwise.
 @ffi.Native<ffi.Int Function()>()
@@ -292,7 +401,9 @@ AudioDeviceState getAudioDeviceState() =>
 @ffi.Native<ffi.Void Function(ffi.UnsignedInt)>()
 external void debugTriggerAudioInterruption(int began);
 
-/// List playback devices.
+/// List playback devices, at most 50 of them. This export takes no
+/// capacity, and the web bindings, which still call it, allocate arrays of
+/// 50 entries. Prefer listPlaybackDevicesBounded().
 @ffi.Native<
   ffi.Void Function(
     ffi.Pointer<ffi.Pointer<ffi.Char>>,
@@ -306,6 +417,26 @@ external void listPlaybackDevices(
   ffi.Pointer<ffi.Pointer<ffi.Int>> deviceId,
   ffi.Pointer<ffi.Pointer<ffi.Int>> isDefault,
   ffi.Pointer<ffi.Int> n_devices,
+);
+
+/// List at most [capacity] playback devices into the caller's arrays, each
+/// of which must hold [capacity] entries. [n_devices] is the number
+/// written.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+    ffi.Pointer<ffi.Pointer<ffi.Int>>,
+    ffi.Pointer<ffi.Pointer<ffi.Int>>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+  )
+>()
+external void listPlaybackDevicesBounded(
+  ffi.Pointer<ffi.Pointer<ffi.Char>> devicesName,
+  ffi.Pointer<ffi.Pointer<ffi.Int>> deviceId,
+  ffi.Pointer<ffi.Pointer<ffi.Int>> isDefault,
+  ffi.Pointer<ffi.Int> n_devices,
+  int capacity,
 );
 
 /// Change the playback device.
@@ -1743,6 +1874,10 @@ PlayerErrors isFilterActive(
 ///
 /// [filterType] filter to get param names.
 /// Returns [PlayerErrors.noError] if no errors and the list of param names.
+///
+/// [names] must have room for one pointer per parameter, and the filter
+/// does not say how many it has beforehand (the parametric EQ has 195):
+/// prefer [getFilterParamNamesBounded].
 @ffi.Native<
   ffi.UnsignedInt Function(
     ffi.UnsignedInt,
@@ -1762,6 +1897,39 @@ PlayerErrors getFilterParamNames(
   ffi.Pointer<ffi.Pointer<ffi.Char>> names,
 ) => PlayerErrors.fromValue(
   _getFilterParamNames(filterType.value, paramsCount, names),
+);
+
+/// Get parameters names of the given filter.
+///
+/// [filterType] filter to get param names.
+/// [paramsCount] receives the number of parameters of the filter, which can
+/// be more than [capacity].
+/// [names] receives the first [capacity] names at most. Each one is
+/// allocated with malloc(): free it with nativeFree(). [names] can be null
+/// when [capacity] is 0, to get the count only.
+/// Returns [PlayerErrors.noError] if no errors.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.UnsignedInt,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+    ffi.Int,
+  )
+>(symbol: 'getFilterParamNamesBounded')
+external int _getFilterParamNamesBounded(
+  int filterType,
+  ffi.Pointer<ffi.Int> paramsCount,
+  ffi.Pointer<ffi.Pointer<ffi.Char>> names,
+  int capacity,
+);
+
+PlayerErrors getFilterParamNamesBounded(
+  FilterType filterType,
+  ffi.Pointer<ffi.Int> paramsCount,
+  ffi.Pointer<ffi.Pointer<ffi.Char>> names,
+  int capacity,
+) => PlayerErrors.fromValue(
+  _getFilterParamNamesBounded(filterType.value, paramsCount, names, capacity),
 );
 
 /// Add the filter [filterType] to [soundHash]. If [soundHash]==0 the
@@ -1845,8 +2013,10 @@ PlayerErrors setFilterParams(
 /// [busId] the bus to check the filter.
 /// If both [handle] and [busId] are =0 this function searches in the global
 /// filters.
-/// [filterType] filter to modify a param. Returns the value of param or
-/// 9999.0 if the filter is not found.
+/// [filterType] filter to modify a param. The value of the param is stored
+/// in [filterValue]. Returns [PlayerErrors.filterNotFound] if the filter
+/// is not active, and [PlayerErrors.filterParameterGetError] if the value
+/// is NaN or infinite.
 @ffi.Native<
   ffi.UnsignedInt Function(
     ffi.UnsignedInt,

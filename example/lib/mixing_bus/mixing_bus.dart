@@ -252,6 +252,15 @@ class _BusControlsState extends State<BusControls> {
     });
   }
 
+  /// Shift the bus's pitch while its pitch shift filter is active. A bus's
+  /// filter parameters can be set only while the bus plays, so "play bus"
+  /// calls this again.
+  void _applyPitchShift() {
+    final pitchShift = widget.bus.filters.pitchShiftFilter;
+    if (!pitchShift.isActive || !widget.bus.isActive) return;
+    pitchShift.shift(soundHandle: widget.bus.soundHandle).value = 2.5;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -283,8 +292,11 @@ class _BusControlsState extends State<BusControls> {
                 // Play the bus on the engine.
                 // Like any SoundHandle, a bus must be played on the main
                 // SoLoud engine in order for its output to be audible.
-                onPressed: () =>
-                    widget.bus.playOnEngine(volume: volumeNotifier.value),
+                onPressed: () {
+                  widget.bus.playOnEngine(volume: volumeNotifier.value);
+                  // The bus's filter parameters can be set from now on.
+                  _applyPitchShift();
+                },
                 child: const Text('play bus'),
               ),
               ElevatedButton(
@@ -359,9 +371,7 @@ class _BusControlsState extends State<BusControls> {
                 widget.bus.filters.pitchShiftFilter.deactivate();
               } else {
                 widget.bus.filters.pitchShiftFilter.activate();
-                widget.bus.filters.pitchShiftFilter
-                    .shift(soundHandle: widget.bus.soundHandle)
-                    .value = 2.5;
+                _applyPitchShift();
               }
             },
             child: const Text('pitch shift filter'),

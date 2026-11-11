@@ -33,6 +33,13 @@
 //     worker dispatches through, so it cannot deadlock against a dispatch,
 //     and does not stop what a registration claimed meanwhile started;
 //   * a visualization has one packet in flight to Dart at a time;
+//   * a mixer capture posts to the port of the isolate whose start was
+//     admitted; a port that refuses (its isolate ended) leaves the capture to
+//     the next start, and a refused start leaves the running capture's port
+//     alone;
+//   * a stopped capture's tail is copied before another isolate's start can
+//     replace the ring, a stop for a superseded capture leaves the newer one
+//     running, and the WAV header is copied under the same lock;
 //   * duplicate destroy/detach notifications tear down exactly once;
 //   * loadFile() decodes without the lifecycle locks, so disposing sounds or
 //     the engine never waits for a decode, and a sound decoded for an engine
@@ -47,8 +54,10 @@
 #include "audiobuffer/metadata_ffi.h"
 #include "device_lifecycle_test_hooks.h"
 #include "enums.h"
+#include "mixeroutput/mixer_output.h"
 #include "native_stream/native_stream_source.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <chrono>
@@ -57,7 +66,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -86,6 +98,24 @@ extern "C"
                                         int notificationThresholdBytes,
                                         int chunkPCMFrames);
     void stopMixerCapture();
+    enum PlayerErrors startMixerCaptureOnPort(
+        int format, int sampleRate, int channels, int bufferSizeBytes,
+        int notificationThresholdBytes, int chunkPCMFrames,
+        unsigned int *captureId, void *apiData, int64_t port,
+        int64_t ownerEngineId);
+    unsigned int getMixerCaptureId();
+    unsigned char *takeMixerOutputPacket(unsigned char *token,
+                                         unsigned int *captureId,
+                                         size_t *length);
+    unsigned char *stopMixerCaptureAndDrain(unsigned int captureId,
+                                            size_t *chunkBytes,
+                                            size_t *length);
+    int getMixerCaptureAvailableBytes();
+    int getMixerCaptureBufferSize();
+    int getMixerCaptureReadOffset();
+    unsigned char *getMixerCaptureBufferPointer();
+    unsigned char *getMixerOutputWavHeader();
+    void nativeFree(void *pointer);
     int isMixerCaptureRunning();
     bool setVisualizationCallbackForEngine(dartVisualizationCallback_t callback,
                                            int64_t owner_engine_id);
@@ -207,7 +237,15 @@ void onStateChanged(enum PlayerStateEvents *state)
     ++gStateChangedCalls;
 }
 
-void onMixerOutput(unsigned char *, uint64_t) { ++gMixerOutputCalls; }
+/// Claims and frees each packet, as the Dart listener does: unclaimed
+/// packets fill the bounded pending queue.
+void onMixerOutput(unsigned char *token, uint64_t)
+{
+    ++gMixerOutputCalls;
+    unsigned int captureId = 0;
+    size_t length = 0;
+    nativeFree(takeMixerOutputPacket(token, &captureId, &length));
+}
 
 // Stand-in for the Dart event loop a NativeCallable.listener posts to. The
 // visualization callable only queues its packet; this thread reports it done,
@@ -319,6 +357,108 @@ int mixerOutputDelta()
     const int before = gMixerOutputCalls.load();
     soloudTestInvokeMixerOutput();
     return gMixerOutputCalls.load() - before;
+}
+
+/// Stands in for the VM's Dart_PostInteger: records the packet tokens each
+/// native port is sent (a 0 is a probe, which Dart ignores), and refuses
+/// posts to a closed port, as the VM does once the isolate that owned the
+/// port has ended.
+std::mutex gPortMutex;
+std::map<int64_t, std::vector<int64_t>> gPortMessages;
+std::vector<int64_t> gRefusedMessages;
+std::set<int64_t> gClosedPorts;
+
+bool fakePostInteger(int64_t port, int64_t message)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    if (gClosedPorts.count(port) != 0)
+    {
+        if (message != 0)
+            gRefusedMessages.push_back(message);
+        return false;
+    }
+    if (message != 0)
+        gPortMessages[port].push_back(message);
+    return true;
+}
+
+/// The table NativeApi.initializeApiDLData points to (major version 2).
+struct FakeApiEntry
+{
+    const char *name;
+    void (*function)();
+};
+struct FakeApi
+{
+    int major;
+    int minor;
+    const FakeApiEntry *functions;
+};
+const FakeApiEntry kFakeApiEntries[] = {
+    {"Dart_PostCObject", nullptr},
+    {"Dart_PostInteger", reinterpret_cast<void (*)()>(fakePostInteger)},
+    {nullptr, nullptr},
+};
+FakeApi gFakeApi{2, 5, kFakeApiEntries};
+
+constexpr int64_t kPortA = 0x5150001;
+constexpr int64_t kPortB = 0x5150002;
+constexpr int64_t kPortC = 0x5150003;
+
+void resetPorts()
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    gPortMessages.clear();
+    gRefusedMessages.clear();
+    gClosedPorts.clear();
+}
+
+size_t messagesTo(int64_t port)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    return gPortMessages[port].size();
+}
+
+size_t refusedMessages()
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    return gRefusedMessages.size();
+}
+
+void closePort(int64_t port)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    gClosedPorts.insert(port);
+}
+
+/// Claims every packet [port] was sent, as the isolate behind it does.
+/// Returns how many held [bytes] bytes of capture [captureId], and sets
+/// [claimed] to how many could be claimed at all.
+size_t claimFromPort(int64_t port, unsigned int captureId, size_t bytes,
+                     size_t &claimed)
+{
+    std::vector<int64_t> messages;
+    {
+        std::lock_guard<std::mutex> lock(gPortMutex);
+        messages.swap(gPortMessages[port]);
+    }
+    size_t matching = 0;
+    claimed = 0;
+    for (int64_t message : messages)
+    {
+        unsigned int id = 0;
+        size_t length = 0;
+        unsigned char *packet = takeMixerOutputPacket(
+            reinterpret_cast<unsigned char *>(static_cast<uintptr_t>(message)),
+            &id, &length);
+        if (packet == nullptr)
+            continue;
+        ++claimed;
+        if (id == captureId && length == bytes)
+            ++matching;
+        nativeFree(packet);
+    }
+    return matching;
 }
 
 /// How many of a real PullBufferStream's four callables one dispatch reached.
@@ -795,6 +935,397 @@ void testTeardownDuringActiveMixerCapture()
     EXPECT(dispatched && dispatchesDuringRace > 0,
            "the notification thread must dispatch while the callback is being "
            "republished, or this scenario tests nothing");
+
+    resetGlobalState();
+}
+
+/// The capture ring is fed the mixer's own output: interleaved, at the
+/// engine's channel count and sample rate. MixerOutput has no channel mixer
+/// and no resampler, so a capture asking for another channel count would read
+/// the device buffer with the wrong frame size (past its end, for more
+/// channels), and one at another sample rate would be labelled with a rate
+/// its samples are not at. Such a capture must be refused; the engine's own
+/// format, given explicitly or as -1, still starts.
+void testCaptureRefusesAFormatTheMixDoesNotProduce()
+{
+    std::printf("capture refuses a channel count or rate the mix does not "
+                "produce\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    EXPECT(setMixerOutputCallbackForEngine(onMixerOutput, kEngineA),
+           "the owner should publish its mixer callable");
+
+    struct Case
+    {
+        int sampleRate;
+        int channels;
+        const char *what;
+    };
+    const Case refused[] = {
+        {44100, 8, "more channels than the engine mixes"},
+        {44100, 1, "fewer channels than the engine mixes"},
+        {22050, 2, "another sample rate than the engine's"},
+    };
+    for (const Case &c : refused)
+    {
+        const PlayerErrors error = startMixerCapture(
+            MIXER_OUTPUT_PCM_F32LE, c.sampleRate, c.channels,
+            /*bufferSizeBytes=*/256 * 1024,
+            /*notificationThresholdBytes=*/4096, /*chunkPCMFrames=*/-1);
+        EXPECT(error == invalidParameter,
+               "a capture with %s (%d Hz, %d channels) should be refused, "
+               "got error %d",
+               c.what, c.sampleRate, c.channels, static_cast<int>(error));
+        if (error == noError)
+        {
+            // Let the device feed it, so AddressSanitizer sees what it reads.
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            stopMixerCapture();
+        }
+        EXPECT(isMixerCaptureRunning() == 0,
+               "no capture should be left running (%s)", c.what);
+    }
+
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, 44100, 2, 256 * 1024,
+                             4096, -1) == noError,
+           "a capture in the engine's own format should start");
+    stopMixerCapture();
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, 256 * 1024,
+                             4096, -1) == noError,
+           "a capture following the engine's format (-1) should start");
+    stopMixerCapture();
+
+    resetGlobalState();
+
+    // Without an engine there is no mix to capture, and no format to follow.
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, 256 * 1024,
+                             4096, -1) == backendNotInited,
+           "a capture without an engine should be refused");
+    EXPECT(isMixerCaptureRunning() == 0,
+           "no capture should run without an engine");
+}
+
+/// A NativeCallable belongs to its isolate, and invoking one after that isolate
+/// has ended aborts the VM -- which is what a capture started by a worker
+/// isolate did as soon as the worker returned. A capture started on a port
+/// posts its packets there instead, and the VM refuses a post to a port whose
+/// isolate is gone. Nothing will stop that capture, so the next start does.
+void testCaptureDeliversToTheStartingPort()
+{
+    std::printf("a capture posts to its start's port, and a closed port gives "
+                "the capture up to the next start\n");
+    resetGlobalState();
+    resetPorts();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    constexpr size_t kChunkBytes = 2048 * 2 * sizeof(int16_t);
+
+    unsigned int first = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &first, &gFakeApi, kPortA,
+                                   kEngineA) == noError,
+           "a capture should start on a port");
+    EXPECT(first != 0 && first == getMixerCaptureId(),
+           "the start should report the id of the capture it started");
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }, 3000),
+           "the capture should post its packets to the starting port");
+    size_t claimed = 0;
+    const size_t matching =
+        claimFromPort(kPortA, first, kChunkBytes, claimed);
+    EXPECT(claimed >= 2 && matching == claimed,
+           "every posted token should claim one chunk of the capture "
+           "(%zu of %zu)",
+           matching, claimed);
+
+    // The isolate ends: from now on its port refuses every post.
+    closePort(kPortA);
+    EXPECT(waitFor([] { return refusedMessages() >= 1; }, 3000),
+           "posts to the closed port should be refused");
+    std::vector<int64_t> refused;
+    {
+        std::lock_guard<std::mutex> lock(gPortMutex);
+        refused = gRefusedMessages;
+    }
+    bool discarded = !refused.empty();
+    for (int64_t message : refused)
+    {
+        unsigned int id = 0;
+        unsigned char *packet = takeMixerOutputPacket(
+            reinterpret_cast<unsigned char *>(static_cast<uintptr_t>(message)),
+            &id, nullptr);
+        discarded = discarded && packet == nullptr;
+        nativeFree(packet);
+    }
+    EXPECT(discarded, "a refused packet should be discarded, not kept");
+
+    // Any isolate's next start takes over from the capture nobody can stop.
+    unsigned int second = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &second, &gFakeApi, kPortB,
+                                   kNoEngineId) == noError,
+           "a start should replace the capture whose port refused it");
+    EXPECT(second != 0 && second != first,
+           "the replacement should be a new capture");
+    EXPECT(waitFor([] { return messagesTo(kPortB) >= 1; }, 3000),
+           "the new capture should post to the new port");
+    claimFromPort(kPortB, second, kChunkBytes, claimed);
+
+    // A start right after the port closed, before a packet was due to find
+    // out, asks the port itself.
+    closePort(kPortB);
+    unsigned int third = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &third, &gFakeApi, kPortC,
+                                   kNoEngineId) == noError,
+           "a start should not wait for a packet to find the port closed");
+    EXPECT(third != 0 && third != second,
+           "that replacement should be a new capture too");
+    stopMixerCapture();
+    claimFromPort(kPortC, third, kChunkBytes, claimed);
+
+    resetGlobalState();
+}
+
+/// Only one capture runs at a time. A start that is refused because one is
+/// running must leave that capture's port alone, or the running capture's
+/// packets go to an isolate that did not start it -- one that may end next.
+void testRefusedStartLeavesTheRunningPortAlone()
+{
+    std::printf("a refused start leaves the running capture's port alone\n");
+    resetGlobalState();
+    resetPorts();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    constexpr size_t kChunkBytes = 2048 * 2 * sizeof(int16_t);
+
+    unsigned int id = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &id, &gFakeApi, kPortA,
+                                   kEngineA) == noError,
+           "the first capture should start");
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 1; }, 3000),
+           "the first capture should post to its port");
+
+    unsigned int refusedId = 77;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &refusedId, &gFakeApi, kPortB,
+                                   kNoEngineId) == playerAlreadyInited,
+           "a second start should be refused while a capture runs");
+    EXPECT(refusedId == 0, "a refused start should report no capture");
+    size_t claimed = 0;
+    claimFromPort(kPortA, id, kChunkBytes, claimed);
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }, 3000),
+           "the running capture should keep posting to its own port");
+    EXPECT(messagesTo(kPortB) == 0,
+           "the refused start's port should get nothing");
+    stopMixerCapture();
+    claimFromPort(kPortA, id, kChunkBytes, claimed);
+
+    // Refused before anything starts or is published.
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &gFakeApi, kPortB,
+                                   kEngineB) == backendNotInited,
+           "an engine that does not own the live registration cannot start");
+    FakeApi otherLayout{3, 0, kFakeApiEntries};
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &otherLayout, kPortB,
+                                   kEngineA) == invalidParameter,
+           "an API table of another major version should be refused");
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &gFakeApi, 0,
+                                   kEngineA) == invalidParameter,
+           "port 0 should be refused");
+    EXPECT(isMixerCaptureRunning() == 0, "none of those should start one");
+    EXPECT(messagesTo(kPortB) == 0, "and none should post anything");
+
+    resetGlobalState();
+}
+
+/// How the stream manager copied a stopped capture's tail: stop, ask for the
+/// ring's unread size, its size and read offset, then copy through the ring
+/// pointer, each a separate call. [meanwhile] runs where another isolate's
+/// start could, between the questions and the copy.
+std::vector<unsigned char> copyTailCallByCall(
+    const std::function<void()> &meanwhile)
+{
+    stopMixerCapture();
+    const int available = getMixerCaptureAvailableBytes();
+    const int size = getMixerCaptureBufferSize();
+    const int read = getMixerCaptureReadOffset();
+    meanwhile();
+    std::vector<unsigned char> tail;
+    if (available <= 0)
+        return tail;
+    const int first = std::min(available, size - read);
+    // copyMixerOutputBuffer() reads the ring pointer when it copies.
+    const unsigned char *ring = getMixerCaptureBufferPointer();
+    tail.insert(tail.end(), ring + read, ring + read + first);
+    ring = getMixerCaptureBufferPointer();
+    tail.insert(tail.end(), ring, ring + (available - first));
+    return tail;
+}
+
+/// The bindings' stop-and-drain, where they have one (it came with
+/// MixerOutput::copyStoppedTail()); the call-by-call copy otherwise.
+template <typename Capture>
+auto stopAndCopyTail(unsigned int captureId,
+                     const std::function<void()> &meanwhile, int)
+    -> decltype(&Capture::copyStoppedTail, std::vector<unsigned char>())
+{
+    size_t chunkBytes = 0;
+    size_t length = 0;
+    unsigned char *bytes =
+        stopMixerCaptureAndDrain(captureId, &chunkBytes, &length);
+    meanwhile();
+    std::vector<unsigned char> tail;
+    if (bytes != nullptr)
+        tail.assign(bytes, bytes + length);
+    nativeFree(bytes);
+    return tail;
+}
+
+template <typename Capture>
+std::vector<unsigned char> stopAndCopyTail(unsigned int,
+                                           const std::function<void()> &meanwhile,
+                                           long)
+{
+    return copyTailCallByCall(meanwhile);
+}
+
+template <typename Capture>
+auto stopSupersededCapture(unsigned int captureId, int)
+    -> decltype(&Capture::copyStoppedTail, bool())
+{
+    size_t chunkBytes = 0;
+    size_t length = 0;
+    nativeFree(stopMixerCaptureAndDrain(captureId, &chunkBytes, &length));
+    return true;
+}
+
+template <typename Capture>
+bool stopSupersededCapture(unsigned int, long)
+{
+    return false;
+}
+
+/// A stopped capture's stream ends with the tail its ring still holds. Copied
+/// call by call after the stop, a start by another isolate in between
+/// replaces the ring, and the copy reads the new capture's bytes. The copy
+/// has to be made before the capture lifecycle lock is released, and a stop
+/// meant for a capture another start has superseded must leave the newer one
+/// running.
+void testStoppedCaptureTailSurvivesARestart()
+{
+    std::printf("a stopped capture's tail survives another isolate's start\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    constexpr int kRingBytes = 64 * 1024;
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, kRingBytes,
+                             kRingBytes, -1) == noError,
+           "the capture should start");
+    const unsigned int captureId = getMixerCaptureId();
+    // The device mixes silence: this block, mixed last, is what the tail is
+    // checked for.
+    std::vector<float> marker(2 * 256);
+    for (size_t i = 0; i < marker.size(); ++i)
+        marker[i] = 1.0f + static_cast<float>(i);
+    MixerOutput::instance().onAudioData(marker.data(), 256);
+
+    unsigned int newerId = 0;
+    const std::vector<unsigned char> tail = stopAndCopyTail<MixerOutput>(
+        captureId,
+        [&]
+        {
+            EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1,
+                                     4 * kRingBytes, 4096, -1) == noError,
+                   "another isolate's start should succeed");
+            newerId = getMixerCaptureId();
+        },
+        0);
+    const auto *markerBytes =
+        reinterpret_cast<const unsigned char *>(marker.data());
+    EXPECT(std::search(tail.begin(), tail.end(), markerBytes,
+                       markerBytes + marker.size() * sizeof(float)) !=
+               tail.end(),
+           "the stopped capture's tail should end with its last block, not "
+           "the newer capture's bytes (%zu bytes copied)",
+           tail.size());
+
+    EXPECT(stopSupersededCapture<MixerOutput>(captureId, 0),
+           "a stop should be able to name the capture it is for");
+    EXPECT(isMixerCaptureRunning() == 1 && getMixerCaptureId() == newerId,
+           "a stop for the superseded capture should leave the newer one "
+           "running");
+    stopMixerCapture();
+
+    resetGlobalState();
+}
+
+/// start() and stop() rewrite the capture's WAV header under the capture
+/// lifecycle lock, and another isolate can copy it meanwhile. Under
+/// ThreadSanitizer this reports the race unless the copy takes that lock too.
+void testWavHeaderCopyIsSerializedWithRestarts()
+{
+    std::printf("the WAV header is copied under the capture lifecycle lock\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::atomic<bool> done{false};
+    std::atomic<int> headers{0};
+    std::thread reader(
+        [&]
+        {
+            while (!done.load())
+            {
+                unsigned char *header = getMixerOutputWavHeader();
+                if (header != nullptr)
+                    ++headers;
+                nativeFree(header);
+            }
+        });
+    int restarts = 0;
+    for (int i = 0; i < 40; ++i)
+    {
+        if (startMixerCapture(MIXER_OUTPUT_WAV, -1, -1, 64 * 1024, 4096, -1) ==
+            noError)
+            ++restarts;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        stopMixerCapture();
+    }
+    done = true;
+    reader.join();
+    EXPECT(restarts == 40, "every WAV capture should start, got %d", restarts);
+    EXPECT(headers.load() > 0,
+           "the reader should have copied headers while captures restarted");
 
     resetGlobalState();
 }
@@ -1691,6 +2222,47 @@ void testDiskStreamedM4aNeverBlocksLifecycle()
 #endif
 }
 
+/// Stopping a voice dispatches its voice-ended callback synchronously, and
+/// that callback removes the handle from the sound's handle list. Disposing a
+/// sound playing on several voices must not walk that list while the
+/// callbacks shrink it (AddressSanitizer reports the overflow).
+void testDisposeSoundWithSeveralVoices()
+{
+    std::printf("disposing a sound playing on several voices stops them all\n");
+    resetGlobalState();
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::vector<unsigned char> wav = makeWavBytes();
+    unsigned int hash = 0;
+    EXPECT(loadMem(const_cast<char *>("voices"), wav.data(),
+                   static_cast<int>(wav.size()), 1, &hash) == noError,
+           "loadMem should succeed");
+
+    constexpr int kVoices = 4;
+    for (int i = 0; i < kVoices; i++)
+    {
+        unsigned int handle = 0;
+        EXPECT(play(hash, 0, 1.0f, 0.0f, false, true, 0, 0, -1, -1, 1.0f,
+                    &handle) == noError,
+               "play %d should succeed", i);
+    }
+
+    gVoiceEndedCalls = 0;
+    disposeSound(hash);
+
+    EXPECT(gVoiceEndedCalls.load() == kVoices,
+           "every voice should end once, got %d", gVoiceEndedCalls.load());
+    EXPECT(soloudTestSoundCount() == 0,
+           "the sound should be gone, found %d", soloudTestSoundCount());
+
+    resetGlobalState();
+}
+
 } // namespace
 
 int main()
@@ -1730,6 +2302,11 @@ int main()
     testMixerCallbackPublicationIsOwnerScoped();
     testStaleWorkerMixerCallbackCannotBeRevived();
     testTeardownDuringActiveMixerCapture();
+    testCaptureRefusesAFormatTheMixDoesNotProduce();
+    testCaptureDeliversToTheStartingPort();
+    testRefusedStartLeavesTheRunningPortAlone();
+    testStoppedCaptureTailSurvivesARestart();
+    testWavHeaderCopyIsSerializedWithRestarts();
     testRetirementWhileVisualizationsDispatch();
     testRetirementSparesWhatANewerRegistrationStarted();
     testVisualizationSendsOnePacketAtATime();
@@ -1742,6 +2319,7 @@ int main()
     testLoadDecodeDoesNotBlockLifecycleCalls();
     testTeardownDuringDecodeDropsTheSound();
     testDiskStreamedM4aNeverBlocksLifecycle();
+    testDisposeSoundWithSeveralVoices();
 
     {
         std::lock_guard<std::mutex> lock(gDartLoopMutex);

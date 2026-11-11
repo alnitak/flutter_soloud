@@ -114,7 +114,7 @@ public:
 private:
   void updateProcessContext(unsigned int aSamples, float aSamplerate,
                             double aTime) noexcept;
-  void drainPendingParamChanges() noexcept;
+  void drainPendingParamChanges(Steinberg::int32 maxQueues) noexcept;
   void drainPendingMidiEvents(unsigned int maxSampleOffset) noexcept;
   void prepareAndProcessBlock(float *aBuffer, unsigned int aSamples,
                               unsigned int aBufferSize, unsigned int numCh,
@@ -133,7 +133,12 @@ private:
   Steinberg::FUnknownPtr<Steinberg::Vst::IAudioProcessor> mProcessor;
   Steinberg::IPtr<Vst3ComponentHandler> mComponentHandler;
   Vst3ComponentHandler::PerformEditCallback mOnGuiEditCallback;
+  // Created by the first openEditor() and kept, closed or open, until
+  // shutdown(): the audio thread writes editor telemetry through
+  // mEditorWindowRt, which shutdown() clears under mProcessMutex before the
+  // window is destroyed.
   std::unique_ptr<Vst3EditorWindow> mEditorWindow;
+  std::atomic<Vst3EditorWindow *> mEditorWindowRt{nullptr};
 
   unsigned int mSampleRate = 48000;
   unsigned int mMaxBlockSize = 2048;
@@ -220,6 +225,16 @@ public:
   void unloadAll(void (*audioThreadBarrier)(void *) = nullptr,
                  void *barrierUserData = nullptr);
 
+  /// Registers the barrier unloadAllAtExit() passes to unloadAll().
+  void setAudioThreadBarrier(void (*audioThreadBarrier)(void *),
+                             void *barrierUserData);
+
+  /// unloadAll() when the process exits (the macOS app terminating, or this
+  /// manager's static destructor outside Windows), with the barrier
+  /// registered by setAudioThreadBarrier(): the audio device may still be
+  /// mixing then.
+  void unloadAllAtExit();
+
   std::shared_ptr<Vst3PluginInstance> getPlugin(int pluginHandle);
 
   /// Lock-free lookup for the real-time audio thread (no mutex, no refcounting).
@@ -260,6 +275,9 @@ private:
   std::unordered_map<int, std::shared_ptr<Vst3PluginInstance>> mPlugins;
   std::array<std::atomic<Vst3PluginInstance *>, kMaxFastPlugins> mPluginTable{};
   std::unordered_map<std::string, VST3::Hosting::Module::Ptr> mLoadedModules;
+  // Guarded by mMutex.
+  void (*mAudioThreadBarrier)(void *) = nullptr;
+  void *mAudioThreadBarrierUserData = nullptr;
   std::atomic<void (*)(int, unsigned int, double)> mParamEditCallback{nullptr};
   std::atomic<dartVst3RestartComponentCallback_t> mRestartCallback{nullptr};
 };

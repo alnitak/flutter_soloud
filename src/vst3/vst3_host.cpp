@@ -233,11 +233,11 @@ void Vst3PluginInstance::shutdown() {
   mIsProcessing.store(false, std::memory_order_release);
 
   closeEditor();
-  if (mEditorWindow) {
-    mEditorWindow.reset();
-  }
 
   std::lock_guard<std::mutex> procLock(mProcessMutex);
+  // No block is running now, and none will use the window after this.
+  mEditorWindowRt.store(nullptr, std::memory_order_release);
+  mEditorWindow.reset();
   if (mProcessor) {
     mProcessor->setProcessing(false);
   }
@@ -312,9 +312,13 @@ void Vst3PluginInstance::updateProcessContext(unsigned int aSamples,
   mContinuousSamples += static_cast<int64_t>(aSamples);
 }
 
-void Vst3PluginInstance::drainPendingParamChanges() noexcept {
+void Vst3PluginInstance::drainPendingParamChanges(
+    Steinberg::int32 maxQueues) noexcept {
+  // Stop once the block's parameter queues are used up: the rest stay
+  // queued for the next block rather than being popped and dropped.
   Vst3ParamChangeEvent evt;
-  while (mPendingParamQueue.pop(evt)) {
+  while (mInputParamChanges.getParameterCount() < maxQueues &&
+         mPendingParamQueue.pop(evt)) {
     Steinberg::int32 queueIdx = 0;
     if (auto *q = mInputParamChanges.addParameterData(evt.paramId, queueIdx)) {
       Steinberg::int32 ptIdx = 0;
@@ -450,8 +454,15 @@ void Vst3PluginInstance::prepareAndProcessBlock(
     mProcessData.processContext = &mProcessContext;
 
     if (isInstrument) {
-      if (mProcessor->process(mProcessData) == Steinberg::kResultOk &&
-          copyInstrumentFromScratch) {
+      if (mProcessor->process(mProcessData) != Steinberg::kResultOk) {
+        // The frames are still reported as rendered: make them silent, not
+        // whatever the plugin or the caller left in the buffer.
+        for (unsigned int ch = 0; ch < numCh; ++ch) {
+          std::memset(
+              aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset, 0,
+              chunkSamples * sizeof(float));
+        }
+      } else if (copyInstrumentFromScratch) {
         for (unsigned int ch = 0; ch < numCh; ++ch) {
           float *callerPtr =
               aBuffer + (static_cast<size_t>(ch) * aBufferSize) + offset;
@@ -463,8 +474,9 @@ void Vst3PluginInstance::prepareAndProcessBlock(
       }
     } else {
       if (mProcessor->process(mProcessData) == Steinberg::kResultOk) {
-        if (mEditorWindow) {
-          mEditorWindow->writeAudioTelemetry(
+        if (Vst3EditorWindow *editor =
+                mEditorWindowRt.load(std::memory_order_acquire)) {
+          editor->writeAudioTelemetry(
               numCh > 0 ? mInChannelPtrs[0] : nullptr,
               numCh > 1 ? mInChannelPtrs[1]
                         : (numCh > 0 ? mInChannelPtrs[0] : nullptr),
@@ -502,7 +514,10 @@ void Vst3PluginInstance::processAudioEffectBlock(
   mInputEvents.clear();
   mBlockMidiCount = 0;
 
-  drainPendingParamChanges();
+  // Leave a queue for each mapped slot parameter forwarded below.
+  drainPendingParamChanges(PreallocatedParameterChanges::kMaxQueues -
+                           static_cast<Steinberg::int32>(
+                               mMappedSlotParams.size()));
 
   // Forward mapped SoLoud CustomFilterSlot parameters (1..7 / 1..15) when
   // automated by SoLoud's Fader or LFO (indicated by aParamChangedMask)
@@ -545,12 +560,17 @@ unsigned int Vst3PluginInstance::processInstrumentBlock(
   mOutputParamChanges.clear();
   mInputEvents.clear();
 
-  drainPendingParamChanges();
+  drainPendingParamChanges(PreallocatedParameterChanges::kMaxQueues);
   drainPendingMidiEvents(aSamplesToRead);
 
   const unsigned int numCh = std::min<unsigned int>(aChannels, mMaxChannels);
   prepareAndProcessBlock(aBuffer, aSamplesToRead, aBufferSize, numCh,
                          aSamplerate, aStreamTime, /*isInstrument=*/true);
+  // Channels the plugin was not set up for are silent too.
+  for (unsigned int ch = numCh; ch < aChannels; ++ch) {
+    std::memset(aBuffer + (static_cast<size_t>(ch) * aBufferSize), 0,
+                aSamplesToRead * sizeof(float));
+  }
   return aSamplesToRead;
 }
 
@@ -860,6 +880,7 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
 
   if (!mEditorWindow) {
     mEditorWindow = Vst3EditorWindow::create();
+    mEditorWindowRt.store(mEditorWindow.get(), std::memory_order_release);
   }
   if (!mEditorWindow) {
     return false;
@@ -913,11 +934,10 @@ bool Vst3PluginInstance::openEditor(const char *windowTitle) {
 }
 
 void Vst3PluginInstance::closeEditor() {
+  // The window object stays for the next openEditor(): the audio thread may
+  // be writing telemetry through it (see mEditorWindowRt).
   if (mEditorWindow) {
     mEditorWindow->close();
-#if !defined(__linux__) || defined(__ANDROID__)
-    mEditorWindow.reset();
-#endif
   }
 }
 
@@ -940,7 +960,15 @@ Vst3HostManager::Vst3HostManager() {
 }
 
 Vst3HostManager::~Vst3HostManager() {
+#if defined(_WIN32)
+  // Run at DLL_PROCESS_DETACH, after ExitProcess has ended every other
+  // thread: no mix is in progress, and the barrier's locks (the player
+  // lifetime lock, the audio mutex) may have been held by a thread that
+  // died, which would hang the exit or end the process.
   unloadAll();
+#else
+  unloadAllAtExit();
+#endif
 }
 
 VST3::Hosting::Module::Ptr Vst3HostManager::getOrLoadModule(
@@ -1116,8 +1144,9 @@ void Vst3HostManager::unloadAll(void (*audioThreadBarrier)(void *),
   // The audio thread reads raw pointers from mPluginTable without a lock.
   // Clearing the table stops new lookups, but a mix already in progress may
   // still hold a pointer it loaded before the clear. Wait for it to finish
-  // before any instance is shut down or destroyed below.
-  if (audioThreadBarrier != nullptr) {
+  // before any instance is shut down or destroyed below. (With no plugin
+  // loaded there is nothing to wait for.)
+  if (audioThreadBarrier != nullptr && !toUnload.empty()) {
     audioThreadBarrier(barrierUserData);
   }
   // 1. Shutdown all active plugin instances: close editors, stop processing,
@@ -1132,6 +1161,24 @@ void Vst3HostManager::unloadAll(void (*audioThreadBarrier)(void *),
   // 2. Clear cached hosting modules so bundleExit() is called only after
   //    all instances have been cleanly terminated and released.
   modulesToUnload.clear();
+}
+
+void Vst3HostManager::setAudioThreadBarrier(void (*audioThreadBarrier)(void *),
+                                            void *barrierUserData) {
+  std::lock_guard<std::mutex> lock(mMutex);
+  mAudioThreadBarrier = audioThreadBarrier;
+  mAudioThreadBarrierUserData = barrierUserData;
+}
+
+void Vst3HostManager::unloadAllAtExit() {
+  void (*barrier)(void *) = nullptr;
+  void *barrierUserData = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(mMutex);
+    barrier = mAudioThreadBarrier;
+    barrierUserData = mAudioThreadBarrierUserData;
+  }
+  unloadAll(barrier, barrierUserData);
 }
 
 std::shared_ptr<Vst3PluginInstance> Vst3HostManager::getPlugin(int pluginHandle) {

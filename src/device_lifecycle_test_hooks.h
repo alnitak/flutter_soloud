@@ -60,6 +60,39 @@ namespace soloud_test
     /// released the gate, before it stops the mixer capture and the
     /// visualizations. A newer registration can be claimed in this window.
     retiredCaptureStopEntered,
+    /// In PullBufferStream::addAudioData(), after the delivered bytes have
+    /// been queued and before the delivering thread decodes them. While a
+    /// feeder is parked here the mixer can decode them itself.
+    pullDataQueued,
+    /// In PullBufferStream::applyPendingSeek(), right after decoded data at
+    /// the target has completed a pending seek. The mixer reaches it with the
+    /// audio mutex held when it decodes that data itself.
+    pullSeekCompleted,
+    /// At the top of PullBufferStream::checkBuffering(), which reads and sets
+    /// the voice's pause state.
+    pullBufferingCheckEntered,
+    /// In PullBufferStreamInstance::seek(), for a target outside the buffered
+    /// range at a known encoded offset, and in rewind(): right before the
+    /// buffered audio and the queued bytes are discarded. SoLoud applies seeks
+    /// (and rewinds a looping voice) with its audio mutex held.
+    pullSeekDiscarding,
+    /// In PullBufferStream::decodePendingDataLocked(), for raw PCM, after the
+    /// queued bytes have been converted and before they are written to the
+    /// buffer and dropped from the queue: a delivery, or the mixer
+    /// (tryDecodePendingData()), is decoding.
+    pullDecoding,
+    /// In Player::addPullBufferDataStream(), right after the stream has been
+    /// looked up by hash and before data is added to it. A disposal started
+    /// while a feeder is parked here must not destroy the stream under it.
+    pullDataSoundLookedUp,
+    /// In PullBufferStreamInstance::getAudio(), after the mixer has taken
+    /// samples from the circular buffer and before it counts them as read. A
+    /// reset must not land between the two.
+    pullSamplesRead,
+    /// In a BufferStream's background decode thread, after it has added a
+    /// decoded chunk to the buffer and before its buffering check, which reads
+    /// and updates the sound's handle list.
+    bufferStreamBackgroundDecoded,
     barrierCount
   };
 

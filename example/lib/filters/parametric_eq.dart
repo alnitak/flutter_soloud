@@ -126,8 +126,15 @@ class _ParametricEqState extends State<ParametricEq> {
       soloud.filters.parametricEqFilter.bandGain(i).value = 1.0;
       freqs[i].value = soloud.filters.parametricEqFilter.bandFrequency(i);
       soloud.filters.parametricEqFilter.bandFreq(i).value = freqs[i].value;
-      qFactors[i].value = soloud.filters.parametricEqFilter.bandQ(i).value;
+      qFactors[i].value = _bandQ(i);
     }
+  }
+
+  /// The Q of band [i], or the default Q when the EQ is not active and
+  /// there is no Q to read back.
+  double _bandQ(int i) {
+    if (!soloud.filters.parametricEqFilter.isActive) return 1;
+    return soloud.filters.parametricEqFilter.bandQ(i).value;
   }
 
   /// Find nearest power of 2 greater than or equal to x
@@ -290,10 +297,7 @@ class _ParametricEqState extends State<ParametricEq> {
                                   .value = gains[i].value;
                               freqs[i].value = soloud.filters.parametricEqFilter
                                   .bandFrequency(i);
-                              qFactors[i].value = soloud
-                                  .filters.parametricEqFilter
-                                  .bandQ(i)
-                                  .value;
+                              qFactors[i].value = _bandQ(i);
                             }
                           },
                         ),

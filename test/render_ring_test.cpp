@@ -482,6 +482,403 @@ void testRenderWorkerKeepsDeviceFed()
                 "render worker, %llu without\n", withWorker, without);
 }
 
+// A sawtooth with a 512-frame period: consecutive frames differ by the same
+// step except at the wrap, so frames missing from the ring show as a jump.
+class RampSourceInstance final : public SoLoud::AudioSourceInstance {
+public:
+    unsigned int getAudio(float* buffer, unsigned int samplesToRead,
+                          unsigned int bufferSize) override {
+        for (unsigned int channel = 0; channel < mChannels; ++channel)
+            for (unsigned int i = 0; i < samplesToRead; ++i)
+                buffer[channel * bufferSize + i] =
+                    static_cast<float>((position_ + i) % 512) / 1024.0f;
+        position_ += samplesToRead;
+        return samplesToRead;
+    }
+
+    bool hasEnded() override { return false; }
+
+private:
+    unsigned long long position_ = 0;
+};
+
+class RampSource final : public SoLoud::AudioSource {
+public:
+    RampSource() {
+        mBaseSamplerate = static_cast<float>(kSampleRate);
+        mChannels = 1;
+    }
+
+    SoLoud::AudioSourceInstance* createInstance() override {
+        return new RampSourceInstance();
+    }
+};
+
+// Frames after aFrom whose step from the previous frame is not the ramp's.
+unsigned int rampJumps(const std::vector<float>& frames, size_t aFrom)
+{
+    double step = 0;
+    for (size_t i = aFrom + 1; i < frames.size() && step == 0; ++i)
+        if (frames[i] > frames[i - 1])
+            step = frames[i] - frames[i - 1];
+    unsigned int jumps = 0;
+    for (size_t i = aFrom + 1; i < frames.size(); ++i) {
+        const double d = frames[i] - frames[i - 1];
+        const bool ramp = std::fabs(d - step) < step * 0.01;
+        const bool wrap = std::fabs(d + 511 * step) < step * 0.5;
+        if (!ramp && !wrap)
+            ++jumps;
+    }
+    return jumps;
+}
+
+// The render worker and the device callback (once the worker falls behind)
+// both append whole quanta to the ring, and each used to check for room only
+// before taking the audio mutex. While the worker waited for the mutex the
+// device could mix a quantum and play a period; the worker then mixed a
+// second quantum into the room that was left, and the ring dropped its end:
+// a skip in the audio, and a mix clock ahead of the ring from then on. With a
+// 2048-frame quantum, a 512-frame render-ahead and 256-frame periods the ring
+// holds 3584 frames, so 1792 are free for those 2048. Here the test thread
+// holds the mutex, as a slow API call does, and does the device's part while
+// the worker waits.
+void testWritersRecheckRoomUnderTheMutex()
+{
+    constexpr unsigned int kBigQuantum = 2048;
+    constexpr unsigned int kShortAhead = 512;
+    constexpr unsigned int kShortPeriod = 256;
+    SoLoud::Soloud engine;
+    engine.setRenderAheadConfig(kShortPeriod, kShortAhead);
+    // Mono and no clipper, so the ring holds the ramp as it is.
+    const SoLoud::result result =
+        engine.init(0, SoLoud::Soloud::NULLDRIVER, kSampleRate, kBigQuantum, 1);
+    EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+    EXPECT(engine.mRenderRing.getCapacity() == 3584,
+           "unexpected ring capacity %u", engine.mRenderRing.getCapacity());
+    RampSource ramp;
+    engine.play(ramp);
+
+    engine.lockAudioMutex_internal();
+    std::atomic<bool> started{false};
+    std::thread worker([&] {
+        started.store(true);
+        engine.renderRingTopUp_internal();
+    });
+    while (!started.load())
+        std::this_thread::yield();
+    // Long enough for the worker to find the ring empty and wait for the
+    // mutex.
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // The device callback's own quantum (renderRingTopUpNoWait_internal()
+    // mixes it under the mutex, held here) and the period it plays.
+    engine.renderRingMixQuantumLocked_internal();
+    std::vector<float> played(kShortPeriod);
+    std::vector<float> buf(4 * kBigQuantum);
+    unsigned int got = engine.mRenderRing.read(buf.data(), kShortPeriod);
+    played.assign(buf.begin(), buf.begin() + got);
+    engine.unlockAudioMutex_internal();
+    worker.join();
+
+    const unsigned long long written = engine.mRenderRing.getWritePosition();
+    EXPECT(written == kBigQuantum,
+           "the ring holds %llu frames after one quantum and a racing top-up "
+           "(the worker mixed a quantum into %u frames of room)",
+           written, 3584 - (kBigQuantum - kShortPeriod));
+    const double ahead =
+        engine.getEngineTime() * kSampleRate - static_cast<double>(written);
+    EXPECT(std::fabs(ahead) < 1e-3,
+           "the mix clock runs %.0f frames ahead of the ring", ahead);
+    const double origin = engine.mRenderRingTimeOrigin.load();
+    EXPECT(std::fabs(origin) < 1e-9,
+           "ring frame 0 moved to engine time %.9f (it stays at 0)", origin);
+
+    // The device plays on and the worker keeps up: every frame from the end
+    // of the voice's start ramp on follows the sawtooth.
+    for (int quantum = 0; quantum < 3; ++quantum) {
+        while ((got = engine.mRenderRing.read(buf.data(), kShortPeriod)) > 0)
+            played.insert(played.end(), buf.begin(), buf.begin() + got);
+        engine.renderRingTopUp_internal();
+    }
+    while ((got = engine.mRenderRing.read(buf.data(), kShortPeriod)) > 0)
+        played.insert(played.end(), buf.begin(), buf.begin() + got);
+    EXPECT(played.size() >= 4 * kBigQuantum, "only %zu frames played",
+           played.size());
+    const unsigned int jumps = rampJumps(played, kBigQuantum);
+    EXPECT(jumps == 0, "%u jumps in the played sawtooth", jumps);
+    EXPECT(engine.mRenderRing.getWritePosition() % kBigQuantum == 0,
+           "the ring's write head %llu is not a whole number of quanta",
+           engine.mRenderRing.getWritePosition());
+
+    engine.stopAll();
+    engine.deinit();
+}
+
+// A sound of `frames_` frames of 0.25 that then ends.
+class ShortSourceInstance final : public SoLoud::AudioSourceInstance {
+public:
+    explicit ShortSourceInstance(unsigned int frames) : frames_(frames) {}
+
+    unsigned int getAudio(float* buffer, unsigned int samplesToRead,
+                          unsigned int bufferSize) override {
+        const unsigned int n = std::min(samplesToRead, frames_ - position_);
+        for (unsigned int channel = 0; channel < mChannels; ++channel)
+            std::fill(buffer + channel * bufferSize,
+                      buffer + channel * bufferSize + n, 0.25f);
+        position_ += n;
+        return n;
+    }
+
+    bool hasEnded() override { return position_ >= frames_; }
+
+private:
+    unsigned int frames_;
+    unsigned int position_ = 0;
+};
+
+class ShortSource final : public SoLoud::AudioSource {
+public:
+    explicit ShortSource(unsigned int frames) : frames_(frames) {
+        mBaseSamplerate = static_cast<float>(kSampleRate);
+        mChannels = 1;
+    }
+
+    SoLoud::AudioSourceInstance* createInstance() override {
+        return new ShortSourceInstance(frames_);
+    }
+
+private:
+    unsigned int frames_;
+};
+
+std::atomic<std::thread::id> gEndedThread;
+std::atomic<std::thread::id> gInactiveThread;
+std::atomic<unsigned int> gEndedHandle{0};
+std::atomic<int> gEndedCalls{0};
+std::atomic<int> gInactiveCalls{0};
+
+void recordVoiceEnded(unsigned int* handle)
+{
+    gEndedHandle.store(*handle);
+    gEndedThread.store(std::this_thread::get_id());
+    gEndedCalls.fetch_add(1);
+}
+
+void recordVoiceInactive()
+{
+    gInactiveThread.store(std::this_thread::get_id());
+    gInactiveCalls.fetch_add(1);
+}
+
+template <typename Predicate>
+bool waitFor(Predicate predicate, std::chrono::milliseconds limit)
+{
+    const auto deadline = std::chrono::steady_clock::now() + limit;
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= deadline)
+            return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return true;
+}
+
+// With the render worker running, the device callback mixes a quantum itself
+// only when the worker fell behind (renderRingTopUpNoWait_internal()). The
+// voices that quantum ends, and the voice-inactive callback it makes due,
+// must not be delivered on the device thread: flutter_soloud's callbacks wait
+// for the player's locks, and the ended-voice dispatch takes the audio mutex
+// again, blocking. The worker delivers them instead, each exactly once.
+void testDeviceTopUpLeavesCallbacksToTheWorker()
+{
+    constexpr unsigned int kShortQuantum = 512;
+    constexpr unsigned int kShortAhead = 512;
+    constexpr unsigned int kShortPeriod = 256;
+    SoLoud::Soloud engine;
+    engine.setRenderAheadConfig(kShortPeriod, kShortAhead);
+    const SoLoud::result result =
+        engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER,
+                    kSampleRate, kShortQuantum, 2);
+    EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+    gEndedCalls.store(0);
+    gInactiveCalls.store(0);
+    engine.setVoiceEndedCallback(recordVoiceEnded);
+    engine.setVoiceInactiveCallback(recordVoiceInactive);
+
+    // The first quantum reads all of a 300-frame sound; the next one's read
+    // comes back empty and stops the voice.
+    ShortSource shot(300);
+    const SoLoud::handle voice = engine.play(shot);
+    engine.renderRingTopUp_internal();
+    EXPECT(engine.mRenderRing.availableToRead() == kShortQuantum,
+           "the first top-up mixed %u frames", engine.mRenderRing.availableToRead());
+    EXPECT(gEndedCalls.load() == 0, "the voice ended in the first quantum");
+
+    // Start the worker the way init() does for a device backend. The ring
+    // already holds the render-ahead depth, so it waits.
+    engine.mRenderWorkerWanted = true;
+    engine.startRenderWorker_internal();
+    EXPECT(engine.isRenderWorkerRunning_internal(), "the render worker did not start");
+
+    // A device read that needs more than the ring holds, with the mutex free:
+    // the device mixes the next quantum itself.
+    std::thread::id deviceThread;
+    std::thread device([&] {
+        deviceThread = std::this_thread::get_id();
+        engine.renderRingTopUpNoWait_internal(2 * kShortQuantum);
+    });
+    device.join();
+    EXPECT(engine.mRenderRing.availableToRead() == 2 * kShortQuantum,
+           "the device's top-up left %u frames", engine.mRenderRing.availableToRead());
+
+    // No API call here: only the worker can deliver them now.
+    const bool delivered = waitFor(
+        [] { return gEndedCalls.load() >= 1 && gInactiveCalls.load() >= 1; },
+        std::chrono::milliseconds(2000));
+    EXPECT(delivered, "callbacks not delivered: %d ended, %d inactive",
+           gEndedCalls.load(), gInactiveCalls.load());
+    EXPECT(gEndedHandle.load() == voice, "ended handle %u, the voice is %u",
+           gEndedHandle.load(), voice);
+    EXPECT(gEndedThread.load() != deviceThread,
+           "the voice-ended callback ran on the device thread");
+    EXPECT(gInactiveThread.load() != deviceThread,
+           "the voice-inactive callback ran on the device thread");
+    EXPECT(gEndedThread.load() != std::this_thread::get_id(),
+           "the voice-ended callback waited for an API call");
+
+    // Exactly once, whoever unlocks next.
+    EXPECT(!engine.isValidVoiceHandle(voice), "the voice is still playing");
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    EXPECT(gEndedCalls.load() == 1, "the voice-ended callback ran %d times",
+           gEndedCalls.load());
+
+    engine.setVoiceEndedCallback(nullptr);
+    engine.setVoiceInactiveCallback(nullptr);
+    engine.stopAll();
+    engine.deinit();
+}
+
+// getOutputLatency() runs on an API thread, which owns neither ring counter
+// and takes no lock. It loaded the write position, then the read position;
+// when the worker appended and the device read past the loaded write
+// position in between, the unsigned depth wrapped to about 2^32 frames (27
+// hours at 44.1 kHz). A device that reads as fast as it can keeps the read
+// head right behind the write head, which makes that a matter of
+// milliseconds.
+void testOutputLatencyStaysWithinTheRing()
+{
+    constexpr unsigned int kShortQuantum = 512;
+    constexpr unsigned int kShortAhead = 512;
+    constexpr unsigned int kTinyPeriod = 64;
+    SoLoud::Soloud engine;
+    engine.setRenderAheadConfig(kTinyPeriod, kShortAhead);
+    engine.mRenderWorkerWanted = true;
+    const SoLoud::result result =
+        engine.init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER,
+                    kSampleRate, kShortQuantum, 2);
+    EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+    EXPECT(engine.isRenderWorkerRunning_internal(), "the render worker did not start");
+    DcSource source;
+    engine.play(source);
+    const double maximum =
+        double(engine.mRenderRing.getCapacity() + kTinyPeriod) / kSampleRate;
+
+    std::atomic<bool> stop{false};
+    std::thread device([&] {
+        std::vector<float> buf(kTinyPeriod * 2);
+        while (!stop.load())
+            engine.readRenderRingForDevice_internal(buf.data(), kTinyPeriod);
+    });
+    std::atomic<unsigned long long> queries{0}, impossible{0};
+    std::atomic<double> worst{0};
+    std::vector<std::thread> observers;
+    for (int t = 0; t < 4; ++t)
+        observers.emplace_back([&] {
+            unsigned long long n = 0, bad = 0;
+            double w = 0;
+            while (!stop.load()) {
+                const double latency = engine.getOutputLatency();
+                ++n;
+                if (latency > maximum) {
+                    ++bad;
+                    w = std::max(w, latency);
+                }
+            }
+            queries += n;
+            impossible += bad;
+            double seen = worst.load();
+            while (w > seen && !worst.compare_exchange_weak(seen, w)) {
+            }
+        });
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    stop.store(true);
+    for (auto& o : observers)
+        o.join();
+    device.join();
+
+    EXPECT(engine.mRenderRing.getReadPosition() > 100 * kShortQuantum,
+           "the device read only %llu frames", engine.mRenderRing.getReadPosition());
+    EXPECT(impossible.load() == 0,
+           "%llu of %llu latency readings exceed what the ring can hold "
+           "(worst %.0f s, at most %.6f s)",
+           impossible.load(), queries.load(), worst.load(), maximum);
+    engine.stopAll();
+    engine.deinit();
+}
+
+// A device callback can ask for more frames than the ring holds: with a
+// 2048-frame quantum, a 512-frame render-ahead and 256-frame periods the ring
+// holds 3584, and a backend that moves to 4096-frame callbacks asks for more.
+// The callback waited for the ring to hold all of them at once, which it
+// never does: with the render worker it spun for its whole wait budget, 46 ms,
+// and with or without the worker it played 2048 frames and then 2048 of
+// silence. It must play them all, reading in parts.
+void testDeviceReadsLongerThanTheRing()
+{
+    constexpr unsigned int kBigQuantum = 2048;
+    constexpr unsigned int kShortAhead = 512;
+    constexpr unsigned int kShortPeriod = 256;
+    constexpr unsigned int kLongRead = 4096;
+    for (int withWorker = 0; withWorker < 2; ++withWorker) {
+        const char* name = withWorker ? "with the worker" : "without the worker";
+        SoLoud::Soloud engine;
+        engine.setRenderAheadConfig(kShortPeriod, kShortAhead);
+        engine.mRenderWorkerWanted = withWorker != 0;
+        // Mono and no clipper, so the device gets the ramp as it is.
+        const SoLoud::result result =
+            engine.init(0, SoLoud::Soloud::NULLDRIVER, kSampleRate, kBigQuantum, 1);
+        EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
+        EXPECT(engine.mRenderRing.getCapacity() < kLongRead,
+               "the ring holds %u frames", engine.mRenderRing.getCapacity());
+        EXPECT(engine.isRenderWorkerRunning_internal() == (withWorker != 0),
+               "%s: the worker is %srunning", name,
+               engine.isRenderWorkerRunning_internal() ? "" : "not ");
+        RampSource ramp;
+        engine.play(ramp);
+
+        std::vector<float> played;
+        std::vector<float> buf(kLongRead);
+        unsigned long long got = 0;
+        double longest = 0;
+        for (int read = 0; read < 4; ++read) {
+            // The worker tops up between callbacks.
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            const auto start = std::chrono::steady_clock::now();
+            got += engine.readRenderRingForDevice_internal(buf.data(), kLongRead);
+            longest = std::max(longest, std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - start).count());
+            played.insert(played.end(), buf.begin(), buf.end());
+        }
+        EXPECT(got == 4ull * kLongRead, "%s: %llu of %u frames came from the ring",
+               name, got, 4 * kLongRead);
+        const unsigned int jumps = rampJumps(played, kBigQuantum);
+        EXPECT(jumps == 0, "%s: %u jumps in the played sawtooth", name, jumps);
+        std::printf("  4096-frame device reads from a %u-frame ring, %s: the "
+                    "longest took %.2f ms\n",
+                    engine.mRenderRing.getCapacity(), name, longest);
+        engine.stopAll();
+        engine.deinit();
+    }
+}
+
 int main()
 {
     testRingRoundtrip();
@@ -493,6 +890,10 @@ int main()
     testEngineFeatureOff();
     testEngineFeatureOn();
     testRenderWorkerKeepsDeviceFed();
+    testWritersRecheckRoomUnderTheMutex();
+    testDeviceTopUpLeavesCallbacksToTheWorker();
+    testOutputLatencyStaysWithinTheRing();
+    testDeviceReadsLongerThanTheRing();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,
                  gFailures);

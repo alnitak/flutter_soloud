@@ -91,9 +91,11 @@ struct OggMetadata {
   std::string vendor;
   int commentsCount = 0;
   std::map<std::string, std::string> comments;
-  FlacInfo flacInfo;
-  VorbisInfo vorbisInfo;
-  OpusInfo opusInfo;
+  // Zeroed: a stream copies all three into the metadata it hands to Dart,
+  // whichever one the format fills.
+  FlacInfo flacInfo{};
+  VorbisInfo vorbisInfo{};
+  OpusInfo opusInfo{};
 };
 
 struct Mp3Metadata {
@@ -157,7 +159,9 @@ struct Eac3Metadata {
 };
 
 struct AudioMetadata {
-  DetectedType type;
+  // A stream maps the type with a switch: a default-constructed AudioMetadata
+  // must hold a valid one.
+  DetectedType type = BUFFER_UNKNOWN;
   Mp3Metadata mp3Metadata;
   OggMetadata oggMetadata;
   AacMetadata aacMetadata;
@@ -453,8 +457,13 @@ public:
   /// wrappers this clears the Ogg sync state while preserving the header
   /// info so that mid-stream data can be decoded after a seek.
   /// [targetSample] is the absolute decoded sample position the caller will
-  /// continue from, in the wrapper's output sample rate.
-  virtual void prepareForSeek(uint64_t targetSample) { (void)targetSample; }
+  /// continue from, in the wrapper's output sample rate. [byteOffset] is the
+  /// offset in the encoded file of the data the caller will feed next; a
+  /// wrapper that indexes byte offsets as it decodes (Ogg) counts from it.
+  virtual void prepareForSeek(uint64_t targetSample, uint64_t byteOffset) {
+    (void)targetSample;
+    (void)byteOffset;
+  }
 
   void setTrackChangeCallback(TrackChangeCallback callback) {
     onTrackChange = callback;
@@ -511,8 +520,9 @@ public:
   /// Return the sample rate of the Ogg granule position.
   int granuleSampleRate() const;
 
-  /// Prepare the wrapped decoder for a seek to [targetSample].
-  void prepareForSeek(uint64_t targetSample);
+  /// Prepare the wrapped decoder for a seek to [targetSample], fed next from
+  /// [byteOffset] in the encoded file.
+  void prepareForSeek(uint64_t targetSample, uint64_t byteOffset);
 
   /// Set the total encoded audio size in bytes. The value is forwarded to the
   /// wrapped decoder as soon as it is created, so wrappers can estimate
