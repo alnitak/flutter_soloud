@@ -538,9 +538,8 @@ class Bus {
   ///   or an outer bus it plays through is paused or stopped, or while the
   ///   output device is stopped. A playing bus with no sound in it emits
   ///   silent packets, so silence and "not playing" can be told apart.
-  /// - A bus mixes at 44100 Hz (SoLoud's default for a bus) whatever the
-  ///   engine's sample rate, so FFT bin `k` is centered at
-  ///   `k * 44100 / windowSize` Hz.
+  /// - A bus mixes at the engine's sample rate ([SoLoud.sampleRate]), so FFT
+  ///   bin `k` is centered at `k * sampleRate / windowSize` Hz.
   /// - The audio is captured when SoLoud mixes it, so when the engine
   ///   renders ahead (`renderAheadFrames` in [SoLoud.init]) the packets lead
   ///   what is heard by up to that much.
