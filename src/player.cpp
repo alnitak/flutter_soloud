@@ -21,8 +21,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdarg>
+#include <cstdio>
 #include <cstring>
-#include <fstream>
+#include <limits>
 #include <random>
 #include <thread>
 
@@ -48,31 +49,45 @@ namespace
     // deinit/reinit cycle preserves the user's timeout policy.
     std::atomic<int64_t> gAudioDeviceIdleTimeoutMs{kDefaultIdleTimeoutMs};
 
-    /// Reads the file, or only its first [maxBytes] bytes when non-zero.
-    bool readFileBytes(const std::string &filePath,
+    /// Reads [file] from the start, or only its first [maxBytes] bytes when
+    /// non-zero.
+    bool readFileBytes(SoLoud::DiskFile &file,
                        std::vector<unsigned char> &bytes,
                        size_t maxBytes = 0)
     {
-        std::ifstream file(filePath, std::ios::binary | std::ios::ate);
-        if (!file.good())
+        FILE *fp = file.getFilePtr();
+        if (fp == nullptr || std::fseek(fp, 0, SEEK_END) != 0)
         {
             return false;
         }
 
-        std::streamoff fileSize = file.tellg();
+#ifdef _WIN32
+        const int64_t fileSize = _ftelli64(fp);
+#else
+        const long fileSize = std::ftell(fp);
+#endif
         if (fileSize <= 0)
         {
             return false;
         }
-        if (maxBytes > 0 && fileSize > static_cast<std::streamoff>(maxBytes))
+
+        uint64_t toRead = static_cast<uint64_t>(fileSize);
+        if (maxBytes > 0 && toRead > static_cast<uint64_t>(maxBytes))
         {
-            fileSize = static_cast<std::streamoff>(maxBytes);
+            toRead = static_cast<uint64_t>(maxBytes);
+        }
+        if (toRead > static_cast<uint64_t>(std::numeric_limits<size_t>::max()))
+        {
+            return false;
         }
 
-        bytes.resize(static_cast<size_t>(fileSize));
-        file.seekg(0, std::ios::beg);
-        file.read(reinterpret_cast<char *>(bytes.data()), fileSize);
-        return file.gcount() == fileSize;
+        const size_t size = static_cast<size_t>(toRead);
+        bytes.resize(size);
+        if (std::fseek(fp, 0, SEEK_SET) != 0)
+        {
+            return false;
+        }
+        return std::fread(bytes.data(), 1, size, fp) == size;
     }
 
     bool isOggXiphBytes(const std::vector<unsigned char> &bytes)
@@ -829,13 +844,17 @@ Player::PendingSound Player::decodeFile(
     pending.error = fromSoLoudError(result);
     if (result != SoLoud::SO_NO_ERROR)
     {
-        // Sniff the header first so non-Ogg fallbacks don't read the whole file.
+        // Open through DiskFile so Windows converts the UTF-8 path to UTF-16
+        // the same way Wav/WavStream did above, and reuse the handle so the
+        // header sniff and any fallback read come from the same open file.
+        SoLoud::DiskFile file;
         std::vector<unsigned char> header;
-        if (readFileBytes(completeFileName, header, 64))
+        if (file.open(completeFileName.c_str()) == SoLoud::SO_NO_ERROR &&
+            readFileBytes(file, header, 64))
         {
             std::vector<unsigned char> bytes;
             if (header.size() >= 4 && std::memcmp(header.data(), "OggS", 4) == 0 &&
-                readFileBytes(completeFileName, bytes) && isOggXiphBytes(bytes))
+                readFileBytes(file, bytes) && isOggXiphBytes(bytes))
             {
                 pending.error = decodeOggXiphBufferStream(newSound, bytes, engineSampleRate, engineChannels);
             }
@@ -861,7 +880,15 @@ Player::PendingSound Player::decodeFile(
                 // decoder for LoadMode.disk: decode the whole file to PCM instead.
                 newSound->sound = std::make_unique<SoLoud::Wav>();
                 newSound->soundType = TYPE_WAV;
-                result = static_cast<SoLoud::Wav *>(newSound->sound.get())->load(completeFileName.c_str());
+                if (NativeAudioDecoder::isM4aOrMp4(header.data(), header.size()))
+                {
+                    result = static_cast<SoLoud::Wav *>(newSound->sound.get())->load(completeFileName.c_str());
+                }
+                else
+                {
+                    file.seek(0);
+                    result = static_cast<SoLoud::Wav *>(newSound->sound.get())->loadFile(&file);
+                }
                 pending.error = fromSoLoudError(result);
             }
         }

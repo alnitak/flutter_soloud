@@ -40,6 +40,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <string>
 #include <thread>
@@ -69,11 +70,16 @@ int gFailures = 0;
         }                                                                 \
     } while (0)
 
+PlayerErrors gLastFileLoadedError = PlayerErrors::noError;
+unsigned int gLastFileLoadedHash = 0;
+
 void onVoiceEnded(unsigned int *handle) { std::free(handle); }
 
 void onFileLoaded(enum PlayerErrors *error, char *name, unsigned int *hash,
                   uint64_t *counter)
 {
+    gLastFileLoadedError = *error;
+    gLastFileLoadedHash = *hash;
     std::free(error);
     std::free(name);
     std::free(hash);
@@ -141,6 +147,102 @@ void loadLikeDart(const char *path, bool loadIntoMem, bool mustLoad)
     disposeSound(hash);
 }
 
+void loadUnparseableLikeDart(bool loadIntoMem)
+{
+    const char *mode = loadIntoMem ? "memory" : "disk";
+    constexpr size_t kSize = 4096;
+    auto *buffer = static_cast<unsigned char *>(std::calloc(kSize, 1));
+    std::memset(buffer, 0x41, kSize);
+    std::string name = std::string("not-audio.wav#") + mode;
+    unsigned int hash = 0;
+    const PlayerErrors error =
+        loadMem(&name[0], buffer, static_cast<int>(kSize),
+                loadIntoMem ? 1 : 0, &hash);
+    std::printf("  not-audio.wav, %s mode: error %d\n", mode,
+                static_cast<int>(error));
+    EXPECT(error != PlayerErrors::noError && hash == 0,
+           "not-audio.wav should fail to load in %s mode (error %d, hash %u)",
+           mode, static_cast<int>(error), hash);
+    for (size_t i = 0; i < kSize; ++i)
+    {
+        if (buffer[i] != 0x41)
+        {
+            EXPECT(false, "not-audio.wav, %s mode: caller buffer changed at %zu",
+                   mode, i);
+            break;
+        }
+    }
+    std::free(buffer);
+}
+
+void testNonAsciiFallbackDecodeFile(bool platformDecodesAac)
+{
+    namespace fs = std::filesystem;
+    const std::vector<unsigned char> aacData =
+        readFile("example/assets/audio/sample-AAC.aac");
+    EXPECT(!aacData.empty(), "sample-AAC.aac: cannot read it");
+    if (aacData.empty())
+        return;
+
+    const fs::path tempDir =
+        fs::temp_directory_path() / "flutter_soloud_utf8_fallback_test";
+    std::error_code ec;
+    fs::remove_all(tempDir, ec);
+    fs::create_directories(tempDir, ec);
+
+    // 1. Non-ASCII UTF-8 filename ("é.mp3") holds non-audio bytes, while its
+    // Windows-1252 mojibake sibling ("Ã©.mp3") holds a valid AAC ADTS stream.
+    // The disk-mode fallback must sniff "é.mp3" itself (and fail), never
+    // "Ã©.mp3".
+    const fs::path targetMp3 = tempDir / fs::u8path("\xC3\xA9.mp3");
+    const fs::path confusableMp3 = tempDir / fs::u8path("\xC3\x83\xC2\xA9.mp3");
+    {
+        std::ofstream outTarget(targetMp3, std::ios::binary);
+        std::vector<char> garbage(4096, 'A');
+        outTarget.write(garbage.data(), static_cast<std::streamsize>(garbage.size()));
+
+        std::ofstream outConfusable(confusableMp3, std::ios::binary);
+        outConfusable.write(reinterpret_cast<const char *>(aacData.data()),
+                            static_cast<std::streamsize>(aacData.size()));
+    }
+
+    std::string targetMp3Utf8 = targetMp3.u8string();
+    gLastFileLoadedError = PlayerErrors::noError;
+    gLastFileLoadedHash = 1;
+    loadFile(&targetMp3Utf8[0], false, 1);
+    EXPECT(gLastFileLoadedError != PlayerErrors::noError &&
+               gLastFileLoadedHash == 0,
+           "non-audio é.mp3 next to valid Ã©.mp3 must fail in disk mode "
+           "(error %d, hash %u)",
+           static_cast<int>(gLastFileLoadedError), gLastFileLoadedHash);
+    if (gLastFileLoadedHash != 0)
+        disposeSound(gLastFileLoadedHash);
+
+    // 2. Non-ASCII UTF-8 filename ("é.aac") with valid AAC ADTS content in
+    // disk mode must sniff and decode through the fallback.
+    const fs::path validAac = tempDir / fs::u8path("\xC3\xA9.aac");
+    {
+        std::ofstream outAac(validAac, std::ios::binary);
+        outAac.write(reinterpret_cast<const char *>(aacData.data()),
+                     static_cast<std::streamsize>(aacData.size()));
+    }
+    std::string validAacUtf8 = validAac.u8string();
+    gLastFileLoadedError = PlayerErrors::fileLoadFailed;
+    gLastFileLoadedHash = 0;
+    loadFile(&validAacUtf8[0], false, 2);
+    if (platformDecodesAac)
+    {
+        EXPECT(gLastFileLoadedError == PlayerErrors::noError &&
+                   gLastFileLoadedHash != 0,
+               "valid é.aac should load in disk mode (error %d)",
+               static_cast<int>(gLastFileLoadedError));
+    }
+    if (gLastFileLoadedHash != 0)
+        disposeSound(gLastFileLoadedHash);
+
+    fs::remove_all(tempDir, ec);
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -172,6 +274,7 @@ int main(int argc, char **argv)
                          true);
             loadLikeDart("example/assets/audio/sample-MP3.mp3", loadIntoMem,
                          true);
+            loadUnparseableLikeDart(loadIntoMem);
         }
         if (platformFormats)
         {
@@ -180,6 +283,11 @@ int main(int argc, char **argv)
             loadLikeDart("example/assets/audio/sample-AAC.aac", loadIntoMem,
                          platformDecodesAac);
         }
+    }
+
+    if (platformFormats)
+    {
+        testNonAsciiFallbackDecodeFile(platformDecodesAac);
     }
 
     EXPECT(soloudTestSoundCount() == 0, "%d sound(s) still loaded",
