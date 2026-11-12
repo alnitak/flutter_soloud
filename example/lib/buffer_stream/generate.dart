@@ -3,10 +3,10 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/buffer_stream/ui/buffer_widget.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Example of how to generate PCM audio inside an `Isolate` and play them.
 ///

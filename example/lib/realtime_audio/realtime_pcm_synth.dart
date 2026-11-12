@@ -4,8 +4,8 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Example 1: Real-Time Zero-Latency PCM Synthesizer (`RealtimeStreamHandle`)
 ///

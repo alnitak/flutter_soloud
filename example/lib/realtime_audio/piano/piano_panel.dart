@@ -2,9 +2,9 @@
 
 import 'dart:math';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/realtime_audio/piano/piano_keyboard.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A docked piano panel designed for auditioning VST3 instruments and synths.
 /// A rethinked version of PianoKeyboard from soundfont_kit demo app.

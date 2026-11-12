@@ -1822,7 +1822,7 @@ interface class SoLoud {
   /// added audio data to the buffer. This method can be used to reset the
   /// buffer and start with the new audio data.
   ///
-  /// [hash] the hash of the stream sound.
+  /// [sound] the stream sound to reset.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///

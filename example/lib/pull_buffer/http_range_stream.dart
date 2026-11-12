@@ -4,11 +4,11 @@ import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/pull_buffer/seek_bar.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// This example streams an audio file from a remote server using HTTP Range
 /// requests and feeds it to an [AudioSource]. It demonstrates the

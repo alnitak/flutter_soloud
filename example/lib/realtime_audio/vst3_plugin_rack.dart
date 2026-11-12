@@ -4,9 +4,9 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/realtime_audio/piano/piano_panel.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Example 4: Desktop VST3 Plugin Rack (Audio Effects, Synths & Native GUI)
 ///

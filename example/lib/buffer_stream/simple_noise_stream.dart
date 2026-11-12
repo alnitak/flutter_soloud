@@ -2,10 +2,10 @@ import 'dart:developer' as dev;
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/buffer_stream/ui/buffer_widget.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Example to demonstrate how to use the buffer stream generating random noise
 /// data and how to handle buffering events.

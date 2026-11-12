@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:developer' as dev;
 import 'dart:ui';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'tests/all_tests.dart';
 

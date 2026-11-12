@@ -5,8 +5,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Example 2: Worker-Isolate Real-Time Drum Sequencer
 ///

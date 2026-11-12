@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_print
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'exit_app.dart';
 import 'tests/all_tests.dart';

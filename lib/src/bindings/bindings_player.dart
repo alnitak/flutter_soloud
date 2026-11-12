@@ -392,7 +392,8 @@ abstract class FlutterSoLoud {
   /// not allowed to read files directly, but it works also on the other
   /// platforms.
   ///
-  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+  /// [uniqueName] the unique name of the sound. Used only to have the
+  /// [SoundHash].
   /// [buffer] the audio data. These contains the audio file bytes.
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) loadMem(
@@ -406,7 +407,8 @@ abstract class FlutterSoLoud {
   /// sample rate, and join them into a single stereo sound (left and right
   /// channels).
   ///
-  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+  /// [uniqueName] the unique name of the sound. Used only to have the
+  /// [SoundHash].
   /// [bufferLeft] the audio data for the left channel.
   /// [bufferRight] the audio data for the right channel.
   @mustBeOverridden
@@ -439,7 +441,7 @@ abstract class FlutterSoLoud {
   );
 
   /// Reset the buffer of the audio stream.
-  /// [hash] the hash of the stream sound.
+  /// [soundHash] the hash of the stream sound.
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors resetBufferStream(SoundHash soundHash);
@@ -451,7 +453,7 @@ abstract class FlutterSoLoud {
   decodeAudioDataWeb(Uint8List bytes);
 
   /// Get the current stream time consumed in seconds of this sound of
-  /// type `BufferingType.RELEASED` with hash [hash].
+  /// type `BufferingType.RELEASED` with hash [soundHash].
   @mustBeOverridden
   ({PlayerErrors error, double value}) getStreamTimeConsumed(
     SoundHash soundHash,
@@ -475,13 +477,13 @@ abstract class FlutterSoLoud {
   PlayerErrors addAudioDataStream(int hash, Uint8List audioChunk);
 
   /// Set the end of the data stream.
-  /// [hash] the hash of the stream sound.
+  /// [soundHash] the hash of the stream sound.
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors setDataIsEnded(SoundHash soundHash);
 
-  /// Get the current buffer size in bytes of this sound with hash [hash].
-  /// [hash] the hash of the stream sound.
+  /// Get the current buffer size in bytes of this sound with hash [soundHash].
+  /// [soundHash] the hash of the stream sound.
   @mustBeOverridden
   ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash);
 

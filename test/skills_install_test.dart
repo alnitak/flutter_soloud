@@ -167,7 +167,7 @@ void main() {
       final binScript = Directory.current.uri
           .resolve('bin/skills.dart')
           .toFilePath();
-      String dartExe = Platform.executable;
+      var dartExe = Platform.executable;
       if (dartExe.contains('flutter_tester')) {
         final flutterDart = File(Platform.resolvedExecutable)
             .parent

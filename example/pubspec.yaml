@@ -25,10 +25,10 @@ dependencies:
 
   http: ^1.5.0
   logging: ^1.2.0
+  material_ui: ^1.11.0
   path_provider: ^2.1.6
 
   web_socket_channel: ^3.0.1
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

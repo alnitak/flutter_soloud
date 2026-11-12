@@ -2,9 +2,9 @@ import 'dart:developer' as dev;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// This example shows the use of the amplitude modulator (ring modulator)
 /// filter.
