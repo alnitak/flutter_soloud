@@ -18,6 +18,7 @@
 - fix: a waveform played at a negative frequency (`setWaveformFreq`) plays backwards. It used to drift out of range or hold at a constant level
 - feat: `createCustomAudioSource(singleInstance:)` stops the voice already playing the source when it is played again, for callbacks that render one shared state such as a synthesizer
 - fix: `Vst3Host.loadEffect` sets the plugin up at the engine's sample rate by default; it used to default to 48000 Hz
+- fix: a `MixingBus` mixes at the engine's sample rate. It used to mix at 44100 Hz whatever the engine's rate, so on a 48 kHz engine a sound started in a bus with `playScheduled`, `playClocked` or `setDelaySamples` started about 9% late (a start 4 s ahead was heard 0.35 s late), and everything played through a bus was resampled twice
 - perf: multiplatform SIMD acceleration (ARM64/ARMv7 NEON, x86/x86_64 SSE2/AVX2, and WebAssembly SIMD128) across core mixing, linear/Catmull-Rom voice resampling, panning, clipping, and PCM format conversions
 - perf: accelerated DSP filters, FFT, and synthesis
 - perf: hardware subnormal/denormal flushing (`FTZ`/`DAZ`) on audio threads across ARM and x86, single-pass waveform extraction with SIMD RMS, `O(1)` stream buffer compaction, and `-O3` compiler/SIMD flags across native builds and Xiph prebuilds

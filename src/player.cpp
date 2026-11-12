@@ -4253,6 +4253,13 @@ PlayerErrors Player::busPlayOnEngine(unsigned int busId, float volume,
     if (it == busMap.end())
         return busIdNotFound;
 
+    // A bus mixes its voices at its own rate, 44.1 kHz by default, and the
+    // engine then resamples that mix to its own rate. Mix it at the engine's
+    // rate instead: a delay the engine counts in its own samples (a scheduled
+    // or clocked start) then runs as long inside the bus as outside it, and
+    // the bus's voices are resampled once rather than twice.
+    it->second.bus.mBaseSamplerate = (float)soloud.getBackendSamplerate();
+
     // Create paused so the bus handle and initial pan are committed before the
     // bus can render or request device startup.
     SoLoud::handle newHandle = soloud.play(it->second.bus, volume, 0.0f, true);
