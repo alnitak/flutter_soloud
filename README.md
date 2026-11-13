@@ -16,8 +16,14 @@ A high-performance audio plugin designed primarily for games and immersive appli
 
 - ⚡ Low latency, high performance audio
 - ⏱️ Sample-accurate scheduled playback: `playClocked` for sub-millisecond spaced playback regardless of buffer size, and `playScheduled` for score/manifest-style scheduling of whole batches of sounds on the engine's own clock (with optional scheduled stop/fade). Perfect for metronomes, music sequencers, rhythm games and precisely timed audio cues
+- 🔴 Capture the master mixer output as a stream for recording, processing, or streaming (with different PCM formats and Opus, Vorbis, FLAC, WAV encoded stream formats)
+- ⏱️ Read audio data samples from a file with a given time range
+- 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
+- 🧬 Real-time PCM mixer injection (`setRealtimeStream` with managed Isolate/Web feeders) and synchronous zero-latency custom DSP callbacks (`createCustomAudioSource` and up to 8 `customFilters` slots per scope)
+- 🔌 Opt-in desktop **VST3 plugin hosting** (macOS, Windows, Linux): load external `.vst3` effects (`Fx`) into filter slots and virtual instruments (`Instrument|Synth`) as playable 3D voices, open native plugin GUI editor windows, and automate parameters
 - 🎮 3D positional audio with Doppler effect
 - 🔄 Gapless looping with half-open `[start, end)` loop regions
+- 🎵 Audio playback support for MP3, WAV, OGG, FLAC, plus native platform decoding for M4A, MP4 (audio tracks), AAC, AC-3, and E-AC-3
 - 🔄 Stream audio with auto-pause for buffering, support for PCM, MP3, WAV, FLAC, Ogg (Opus, Vorbis, FLAC), AAC (ADTS), AC-3, and E-AC-3 (Note: MP4 and M4A are not supported for streaming)
 - 📥 Pull-buffer streaming: the engine requests encoded data on demand (MP3, WAV, FLAC, Ogg Opus/Vorbis/FLAC, AAC ADTS, AC-3, E-AC-3), with seek support and callbacks for buffering, metadata, duration and data requests — ideal for network streams and custom data sources
 - 🚌 Mixing buses: group voices (music, SFX, UI...) into sub-mixes with their own volume, filters and visualization
@@ -27,12 +33,6 @@ A high-performance audio plugin designed primarily for games and immersive appli
 - 🎚️ Oscillators for filter attributes
 - 🌊 Waveform generation and visualization
 - 🔊 Multiple voices, playing different or even the same sound multiple times
-- 🎵 Audio playback support for MP3, WAV, OGG, FLAC, plus native platform decoding for M4A, MP4 (audio tracks), AAC, AC-3, and E-AC-3
-- 🔴 Capture the master mixer output as a stream for recording, processing, or streaming (with different PCM formats and Opus, Vorbis, FLAC, WAV encoded stream formats)
-- ⏱️ Read audio data samples from a file with a given time range
-- 🌊 Generate waveforms in real-time with various types (sine, square, saw, triangle, etc.)
-- 🧬 Real-time PCM mixer injection (`setRealtimeStream` with managed Isolate/Web feeders) and synchronous zero-latency custom DSP callbacks (`createCustomAudioSource` and up to 8 `customFilters` slots per scope)
-- 🔌 Opt-in desktop **VST3 plugin hosting** (macOS, Windows, Linux): load external `.vst3` effects (`Fx`) into filter slots and virtual instruments (`Instrument|Synth`) as playable 3D voices, open native plugin GUI editor windows, and automate parameters
 
 ## Getting Started
 - Watch Flutter [Package of the Week](https://www.youtube.com/watch?v=2t6Bt04EyLw) video.
