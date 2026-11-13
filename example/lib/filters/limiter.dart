@@ -1,9 +1,9 @@
 import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// This example shows the use of the limiter filter.
 ///
@@ -168,6 +168,11 @@ class _LimiterExampleState extends State<LimiterExample> {
             ElevatedButton(
               onPressed: () async {
                 await SoLoud.instance.disposeAllSources();
+                // It deactivates the global filters as well.
+                if (!mounted) return;
+                setState(() {
+                  isFilterActive = limiter.isActive;
+                });
               },
               child: const Text('stop all'),
             ),

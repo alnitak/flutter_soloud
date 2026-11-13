@@ -1,6 +1,6 @@
 // ignore_for_file: avoid_print
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'exit_app.dart';
 import 'tests/all_tests.dart';
@@ -30,17 +30,6 @@ void main(List<String> args) async {
   }
   final arg = effectiveArgs.first;
 
-  final value = int.tryParse(arg);
-  var index = 0;
-
-  if (value != null) {
-    print('Testing with index: $value');
-    index = value;
-  } else {
-    print('Testing with string: $arg');
-    index = allTests.indexWhere((test) => test.name == arg);
-  }
-
   WidgetsFlutterBinding.ensureInitialized();
 
   // On web the WASM module loads asynchronously; wait for it so tests that
@@ -48,14 +37,39 @@ void main(List<String> args) async {
   // No-op on native.
   await waitForModule();
 
-  try {
-    final output = await allTests[index].run();
-    print(output);
-    print('TEST_PASSED ${allTests[index].name}');
-    exitApp(0);
-  } catch (e, st) {
-    print(st);
-    print('TEST_FAILED ${allTests[index].name}: $e');
-    exitApp(1);
+  final requested = arg == 'ALL'
+      ? List<int>.generate(allTests.length, (i) => i)
+      : arg.split(',').map((token) {
+          final trimmed = token.trim();
+          final parsed = int.tryParse(trimmed);
+          if (parsed != null) return parsed;
+          return allTests.indexWhere((test) => test.name == trimmed);
+        }).toList();
+
+  var passed = 0;
+  var failed = 0;
+  for (final index in requested) {
+    if (index < 0 || index >= allTests.length) {
+      print('TEST_FAILED unknown_index($index)');
+      failed++;
+      continue;
+    }
+    final entry = allTests[index];
+    print('=== RUNNING_TEST ${entry.name} ===');
+    try {
+      final output = await entry.run();
+      print(output);
+      print('TEST_PASSED ${entry.name}');
+      passed++;
+    } on Object catch (e, st) {
+      print(st);
+      print('TEST_FAILED ${entry.name}: $e');
+      failed++;
+    }
   }
+
+  final total = passed + failed;
+  print('BATCH_SUMMARY: passed=$passed failed=$failed total=$total');
+  await Future<void>.delayed(const Duration(milliseconds: 500));
+  exitApp(failed == 0 ? 0 : 1);
 }

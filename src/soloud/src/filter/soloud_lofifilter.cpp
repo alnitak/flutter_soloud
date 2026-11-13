@@ -36,32 +36,43 @@ namespace SoLoud
 		initParams(3);
 		mParam[SAMPLERATE] = aParent->mSampleRate;
 		mParam[BITDEPTH] = aParent->mBitdepth;
-		mChannelData[0].mSample = 0;
-		mChannelData[0].mSamplesToSkip = 0;
-		mChannelData[1].mSample = 0;
-		mChannelData[1].mSamplesToSkip = 0;
+		for (int i = 0; i < MAX_CHANNELS; i++)
+		{
+			mChannelData[i].mSample = 0;
+			mChannelData[i].mSamplesToSkip = 0;
+		}
 	}
 
 	void LofiFilterInstance::filterChannel(float *aBuffer, unsigned int aSamples, float aSamplerate, double aTime, unsigned int aChannel, unsigned int /*aChannels*/)
 	{
+		if (aChannel >= MAX_CHANNELS)
+			return;
 		updateParams(aTime);
 
-		unsigned int i;
-		for (i = 0; i < aSamples; i++)
+		const float sr = mParam[SAMPLERATE] > 1.0f ? mParam[SAMPLERATE] : 1.0f;
+		const float skipStep = (aSamplerate / sr) - 1.0f;
+		const float q = exp2f(mParam[BITDEPTH]);
+		const float invQ = 1.0f / q;
+		const float wet = mParam[WET];
+		float curSample = mChannelData[aChannel].mSample;
+		float toSkip = mChannelData[aChannel].mSamplesToSkip;
+
+		for (unsigned int i = 0; i < aSamples; i++)
 		{
-			if (mChannelData[aChannel].mSamplesToSkip <= 0)
+			if (toSkip <= 0.0f)
 			{
-				mChannelData[aChannel].mSamplesToSkip += (aSamplerate / mParam[SAMPLERATE]) - 1;
-				float q = (float)pow(2, mParam[BITDEPTH]);
-				mChannelData[aChannel].mSample = (float)floor(q * aBuffer[i]) / q;
+				toSkip += skipStep;
+				curSample = floorf(q * aBuffer[i]) * invQ;
 			}
 			else
 			{
-				mChannelData[aChannel].mSamplesToSkip--;
+				toSkip -= 1.0f;
 			}
-			aBuffer[i] += (mChannelData[aChannel].mSample - aBuffer[i]) * mParam[WET];
+			aBuffer[i] += (curSample - aBuffer[i]) * wet;
 		}
 
+		mChannelData[aChannel].mSample = curSample;
+		mChannelData[aChannel].mSamplesToSkip = toSkip;
 	}
 
 	LofiFilterInstance::~LofiFilterInstance()

@@ -25,6 +25,43 @@ typedef OnAudioDurationCallbackTFunction = void Function(double duration);
 /// [offset] is the byte position in the original encoded stream.
 typedef OnMoreDataIsNeededCallbackTFunction = void Function(int offset);
 
+/// Picks the single native lifecycle callback of a custom audio source.
+///
+/// Native code has one lifecycle callback that receives both events (its
+/// `aIsCreated` argument is 1 on creation and 0 on destruction), so the two
+/// Dart-side addresses can only name the same function. Rejecting two
+/// different ones beats silently never calling one of them.
+@internal
+int customSourceLifecycleAddress(int createdAddress, int destroyedAddress) {
+  if (createdAddress != 0 &&
+      destroyedAddress != 0 &&
+      createdAddress != destroyedAddress) {
+    throw ArgumentError(
+      'onInstanceCreatedAddress and onInstanceDestroyedAddress must be the '
+      'same lifecycle callback: it receives aIsCreated = 1 when a voice '
+      'instance is created and 0 when it is destroyed.',
+    );
+  }
+  return createdAddress != 0 ? createdAddress : destroyedAddress;
+}
+
+/// What a stopped mixer capture handed over, as its stream delivers it: in
+/// pieces of [chunkBytes] when the capture emitted fixed-size chunks, so the
+/// queued chunks keep their size and only the last piece can be shorter, and
+/// otherwise in one piece.
+@internal
+List<Uint8List> splitStoppedMixerOutput(Uint8List bytes, int chunkBytes) {
+  if (bytes.isEmpty) return const [];
+  if (chunkBytes <= 0 || bytes.length <= chunkBytes) return [bytes];
+  return [
+    for (var start = 0; start < bytes.length; start += chunkBytes)
+      bytes.sublist(
+        start,
+        start + chunkBytes < bytes.length ? start + chunkBytes : bytes.length,
+      ),
+  ];
+}
+
 /// Abstract class defining the interface for the platform-specific
 /// implementations.
 abstract class FlutterSoLoud {
@@ -122,12 +159,30 @@ abstract class FlutterSoLoud {
   );
 
   /// Stop capturing the master mixer output.
+  ///
+  /// Only one capture runs at a time, whichever isolate started it. With
+  /// [onlyOwned] this stops only a capture this binding started and that is
+  /// still the running one, so it cannot end another isolate's capture.
   @mustBeOverridden
-  void stopMixerOutputCapture();
+  void stopMixerOutputCapture({bool onlyOwned = false});
+
+  /// Hands over, once, what the last stop of a capture this binding started
+  /// collected for that capture's stream, in order: the chunks notified but
+  /// not delivered yet, then the tail that never reached the notification
+  /// threshold or filled a chunk. Empty when there is nothing (left).
+  ///
+  /// A stop of a capture this binding did not start collects nothing and
+  /// leaves what an earlier stop collected for the stream manager.
+  @mustBeOverridden
+  List<Uint8List> takeStoppedMixerOutput();
 
   /// Whether mixer output capture is currently active.
   @mustBeOverridden
   bool isMixerOutputCaptureRunning();
+
+  /// Whether the running capture is the one this binding started.
+  @mustBeOverridden
+  bool isCurrentMixerOutputCapture();
 
   /// Total size of the native capture buffer in bytes.
   @mustBeOverridden
@@ -337,7 +392,8 @@ abstract class FlutterSoLoud {
   /// not allowed to read files directly, but it works also on the other
   /// platforms.
   ///
-  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+  /// [uniqueName] the unique name of the sound. Used only to have the
+  /// [SoundHash].
   /// [buffer] the audio data. These contains the audio file bytes.
   @mustBeOverridden
   ({PlayerErrors error, SoundHash soundHash}) loadMem(
@@ -351,7 +407,8 @@ abstract class FlutterSoLoud {
   /// sample rate, and join them into a single stereo sound (left and right
   /// channels).
   ///
-  /// [uniqueName] the unique name of the sound. Used only to have the [hash].
+  /// [uniqueName] the unique name of the sound. Used only to have the
+  /// [SoundHash].
   /// [bufferLeft] the audio data for the left channel.
   /// [bufferRight] the audio data for the right channel.
   @mustBeOverridden
@@ -384,7 +441,7 @@ abstract class FlutterSoLoud {
   );
 
   /// Reset the buffer of the audio stream.
-  /// [hash] the hash of the stream sound.
+  /// [soundHash] the hash of the stream sound.
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors resetBufferStream(SoundHash soundHash);
@@ -396,7 +453,7 @@ abstract class FlutterSoLoud {
   decodeAudioDataWeb(Uint8List bytes);
 
   /// Get the current stream time consumed in seconds of this sound of
-  /// type `BufferingType.RELEASED` with hash [hash].
+  /// type `BufferingType.RELEASED` with hash [soundHash].
   @mustBeOverridden
   ({PlayerErrors error, double value}) getStreamTimeConsumed(
     SoundHash soundHash,
@@ -420,13 +477,13 @@ abstract class FlutterSoLoud {
   PlayerErrors addAudioDataStream(int hash, Uint8List audioChunk);
 
   /// Set the end of the data stream.
-  /// [hash] the hash of the stream sound.
+  /// [soundHash] the hash of the stream sound.
   /// Returns [PlayerErrors.noError] if success.
   @mustBeOverridden
   PlayerErrors setDataIsEnded(SoundHash soundHash);
 
-  /// Get the current buffer size in bytes of this sound with hash [hash].
-  /// [hash] the hash of the stream sound.
+  /// Get the current buffer size in bytes of this sound with hash [soundHash].
+  /// [soundHash] the hash of the stream sound.
   @mustBeOverridden
   ({PlayerErrors error, int sizeInBytes}) getBufferSize(SoundHash soundHash);
 
@@ -707,6 +764,12 @@ abstract class FlutterSoLoud {
   /// default) and on web.
   @mustBeOverridden
   Duration getOutputLatency();
+
+  /// Estimated hardware output latency: the delay between audio leaving
+  /// the engine and reaching the physical audio output (DAC, OS buffers,
+  /// audio route). [Duration.zero] when not supported or during warm-up.
+  @mustBeOverridden
+  Duration getHardwareOutputLatency();
 
   /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
   /// active. Enabled at init time via [initEngine]'s `renderAheadFrames`.
@@ -1616,6 +1679,241 @@ abstract class FlutterSoLoud {
   /// Returns the active voice count, or 0 if the bus is not found.
   @mustBeOverridden
   int busGetActiveVoiceCount(int busId);
+
+  // ///////////////////////////////////////
+  // Realtime Stream & Custom DSP
+  // ///////////////////////////////////////
+
+  /// Create a real-time PCM audio stream backed by a lock-free ring buffer.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) setRealtimeStream(
+    int sampleRate,
+    int channels,
+    int format,
+    int bufferFrames,
+    int historyFrames,
+  );
+
+  /// Reset the real-time stream's ring buffer.
+  @mustBeOverridden
+  PlayerErrors resetRealtimeStream(SoundHash soundHash);
+
+  /// Push Float32 PCM samples immediately into a real-time stream.
+  ///
+  /// In all realtime pushes, native code rejects (returns `0`) a push whose
+  /// `frameCount * channels` exceeds the samples available: `samples.length`,
+  /// or `sampleCapacity` for the address variants.
+  @mustBeOverridden
+  int pushRealtimeFloat32(
+    int hash,
+    int handle,
+    Float32List samples,
+    int frameCount,
+  );
+
+  /// Push Float32 PCM samples from a native/WASM memory address immediately.
+  @mustBeOverridden
+  int pushRealtimeFloat32Address(
+    int hash,
+    int handle,
+    int samplesAddress,
+    int frameCount,
+    int sampleCapacity,
+  );
+
+  /// Push Int16 PCM samples immediately into a real-time stream.
+  @mustBeOverridden
+  int pushRealtimeInt16(
+    int hash,
+    int handle,
+    Int16List samples,
+    int frameCount,
+  );
+
+  /// Push Int16 PCM samples from a native/WASM memory address immediately.
+  @mustBeOverridden
+  int pushRealtimeInt16Address(
+    int hash,
+    int handle,
+    int samplesAddress,
+    int frameCount,
+    int sampleCapacity,
+  );
+
+  /// Push Float32 PCM samples with clocked sub-buffer offset calculation.
+  @mustBeOverridden
+  int pushRealtimeClockedFloat32(
+    int hash,
+    int handle,
+    double soundTime,
+    Float32List samples,
+    int frameCount,
+  );
+
+  /// Push Float32 PCM samples from a native/WASM address with clocked offset.
+  @mustBeOverridden
+  int pushRealtimeClockedFloat32Address(
+    int hash,
+    int handle,
+    double soundTime,
+    int samplesAddress,
+    int frameCount,
+    int sampleCapacity,
+  );
+
+  /// Push Float32 PCM samples scheduled at an absolute engine time.
+  @mustBeOverridden
+  int pushRealtimeScheduledFloat32(
+    int hash,
+    int handle,
+    double atTime,
+    Float32List samples,
+    int frameCount,
+  );
+
+  /// Push Float32 PCM samples from a native/WASM address at an engine time.
+  @mustBeOverridden
+  int pushRealtimeScheduledFloat32Address(
+    int hash,
+    int handle,
+    double atTime,
+    int samplesAddress,
+    int frameCount,
+    int sampleCapacity,
+  );
+
+  /// Get available frames to read in the real-time stream ring buffer.
+  @mustBeOverridden
+  int getRealtimeAvailableToRead(int hash);
+
+  /// Get available frames to write in the real-time stream ring buffer.
+  @mustBeOverridden
+  int getRealtimeAvailableToWrite(int hash);
+
+  /// Get underrun count for the real-time stream.
+  @mustBeOverridden
+  int getRealtimeUnderrunCount(int hash);
+
+  /// Allocate a persistent native/WASM buffer for zero-copy real-time pushes.
+  @mustBeOverridden
+  int allocateRealtimeNativeBuffer(int byteLength);
+
+  /// Free a buffer allocated with [allocateRealtimeNativeBuffer].
+  @mustBeOverridden
+  void freeRealtimeNativeBuffer(int address);
+
+  /// Return a mutable [Float32List] view over a native/WASM buffer.
+  @mustBeOverridden
+  Float32List viewRealtimeFloat32Buffer(int address, int floatLength);
+
+  /// Return a mutable [Int16List] view over a native/WASM buffer.
+  @mustBeOverridden
+  Int16List viewRealtimeInt16Buffer(int address, int int16Length);
+
+  /// Create a custom procedural audio source driven by a DSP callback.
+  @mustBeOverridden
+  ({PlayerErrors error, SoundHash soundHash}) createCustomAudioSource({
+    required int sampleRate,
+    required int channels,
+    required bool mustTickWhenInaudible,
+    required bool killWhenInaudible,
+    int dspCallbackAddress = 0,
+    int onInstanceCreatedAddress = 0,
+    int onInstanceDestroyedAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+    bool singleInstance = false,
+  });
+
+  /// Add a custom filter slot (`0..7`) to global, bus, or single-sound scope.
+  @mustBeOverridden
+  PlayerErrors addCustomFilter(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  });
+
+  /// Remove a custom filter slot (`0..7`).
+  @mustBeOverridden
+  PlayerErrors removeCustomFilter(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  });
+
+  /// Check if a custom filter slot (`0..7`) is active.
+  @mustBeOverridden
+  ({PlayerErrors error, int index}) isCustomFilterActive(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  });
+
+  /// Bind a native DSP function pointer or Web JS function to a custom filter.
+  @mustBeOverridden
+  PlayerErrors setCustomFilterCallback(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+    int callbackAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+  });
+
+  /// Configure parameter metadata on a custom filter slot.
+  @mustBeOverridden
+  PlayerErrors setCustomFilterParamDefinition(
+    int customFilterId,
+    int paramIndex,
+    String name,
+    double minVal,
+    double maxVal,
+    double defaultVal, {
+    SoundHash? soundHash,
+    int? busId,
+  });
+
+  /// Set a live parameter value on a custom filter slot.
+  @mustBeOverridden
+  PlayerErrors setCustomFilterParams(
+    int customFilterId,
+    int attributeId,
+    double value, {
+    SoundHandle? handle,
+    int? busId,
+  });
+
+  /// Get a live parameter value from a custom filter slot.
+  @mustBeOverridden
+  ({PlayerErrors error, double value}) getCustomFilterParams(
+    int customFilterId,
+    int attributeId, {
+    SoundHandle? handle,
+    int? busId,
+  });
+
+  /// Fade a parameter on a custom filter slot.
+  @mustBeOverridden
+  PlayerErrors fadeCustomFilterParameter(
+    int customFilterId,
+    int attributeId,
+    double to,
+    double time, {
+    SoundHandle? handle,
+    int? busId,
+  });
+
+  /// Oscillate a parameter on a custom filter slot.
+  @mustBeOverridden
+  PlayerErrors oscillateCustomFilterParameter(
+    int customFilterId,
+    int attributeId,
+    double from,
+    double to,
+    double time, {
+    SoundHandle? handle,
+    int? busId,
+  });
 }
 
 /// Used for easier conversion from [double] to [Duration].

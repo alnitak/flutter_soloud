@@ -6,7 +6,7 @@ Distilled from `example/lib/audio_context/audio_context.dart`. flutter_soloud on
 
 ```yaml
 dependencies:
-  flutter_soloud: ^5.0.0-pre.2
+  flutter_soloud: ^5.3.0
   audio_service: ^0.18.0
   audio_session: ^0.2.2
 ```

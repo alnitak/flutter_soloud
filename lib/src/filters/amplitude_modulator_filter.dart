@@ -6,11 +6,12 @@ import 'package:flutter_soloud/src/sound_hash.dart';
 
 enum AmplitudeModulatorEnum {
   wet,
-  frequency;
+  frequency,
+  waveform;
 
-  final List<double> _mins = const [0, 0.1];
-  final List<double> _maxs = const [1, 20000];
-  final List<double> _defs = const [1, 440];
+  final List<double> _mins = const [0, 0.1, 0];
+  final List<double> _maxs = const [1, 20000, 3];
+  final List<double> _defs = const [1, 440, 0];
 
   double get min => _mins[index];
   double get max => _maxs[index];
@@ -20,6 +21,7 @@ enum AmplitudeModulatorEnum {
   String toString() => switch (this) {
     AmplitudeModulatorEnum.wet => 'Wet',
     AmplitudeModulatorEnum.frequency => 'Frequency',
+    AmplitudeModulatorEnum.waveform => 'Waveform',
   };
 }
 
@@ -29,6 +31,7 @@ abstract class _AmplitudeModulatorInternal extends FilterBase {
 
   AmplitudeModulatorEnum get queryWet => AmplitudeModulatorEnum.wet;
   AmplitudeModulatorEnum get queryFrequency => AmplitudeModulatorEnum.frequency;
+  AmplitudeModulatorEnum get queryWaveform => AmplitudeModulatorEnum.waveform;
 }
 
 class AmplitudeModulatorSingle extends _AmplitudeModulatorInternal {
@@ -56,6 +59,21 @@ class AmplitudeModulatorSingle extends _AmplitudeModulatorInternal {
     AmplitudeModulatorEnum.frequency.min,
     AmplitudeModulatorEnum.frequency.max,
   );
+
+  /// The carrier waveform type.
+  ///
+  /// 0 = Sine (default)
+  /// 1 = Triangle
+  /// 2 = Square
+  /// 3 = Saw
+  FilterParam waveform({SoundHandle? soundHandle}) => FilterParam(
+    soundHandle,
+    super.busId,
+    filterType,
+    AmplitudeModulatorEnum.waveform.index,
+    AmplitudeModulatorEnum.waveform.min,
+    AmplitudeModulatorEnum.waveform.max,
+  );
 }
 
 class AmplitudeModulatorGlobal extends _AmplitudeModulatorInternal {
@@ -82,5 +100,20 @@ class AmplitudeModulatorGlobal extends _AmplitudeModulatorInternal {
     AmplitudeModulatorEnum.frequency.index,
     AmplitudeModulatorEnum.frequency.min,
     AmplitudeModulatorEnum.frequency.max,
+  );
+
+  /// The carrier waveform type.
+  ///
+  /// 0 = Sine (default)
+  /// 1 = Triangle
+  /// 2 = Square
+  /// 3 = Saw
+  FilterParam get waveform => FilterParam(
+    null,
+    null,
+    filterType,
+    AmplitudeModulatorEnum.waveform.index,
+    AmplitudeModulatorEnum.waveform.min,
+    AmplitudeModulatorEnum.waveform.max,
   );
 }

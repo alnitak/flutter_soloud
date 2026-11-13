@@ -2,12 +2,12 @@ import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/buffer_stream/ui/buffer_widget.dart';
 import 'package:flutter_soloud_example/buffer_stream/ui/seek_bar.dart';
 import 'package:http/http.dart' as http;
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Example of how to play a web radio stream.
 /// Please read the comments in the code to have clear understanding of

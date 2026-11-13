@@ -1,4 +1,6 @@
 #include "analyzer.h"
+#include "simd/simd_pcm.h"
+#include "simd/soloud_simd.h"
 
 #include <algorithm>
 #include <cmath>
@@ -360,6 +362,11 @@ PlayerErrors Analyzer::enableLocked(int windowSize,
       return outOfMemory;
     }
   }
+  m_laneScratch = allocFloats(m_windowSize);
+  if (m_laneScratch == nullptr) {
+    cleanupBuffers();
+    return outOfMemory;
+  }
 
   if (m_fftSamples > 0) {
     m_pffftSetup = pffft_new_setup(m_windowSize, PFFFT_REAL);
@@ -448,6 +455,7 @@ void Analyzer::cleanupBuffers() {
   freeFloats(m_windowedInput);
   freeFloats(m_fftOutput);
   freeFloats(m_fftWork);
+  freeFloats(m_laneScratch);
   delete[] m_ring;
   m_ring = nullptr;
   for (int c = 0; c < kMaxChannels; c++) {
@@ -498,18 +506,66 @@ void Analyzer::capture(const float *data,
   const unsigned int first =
       frames > m_ringFrames ? frames - static_cast<unsigned int>(m_ringFrames)
                             : 0;
+  const size_t count = static_cast<size_t>(frames - first);
+  const size_t pos0 = (writeIdx + first) & mask;
+  const size_t span1 = std::min(count, m_ringFrames - pos0);
+  const size_t span2 = count - span1;
   const int captured = std::min(channels, m_lanes);
-  for (int c = 0; c < m_lanes; c++) {
-    std::atomic<float> *lane = m_ring + static_cast<size_t>(c) * m_ringFrames;
-    if (c < captured) {
-      const float *src = data + static_cast<size_t>(c) * channelStep;
-      for (unsigned int i = first; i < frames; i++) {
-        lane[(writeIdx + i) & mask].store(src[i * frameStep],
-                                          std::memory_order_relaxed);
+
+  if (frameStep == 2 && channelStep == 1 && captured >= 2) {
+    // Fast stereo interleaved capture path (engine output tap)
+    std::atomic<float> *lane0 = m_ring;
+    std::atomic<float> *lane1 = m_ring + m_ringFrames;
+    const float *src0 = data + static_cast<size_t>(first) * 2u;
+    for (size_t i = 0; i < span1; ++i) {
+      lane0[pos0 + i].store(src0[2u * i], std::memory_order_relaxed);
+      lane1[pos0 + i].store(src0[2u * i + 1u], std::memory_order_relaxed);
+    }
+    const float *src1 = src0 + span1 * 2u;
+    for (size_t i = 0; i < span2; ++i) {
+      lane0[i].store(src1[2u * i], std::memory_order_relaxed);
+      lane1[i].store(src1[2u * i + 1u], std::memory_order_relaxed);
+    }
+    for (int c = 2; c < m_lanes; ++c) {
+      std::atomic<float> *lane = m_ring + static_cast<size_t>(c) * m_ringFrames;
+      for (size_t i = 0; i < span1; ++i) {
+        lane[pos0 + i].store(0.0f, std::memory_order_relaxed);
       }
-    } else {
-      for (unsigned int i = first; i < frames; i++) {
-        lane[(writeIdx + i) & mask].store(0.0f, std::memory_order_relaxed);
+      for (size_t i = 0; i < span2; ++i) {
+        lane[i].store(0.0f, std::memory_order_relaxed);
+      }
+    }
+  } else {
+    for (int c = 0; c < m_lanes; c++) {
+      std::atomic<float> *lane = m_ring + static_cast<size_t>(c) * m_ringFrames;
+      if (c < captured) {
+        const float *src =
+            data + static_cast<size_t>(c) * channelStep +
+            static_cast<size_t>(first) * frameStep;
+        if (frameStep == 1) {
+          for (size_t i = 0; i < span1; ++i) {
+            lane[pos0 + i].store(src[i], std::memory_order_relaxed);
+          }
+          const float *src2 = src + span1;
+          for (size_t i = 0; i < span2; ++i) {
+            lane[i].store(src2[i], std::memory_order_relaxed);
+          }
+        } else {
+          for (size_t i = 0; i < span1; ++i) {
+            lane[pos0 + i].store(src[i * frameStep], std::memory_order_relaxed);
+          }
+          const float *src2 = src + span1 * frameStep;
+          for (size_t i = 0; i < span2; ++i) {
+            lane[i].store(src2[i * frameStep], std::memory_order_relaxed);
+          }
+        }
+      } else {
+        for (size_t i = 0; i < span1; ++i) {
+          lane[pos0 + i].store(0.0f, std::memory_order_relaxed);
+        }
+        for (size_t i = 0; i < span2; ++i) {
+          lane[i].store(0.0f, std::memory_order_relaxed);
+        }
       }
     }
   }
@@ -546,14 +602,26 @@ bool Analyzer::analyzeLatestWindow(float *packet) {
     return false;
   }
 
+  soloud_simd::ScopedFlushDenormals flushDenormals;
+
   const size_t mask = m_ringFrames - 1;
   const size_t start = writeIdx - windowSize;
-  auto ringLane = [this](int lane) -> const std::atomic<float> * {
-    return m_ring + static_cast<size_t>(lane) * m_ringFrames;
+  const size_t pos0 = start & mask;
+  const size_t span1 = std::min(windowSize, m_ringFrames - pos0);
+  const size_t span2 = windowSize - span1;
+
+  auto copyLaneWindow = [this, pos0, span1, span2](int laneIdx, float *dst) {
+    const std::atomic<float> *lane =
+        m_ring + static_cast<size_t>(laneIdx) * m_ringFrames;
+    for (size_t i = 0; i < span1; ++i) {
+      dst[i] = lane[pos0 + i].load(std::memory_order_relaxed);
+    }
+    for (size_t i = 0; i < span2; ++i) {
+      dst[span1 + i] = lane[i].load(std::memory_order_relaxed);
+    }
   };
-  auto sample = [mask, start](const std::atomic<float> *lane, size_t i) {
-    return lane[(start + i) & mask].load(std::memory_order_relaxed);
-  };
+
+  float peaks[kMaxChannels] = {0};
 
   // The latest window of each packet channel.
   if (m_channelSelection == VISUALIZATION_CHANNEL_MERGED) {
@@ -562,44 +630,51 @@ bool Analyzer::analyzeLatestWindow(float *packet) {
     const int count = std::max(
         1, std::min(m_capturedChannels.load(std::memory_order_relaxed), m_lanes));
     float *out = m_window[0];
-    const std::atomic<float> *first = ringLane(0);
-    for (size_t i = 0; i < windowSize; i++) {
-      out[i] = sample(first, i);
-    }
-    for (int c = 1; c < count; c++) {
-      const std::atomic<float> *lane = ringLane(c);
-      for (size_t i = 0; i < windowSize; i++) {
-        out[i] += sample(lane, i);
+    copyLaneWindow(0, out);
+    peaks[0] = SoLoud::peakAbsF32(out, windowSize);
+
+    for (int c = 1; c < m_lanes; c++) {
+      copyLaneWindow(c, m_laneScratch);
+      peaks[c] = SoLoud::peakAbsF32(m_laneScratch, windowSize);
+      if (c < count) {
+        size_t i = 0;
+#if defined(SOLOUD_SIMD_ENABLED)
+        for (; i + 4 <= windowSize; i += 4) {
+          (soloud_simd::f32x4::loadu(out + i) +
+           soloud_simd::f32x4::loadu(m_laneScratch + i))
+              .storeu(out + i);
+        }
+#endif
+        for (; i < windowSize; i++) {
+          out[i] += m_laneScratch[i];
+        }
       }
     }
     if (count > 1) {
       const float scale = 1.0f / static_cast<float>(count);
-      for (size_t i = 0; i < windowSize; i++) {
+      size_t i = 0;
+#if defined(SOLOUD_SIMD_ENABLED)
+      const soloud_simd::f32x4 vScale = soloud_simd::f32x4::splat(scale);
+      for (; i + 4 <= windowSize; i += 4) {
+        (soloud_simd::f32x4::loadu(out + i) * vScale).storeu(out + i);
+      }
+#endif
+      for (; i < windowSize; i++) {
         out[i] *= scale;
       }
     }
+  } else if (m_channelSelection == VISUALIZATION_CHANNEL_ALL) {
+    for (int c = 0; c < m_lanes; c++) {
+      float *dst = (c < m_activeChannels) ? m_window[c] : m_laneScratch;
+      copyLaneWindow(c, dst);
+      peaks[c] = SoLoud::peakAbsF32(dst, windowSize);
+    }
   } else {
-    for (int c = 0; c < m_activeChannels; c++) {
-      // The selected channel, which enabling checked is below m_lanes, or
-      // each channel in turn.
-      const int lane = m_channelSelection >= 0 ? m_channelSelection : c;
-      const std::atomic<float> *src = ringLane(lane);
-      float *out = m_window[c];
-      for (size_t i = 0; i < windowSize; i++) {
-        out[i] = sample(src, i);
-      }
+    for (int c = 0; c < m_lanes; c++) {
+      float *dst = (c == m_channelSelection) ? m_window[0] : m_laneScratch;
+      copyLaneWindow(c, dst);
+      peaks[c] = SoLoud::peakAbsF32(dst, windowSize);
     }
-  }
-
-  float peaks[kMaxChannels] = {0};
-  for (int c = 0; c < m_lanes; c++) {
-    const std::atomic<float> *lane = ringLane(c);
-    float peak = 0.0f;
-    for (size_t i = 0; i < windowSize; i++) {
-      const float magnitude = fabsf(sample(lane, i));
-      if (magnitude > peak) peak = magnitude;
-    }
-    peaks[c] = peak;
   }
 
   // The audio thread kept writing during the copy. If it got to the frames
@@ -624,8 +699,17 @@ bool Analyzer::analyzeLatestWindow(float *packet) {
   if (m_fftSamples > 0) {
     float *fft = packet + static_cast<size_t>(m_activeChannels) * m_waveSamples;
     for (int c = 0; c < m_activeChannels; c++) {
-      for (size_t i = 0; i < windowSize; i++) {
-        m_windowedInput[i] = m_window[c][i] * m_windowTable[i];
+      const float *winSrc = m_window[c];
+      size_t i = 0;
+#if defined(SOLOUD_SIMD_ENABLED)
+      for (; i + 4 <= windowSize; i += 4) {
+        (soloud_simd::f32x4::loadu(winSrc + i) *
+         soloud_simd::f32x4::loadu(m_windowTable + i))
+            .storeu(m_windowedInput + i);
+      }
+#endif
+      for (; i < windowSize; i++) {
+        m_windowedInput[i] = winSrc[i] * m_windowTable[i];
       }
       pffft_transform_ordered(
           m_pffftSetup,
@@ -668,12 +752,14 @@ void Analyzer::computeFftMagnitudes(int channelIdx, float *magnitudes) {
   // Magnitude threshold corresponding to minDecibels (e.g. 10^(-100/20) = 1e-5)
   // Any magnitude below or equal to minMag yields val = 0.0f.
   const float minMag = powf(10.0f, minDb / 20.0f);
+  constexpr float kLog2ToDb = 6.020599913279624f;
+  const float oneMinusSmooth = 1.0f - smooth;
 
   auto normalize = [&](float smoothedMag) {
     if (smoothedMag <= minMag) {
       return 0.0f;
     }
-    const float db = 20.0f * log10f(smoothedMag);
+    const float db = kLog2ToDb * soloud_simd::fast_log2(smoothedMag);
     float val = (db - minDb) * invRange;
     if (val < 0.0f) val = 0.0f;
     else if (val > 1.0f) val = 1.0f;
@@ -682,17 +768,46 @@ void Analyzer::computeFftMagnitudes(int channelIdx, float *magnitudes) {
 
   // DC component (bin 0)
   const float dcMag = fabsf(m_fftOutput[0]) * norm;
-  smoothed[0] = smooth * smoothed[0] + (1.0f - smooth) * dcMag;
+  smoothed[0] = smooth * smoothed[0] + oneMinusSmooth * dcMag;
   magnitudes[0] = normalize(smoothed[0]);
 
-  // Frequency bins 1 to numBins - 1
-  for (int k = 1; k < numBins; k++) {
+  int k = 1;
+#if defined(SOLOUD_SIMD_ENABLED)
+  const soloud_simd::f32x4 vNorm = soloud_simd::f32x4::splat(norm);
+  const soloud_simd::f32x4 vSmooth = soloud_simd::f32x4::splat(smooth);
+  const soloud_simd::f32x4 vOneMinus =
+      soloud_simd::f32x4::splat(oneMinusSmooth);
+  for (; k + 4 <= numBins; k += 4) {
+    alignas(16) float reArr[4];
+    alignas(16) float imArr[4];
+    const float *p = m_fftOutput + 2 * k;
+    reArr[0] = p[0]; imArr[0] = p[1];
+    reArr[1] = p[2]; imArr[1] = p[3];
+    reArr[2] = p[4]; imArr[2] = p[5];
+    reArr[3] = p[6]; imArr[3] = p[7];
+    const soloud_simd::f32x4 re = soloud_simd::f32x4::loadu(reArr);
+    const soloud_simd::f32x4 im = soloud_simd::f32x4::loadu(imArr);
+    const soloud_simd::f32x4 mag =
+        soloud_simd::sqrt(soloud_simd::fma(re, re, im * im)) * vNorm;
+    const soloud_simd::f32x4 prev = soloud_simd::f32x4::loadu(smoothed + k);
+    const soloud_simd::f32x4 sm =
+        soloud_simd::fma(vSmooth, prev, vOneMinus * mag);
+    sm.storeu(smoothed + k);
+    magnitudes[k + 0] = normalize(smoothed[k + 0]);
+    magnitudes[k + 1] = normalize(smoothed[k + 1]);
+    magnitudes[k + 2] = normalize(smoothed[k + 2]);
+    magnitudes[k + 3] = normalize(smoothed[k + 3]);
+  }
+#endif
+
+  // Remaining frequency bins
+  for (; k < numBins; k++) {
     const float real = m_fftOutput[2 * k];
     const float imag = m_fftOutput[2 * k + 1];
     const float mag = sqrtf(real * real + imag * imag) * norm;
 
     // Temporal smoothing on linear magnitude (per W3C spec):
-    smoothed[k] = smooth * smoothed[k] + (1.0f - smooth) * mag;
+    smoothed[k] = smooth * smoothed[k] + oneMinusSmooth * mag;
     magnitudes[k] = normalize(smoothed[k]);
   }
 }

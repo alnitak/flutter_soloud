@@ -65,8 +65,14 @@ mFileHandle(fp)
 
 }
 
+	// ###### flutter_soloud local patch (wavstream missing file) ######
+	// Without an open file (open() failed or was never called) read, seek,
+	// pos and eof act as on an empty file instead of passing a null FILE* to
+	// stdio, as length() already did.
 	unsigned int DiskFile::read(unsigned char *aDst, unsigned int aBytes)
 	{
+		if (!mFileHandle)
+			return 0;
 		return (unsigned int)fread(aDst, 1, aBytes, mFileHandle);
 	}
 
@@ -83,11 +89,15 @@ mFileHandle(fp)
 
 	void DiskFile::seek(int aOffset)
 	{
+		if (!mFileHandle)
+			return;
 		fseek(mFileHandle, aOffset, SEEK_SET);
 	}
 
 	unsigned int DiskFile::pos()
 	{
+		if (!mFileHandle)
+			return 0;
 		return (unsigned int)ftell(mFileHandle);
 	}
 
@@ -111,6 +121,11 @@ mFileHandle(fp)
 	{
 		if (!aFilename)
 			return INVALID_PARAMETER;
+		if (mFileHandle)
+		{
+			fclose(mFileHandle);
+			mFileHandle = 0;
+		}
 #ifdef _WIN32
 		// On Windows, convert UTF-8 to wide string and use _wfopen
 		int wideLen = MultiByteToWideChar(CP_UTF8, 0, aFilename, -1, NULL, 0);
@@ -134,6 +149,8 @@ mFileHandle(fp)
 
 	int DiskFile::eof()
 	{
+		if (!mFileHandle)
+			return 1;
 		return feof(mFileHandle);
 	}
 
@@ -157,6 +174,11 @@ mFileHandle(fp)
 
 	void MemoryFile::seek(int aOffset)
 	{
+		if (mDataLength == 0)
+		{
+			mOffset = 0;
+			return;
+		}
 		if (aOffset >= 0)
 			mOffset = aOffset;
 		else
@@ -192,7 +214,11 @@ mFileHandle(fp)
 	result MemoryFile::openMem(const unsigned char *aData, unsigned int aDataLength, bool aCopy, bool aTakeOwnership)
 	{
 		if (aData == NULL || aDataLength == 0)
+		{
+			if (aTakeOwnership && !aCopy && aData != NULL)
+				delete[] aData;
 			return INVALID_PARAMETER;
+		}
 
 		if (mDataOwned)
 			delete[] mDataPtr;

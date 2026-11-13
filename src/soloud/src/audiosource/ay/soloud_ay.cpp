@@ -149,6 +149,7 @@ namespace SoLoud
 		mChipspeed = aFile->read32();
 		mYm = false;
 		if (flags & 64) mYm = true;
+		delete[] mOps;
 		mOps = new unsigned short[mLength];
 		aFile->seek(dataofs);
 		if (flags & 1)

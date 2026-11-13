@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/audio_visualization_data.dart';
+import 'package:flutter_soloud/src/bindings/android_engine_lifecycle.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/native_metadata_ffi.dart'
     if (dart.library.js_interop) 'package:flutter_soloud/src/bindings/native_metadata_web.dart';
@@ -18,6 +19,7 @@ import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/metadata.dart';
 import 'package:flutter_soloud/src/mixer_output_stream_manager.dart';
 import 'package:flutter_soloud/src/mixing_bus.dart';
+import 'package:flutter_soloud/src/realtime_stream.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:flutter_soloud/src/utils/loader.dart';
@@ -86,7 +88,7 @@ Future<({PlayerErrors error, SoundHash soundHash})> _loadMemWeb({
       buffer[7] == 0x70; // 'p'
   final isAac =
       buffer.length >= 4 &&
-      ((buffer[0] == 0xFF && (buffer[1] & 0xF0) == 0xF0) || // ADTS
+      ((buffer[0] == 0xFF && (buffer[1] & 0xF6) == 0xF0) || // ADTS (layer 00)
           (buffer[0] == 0x41 &&
               buffer[1] == 0x44 &&
               buffer[2] == 0x49 &&
@@ -441,8 +443,14 @@ interface class SoLoud {
   /// The sample rate the engine was initialized with.
   int _sampleRate = 44100;
 
+  /// The sample rate the engine was initialized with.
+  int get sampleRate => _sampleRate;
+
   /// The channels the engine was initialized with.
   Channels _channels = Channels.stereo;
+
+  /// The mix quantum (`bufferSize`) the engine was initialized with.
+  int _bufferSize = 2048;
 
   /// Initializes the audio engine.
   ///
@@ -527,6 +535,19 @@ interface class SoLoud {
   /// [bufferSize]. This is the prerequisite for low-latency reactive playback
   /// with large mix buffers. When null or 0 (the default) the engine mixes
   /// directly into the device callback as before. Ignored on web.
+  /// With the ring enabled the mixing runs on a dedicated render thread and
+  /// the device callback only reads the ring, so a slow mix or a busy engine
+  /// call does not interrupt the output. Changing a playing voice in a way
+  /// the engine cannot replay (its loop region, a seek, unpausing it, its
+  /// filters or their parameters, or the global volume) makes events in the
+  /// next [renderAheadFrames] fall back to being placed at the end of the
+  /// ring instead of at the playhead.
+  /// With the ring enabled, global filters run at the device playhead on the
+  /// frames read from the ring, and the output is clipped after them, as
+  /// without the ring. The one difference is that the global volume is
+  /// applied when mixing into the ring, so it comes before the global filters
+  /// rather than after them (only noticeable with non-linear filters such as
+  /// a limiter or compressor).
   Future<void> init({
     PlaybackDevice? device,
     bool automaticCleanup = false,
@@ -681,6 +702,20 @@ interface class SoLoud {
       }
     }
 
+    // Android only: tell the plugin this isolate uses the native library, so
+    // its engine-teardown hooks never skip the claim and the callbacks about
+    // to be created. Sent here: isInited() above has loaded the library, so
+    // the plugin's later load is a refcount bump, and nothing that a teardown
+    // must undo exists yet. Once acknowledged on this isolate, or found to
+    // have no plugin to go to (as under flutter test), it is not sent again,
+    // and off Android it never is, so none of those suspends here.
+    if (AndroidEngineLifecycle.isPending) {
+      await const AndroidEngineLifecycle().markNativeLibraryInUse();
+      if (initializationGeneration != _lifecycleGeneration) {
+        await _waitForInitializationTeardownAndThrow();
+      }
+    }
+
     // Claims the native engine for this FlutterEngine before the device open is
     // dispatched. Only iOS has to go through the platform to do it, and only
     // there does this become a suspension point -- everywhere else the claim is
@@ -727,6 +762,7 @@ interface class SoLoud {
       // Store the initialization parameters for later use.
       _sampleRate = sampleRate;
       _channels = channels;
+      _bufferSize = bufferSize;
 
       // Initialize [SoLoudLoader]
       _loader.automaticCleanup = automaticCleanup;
@@ -1055,6 +1091,13 @@ interface class SoLoud {
       _lifecycleGeneration++;
     }
     _nativeCallbacksInitialized = false;
+    // Ends this isolate's stream with what its capture still owed it.
+    if (_mixerOutputStreamManager.hasStream) {
+      _mixerOutputStreamManager.stop();
+    }
+    // A capture still running is another isolate's, or was started without
+    // the stream manager, and ends with the engine. Another isolate's stream
+    // closes when that isolate stops it or starts again.
     if (_controller.soLoudFFI.isMixerOutputCaptureRunning()) {
       _controller.soLoudFFI.stopMixerOutputCapture();
     }
@@ -1580,9 +1623,9 @@ interface class SoLoud {
   /// [format] the desired output format. PCM formats are supported on all
   /// platforms. Compressed formats (Opus, Vorbis, FLAC, WAV) are available when
   /// the plugin is built with Xiph libraries. The default is PCM F32LE and
-  /// it is the only format that doesn't require conversion (when [sampleRate]
-  /// and [channels] are set to -1) on the native side, so it is
-  /// the most efficient and preferred on mobile.
+  /// it is the only format that doesn't require sample conversion on the
+  /// native side, so it is the most efficient and preferred on mobile. Every
+  /// format uses the engine sample rate and channel count.
   ///
   /// **WAV caveat:** When [format] is [MixerOutputFormat.wav], the stream emits
   /// a 44-byte header followed by PCM chunks incrementally, just like the other
@@ -1591,9 +1634,13 @@ interface class SoLoud {
   /// [stopMixerOutputStream] and overwrite the first 44 bytes of the saved file
   /// with the returned header.
   ///
-  /// [sampleRate] the sample rate. Use -1 to follow the engine sample rate.
+  /// [sampleRate] must be the engine sample rate, or -1 to follow it. Capture
+  /// does not resample: another rate throws
+  /// [SoLoudInvalidParameterException].
   ///
-  /// [channels] the channel count. Use -1 to follow the engine channels.
+  /// [channels] must be the engine channel count, or -1 to follow it. Capture
+  /// does not remix channels: another count throws
+  /// [SoLoudInvalidParameterException].
   ///
   /// [bufferSizeBytes] total size of the circular capture buffer.
   ///
@@ -1625,6 +1672,9 @@ interface class SoLoud {
   );
 
   /// Stops the mixer output capture stream and releases associated resources.
+  ///
+  /// It stops only a capture this isolate started: one started from a worker
+  /// isolate with `SoLoudIsolate.startMixerOutputStream` keeps running.
   void stopMixerOutputStream() => _mixerOutputStreamManager.stop();
 
   /// Whether mixer output capture is currently active.
@@ -1772,7 +1822,7 @@ interface class SoLoud {
   /// added audio data to the buffer. This method can be used to reset the
   /// buffer and start with the new audio data.
   ///
-  /// [hash] the hash of the stream sound.
+  /// [sound] the stream sound to reset.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
@@ -2532,6 +2582,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle play(
     AudioSource sound, {
     int busId = 0,
@@ -2674,6 +2727,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle playClocked(
     AudioSource sound,
     Duration soundTime, {
@@ -2839,6 +2895,49 @@ interface class SoLoud {
     return _controller.soLoudFFI.getOutputLatency();
   }
 
+  /// Estimated hardware output latency: the presentation delay introduced
+  /// outside SoLoud by the operating system audio pipeline, audio server/HAL
+  /// buffers, DSP, and hardware DAC on the active audio route.
+  ///
+  /// ### Differences between [getOutputLatency] and [getHardwareOutputLatency]
+  /// * **[getOutputLatency]** measures SoLoud's **internal software mix
+  ///   cushion** (the render-ahead ring depth plus one device period). When the
+  ///   render-ahead ring is disabled (the default) or on web, it returns
+  ///   [Duration.zero]. It does not reflect when audio actually reaches the
+  ///   speaker.
+  /// * **[getHardwareOutputLatency]** measures the **external physical path**
+  ///   from the moment audio samples leave SoLoud's device callback to when
+  ///   they are converted by the DAC and physically leave the transducer
+  ///   (speakers, wired headphones, USB DAC, or Bluetooth).
+  ///
+  /// On Android (AAudio), this is computed using hardware presentation
+  /// timestamps (`AAudioStream_getTimestamp`) against the monotonic clock. Note
+  /// that this reflects the presentation point reported by the audio HAL and
+  /// AudioFlinger; on some devices, vendor-specific post-HAL speaker DSP (e.g.
+  /// speaker limiters or Dolby Atmos) may introduce additional acoustic delay.
+  /// On iOS/macOS, this is derived from `AVAudioSession.outputLatency` or
+  /// CoreAudio device latency. On Windows and Web, it queries WASAPI or Web
+  /// Audio context latencies respectively.
+  ///
+  /// The total physical delay from an engine mix quantum to the listener's ear
+  /// is approximately:
+  /// ```dart
+  /// final totalDelay = SoLoud.instance.getOutputLatency() +
+  ///     SoLoud.instance.getHardwareOutputLatency();
+  /// ```
+  ///
+  /// Returns [Duration.zero] if the active backend does not support
+  /// presentation timestamps, during initial stream warm-up before timestamps
+  /// become valid, or if the query fails.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  Duration getHardwareOutputLatency() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.getHardwareOutputLatency();
+  }
+
   /// Whether the render-ahead ring is active. Enabled at init time via the
   /// `renderAheadFrames` parameter of [init]. Always false on web.
   bool get isRenderAheadEnabled =>
@@ -2919,6 +3018,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle playScheduled(
     AudioSource sound,
     Duration atTime, {
@@ -3326,6 +3428,11 @@ interface class SoLoud {
 
   /// Disposes all audio sources that are currently loaded.
   /// Also stops all sound instances if anything is playing.
+  ///
+  /// Every global filter (see [filters]) is deactivated as well: activate
+  /// again the ones that should keep running. A global custom filter keeps
+  /// its parameter definitions but loses its callback, as after
+  /// `deactivate()`, so call `setNativeCallback()` again once it is active.
   ///
   /// No need to call this method when shutting down the engine.
   ///
@@ -4449,6 +4556,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle play3d(
     AudioSource sound,
     double posX,
@@ -4575,6 +4685,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   SoundHandle play3dClocked(
     AudioSource sound,
     Duration soundTime,
@@ -4698,6 +4811,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFailedToStartPlaybackCppException] if the audio engine
   /// could not create a voice for this sound.
+  ///
+  /// Throws [SoLoudFileNotFoundException] if [sound] streams from a file
+  /// ([LoadMode.disk]) that has been deleted or moved since it was loaded.
   ///
   /// The schedule is expressed in samples against the engine clock, which only
   /// advances while the output device is mixing, so a voice scheduled against a
@@ -5105,6 +5221,177 @@ interface class SoLoud {
   /// [name] optional name of the bus to later identify it.
   Bus createMixingBus({String name = ''}) {
     return Bus(name: name);
+  }
+
+  // ////////////////////////////////////////////////
+  // Realtime Stream & Custom DSP
+  // ////////////////////////////////////////////////
+
+  /// Creates a low-latency, lock-free real-time PCM stream (`RealtimeStream`)
+  /// backed by a single-producer single-consumer (SPSC) planar ring buffer and
+  /// a historical rewind window for instantaneous playing-window mixer
+  /// injection.
+  ///
+  /// Unlike [setBufferStream] (which is designed for media/network streaming
+  /// with decoders and buffering pauses), [setRealtimeStream] is designed for
+  /// real-time interactive synthesis, drum machines, WebRTC/VoIP audio frames,
+  /// and emulator audio:
+  /// - Zero mutex contention on the audio thread (`std::memory_order_acquire` /
+  ///   `release` atomic indices).
+  /// - SIMD-accelerated de-interleaving (`SSE2`, `NEON`, `wasm_simd128`) on
+  ///   the producer side.
+  /// - Smooth 64-sample cosine fade-out on underrun and fade-in on recovery
+  ///   (never auto-pauses the voice).
+  /// - Instantaneous playing-window splice (`pushFloat32`,
+  ///   `pushClockedFloat32`, `pushScheduledFloat32`) when `renderAheadFrames`
+  ///   is enabled in [init].
+  ///
+  /// Parameters:
+  /// - [sampleRate]: Stream sample rate in Hz (default `48000`). Match the
+  ///   engine sample rate to bypass resampling overhead.
+  /// - [channels]: Channel configuration (default [Channels.stereo]).
+  /// - [format]: Input PCM format: [BufferType.f32le] (interleaved 32-bit
+  ///   float, default), [BufferType.s16le] (interleaved 16-bit signed int), or
+  ///   [BufferType.f32lePlanar] (contiguous channel-planar 32-bit float).
+  /// - [bufferFrames]: Forward ring buffer capacity in frames (default
+  ///   `2048`). Native code rounds it up to a power of two and raises it to at
+  ///   least two engine mix quanta (the `bufferSize` given to [init], in
+  ///   stream frames), so a feeder can always keep one quantum buffered.
+  /// - [historyFrames]: Minimum historical rewind window in frames retained
+  ///   so the mixer can retroactively re-mix the currently playing window when
+  ///   new samples arrive (default `4096`). Native code raises it as needed to
+  ///   cover the `renderAheadFrames` window given to [init] (plus two
+  ///   resampler blocks), so a smaller value cannot break re-mixing.
+  /// - [autoDispose]: Whether to automatically dispose the source when all
+  ///   playing handles finish (default `false`).
+  @experimental
+  RealtimeStreamHandle setRealtimeStream({
+    int sampleRate = 48000,
+    Channels channels = Channels.stereo,
+    BufferType format = BufferType.f32le,
+    int bufferFrames = 2048,
+    int historyFrames = 4096,
+    bool autoDispose = false,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    if (format != BufferType.f32le &&
+        format != BufferType.s16le &&
+        format != BufferType.f32lePlanar) {
+      throw ArgumentError.value(
+        format,
+        'format',
+        'setRealtimeStream supports only BufferType.f32le, BufferType.s16le, '
+            'or BufferType.f32lePlanar.',
+      );
+    }
+    final ret = _controller.soLoudFFI.setRealtimeStream(
+      sampleRate,
+      channels.count,
+      format.value,
+      bufferFrames,
+      historyFrames,
+    );
+    _logPlayerError(ret.error, from: 'setRealtimeStream() result');
+    if (ret.error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash)
+      ..autoDispose = autoDispose;
+    return RealtimeStreamHandle(
+      source: newSound,
+      sampleRate: sampleRate,
+      channels: channels,
+      format: format,
+      bufferFrames: bufferFrames,
+      historyFrames: historyFrames,
+      engineQuantumFrames: _sampleRate > 0
+          ? (_bufferSize * sampleRate / _sampleRate).ceil()
+          : _bufferSize,
+    );
+  }
+
+  /// Creates a procedural [AudioSource] (`CustomAudioSource`) whose audio
+  /// frames are generated synchronously on the audio thread by a native
+  /// C/C++/Rust callback or a Web JS/Wasm function.
+  ///
+  /// Every call to [play], [play3d], [playClocked], or [playScheduled] on the
+  /// returned [AudioSource] spawns an independent voice instance (allowing full
+  /// polyphony, per-voice 3D spatialization, pitch scaling, faders, and filter
+  /// chains).
+  ///
+  /// Parameters:
+  /// - [sampleRate]: Base sample rate of the procedural source in Hz (default
+  ///   `48000`).
+  /// - [channels]: Output channel configuration (default [Channels.stereo]).
+  /// - [dspCallbackAddress]: Address of a native function with signature
+  ///   `SoLoudSourceDspCallback_t` (`unsigned int (*)(float* buffer, unsigned
+  ///   int samplesToRead, unsigned int bufferSize, unsigned int channels, float
+  ///   sampleRate, double streamTime, double streamPosition, uint32_t*
+  ///   outHasEnded, void* userData)`).
+  /// - [onInstanceCreatedAddress]: Optional native lifecycle callback
+  ///   (`void (*)(uint32_t isCreated, unsigned int playIndex, void*
+  ///   userData)`) invoked once when a voice instance is created
+  ///   (`isCreated == 1`) and once when it is destroyed (`isCreated == 0`).
+  /// - [onInstanceDestroyedAddress]: The same lifecycle callback, accepted
+  ///   under this name too. If both are given they must be the same address
+  ///   (an [ArgumentError] is thrown otherwise).
+  /// - [userdataAddress]: Optional opaque pointer passed to the callbacks.
+  /// - [webJsFunctionName]: On Web, the name of a JavaScript function on
+  ///   `globalThis` (e.g. `'myCustomSynthDsp'`) invoked synchronously from
+  ///   WASM via `EM_ASM_INT`.
+  /// - [mustTickWhenInaudible]: Whether the voices keep advancing (calling
+  ///   the DSP callback) while inaudible, e.g. at zero volume (default
+  ///   `true`). Applies to every voice of this source; see
+  ///   [setInaudibleBehavior] to change it per voice.
+  /// - [killWhenInaudible]: Whether a voice is stopped once it becomes
+  ///   inaudible (default `false`). As with [setInaudibleBehavior], the engine
+  ///   evaluates this during its 3D audio update, so it only takes effect for
+  ///   voices started with `play3d` (where distance attenuation makes them
+  ///   inaudible); a 2D voice faded to zero volume keeps playing.
+  /// - [autoDispose]: Whether to dispose the source automatically when all
+  ///   voices finish (default `false`).
+  /// - [singleInstance]: Whether playing the source stops the voice already
+  ///   playing it (default `false`). Use it when the callback renders one
+  ///   shared state, such as a synthesizer: every voice calls it once per
+  ///   mix.
+  @experimental
+  AudioSource createCustomAudioSource({
+    int sampleRate = 48000,
+    Channels channels = Channels.stereo,
+    int dspCallbackAddress = 0,
+    int onInstanceCreatedAddress = 0,
+    int onInstanceDestroyedAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+    bool mustTickWhenInaudible = true,
+    bool killWhenInaudible = false,
+    bool autoDispose = false,
+    bool singleInstance = false,
+  }) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    final ret = _controller.soLoudFFI.createCustomAudioSource(
+      sampleRate: sampleRate,
+      channels: channels.count,
+      mustTickWhenInaudible: mustTickWhenInaudible,
+      killWhenInaudible: killWhenInaudible,
+      dspCallbackAddress: dspCallbackAddress,
+      onInstanceCreatedAddress: onInstanceCreatedAddress,
+      onInstanceDestroyedAddress: onInstanceDestroyedAddress,
+      userdataAddress: userdataAddress,
+      webJsFunctionName: webJsFunctionName,
+      singleInstance: singleInstance,
+    );
+    _logPlayerError(ret.error, from: 'createCustomAudioSource() result');
+    if (ret.error != PlayerErrors.noError) {
+      throw SoLoudCppException.fromPlayerError(ret.error);
+    }
+    final newSound = _addNewSound(ret.error, '', ret.soundHash.hash)
+      ..autoDispose = autoDispose;
+    return newSound;
   }
 
   /// Utility method used by every playback method to check a native result.

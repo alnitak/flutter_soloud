@@ -70,12 +70,17 @@ namespace SoLoud
 #include "miniaudio.h"
 #ifdef __ANDROID__
 #include <android/api-level.h>
+#include <dlfcn.h>
+#include <time.h>
 #endif
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1
 #import <AVFoundation/AVFoundation.h>
 #endif
+#endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
 #endif
 #include <math.h>
 #include <algorithm>
@@ -531,19 +536,158 @@ namespace SoLoud
         return result;
     }
 
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+    // For the AAudio close race test: the probe streams a temporary
+    // enumeration context closed, the ones of those it waited for, and the
+    // backend that context last used.
+    static std::atomic<unsigned int> gEnumerationProbeCloses{0};
+    static std::atomic<unsigned int> gEnumerationProbeWaits{0};
+    static std::atomic<int> gEnumerationBackend{-1};
+    unsigned int miniaudio_testEnumerationProbeCloses() { return gEnumerationProbeCloses.load(); }
+    unsigned int miniaudio_testEnumerationProbeWaits() { return gEnumerationProbeWaits.load(); }
+    int miniaudio_testEnumerationBackend() { return gEnumerationBackend.load(); }
+#endif
+
+    // Oboe's bounds on the wait before a close (kMinDelayBeforeCloseMillis,
+    // kMaxDelayBeforeCloseMillis).
+    constexpr ma_int64 kMinDelayBeforeCloseMs = 10;
+    constexpr ma_int64 kMaxDelayBeforeCloseMs = 100;
+
+    /// Stop [pStream] and wait about one burst, before it is closed. Ported
+    /// from Oboe's close workaround (google/oboe 8c13e5e2:
+    /// AudioStreamAAudio::close() and requestStop_l(), and
+    /// AudioStream::calculateDefaultDelayBeforeCloseMillis()).
+    ///
+    /// On Android 11 and earlier a legacy (non-MMAP) stream is an AudioTrack
+    /// whose callbacks hold a raw pointer to the stream: its audio data, and
+    /// the route changes it registers for when it is opened, started or not.
+    /// AAudioStream_close() deletes the stream at once, so a callback already
+    /// being delivered then runs on a freed stream and crashes the process,
+    /// in AudioStreamLegacy_callback() or AudioStreamLegacy::
+    /// onAudioDeviceUpdate(). From Android 12 the stream is reference counted
+    /// and closing it only drops a reference. Stopping it and waiting lets the
+    /// callbacks in flight finish first.
+    ///
+    /// miniaudio closes AAudio streams directly on every path: a device's
+    /// uninit, the reroute job after a disconnect, and the streams it opens to
+    /// probe a device. Each goes through its context's AAudioStream_close, so
+    /// the wait is added there, in closeAAudioStream() for the engine and a
+    /// scoped close hook for temporary enumeration contexts. miniaudio is
+    /// unchanged.
+    ///
+    /// As in Oboe, a device stream gets it on every SDK. A probe, which is
+    /// never started, gets it only on SDK <= 30, where the raw-pointer
+    /// callback exists: enumeration runs on the caller's thread, for
+    /// flutter_soloud the UI thread, and on an API 36 emulator the wait added
+    /// about 65 ms to each.
+    ///
+    /// Oboe also leaves a stream that is already stopping or stopped alone on
+    /// SDK <= 27 (O_MR1). That case never arises here: init_platform_context(),
+    /// which creates every context whose streams come through here, picks
+    /// AAudio only from API 30.
+    ///
+    /// Never called on an AAudio callback thread, where AAudio refuses stop
+    /// and close: miniaudio closes streams only on application threads and on
+    /// its job thread.
+    ///
+    /// Calls through [aContext]'s function table, the one the stream was
+    /// opened with: a temporary enumeration context can exist before the
+    /// engine's, whose table is then still empty.
+    static void stopAndWaitBeforeClose(ma_context *aContext, ma_AAudioStream *pStream)
+    {
+        // The result is ignored, as in Oboe's close().
+        ((MA_PFN_AAudioStream_requestStop)
+             aContext->aaudio.AAudioStream_requestStop)(pStream);
+
+        const ma_int64 framesPerBurst =
+            ((MA_PFN_AAudioStream_getFramesPerBurst)
+                 aContext->aaudio.AAudioStream_getFramesPerBurst)(pStream);
+        const ma_int64 sampleRate =
+            ((MA_PFN_AAudioStream_getSampleRate)
+                 aContext->aaudio.AAudioStream_getSampleRate)(pStream);
+        ma_int64 delayMs = kMinDelayBeforeCloseMs;
+        if (framesPerBurst > 0 && sampleRate > 0)
+            delayMs = std::clamp<ma_int64>(1 + framesPerBurst * 1000 / sampleRate,
+                                           kMinDelayBeforeCloseMs,
+                                           kMaxDelayBeforeCloseMs);
+        std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+    }
+
     static ma_aaudio_result_t closeAAudioStream(ma_AAudioStream *pStream)
     {
+        bool deviceStream;
         {
             std::lock_guard<std::mutex> lock(gAAudioStreamGate);
-            gOpenDeviceStreams.erase(std::remove(gOpenDeviceStreams.begin(),
-                                                 gOpenDeviceStreams.end(),
-                                                 pStream),
-                                     gOpenDeviceStreams.end());
+            const auto closed = std::remove(gOpenDeviceStreams.begin(),
+                                            gOpenDeviceStreams.end(), pStream);
+            deviceStream = closed != gOpenDeviceStreams.end();
+            gOpenDeviceStreams.erase(closed, gOpenDeviceStreams.end());
         }
         // Not under the lock: closing joins the stream's callback thread,
-        // which may be waiting for it in gateAAudioStreamError().
+        // which may be waiting for it in gateAAudioStreamError(). Already out
+        // of gOpenDeviceStreams, so an error the stream reports while it is
+        // stopped and waited out queues no reroute.
+        if (deviceStream || ma_android_sdk_version() <= 30)
+            stopAndWaitBeforeClose(&context, pStream);
         return gCloseAAudioStream(pStream);
     }
+
+    // Before engine init, enumeration uses a temporary context. Its streams
+    // never pass through the global context's close hook, and the global
+    // function table may still be empty. Keep a close-only hook scoped to
+    // that context, using its own function pointers. Enumeration opens and
+    // closes its probes synchronously on its caller, so thread-local state
+    // carries the context through AAudio's context-free close signature. No
+    // device or reroute hook is installed on this short-lived context.
+    struct EnumerationCloseContext
+    {
+        ma_context *context = nullptr;
+        MA_PFN_AAudioStream_close close = nullptr;
+    };
+    static thread_local EnumerationCloseContext tEnumerationClose;
+
+    static ma_aaudio_result_t closeEnumerationAAudioStream(ma_AAudioStream *pStream)
+    {
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+        gEnumerationProbeCloses.fetch_add(1);
+#endif
+        if (ma_android_sdk_version() <= 30)
+        {
+            stopAndWaitBeforeClose(tEnumerationClose.context, pStream);
+#if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+            gEnumerationProbeWaits.fetch_add(1);
+#endif
+        }
+        return tEnumerationClose.close(pStream);
+    }
+
+    class ScopedEnumerationAAudioClose
+    {
+    public:
+        explicit ScopedEnumerationAAudioClose(ma_context &aContext)
+            : mPrevious(tEnumerationClose)
+        {
+            if (aContext.backend != ma_backend_aaudio)
+                return;
+            mContext = &aContext;
+            mClose = (MA_PFN_AAudioStream_close)aContext.aaudio.AAudioStream_close;
+            tEnumerationClose = {mContext, mClose};
+            aContext.aaudio.AAudioStream_close = (ma_proc)closeEnumerationAAudioStream;
+        }
+        ~ScopedEnumerationAAudioClose()
+        {
+            if (mContext == nullptr)
+                return;
+            mContext->aaudio.AAudioStream_close = (ma_proc)mClose;
+            tEnumerationClose = mPrevious;
+        }
+        ScopedEnumerationAAudioClose(const ScopedEnumerationAAudioClose &) = delete;
+        ScopedEnumerationAAudioClose &operator=(const ScopedEnumerationAAudioClose &) = delete;
+    private:
+        EnumerationCloseContext mPrevious;
+        ma_context *mContext = nullptr;
+        MA_PFN_AAudioStream_close mClose = nullptr;
+    };
 
     static void setAAudioErrorCallback(ma_AAudioStreamBuilder *pBuilder,
                                        ma_AAudioStream_errorCallback callback,
@@ -647,6 +791,7 @@ namespace SoLoud
         {
             soloud_platform_log("miniaudio: closing an AAudio stream a failed "
                                 "device initialization left open\n");
+            stopAndWaitBeforeClose(&context, pStream);
             gCloseAAudioStream(pStream);
         }
 #endif
@@ -666,6 +811,10 @@ namespace SoLoud
         gDeviceInitialized.store(false, std::memory_order_release);
         markDeviceTearingDown();
     }
+
+#if defined(MA_APPLE_MOBILE)
+    static std::atomic<bool> gIosInterruptionActive{false};
+#endif
 
     // Added by Marco Bavagnoli
     void on_notification(const ma_device_notification* pNotification)
@@ -725,6 +874,9 @@ namespace SoLoud
 
             case ma_device_notification_type_interruption_ended:
             {
+#if defined(MA_APPLE_MOBILE)
+                gIosInterruptionActive.store(false, std::memory_order_release);
+#endif
                 auto interruptionCallback =
                     currentSoloud->_audioInterruptionCallback.load(
                         std::memory_order_acquire);
@@ -761,39 +913,93 @@ namespace SoLoud
     }
 
 #if defined(MA_APPLE_MOBILE)
-    // On iOS, when an app is suspended by the system, iOS sends an
-    // AVAudioSessionInterruptionNotification with type Began and reason
-    // AVAudioSessionInterruptionReasonAppWasSuspended. Apple explicitly documents
-    // that the system does NOT send an interruption ended notification when the
-    // app returns to the foreground. Without intervention, mInterruptionActive
-    // in Player remains true forever, leaving all subsequent playback silent (#573).
+    // On iOS, when an app is backgrounded or suspended by the system, iOS sends
+    // AVAudioSessionInterruptionNotification with type Began:
+    //   - On iOS 10.3–15, the reason is AVAudioSessionInterruptionReasonAppWasSuspended
+    //     (or AVAudioSessionInterruptionWasSuspendedKey), delivered when the app
+    //     unsuspends.
+    //   - From iOS 16 onwards, Apple deprecated and removed the 'wasSuspended'
+    //     reason, so background interruptions arrive with
+    //     AVAudioSessionInterruptionReasonDefault (0).
+    // In both cases, iOS does NOT reliably send a matching
+    // AVAudioSessionInterruptionTypeEnded notification when the app returns to
+    // the foreground. Without intervention, mInterruptionActive in Player
+    // remains true forever, leaving all subsequent playback silent (#573).
     //
-    // We observe AVAudioSessionInterruptionNotification to track when an
-    // interruption was caused specifically by app suspension, and observe
-    // UIApplicationDidBecomeActiveNotification to synthesize the missing
-    // interruption_ended event when the app returns to the foreground.
-    static std::atomic<bool> gInterruptionWasSuspended{false};
-    static id gAppDidBecomeActiveObserver = nil;
-    static id gAudioSessionInterruptionObserver = nil;
+    // Furthermore, because suspension notifications are delayed until the app
+    // process thaws, AVAudioSessionInterruptionTypeBegan can arrive either
+    // before or shortly after UIApplicationDidBecomeActiveNotification /
+    // UISceneDidActivateNotification. We track both the active interruption
+    // state and the app foreground/background state so we can synthesize the
+    // missing interruption_ended notification in either delivery order.
+    //
+    // Only an interruption that can stem from suspension is ever ended this
+    // way. A suspension needs the app to have entered the background first,
+    // whereas a phone/FaceTime call, Siri or Control Center only make it
+    // inactive; such an interruption may still be in progress when the user
+    // returns to the app, and iOS does send its Ended.
+    //
+    // gIosAppInBackground: between DidEnterBackground and WillEnterForeground.
+    // gIosAppInactive: between WillResignActive and DidBecomeActive.
+    static std::atomic<bool> gIosAppInBackground{false};
+    static std::atomic<bool> gIosAppInactive{false};
+    // When the app last came back from the background (not merely from
+    // inactive); 0 if it has not since the observers were registered.
+    static std::atomic<int64_t> gIosLastReturnFromBackgroundMs{0};
+    // Whether the latched interruption can stem from suspension (see above).
+    static std::atomic<bool> gIosInterruptionFromSuspension{false};
+    static NSMutableArray<id> *gIosLifecycleObservers = nil;
+
+    static int64_t iosSteadyNowMs()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    }
+
+    static void synthesizeIosInterruptionEnded()
+    {
+        if (!gIosInterruptionFromSuspension.load(std::memory_order_acquire))
+            return;
+        if (!gIosInterruptionActive.exchange(false, std::memory_order_acq_rel))
+            return;
+        gIosInterruptionFromSuspension.store(false, std::memory_order_release);
+
+        if (!gDeviceInitialized.load(std::memory_order_acquire) ||
+            gSoloud.load(std::memory_order_acquire) == nullptr)
+            return;
+
+        soloud_platform_log("miniaudio: synthesizing interruption_ended after returning to foreground\n");
+        ma_device_notification notification = {};
+        notification.pDevice = &gDevice;
+        notification.type = ma_device_notification_type_interruption_ended;
+        on_notification(&notification);
+    }
 
     static void registerIosLifecycleObservers()
     {
-        if (gAppDidBecomeActiveObserver != nil)
+        if (gIosLifecycleObservers != nil)
             return;
 
+        gIosLifecycleObservers = [[NSMutableArray alloc] init];
         NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
 
-        gAudioSessionInterruptionObserver = [center
+        // Observe with queue: nil so this runs synchronously during notification
+        // posting alongside miniaudio's own ma_ios_notification_handler, then
+        // hop to the main queue so any follow-up action is ordered strictly
+        // after miniaudio has finished dispatching interruption_began.
+        id interruptionObs = [center
             addObserverForName:AVAudioSessionInterruptionNotification
             object:[AVAudioSession sharedInstance]
-            queue:[NSOperationQueue mainQueue]
+            queue:nil
             usingBlock:^(NSNotification * _Nonnull note) {
                 NSDictionary *userInfo = [note userInfo];
                 NSNumber *typeNum = userInfo[AVAudioSessionInterruptionTypeKey];
                 if (typeNum == nil)
                     return;
 
-                if ([typeNum unsignedIntegerValue] == AVAudioSessionInterruptionTypeBegan)
+                const NSUInteger type = [typeNum unsignedIntegerValue];
+                if (type == AVAudioSessionInterruptionTypeBegan)
                 {
                     NSNumber *reasonNum = nil;
                     if (@available(iOS 14.5, *)) {
@@ -805,57 +1011,152 @@ namespace SoLoud
                     bool wasSuspended = false;
                     if (reasonNum != nil) {
                         if (@available(iOS 14.5, *)) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                             wasSuspended = ([reasonNum unsignedIntegerValue] ==
                                             AVAudioSessionInterruptionReasonAppWasSuspended);
+#pragma clang diagnostic pop
                         } else {
                             wasSuspended = [reasonNum boolValue];
                         }
                     }
-                    gInterruptionWasSuspended.store(wasSuspended, std::memory_order_release);
+
+                    // Delivered while backgrounded (i.e. on thaw), or
+                    // explicitly flagged: this one can stem from suspension.
+                    // Delivered while the app was active or merely inactive
+                    // (a call, Siri), it is a genuine interruption.
+                    const bool inBackground =
+                        gIosAppInBackground.load(std::memory_order_acquire);
+                    gIosInterruptionFromSuspension.store(
+                        wasSuspended || inBackground, std::memory_order_release);
+                    gIosInterruptionActive.store(true, std::memory_order_release);
+
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        const bool foregroundActive =
+                            !gIosAppInBackground.load(std::memory_order_acquire) &&
+                            !gIosAppInactive.load(std::memory_order_acquire);
+
+                        // If the delayed suspension notification arrived after
+                        // the app already became active in the foreground,
+                        // clear the interruption latch once miniaudio has
+                        // processed Began.
+                        if (wasSuspended && foregroundActive)
+                        {
+                            synthesizeIosInterruptionEnded();
+                            return;
+                        }
+
+                        // On iOS 16+ (where wasSuspended is no longer set), a
+                        // delayed suspension Began can arrive from mediaserverd
+                        // right as the app wakes up from the background,
+                        // slightly after DidBecomeActive. Treat it as one only
+                        // if the app really returned from the background just
+                        // now (a suspension needs the background), and verify
+                        // after a short settle window that the app is still
+                        // active (did not resign for an incoming call/Siri).
+                        const int64_t lastReturnMs =
+                            gIosLastReturnFromBackgroundMs.load(std::memory_order_acquire);
+                        const int64_t sinceReturnMs = iosSteadyNowMs() - lastReturnMs;
+                        if (!wasSuspended && foregroundActive && lastReturnMs != 0 &&
+                            sinceReturnMs >= 0 && sinceReturnMs <= 2000)
+                        {
+                            gIosInterruptionFromSuspension.store(true, std::memory_order_release);
+                            dispatch_after(
+                                dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC),
+                                dispatch_get_main_queue(), ^{
+                                    if (!gIosAppInBackground.load(std::memory_order_acquire) &&
+                                        !gIosAppInactive.load(std::memory_order_acquire))
+                                    {
+                                        synthesizeIosInterruptionEnded();
+                                    }
+                                });
+                        }
+                    });
                 }
-                else if ([typeNum unsignedIntegerValue] == AVAudioSessionInterruptionTypeEnded)
+                else if (type == AVAudioSessionInterruptionTypeEnded)
                 {
-                    gInterruptionWasSuspended.store(false, std::memory_order_release);
+                    gIosInterruptionActive.store(false, std::memory_order_release);
+                    gIosInterruptionFromSuspension.store(false, std::memory_order_release);
                 }
             }];
+        if (interruptionObs != nil)
+            [gIosLifecycleObservers addObject:interruptionObs];
 
-        gAppDidBecomeActiveObserver = [center
-            addObserverForName:@"UIApplicationDidBecomeActiveNotification"
-            object:nil
-            queue:[NSOperationQueue mainQueue]
-            usingBlock:^(NSNotification * _Nonnull note) {
-                // If an interruption was triggered by app suspension, synthesize
-                // the missing interruption_ended notification now that the app
-                // is active in the foreground again.
-                if (gInterruptionWasSuspended.exchange(false, std::memory_order_acq_rel))
-                {
-                    if (!gDeviceInitialized.load(std::memory_order_acquire) ||
-                        gSoloud.load(std::memory_order_acquire) == nullptr)
-                        return;
-
-                    soloud_platform_log("miniaudio: synthesizing interruption_ended after app suspension\n");
-                    ma_device_notification notification = {};
-                    notification.pDevice = &gDevice;
-                    notification.type = ma_device_notification_type_interruption_ended;
-                    on_notification(&notification);
-                }
-            }];
+        // Each notification updates the lifecycle flags; returning to the
+        // foreground also ends a latched suspension interruption.
+        struct LifecycleEvent
+        {
+            const char *name;
+            int inBackground; // 1 set, 0 clear, -1 leave
+            int inactive;     // 1 set, 0 clear, -1 leave
+            bool returnsFromBackground;
+            bool foreground;
+        };
+        const LifecycleEvent events[] = {
+            {"UIApplicationWillResignActiveNotification", -1, 1, false, false},
+            {"UISceneWillDeactivateNotification", -1, 1, false, false},
+            {"UIApplicationDidEnterBackgroundNotification", 1, 1, false, false},
+            {"UISceneDidEnterBackgroundNotification", 1, 1, false, false},
+            {"UIApplicationWillEnterForegroundNotification", 0, -1, true, true},
+            {"UISceneWillEnterForegroundNotification", 0, -1, true, true},
+            {"UIApplicationDidBecomeActiveNotification", 0, 0, false, true},
+            {"UISceneDidActivateNotification", 0, 0, false, true},
+        };
+        for (const LifecycleEvent &event : events)
+        {
+            const int inBackground = event.inBackground;
+            const int inactive = event.inactive;
+            const bool returnsFromBackground = event.returnsFromBackground;
+            const bool foreground = event.foreground;
+            id obs = [center addObserverForName:[NSString stringWithUTF8String:event.name]
+                                         object:nil
+                                          queue:[NSOperationQueue mainQueue]
+                                     usingBlock:^(NSNotification * _Nonnull note) {
+                                         (void)note;
+                                         if (returnsFromBackground &&
+                                             gIosAppInBackground.load(std::memory_order_acquire))
+                                         {
+                                             gIosLastReturnFromBackgroundMs.store(
+                                                 iosSteadyNowMs(), std::memory_order_release);
+                                         }
+                                         if (inBackground >= 0)
+                                             gIosAppInBackground.store(inBackground != 0, std::memory_order_release);
+                                         if (inactive >= 0)
+                                             gIosAppInactive.store(inactive != 0, std::memory_order_release);
+                                         if (!foreground)
+                                             return;
+                                         synthesizeIosInterruptionEnded();
+                                         dispatch_async(dispatch_get_main_queue(), ^{
+                                             if (!gIosAppInBackground.load(std::memory_order_acquire))
+                                             {
+                                                 synthesizeIosInterruptionEnded();
+                                             }
+                                         });
+                                     }];
+            if (obs != nil)
+                [gIosLifecycleObservers addObject:obs];
+        }
     }
 
     static void unregisterIosLifecycleObservers()
     {
         NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
-        if (gAudioSessionInterruptionObserver != nil)
+        if (gIosLifecycleObservers != nil)
         {
-            [center removeObserver:gAudioSessionInterruptionObserver];
-            gAudioSessionInterruptionObserver = nil;
+            for (id obs in gIosLifecycleObservers)
+            {
+                [center removeObserver:obs];
+            }
+#if defined(__has_feature) && !__has_feature(objc_arc)
+            [gIosLifecycleObservers release];
+#endif
+            gIosLifecycleObservers = nil;
         }
-        if (gAppDidBecomeActiveObserver != nil)
-        {
-            [center removeObserver:gAppDidBecomeActiveObserver];
-            gAppDidBecomeActiveObserver = nil;
-        }
-        gInterruptionWasSuspended.store(false, std::memory_order_release);
+        gIosInterruptionActive.store(false, std::memory_order_release);
+        gIosInterruptionFromSuspension.store(false, std::memory_order_release);
+        gIosAppInBackground.store(false, std::memory_order_release);
+        gIosAppInactive.store(false, std::memory_order_release);
+        gIosLastReturnFromBackgroundMs.store(0, std::memory_order_release);
     }
 #endif
 
@@ -1039,14 +1340,25 @@ namespace SoLoud
         ma_result result = init_platform_context(&enumerationContext);
         if (result != MA_SUCCESS)
             return result;
-        result = copy_playback_devices(&enumerationContext, aDevices);
+#if defined(MA_HAS_AAUDIO) && defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
+        gEnumerationBackend.store(enumerationContext.backend);
+#endif
+        {
+#if defined(MA_HAS_AAUDIO)
+            const ScopedEnumerationAAudioClose closeHook(enumerationContext);
+#endif
+            result = copy_playback_devices(&enumerationContext, aDevices);
+        }
         ma_context_uninit(&enumerationContext);
         return result;
     }
 
     void soloud_miniaudio_audiomixer(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
     {
-        static bool first_call = true;
+        // Per callback thread, not per process: a device re-opened after
+        // deinit()/init() or a device change gets a new callback thread,
+        // which needs the same elevation.
+        static thread_local bool first_call = true;
         if (first_call) {
 #ifdef __ANDROID__
             int policy;
@@ -1083,7 +1395,7 @@ namespace SoLoud
         // state. Emit silence instead.
         if (soloud == nullptr ||
             soloud != gSoloud.load(std::memory_order_acquire) ||
-            soloud->mEngineReady == 0)
+            soloud->mEngineReady.load(std::memory_order_acquire) == 0)
         {
             std::memset(pOutput, 0,
                         frameCount * (outChannels != 0 ? outChannels : 1) *
@@ -1121,28 +1433,39 @@ namespace SoLoud
         // ended-voice queue is drained with correct bookkeeping.
         soloud->unlockAudioMutex_internal();
 #else
+        if (soloud == nullptr ||
+            soloud != gSoloud.load(std::memory_order_acquire) ||
+            soloud->mEngineReady.load(std::memory_order_acquire) == 0)
+        {
+            std::memset(pOutput, 0,
+                        (size_t)frameCount * (outChannels != 0 ? outChannels : 1) *
+                            sizeof(float));
+            return;
+        }
         if (soloud->isRenderAheadEnabled())
         {
-            // Render-ahead ring path: the engine has already mixed
-            // renderAheadFrames into its own ring; this callback only copies
-            // out and tops the ring back up. The ring read is lock-free SPSC,
-            // so the device never blocks behind the audio mutex.
-            soloud->renderRingTopUp_internal();
+            // Render-ahead ring path: the render worker keeps
+            // renderAheadFrames mixed into the engine's ring, so this callback
+            // only copies frames out (and runs the post-ring stage). The ring
+            // read takes no lock and mixing happens on the worker, so a busy
+            // API thread or an expensive mix never delays the device.
             unsigned int got =
-                soloud->mRenderRing.read((float *)pOutput, frameCount);
-            if (got < frameCount)
+                soloud->readRenderRingForDevice_internal((float *)pOutput, frameCount);
+            if (got < frameCount && soloud->mRenderRing.getReadPosition() > got)
             {
-                // Underrun: emit silence for the gap. Recoverable on the next
-                // callback -- the top-up above keeps producing.
-                static bool underrunLogged = false;
-                if (!underrunLogged)
+                // Underrun (silence was emitted for the gap). Recoverable on
+                // the next callback -- the render worker keeps producing.
+                // The very first callbacks can arrive before the first quantum
+                // is mixed; those are expected and not counted. Log the 1st,
+                // 2nd, 4th, 8th... occurrence so repeated underruns stay
+                // visible without flooding the log from the audio thread.
+                static std::atomic<unsigned int> underrunCount{0};
+                const unsigned int n =
+                    underrunCount.fetch_add(1, std::memory_order_relaxed) + 1;
+                if ((n & (n - 1)) == 0)
                 {
-                    underrunLogged = true;
-                    soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun (%u/%u frames)\n", got, frameCount);
+                    soloud_platform_log("soloud_miniaudio_audiomixer: render ring underrun #%u (%u/%u frames)\n", n, got, frameCount);
                 }
-                unsigned int outCh = pDevice->playback.channels;
-                std::memset((float *)pOutput + (size_t)got * outCh, 0,
-                            (size_t)(frameCount - got) * outCh * sizeof(float));
             }
             // The capture tap sits after the ring read, so it always reflects
             // what was actually played, including any retroactive rewrite.
@@ -1381,6 +1704,180 @@ namespace SoLoud
         return (unsigned int)ma_device_get_state(&gDevice);
     }
 
+    // Returns the estimated hardware presentation latency in seconds (external
+    // DAC, OS buffers, driver queues, and route delays).
+    double miniaudio_getHardwareOutputLatency()
+    {
+        if (!gDeviceInitialized.load(std::memory_order_acquire))
+            return 0.0;
+        if (ma_device_get_state(&gDevice) != ma_device_state_started)
+            return 0.0;
+        if (gDevice.sampleRate == 0)
+            return 0.0;
+
+#if defined(__EMSCRIPTEN__) && defined(MA_SUPPORT_WEBAUDIO)
+        // Query the Web Audio AudioContext (outputLatency + baseLatency) via Emscripten EM_ASM
+        double webLatency = EM_ASM_DOUBLE({
+            try {
+                var ctx = null;
+                if (typeof window !== 'undefined' && window.miniaudio && window.miniaudio.get_device_by_index) {
+                    var dev = window.miniaudio.get_device_by_index($0);
+                    if (dev && dev.webaudio) {
+                        ctx = dev.webaudio;
+                    }
+                }
+                if (!ctx && typeof emscriptenGetAudioObject === 'function') {
+                    var worklet = emscriptenGetAudioObject($1);
+                    if (worklet && worklet.context) {
+                        ctx = worklet.context;
+                    }
+                }
+                if (ctx) {
+                    var outLat = ctx.outputLatency || 0;
+                    var baseLat = ctx.baseLatency || 0;
+                    return outLat + baseLat;
+                }
+            } catch (e) {
+            }
+            return 0.0;
+        }, gDevice.webaudio.deviceIndex, gDevice.webaudio.audioWorklet);
+
+        if (webLatency > 0.0)
+            return webLatency;
+#endif
+
+#if defined(__ANDROID__) && defined(MA_SUPPORT_AAUDIO)
+        if (context.backend == ma_backend_aaudio && gDevice.aaudio.pStreamPlayback != nullptr)
+        {
+            typedef int32_t (*pfn_AAudioStream_getTimestamp)(void*, clockid_t, int64_t*, int64_t*);
+            typedef int64_t (*pfn_AAudioStream_getFramesWritten)(void*);
+            static pfn_AAudioStream_getTimestamp s_getTimestamp = nullptr;
+            static pfn_AAudioStream_getFramesWritten s_getFramesWritten = nullptr;
+            static std::once_flag s_procsLoaded;
+
+            std::call_once(s_procsLoaded, []() {
+                if (context.aaudio.hAAudio != nullptr)
+                {
+                    s_getTimestamp = (pfn_AAudioStream_getTimestamp)dlsym(context.aaudio.hAAudio, "AAudioStream_getTimestamp");
+                    s_getFramesWritten = (pfn_AAudioStream_getFramesWritten)dlsym(context.aaudio.hAAudio, "AAudioStream_getFramesWritten");
+                }
+                if (s_getTimestamp == nullptr)
+                {
+                    s_getTimestamp = (pfn_AAudioStream_getTimestamp)dlsym(RTLD_DEFAULT, "AAudioStream_getTimestamp");
+                }
+                if (s_getFramesWritten == nullptr)
+                {
+                    s_getFramesWritten = (pfn_AAudioStream_getFramesWritten)dlsym(RTLD_DEFAULT, "AAudioStream_getFramesWritten");
+                }
+            });
+
+            if (s_getTimestamp != nullptr && s_getFramesWritten != nullptr)
+            {
+                int64_t framePosition = 0;
+                int64_t timeNanos = 0;
+                int32_t res = s_getTimestamp(gDevice.aaudio.pStreamPlayback, CLOCK_MONOTONIC, &framePosition, &timeNanos);
+                if (res == 0 && framePosition > 0 && timeNanos > 0)
+                {
+                    int64_t framesWritten = s_getFramesWritten(gDevice.aaudio.pStreamPlayback);
+                    struct timespec nowTs;
+                    if (clock_gettime(CLOCK_MONOTONIC, &nowTs) == 0)
+                    {
+                        int64_t nowNanos = (int64_t)nowTs.tv_sec * 1000000000LL + nowTs.tv_nsec;
+                        // Use internal stream sample rate since framePosition and framesWritten
+                        // count frames of the native AAudio stream, not the engine client rate.
+                        double streamSampleRate = (gDevice.playback.internalSampleRate > 0)
+                            ? (double)gDevice.playback.internalSampleRate
+                            : (double)gDevice.sampleRate;
+                        double latencySec = ((double)(framesWritten - framePosition) / streamSampleRate) -
+                                            ((double)(nowNanos - timeNanos) / 1000000000.0);
+                        if (latencySec > 0.0)
+                            return latencySec;
+                    }
+                }
+            }
+        }
+#endif
+
+#if defined(__APPLE__)
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1
+        @try {
+            AVAudioSession *session = [AVAudioSession sharedInstance];
+            if (session != nil) {
+                NSTimeInterval routeLatency = session.outputLatency + session.IOBufferDuration;
+                if (routeLatency > 0.0) {
+                    return (double)routeLatency;
+                }
+            }
+        } @catch (id) {}
+#elif defined(MA_HAS_COREAUDIO)
+        if (context.backend == ma_backend_coreaudio)
+        {
+            Float64 unitLatency = 0.0;
+            if (gDevice.coreaudio.audioUnitPlayback != nullptr &&
+                context.coreaudio.AudioUnitGetProperty != nullptr)
+            {
+                UInt32 dataSize = sizeof(unitLatency);
+                // kAudioUnitProperty_Latency = 12, kAudioUnitScope_Global = 0
+                ((ma_AudioUnitGetProperty_proc)context.coreaudio.AudioUnitGetProperty)(
+                    (AudioUnit)gDevice.coreaudio.audioUnitPlayback, 12, 0, 0, &unitLatency, &dataSize);
+            }
+
+            double deviceLatencySec = 0.0;
+            if (gDevice.coreaudio.deviceObjectIDPlayback != 0 &&
+                context.coreaudio.AudioObjectGetPropertyData != nullptr)
+            {
+                // Query device presentation latency and safety offset frames.
+                // kAudioDevicePropertyLatency = 'ltnc' (0x6c746e63)
+                // kAudioDevicePropertySafetyOffset = 'saft' (0x73616674)
+                // kAudioObjectPropertyScopeOutput = 'outp' (0x6f757470)
+                // kAudioObjectPropertyElementMain = 0
+                AudioObjectPropertyAddress address = { 0x6c746e63, 0x6f757470, 0 };
+                UInt32 latencyFrames = 0;
+                UInt32 propSize = sizeof(latencyFrames);
+                OSStatus err = ((ma_AudioObjectGetPropertyData_proc)context.coreaudio.AudioObjectGetPropertyData)(
+                    (AudioObjectID)gDevice.coreaudio.deviceObjectIDPlayback, &address, 0, nullptr, &propSize, &latencyFrames);
+                if (err == noErr && latencyFrames > 0 && gDevice.sampleRate > 0)
+                {
+                    deviceLatencySec += (double)latencyFrames / (double)gDevice.sampleRate;
+                }
+
+                address.mSelector = 0x73616674; // kAudioDevicePropertySafetyOffset
+                UInt32 safetyFrames = 0;
+                propSize = sizeof(safetyFrames);
+                err = ((ma_AudioObjectGetPropertyData_proc)context.coreaudio.AudioObjectGetPropertyData)(
+                    (AudioObjectID)gDevice.coreaudio.deviceObjectIDPlayback, &address, 0, nullptr, &propSize, &safetyFrames);
+                if (err == noErr && safetyFrames > 0 && gDevice.sampleRate > 0)
+                {
+                    deviceLatencySec += (double)safetyFrames / (double)gDevice.sampleRate;
+                }
+            }
+
+            double totalLatency = (double)unitLatency + deviceLatencySec;
+            if (totalLatency > 0.0)
+            {
+                return totalLatency;
+            }
+        }
+#endif
+#endif
+
+#if (defined(_WIN32) || defined(_WIN64)) && defined(MA_HAS_WASAPI)
+        if (context.backend == ma_backend_wasapi && gDevice.wasapi.pAudioClientPlayback != nullptr)
+        {
+            ma_IAudioClient *pAudioClient = (ma_IAudioClient*)gDevice.wasapi.pAudioClientPlayback;
+            MA_REFERENCE_TIME hnsLatency = 0;
+            if (SUCCEEDED(ma_IAudioClient_GetStreamLatency(pAudioClient, &hnsLatency)) && hnsLatency > 0)
+            {
+                return (double)hnsLatency / 10000000.0;
+            }
+        }
+#endif
+
+        // Return 0.0 when hardware presentation latency is not reported by the
+        // active backend or stream timestamps are not yet available during warm-up.
+        return 0.0;
+    }
+
     // Engine mix quantum to hand to postinit_internal. With the render-ahead
     // ring the device period is decoupled from the engine quantum, so the
     // engine must get the *configured* quantum (aBuffer), not the device
@@ -1400,6 +1897,11 @@ namespace SoLoud
         // Opens notification admission as well as publishing the pointer.
         // Retired again by the guard on any failure return below.
         NotificationPublishGuard notificationGuard(aSoloud);
+#if !defined(__EMSCRIPTEN__)
+        // A real device: with the render-ahead ring, Soloud::init() starts
+        // the render worker once the engine is ready.
+        aSoloud->mRenderWorkerWanted = true;
+#endif
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         if (pPlaybackInfos_id != NULL)
         {
@@ -1412,6 +1914,8 @@ namespace SoLoud
         deviceConfig.sampleRate         = aSamplerate;
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData          = (void *)aSoloud;
+        deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
+        deviceConfig.noClip             = MA_TRUE;
 
         // deviceConfig.aaudio.usage       = ma_aaudio_usage_default;
         // deviceConfig.aaudio.contentType = ma_aaudio_content_type_default;
@@ -1712,6 +2216,8 @@ namespace SoLoud
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData          = (void *)currentSoloud;
         deviceConfig.notificationCallback = on_notification;
+        deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
+        deviceConfig.noClip             = MA_TRUE;
 
         // Preserve the performance profile chosen at init across device changes,
         // otherwise switching the output device would silently revert to the
@@ -1807,6 +2313,8 @@ namespace SoLoud
         deviceConfig.dataCallback       = soloud_miniaudio_audiomixer;
         deviceConfig.pUserData          = (void *)currentSoloud;
         deviceConfig.notificationCallback = on_notification;
+        deviceConfig.noPreSilencedOutputBuffer = MA_TRUE;
+        deviceConfig.noClip             = MA_TRUE;
 
         deviceConfig.performanceProfile = gMiniaudioLowLatency.load(std::memory_order_acquire)
             ? ma_performance_profile_low_latency

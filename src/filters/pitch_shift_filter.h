@@ -14,6 +14,10 @@ class PitchShiftInstance : public SoLoud::FilterInstance {
   PitchShift *mParent;
   unsigned int mChannelCount = 0;
   float mSampleRate = 0;
+  float mLastShift = -1.0f;
+  float *mInputChannels[MAX_CHANNELS] = {};
+  float *mOutputChannels[MAX_CHANNELS] = {};
+  std::vector<float> mOutputBuffer;
 
 public:
   virtual void filter(float *aBuffer, unsigned int aSamples,

@@ -1,6 +1,7 @@
 // ignore_for_file: public_member_api_docs, constant_identifier_names
 // ignore_for_file: non_constant_identifier_names, camel_case_types
 
+import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'package:flutter_soloud/src/metadata.dart';
 
@@ -406,12 +407,16 @@ final class NativeAudioMetadata extends ffi.Struct {
 
   /// Helper function to convert FFI char array to String
   String _arrayToString(ffi.Array<ffi.Char> array, [int maxLength = 1024]) {
-    final buffer = StringBuffer();
+    // The native side stores UTF-8. `char` is signed on some ABIs and
+    // unsigned on others: only NUL ends the string, and every other byte
+    // belongs to a UTF-8 sequence. maxLength is the field's capacity.
+    final bytes = <int>[];
     for (var i = 0; i < maxLength; i++) {
-      if (array[i] <= 0) break; // Stop at null terminator
-      buffer.writeCharCode(array[i]);
+      final byte = array[i] & 0xff;
+      if (byte == 0) break;
+      bytes.add(byte);
     }
-    return buffer.toString().trim();
+    return utf8.decode(bytes, allowMalformed: true).trim();
   }
 
   // Dummy method to reflect the web implementation. Not used with FFI.

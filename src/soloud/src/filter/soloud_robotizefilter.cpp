@@ -37,21 +37,31 @@ namespace SoLoud
 		mParam[WAVE] = (float)aParent->mWave;
 	}
 
-	void RobotizeFilterInstance::filterChannel(float *aBuffer, unsigned int aSamples, float aSamplerate, time aTime, unsigned int aChannel, unsigned int aChannels)
+	void RobotizeFilterInstance::filterChannel(float *aBuffer, unsigned int aSamples, float aSamplerate, time aTime, unsigned int aChannel, unsigned int /*aChannels*/)
 	{
 		if (aChannel == 0)
 		{
 			updateParams(aTime);
 		}
-		unsigned int i;
-		int period = (int)(aSamplerate / mParam[FREQ]);
-		int start = (int)(aTime * aSamplerate) % period;
-		for (i = 0; i < aSamples; i++)
+		const float freq = mParam[FREQ] > 0.1f ? mParam[FREQ] : 0.1f;
+		int period = (int)(aSamplerate / freq);
+		if (period < 1)
+			period = 1;
+		int pos = (int)(aTime * aSamplerate) % period;
+		if (pos < 0)
+			pos += period;
+		const float invPeriod = 1.0f / (float)period;
+		const int wave = (int)mParam[WAVE];
+		const float wet = mParam[WET];
+
+		for (unsigned int i = 0; i < aSamples; i++)
 		{
-			float s = aBuffer[i];
-			float wpos = ((start + i) % period) / (float)period;
-			s *= SoLoud::Misc::generateWaveform((int)mParam[WAVE], wpos) + 0.5f;
-			aBuffer[i] += (s - aBuffer[i]) * mParam[WET];
+			const float dry = aBuffer[i];
+			const float wpos = (float)pos * invPeriod;
+			const float wetSample = dry * (SoLoud::Misc::generateWaveform(wave, wpos) + 0.5f);
+			aBuffer[i] = dry + (wetSample - dry) * wet;
+			if (++pos >= period)
+				pos = 0;
 		}
 	}
 

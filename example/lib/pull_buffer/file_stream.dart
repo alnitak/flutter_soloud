@@ -4,11 +4,11 @@ import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/pull_buffer/seek_bar.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// This example reads a local audio file in chunks and feeds it to an
 /// [AudioSource]. It demonstrates the callback-driven pull model and the custom

@@ -100,8 +100,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   nativeFileLoadedCallable;
   ffi.NativeCallable<native.dartStateChangedCallback_tFunction>?
   nativeStateChangedCallable;
-  ffi.NativeCallable<native.dartMixerOutputDataCallback_tFunction>?
-  nativeMixerOutputDataCallable;
+
+  /// Receives this isolate's capture packet tokens. A port rather than a
+  /// NativeCallable: the capture can outlive this isolate, and posting to a
+  /// closed port fails where calling a deleted callable aborts the VM.
+  RawReceivePort? _mixerOutputPort;
+
   ffi.NativeCallable<native.dartVisualizationCallback_tFunction>?
   nativeVisualizationCallable;
 
@@ -110,15 +114,12 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   /// Controller that fires whenever new mixer output data is available.
   ///
-  /// The event contains a pointer to the start of the contiguous unread
-  /// region and the number of valid bytes. The pointer remains valid until
-  /// the read position is advanced with [advanceMixerOutputReadPosition].
-  late final StreamController<({ffi.Pointer<ffi.Uint8> pointer, int length})>
-  mixerOutputDataAvailableController = StreamController.broadcast();
+  /// Each event owns its bytes and stays valid after capture stops.
+  late final StreamController<Uint8List> mixerOutputDataAvailableController =
+      StreamController.broadcast();
 
-  /// Stream of notifications that new mixer output data is available.
-  Stream<({ffi.Pointer<ffi.Uint8> pointer, int length})>
-  get mixerOutputDataAvailableEvents =>
+  /// Stream of owned mixer output chunks.
+  Stream<Uint8List> get mixerOutputDataAvailableEvents =>
       mixerOutputDataAvailableController.stream;
 
   final Map<int, _BufferStreamNativeCallbacks> _bufferStreamNativeCallables =
@@ -180,24 +181,40 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     stateChangedController.add(s);
   }
 
-  void _mixerOutputDataCallback(
-    ffi.Pointer<ffi.UnsignedChar> data,
-    int length,
-  ) {
-    if (mixerOutputDataAvailableController.hasListener) {
-      mixerOutputDataAvailableController.add((
-        pointer: data.cast<ffi.Uint8>(),
-        length: length,
-      ));
-    }
-    if (mixerOutputChunkController.hasListener) {
-      final bytes = data.cast<ffi.Uint8>().asTypedList(length);
-      mixerOutputChunkController.add(Uint8List.fromList(bytes));
-      // In fixed PCM chunk mode the native side advances the read position
-      // before invoking the callback, so Dart must not advance it again.
-      if (!_mixerOutputChunkMode) {
-        advanceMixerOutputReadPosition(length);
+  /// [message] is a native packet token, not memory to read: this runs later
+  /// than the notification, when the capture may have moved on to its next
+  /// chunk or been restarted. Claiming the packet hands over an owned copy of
+  /// its bytes, and acknowledges a threshold-mode packet's bytes in the ring,
+  /// so it is claimed even when nobody listens.
+  void _mixerOutputPortMessage(Object? message) {
+    if (message is! int || message == 0) return;
+    final token = ffi.Pointer<ffi.UnsignedChar>.fromAddress(message);
+    final captureId = calloc<ffi.UnsignedInt>();
+    final claimed = calloc<ffi.Size>();
+    final bytes = native.takeMixerOutputPacket(token, captureId, claimed);
+    try {
+      // A packet of another capture -- one that was stopped, or started by
+      // another isolate -- is not this stream's data.
+      if (bytes == ffi.nullptr || captureId.value != _mixerCaptureId) {
+        return;
       }
+      if (mixerOutputDataAvailableController.hasListener ||
+          mixerOutputChunkController.hasListener) {
+        final copy = Uint8List.fromList(
+          bytes.cast<ffi.Uint8>().asTypedList(claimed.value),
+        );
+        if (mixerOutputDataAvailableController.hasListener) {
+          mixerOutputDataAvailableController.add(copy);
+        }
+        if (mixerOutputChunkController.hasListener) {
+          mixerOutputChunkController.add(copy);
+        }
+      }
+    } finally {
+      nativeFree(bytes.cast<ffi.Void>());
+      calloc
+        ..free(captureId)
+        ..free(claimed);
     }
   }
 
@@ -277,8 +294,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     nativeFileLoadedCallable = null;
     nativeStateChangedCallable?.close();
     nativeStateChangedCallable = null;
-    nativeMixerOutputDataCallable?.close();
-    nativeMixerOutputDataCallable = null;
+    _mixerOutputPort?.close();
+    _mixerOutputPort = null;
     nativeVisualizationCallable?.close();
     nativeVisualizationCallable = null;
   }
@@ -303,10 +320,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
         ffi.NativeCallable<native.dartStateChangedCallback_tFunction>.listener(
           _stateChangedCallback,
         );
-    nativeMixerOutputDataCallable ??=
-        ffi.NativeCallable<
-          native.dartMixerOutputDataCallback_tFunction
-        >.listener(_mixerOutputDataCallback);
     nativeVisualizationCallable ??=
         ffi.NativeCallable<native.dartVisualizationCallback_tFunction>.listener(
           _visualizationDataCallback,
@@ -316,10 +329,6 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
       nativeVoiceEndedCallable!.nativeFunction,
       nativeFileLoadedCallable!.nativeFunction,
       nativeStateChangedCallable!.nativeFunction,
-      currentEngineId,
-    );
-    native.setMixerOutputCallbackForEngine(
-      nativeMixerOutputDataCallable!.nativeFunction,
       currentEngineId,
     );
     native.setVisualizationCallbackForEngine(
@@ -340,32 +349,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   void registerMixerOutputCallback() {
-    nativeMixerOutputDataCallable ??=
-        ffi.NativeCallable<
-          native.dartMixerOutputDataCallback_tFunction
-        >.listener(_mixerOutputDataCallback);
-    // Called from whichever isolate owns the capture, including a worker one
-    // via `SoLoudIsolate.startMixerOutputStream()`. On a worker,
-    // [currentEngineId] is the no-engine sentinel and native code joins this
-    // callable to whatever registration is live.
-    //
-    // A refusal means there is no live registration to join: the engine was
-    // never initialized, has been deinitialized, or its FlutterEngine is being
-    // destroyed. Publishing anyway would arm a callable belonging to an isolate
-    // that is going away, so the capture simply produces nothing -- worth a
-    // line in the log, since the stream stays silent rather than throwing.
-    final published = native.setMixerOutputCallbackForEngine(
-      nativeMixerOutputDataCallable!.nativeFunction,
-      currentEngineId,
+    // Only prepares this isolate's port. Native code publishes it when, and
+    // only if, this isolate's start is admitted: a start that is refused, or
+    // never made, must not take a running capture's packets over.
+    _mixerOutputPort ??= RawReceivePort(
+      _mixerOutputPortMessage,
+      'flutter_soloud mixer output',
     );
-    if (!published) {
-      _log.warning(
-        'The mixer output callback was refused: no live engine callback '
-        'registration to join. The capture stream will not receive chunks. '
-        'Initialize the engine before starting a mixer output capture, and '
-        'stop the capture before deinitializing it.',
-      );
-    }
   }
 
   late final ffi.NativeFinalizer _isolateFinalizer = ffi.NativeFinalizer(
@@ -377,10 +367,8 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   // Mixer output capture bindings
   // ////////////////////////////////////////////////
 
-  /// Whether the current mixer output capture is using fixed-size PCM chunks.
-  /// When true, the native side advances the circular buffer read position
-  /// before invoking the callback, so Dart must not advance it again.
-  bool _mixerOutputChunkMode = false;
+  /// The capture this isolate started, whose packets it emits.
+  int? _mixerCaptureId;
 
   @override
   PlayerErrors startMixerOutputCapture(
@@ -391,27 +379,103 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     int notificationThresholdBytes,
     int chunkPCMFrames,
   ) {
-    _mixerOutputChunkMode = format.isPcm && chunkPCMFrames > 0;
-    final ret = native.startMixerCapture(
-      format.value,
-      sampleRate,
-      channels,
-      bufferSizeBytes,
-      notificationThresholdBytes,
-      chunkPCMFrames,
-    );
-    return PlayerErrors.values[ret.value];
+    // Called from whichever isolate owns the capture, including a worker one
+    // via `SoLoudIsolate.startMixerOutputStream()`. On a worker,
+    // [currentEngineId] is the no-engine sentinel and native code joins the
+    // port to whatever registration is live; with none live (the engine was
+    // never initialized, has been deinitialized, or its FlutterEngine is
+    // being destroyed) the start is refused with backendNotInited.
+    registerMixerOutputCallback();
+    final captureId = calloc<ffi.UnsignedInt>();
+    try {
+      final ret = native.startMixerCaptureOnPort(
+        format.value,
+        sampleRate,
+        channels,
+        bufferSizeBytes,
+        notificationThresholdBytes,
+        chunkPCMFrames,
+        captureId,
+        ffi.NativeApi.initializeApiDLData,
+        ffi.NativePort(_mixerOutputPort!.sendPort).nativePort,
+        currentEngineId,
+      );
+      if (ret == native.PlayerErrors.noError) {
+        _mixerCaptureId = captureId.value;
+      } else if (_mixerCaptureId == null) {
+        _mixerOutputPort?.close();
+        _mixerOutputPort = null;
+      }
+      return PlayerErrors.values[ret.value];
+    } finally {
+      calloc.free(captureId);
+    }
+  }
+
+  /// What the last stop of this isolate's own capture collected for its
+  /// stream, until [takeStoppedMixerOutput] hands it over.
+  List<Uint8List> _stoppedMixerOutput = const [];
+
+  @override
+  void stopMixerOutputCapture({bool onlyOwned = false}) {
+    final id = _mixerCaptureId;
+    _mixerCaptureId = null;
+    if (id != null) {
+      // Native code compares the ids under the capture lifecycle lock: a
+      // capture another isolate started since this one was stopped keeps
+      // running. Only such a stop replaces what an earlier one collected:
+      // the stream manager's stop after SoLoud.deinit() stopped the capture
+      // finds no capture of its own and must still deliver that output.
+      _stoppedMixerOutput = _stopAndDrainMixerCapture(id);
+    }
+    if (!onlyOwned) {
+      native.stopMixerCapture();
+    }
+    // An open port keeps this isolate alive. Native code discards what is
+    // posted to it once closed, and the next start what it was sent but
+    // never handled. The packets it was sent for this capture have just
+    // been drained.
+    _mixerOutputPort?.close();
+    _mixerOutputPort = null;
+  }
+
+  List<Uint8List> _stopAndDrainMixerCapture(int captureId) {
+    final chunkBytes = calloc<ffi.Size>();
+    final length = calloc<ffi.Size>();
+    var bytes = ffi.nullptr.cast<ffi.UnsignedChar>();
+    try {
+      bytes = native.stopMixerCaptureAndDrain(captureId, chunkBytes, length);
+      if (bytes == ffi.nullptr) return const [];
+      return splitStoppedMixerOutput(
+        Uint8List.fromList(bytes.cast<ffi.Uint8>().asTypedList(length.value)),
+        chunkBytes.value,
+      );
+    } finally {
+      if (bytes != ffi.nullptr) nativeFree(bytes.cast<ffi.Void>());
+      calloc
+        ..free(chunkBytes)
+        ..free(length);
+    }
   }
 
   @override
-  void stopMixerOutputCapture() {
-    _mixerOutputChunkMode = false;
-    native.stopMixerCapture();
+  List<Uint8List> takeStoppedMixerOutput() {
+    final stopped = _stoppedMixerOutput;
+    _stoppedMixerOutput = const [];
+    return stopped;
   }
 
   @override
   bool isMixerOutputCaptureRunning() {
     return native.isMixerCaptureRunning() != 0;
+  }
+
+  @override
+  bool isCurrentMixerOutputCapture() {
+    final id = _mixerCaptureId;
+    return id != null &&
+        native.isMixerCaptureRunning() != 0 &&
+        native.getMixerCaptureId() == id;
   }
 
   @override
@@ -575,54 +639,43 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   List<PlaybackDevice> listPlaybackDevices() {
-    final ret = <PlaybackDevice>[];
-    final ffi.Pointer<ffi.Pointer<ffi.Char>> deviceNames = calloc(
-      ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Char>>>() * 255,
-    );
-    final ffi.Pointer<ffi.Pointer<ffi.Int>> deviceIds = calloc(
-      ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Int>>>() * 50,
-    );
-    final ffi.Pointer<ffi.Pointer<ffi.Int>> deviceIsDefault = calloc(
-      ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Int>>>() * 50,
-    );
-    final ffi.Pointer<ffi.Int> nDevices = calloc();
-
-    native.listPlaybackDevices(
-      deviceNames,
-      deviceIds,
-      deviceIsDefault,
-      nDevices,
-    );
-
-    final ndev = nDevices.value;
-    for (var i = 0; i < ndev; i++) {
-      final s1 = (deviceNames + i).value;
-      final s = s1.cast<Utf8>().toDartString();
-      final id1 = (deviceIds + i).value;
-      final id = id1.value;
-      final n1 = (deviceIsDefault + i).value;
-      final n = n1.value;
-      ret.add(PlaybackDevice(id, n == 1, s));
+    const capacity = 255;
+    final deviceNames = calloc<ffi.Pointer<ffi.Char>>(capacity);
+    final deviceIds = calloc<ffi.Pointer<ffi.Int>>(capacity);
+    final deviceIsDefault = calloc<ffi.Pointer<ffi.Int>>(capacity);
+    final nDevices = calloc<ffi.Int>();
+    try {
+      native.listPlaybackDevicesBounded(
+        deviceNames,
+        deviceIds,
+        deviceIsDefault,
+        nDevices,
+        capacity,
+      );
+      final ndev = nDevices.value;
+      final ret = <PlaybackDevice>[];
+      for (var i = 0; i < ndev; i++) {
+        final s = deviceNames[i].cast<Utf8>().toDartString();
+        ret.add(
+          PlaybackDevice(deviceIds[i].value, deviceIsDefault[i].value == 1, s),
+        );
+      }
+      return ret;
+    } finally {
+      // The entries are allocated in C, so they are freed there: freeing them
+      // from Dart does not work on Windows.
+      native.freeListPlaybackDevices(
+        deviceNames,
+        deviceIds,
+        deviceIsDefault,
+        nDevices.value,
+      );
+      calloc
+        ..free(deviceNames)
+        ..free(deviceIds)
+        ..free(deviceIsDefault)
+        ..free(nDevices);
     }
-
-    /// Free allocated memory is done in C.
-    /// This work on all platforms but not on win.
-    // for (int i = 0; i < ndev; i++) {
-    //   calloc.free(devices.elementAt(i).value.ref.name);
-    //   calloc.free(devices.elementAt(i).value);
-    // }
-    native.freeListPlaybackDevices(
-      deviceNames,
-      deviceIds,
-      deviceIsDefault,
-      ndev,
-    );
-
-    calloc
-      ..free(deviceNames)
-      ..free(deviceIds)
-      ..free(nDevices);
-    return ret;
   }
 
   void freeListPlaybackDevices(
@@ -641,11 +694,13 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
 
   @override
   void deinit() {
+    _freeRealtimeScratch();
     return native.dispose();
   }
 
   @override
   Future<void> deinitAsync() async {
+    _freeRealtimeScratch();
     await Isolate.run(native.dispose);
   }
 
@@ -711,28 +766,32 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     Uint8List buffer,
     LoadMode mode,
   ) {
-    final ffi.Pointer<ffi.UnsignedInt> hash = calloc(
-      ffi.sizeOf<ffi.UnsignedInt>(),
-    );
-    final ffi.Pointer<ffi.Uint8> bufferPtr = calloc(buffer.length);
-    for (var i = 0; i < buffer.length; i++) {
-      bufferPtr[i] = buffer[i];
+    // The native loader copies what it keeps, so the bytes are only lent for
+    // the call: free them, whatever happens.
+    final hash = calloc<ffi.UnsignedInt>();
+    var bytes = ffi.nullptr.cast<ffi.Uint8>();
+    var name = ffi.nullptr.cast<Utf8>();
+    try {
+      bytes = calloc<ffi.Uint8>(buffer.length);
+      bytes.asTypedList(buffer.length).setAll(0, buffer);
+      name = uniqueName.toNativeUtf8();
+      final e = native.loadMem(
+        name.cast<ffi.Char>(),
+        bytes.cast<ffi.UnsignedChar>(),
+        buffer.length,
+        mode == LoadMode.memory ? 1 : 0,
+        hash,
+      );
+      return (
+        error: PlayerErrors.values[e.value],
+        soundHash: SoundHash.fromValue(hash.value),
+      );
+    } finally {
+      malloc.free(name);
+      calloc
+        ..free(bytes)
+        ..free(hash);
     }
-
-    final ffi.Pointer<Utf8> cString = uniqueName.toNativeUtf8();
-    final e = native.loadMem(
-      cString.cast<ffi.Char>(),
-      bufferPtr.cast<ffi.UnsignedChar>(),
-      buffer.length,
-      mode == LoadMode.memory ? 1 : 0,
-      hash,
-    );
-    final soundHash = SoundHash.fromValue(hash.value);
-    final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
-    calloc
-      ..free(hash)
-      ..free(cString);
-    return ret;
   }
 
   @override
@@ -1036,13 +1095,17 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, SoundHandle handle}) speechText(String textToSpeech) {
     final ffi.Pointer<ffi.UnsignedInt> handle = calloc();
     final ffi.Pointer<Utf8> cString = textToSpeech.toNativeUtf8();
-    final e = native.speechText(cString.cast<ffi.Char>(), handle);
-    final ret = (
-      error: PlayerErrors.values[e.value],
-      handle: SoundHandle(handle.value),
-    );
-    calloc.free(handle);
-    return ret;
+    try {
+      final e = native.speechText(cString.cast<ffi.Char>(), handle);
+      return (
+        error: PlayerErrors.values[e.value],
+        handle: SoundHandle(handle.value),
+      );
+    } finally {
+      calloc
+        ..free(cString)
+        ..free(handle);
+    }
   }
 
   @override
@@ -1178,6 +1241,15 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   Duration getOutputLatency() {
     return native.getOutputLatency().toDuration();
+  }
+
+  @override
+  Duration getHardwareOutputLatency() {
+    try {
+      return native.getHardwareOutputLatency().toDuration();
+    } catch (_) {
+      return Duration.zero;
+    }
   }
 
   @override
@@ -1646,38 +1718,47 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   ({PlayerErrors error, List<String> names}) getFilterParamNames(
     FilterType filterType,
   ) {
+    final type = native.FilterType.fromValue(filterType.index);
     final ffi.Pointer<ffi.Int> paramsCount = calloc(ffi.sizeOf<ffi.Int>());
-    final ffi.Pointer<ffi.Pointer<ffi.Char>> names = calloc(
-      ffi.sizeOf<ffi.Char>() * 30,
-    );
-    _log.fine(
-      () =>
-          'PARAMS NAME paramsCount: ${paramsCount.address.toRadixString(16)}  '
-          'names: ${names.address.toRadixString(16)}',
-    );
-
-    final e = native.getFilterParamNames(
-      native.FilterType.fromValue(filterType.index),
-      paramsCount,
-      names,
-    );
-    final pNames = <String>[];
-    for (var i = 0; i < paramsCount.value; i++) {
-      _log.fine(
-        () =>
-            'PARAMS NAME $i ${names + i}   '
-            '${names[i].cast<Utf8>().toDartString()}    '
-            'names[i]: ${names[i].address.toRadixString(16)}',
+    try {
+      // Ask how many parameters the filter has (the parametric EQ has 195),
+      // then for that many names.
+      var e = native.getFilterParamNamesBounded(
+        type,
+        paramsCount,
+        ffi.nullptr,
+        0,
       );
-      pNames.add(names[i].cast<Utf8>().toDartString());
+      final capacity = paramsCount.value;
+      if (e != native.PlayerErrors.noError || capacity <= 0) {
+        return (error: PlayerErrors.values[e.value], names: <String>[]);
+      }
+      final names = calloc<ffi.Pointer<ffi.Char>>(capacity);
+      try {
+        e = native.getFilterParamNamesBounded(
+          type,
+          paramsCount,
+          names,
+          capacity,
+        );
+        final pNames = <String>[];
+        for (var i = 0; i < capacity; i++) {
+          if (names[i] == ffi.nullptr) continue;
+          pNames.add(names[i].cast<Utf8>().toDartString());
+        }
+        return (error: PlayerErrors.values[e.value], names: pNames);
+      } finally {
+        // Allocated natively with malloc(), which calloc.free() does not
+        // match on Windows. Free them all here, even if one could not be
+        // decoded. A slot the export did not fill is still null.
+        for (var i = 0; i < capacity; i++) {
+          if (names[i] != ffi.nullptr) nativeFree(names[i].cast<ffi.Void>());
+        }
+        calloc.free(names);
+      }
+    } finally {
+      calloc.free(paramsCount);
     }
-    final ret = (error: PlayerErrors.values[e.value], names: pNames);
-    calloc.free(paramsCount);
-    for (var i = 0; i < pNames.length; i++) {
-      calloc.free(names[i]);
-    }
-    calloc.free(names);
-    return ret;
   }
 
   @override
@@ -2046,29 +2127,32 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double endTime = -1,
     bool average = false,
   }) {
-    final pSamples = calloc<ffi.Float>(
-      numSamplesNeeded * ffi.sizeOf<ffi.Float>(),
-    );
-    final error = native.readSamplesFromFile(
-      completeFileName.toNativeUtf8().cast<ffi.Char>(),
-      startTime,
-      endTime,
-      numSamplesNeeded,
-      average,
-      pSamples,
-    );
-    final samples = pSamples.asTypedList(numSamplesNeeded).asUnmodifiableView();
-
-    /// Seems freeing this pointer is not needed because "samples" gets
-    /// undefined after using "free"!? It will be GC-ed.
-    // calloc.free(pSamples);
-    if (ReadSamplesErrors.fromValue(error.value) !=
-        ReadSamplesErrors.readSamplesNoError) {
-      throw SoLoudCppException.fromReadSampleError(
-        ReadSamplesErrors.fromValue(error.value),
+    final pSamples = calloc<ffi.Float>(numSamplesNeeded);
+    final fileName = completeFileName.toNativeUtf8();
+    try {
+      final error = native.readSamplesFromFile(
+        fileName.cast<ffi.Char>(),
+        startTime,
+        endTime,
+        numSamplesNeeded,
+        average,
+        pSamples,
       );
+      if (ReadSamplesErrors.fromValue(error.value) !=
+          ReadSamplesErrors.readSamplesNoError) {
+        throw SoLoudCppException.fromReadSampleError(
+          ReadSamplesErrors.fromValue(error.value),
+        );
+      }
+      // Native memory is not garbage collected: copy the samples out of it
+      // and free it.
+      return Float32List.fromList(
+        pSamples.asTypedList(numSamplesNeeded),
+      ).asUnmodifiableView();
+    } finally {
+      malloc.free(fileName);
+      calloc.free(pSamples);
     }
-    return samples;
   }
 
   @override
@@ -2079,34 +2163,35 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     double endTime = -1,
     bool average = false,
   }) {
-    final pSamples = calloc<ffi.Float>(
-      numSamplesNeeded * ffi.sizeOf<ffi.Float>(),
-    );
+    final pSamples = calloc<ffi.Float>(numSamplesNeeded);
     final ffi.Pointer<ffi.Uint8> bufferPtr = calloc(buffer.length);
-    for (var i = 0; i < buffer.length; i++) {
-      bufferPtr[i] = buffer[i];
-    }
-    final error = native.readSamplesFromMem(
-      bufferPtr.cast<ffi.UnsignedChar>(),
-      buffer.length,
-      startTime,
-      endTime,
-      numSamplesNeeded,
-      average,
-      pSamples,
-    );
-    final samples = pSamples.asTypedList(numSamplesNeeded).asUnmodifiableView();
-
-    /// Seems freeing this pointer is not needed because "samples" gets
-    /// undefined after using "free"!? It will be GC-ed.
-    // calloc.free(pSamples);
-    if (ReadSamplesErrors.fromValue(error.value) !=
-        ReadSamplesErrors.readSamplesNoError) {
-      throw SoLoudCppException.fromReadSampleError(
-        ReadSamplesErrors.fromValue(error.value),
+    try {
+      bufferPtr.asTypedList(buffer.length).setAll(0, buffer);
+      final error = native.readSamplesFromMem(
+        bufferPtr.cast<ffi.UnsignedChar>(),
+        buffer.length,
+        startTime,
+        endTime,
+        numSamplesNeeded,
+        average,
+        pSamples,
       );
+      if (ReadSamplesErrors.fromValue(error.value) !=
+          ReadSamplesErrors.readSamplesNoError) {
+        throw SoLoudCppException.fromReadSampleError(
+          ReadSamplesErrors.fromValue(error.value),
+        );
+      }
+      // Native memory is not garbage collected: copy the samples out of it
+      // and free it, and the copy of [buffer] with it.
+      return Float32List.fromList(
+        pSamples.asTypedList(numSamplesNeeded),
+      ).asUnmodifiableView();
+    } finally {
+      calloc
+        ..free(bufferPtr)
+        ..free(pSamples);
     }
-    return samples;
   }
 
   /////////////////////////////////////////
@@ -2228,5 +2313,495 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   int busGetActiveVoiceCount(int busId) {
     return native.busGetActiveVoiceCount(busId);
+  }
+
+  // ///////////////////////////////////////
+  // Realtime Stream & Custom DSP
+  // ///////////////////////////////////////
+
+  ffi.Pointer<ffi.Uint8> _realtimeScratchPtr = ffi.nullptr;
+  int _realtimeScratchCapacityBytes = 0;
+
+  ffi.Pointer<ffi.Uint8> _ensureRealtimeScratch(int bytes) {
+    if (bytes <= _realtimeScratchCapacityBytes &&
+        _realtimeScratchPtr != ffi.nullptr) {
+      return _realtimeScratchPtr;
+    }
+    if (_realtimeScratchPtr != ffi.nullptr) {
+      calloc.free(_realtimeScratchPtr);
+    }
+    final newCap = bytes < 16384 ? 16384 : bytes;
+    _realtimeScratchPtr = calloc<ffi.Uint8>(newCap);
+    _realtimeScratchCapacityBytes = newCap;
+    return _realtimeScratchPtr;
+  }
+
+  void _freeRealtimeScratch() {
+    if (_realtimeScratchPtr != ffi.nullptr) {
+      calloc.free(_realtimeScratchPtr);
+      _realtimeScratchPtr = ffi.nullptr;
+      _realtimeScratchCapacityBytes = 0;
+    }
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) setRealtimeStream(
+    int sampleRate,
+    int channels,
+    int format,
+    int bufferFrames,
+    int historyFrames,
+  ) {
+    final ffi.Pointer<ffi.UnsignedInt> hash = calloc();
+    final e = native.setRealtimeStream(
+      hash,
+      sampleRate,
+      channels,
+      format,
+      bufferFrames,
+      historyFrames,
+    );
+    final soundHash = SoundHash.fromValue(hash.value);
+    final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
+    calloc.free(hash);
+    return ret;
+  }
+
+  @override
+  PlayerErrors resetRealtimeStream(SoundHash soundHash) {
+    final e = native.resetRealtimeStream(soundHash.hash);
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  int pushRealtimeFloat32(
+    int hash,
+    int handle,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
+    ptr.asTypedList(samples.length).setAll(0, samples);
+    return native.pushRealtimeFloat32(hash, ptr, frameCount, samples.length);
+  }
+
+  @override
+  int pushRealtimeFloat32Address(
+    int hash,
+    int handle,
+    int samplesAddress,
+    int frameCount,
+    int sampleCapacity,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return native.pushRealtimeFloat32(
+      hash,
+      ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
+      frameCount,
+      sampleCapacity,
+    );
+  }
+
+  @override
+  int pushRealtimeInt16(
+    int hash,
+    int handle,
+    Int16List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Int16>();
+    ptr.asTypedList(samples.length).setAll(0, samples);
+    return native.pushRealtimeInt16(hash, ptr, frameCount, samples.length);
+  }
+
+  @override
+  int pushRealtimeInt16Address(
+    int hash,
+    int handle,
+    int samplesAddress,
+    int frameCount,
+    int sampleCapacity,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return native.pushRealtimeInt16(
+      hash,
+      ffi.Pointer<ffi.Int16>.fromAddress(samplesAddress),
+      frameCount,
+      sampleCapacity,
+    );
+  }
+
+  @override
+  int pushRealtimeClockedFloat32(
+    int hash,
+    int handle,
+    double soundTime,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
+    ptr.asTypedList(samples.length).setAll(0, samples);
+    return native.pushRealtimeClockedFloat32(
+      hash,
+      soundTime,
+      ptr,
+      frameCount,
+      samples.length,
+    );
+  }
+
+  @override
+  int pushRealtimeClockedFloat32Address(
+    int hash,
+    int handle,
+    double soundTime,
+    int samplesAddress,
+    int frameCount,
+    int sampleCapacity,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return native.pushRealtimeClockedFloat32(
+      hash,
+      soundTime,
+      ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
+      frameCount,
+      sampleCapacity,
+    );
+  }
+
+  @override
+  int pushRealtimeScheduledFloat32(
+    int hash,
+    int handle,
+    double atTime,
+    Float32List samples,
+    int frameCount,
+  ) {
+    if (frameCount <= 0 || samples.isEmpty) {
+      return 0;
+    }
+    final ptr = _ensureRealtimeScratch(samples.lengthInBytes).cast<ffi.Float>();
+    ptr.asTypedList(samples.length).setAll(0, samples);
+    return native.pushRealtimeScheduledFloat32(
+      hash,
+      atTime,
+      ptr,
+      frameCount,
+      samples.length,
+    );
+  }
+
+  @override
+  int pushRealtimeScheduledFloat32Address(
+    int hash,
+    int handle,
+    double atTime,
+    int samplesAddress,
+    int frameCount,
+    int sampleCapacity,
+  ) {
+    if (frameCount <= 0 || samplesAddress == 0) {
+      return 0;
+    }
+    return native.pushRealtimeScheduledFloat32(
+      hash,
+      atTime,
+      ffi.Pointer<ffi.Float>.fromAddress(samplesAddress),
+      frameCount,
+      sampleCapacity,
+    );
+  }
+
+  @override
+  int getRealtimeAvailableToRead(int hash) {
+    return native.getRealtimeAvailableToRead(hash);
+  }
+
+  @override
+  int getRealtimeAvailableToWrite(int hash) {
+    return native.getRealtimeAvailableToWrite(hash);
+  }
+
+  @override
+  int getRealtimeUnderrunCount(int hash) {
+    return native.getRealtimeUnderrunCount(hash);
+  }
+
+  @override
+  int allocateRealtimeNativeBuffer(int byteLength) {
+    if (byteLength <= 0) return 0;
+    return calloc<ffi.Uint8>(byteLength).address;
+  }
+
+  @override
+  void freeRealtimeNativeBuffer(int address) {
+    if (address == 0) return;
+    calloc.free(ffi.Pointer<ffi.Uint8>.fromAddress(address));
+  }
+
+  @override
+  Float32List viewRealtimeFloat32Buffer(int address, int floatLength) {
+    if (address == 0 || floatLength <= 0) return Float32List(0);
+    return ffi.Pointer<ffi.Float>.fromAddress(address).asTypedList(floatLength);
+  }
+
+  @override
+  Int16List viewRealtimeInt16Buffer(int address, int int16Length) {
+    if (address == 0 || int16Length <= 0) return Int16List(0);
+    return ffi.Pointer<ffi.Int16>.fromAddress(address).asTypedList(int16Length);
+  }
+
+  @override
+  ({PlayerErrors error, SoundHash soundHash}) createCustomAudioSource({
+    required int sampleRate,
+    required int channels,
+    required bool mustTickWhenInaudible,
+    required bool killWhenInaudible,
+    int dspCallbackAddress = 0,
+    int onInstanceCreatedAddress = 0,
+    int onInstanceDestroyedAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+    bool singleInstance = false,
+  }) {
+    final ffi.Pointer<ffi.UnsignedInt> hash = calloc();
+    final cWebName = webJsFunctionName != null && webJsFunctionName.isNotEmpty
+        ? webJsFunctionName.toNativeUtf8()
+        : ffi.nullptr;
+    final lifecycleAddress = customSourceLifecycleAddress(
+      onInstanceCreatedAddress,
+      onInstanceDestroyedAddress,
+    );
+    final e = native.createCustomAudioSource(
+      hash,
+      sampleRate,
+      channels,
+      dspCallbackAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<
+              ffi.NativeFunction<native.SoLoudSourceDspCallback_tFunction>
+            >.fromAddress(dspCallbackAddress),
+      userdataAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<ffi.Void>.fromAddress(userdataAddress),
+      lifecycleAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<
+              ffi.NativeFunction<
+                native.SoLoudSourceInstanceLifecycleCallback_tFunction
+              >
+            >.fromAddress(lifecycleAddress),
+      singleInstance,
+      cWebName == ffi.nullptr ? ffi.nullptr : cWebName.cast<ffi.Char>(),
+      mustTickWhenInaudible,
+      killWhenInaudible,
+    );
+    if (cWebName != ffi.nullptr) {
+      calloc.free(cWebName);
+    }
+    final soundHash = SoundHash.fromValue(hash.value);
+    final ret = (error: PlayerErrors.values[e.value], soundHash: soundHash);
+    calloc.free(hash);
+    return ret;
+  }
+
+  @override
+  PlayerErrors addCustomFilter(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final e = native.addCustomFilter(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+    );
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  PlayerErrors removeCustomFilter(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final e = native.removeCustomFilter(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+    );
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  ({PlayerErrors error, int index}) isCustomFilterActive(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final ffi.Pointer<ffi.Int> id = calloc();
+    final e = native.isCustomFilterActive(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      id,
+    );
+    final ret = (error: PlayerErrors.values[e.value], index: id.value);
+    calloc.free(id);
+    return ret;
+  }
+
+  @override
+  PlayerErrors setCustomFilterCallback(
+    int customFilterId, {
+    SoundHash? soundHash,
+    int? busId,
+    int callbackAddress = 0,
+    int userdataAddress = 0,
+    String? webJsFunctionName,
+  }) {
+    final cWebName = webJsFunctionName != null && webJsFunctionName.isNotEmpty
+        ? webJsFunctionName.toNativeUtf8()
+        : ffi.nullptr;
+    final e = native.setCustomFilterCallback(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      callbackAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<
+              ffi.NativeFunction<native.SoLoudFilterDspCallback_tFunction>
+            >.fromAddress(callbackAddress),
+      userdataAddress == 0
+          ? ffi.nullptr
+          : ffi.Pointer<ffi.Void>.fromAddress(userdataAddress),
+      16,
+      cWebName == ffi.nullptr ? ffi.nullptr : cWebName.cast<ffi.Char>(),
+    );
+    if (cWebName != ffi.nullptr) {
+      calloc.free(cWebName);
+    }
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  PlayerErrors setCustomFilterParamDefinition(
+    int customFilterId,
+    int paramIndex,
+    String name,
+    double minVal,
+    double maxVal,
+    double defaultVal, {
+    SoundHash? soundHash,
+    int? busId,
+  }) {
+    final cName = name.toNativeUtf8();
+    final e = native.setCustomFilterParamDefinition(
+      soundHash?.hash ?? 0,
+      busId ?? 0,
+      customFilterId,
+      paramIndex,
+      cName.cast<ffi.Char>(),
+      minVal,
+      maxVal,
+      defaultVal,
+    );
+    calloc.free(cName);
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  PlayerErrors setCustomFilterParams(
+    int customFilterId,
+    int attributeId,
+    double value, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = native.setCustomFilterParams(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      value,
+    );
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  ({PlayerErrors error, double value}) getCustomFilterParams(
+    int customFilterId,
+    int attributeId, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final ffi.Pointer<ffi.Float> paramValue = calloc();
+    final e = native.getCustomFilterParams(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      paramValue,
+    );
+    final ret = paramValue.value;
+    calloc.free(paramValue);
+    return (error: PlayerErrors.values[e.value], value: ret);
+  }
+
+  @override
+  PlayerErrors fadeCustomFilterParameter(
+    int customFilterId,
+    int attributeId,
+    double to,
+    double time, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = native.fadeCustomFilterParameter(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      to,
+      time,
+    );
+    return PlayerErrors.values[e.value];
+  }
+
+  @override
+  PlayerErrors oscillateCustomFilterParameter(
+    int customFilterId,
+    int attributeId,
+    double from,
+    double to,
+    double time, {
+    SoundHandle? handle,
+    int? busId,
+  }) {
+    final e = native.oscillateCustomFilterParameter(
+      handle?.id ?? 0,
+      busId ?? 0,
+      customFilterId,
+      attributeId,
+      from,
+      to,
+      time,
+    );
+    return PlayerErrors.values[e.value];
   }
 }

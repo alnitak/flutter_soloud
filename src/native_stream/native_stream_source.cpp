@@ -1,4 +1,5 @@
 #include "native_stream_source.h"
+#include "../simd/simd_pcm.h"
 
 #include <algorithm>
 #include <atomic>
@@ -185,17 +186,17 @@ namespace SoLoud
 			const unsigned int channels;
 			const uint64_t capacity; // frames
 			std::unique_ptr<float[]> ring;
-			std::atomic<uint64_t> writePos{0};
+			alignas(64) std::atomic<uint64_t> writePos{0};
 			// The worker may overwrite ring frames before readPos and marker
 			// slots before markerRead: the voice's history start, not its
 			// read position.
-			std::atomic<uint64_t> readPos{0};
+			alignas(64) std::atomic<uint64_t> readPos{0};
 
 			Marker markers[kMarkers];
-			std::atomic<uint64_t> markerWrite{0};
-			std::atomic<uint64_t> markerRead{0};
+			alignas(64) std::atomic<uint64_t> markerWrite{0};
+			alignas(64) std::atomic<uint64_t> markerRead{0};
 
-			std::atomic<uint64_t> request{0}; // generation << kFrameBits | frame
+			alignas(64) std::atomic<uint64_t> request{0}; // generation << kFrameBits | frame
 			std::atomic<bool> looping{false};
 			std::atomic<uint64_t> loopStart{0};
 			std::atomic<uint64_t> loopEnd{0}; // 0: the natural end
@@ -695,9 +696,7 @@ namespace SoLoud
 				}
 				const unsigned int n = unsigned(std::min<uint64_t>(remaining, shared.headFrames - mFrame));
 				const float *src = shared.head.data() + mFrame * channels;
-				for (unsigned int i = 0; i < n; i++)
-					for (unsigned int c = 0; c < channels; c++)
-						aBuffer[c * aBufferSize + out + i] = src[i * channels + c];
+				deinterleaveFloatsToPlanar(src, aBuffer + out, aBufferSize, n, channels);
 				out += n;
 				mFrame += n;
 				continue;
@@ -757,11 +756,14 @@ namespace SoLoud
 
 			const Channel &ch = *mChannel;
 			const unsigned int n = unsigned(std::min<uint64_t>(remaining, available));
-			for (unsigned int i = 0; i < n; i++)
+			const uint64_t start = mReadPos % ch.capacity;
+			const unsigned int first = unsigned(std::min<uint64_t>(n, ch.capacity - start));
+			deinterleaveFloatsToPlanar(
+				ch.ring.get() + start * channels, aBuffer + out, aBufferSize, first, channels);
+			if (n > first)
 			{
-				const float *src = ch.ring.get() + ((mReadPos + i) % ch.capacity) * channels;
-				for (unsigned int c = 0; c < channels; c++)
-					aBuffer[c * aBufferSize + out + i] = src[c];
+				deinterleaveFloatsToPlanar(
+					ch.ring.get(), aBuffer + out + first, aBufferSize, n - first, channels);
 			}
 			mReadPos += n;
 			release();
@@ -831,9 +833,24 @@ namespace SoLoud
 		return SO_NO_ERROR;
 	}
 
+	// Tags NativeStreamSnapshot for captureSourceStateInto().
+	static const char kNativeStreamSnapshotKind = 0;
+
 	SourceStateSnapshot *NativeStreamInstance::captureSourceState()
 	{
 		auto *s = new NativeStreamSnapshot();
+		s->mKind = &kNativeStreamSnapshotKind;
+		captureSourceStateInto(s);
+		return s;
+	}
+
+	bool NativeStreamInstance::captureSourceStateInto(SourceStateSnapshot *aState)
+	{
+		// Checkpoints refill a spent snapshot in place every quantum, so the
+		// render worker does not allocate one per voice per capture.
+		if (aState == nullptr || aState->mKind != &kNativeStreamSnapshotKind)
+			return false;
+		auto *s = static_cast<NativeStreamSnapshot *>(aState);
 		s->frame = mFrame;
 		s->headActive = mHeadActive;
 		s->ended = mEnded;
@@ -842,7 +859,7 @@ namespace SoLoud
 		s->readPos = mReadPos;
 		s->waiting = mWaiting;
 		s->waitFrames = mWaitFrames;
-		return s;
+		return true;
 	}
 
 	bool NativeStreamInstance::canRestoreSourceState(SourceStateSnapshot *aState)

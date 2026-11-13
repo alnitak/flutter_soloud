@@ -1,6 +1,7 @@
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
+import 'package:meta/meta.dart';
 
 part 'exceptions_from_cpp.dart';
 part 'exceptions_from_dart.dart';
@@ -145,6 +146,8 @@ abstract class SoLoudCppException extends SoLoudException {
         return const SoLoudAudioDeviceFailedToStartCppException();
       case PlayerErrors.failedToStartPlayback:
         return const SoLoudFailedToStartPlaybackCppException();
+      case PlayerErrors.hashIsNotARealtimeStream:
+        return const SoLoudHashIsNotARealtimeStreamCppException();
     }
   }
 

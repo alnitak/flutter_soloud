@@ -39,17 +39,22 @@ struct Pow2FFT<double> {
 		_size = size;
 		fallback = nullptr;
 		if (hasSetup) pffftd_destroy_setup(fftSetup);
+		hasSetup = false;
+		fftSetup = nullptr;
 		if (work) pffftd_aligned_free(work);
 		work = nullptr;
 		if (tmpAligned) pffftd_aligned_free(tmpAligned);
 		tmpAligned = nullptr;
+
+		if (size == 0) {
+			return;
+		}
 
 		// We use this for split-real, even if there's no PFFFT setup
 		tmpAligned = (double *)pffftd_aligned_malloc(sizeof(double)*size*2);
 
 		if (size < 16) {
 			// PFFFT doesn't support smaller sizes
-			hasSetup = false;
 			fallback = std::unique_ptr<SimpleFFT<double>>{
 				new SimpleFFT<double>(size)
 			};
@@ -144,10 +149,16 @@ public:
 		_size = size;
 		fallback = nullptr;
 		if (hasSetup) pffftd_destroy_setup(fftSetup);
+		hasSetup = false;
+		fftSetup = nullptr;
 		if (work) pffftd_aligned_free(work);
 		work = nullptr;
 		if (tmpAligned) pffftd_aligned_free(tmpAligned);
 		tmpAligned = nullptr;
+
+		if (size == 0) {
+			return;
+		}
 
 		// We use this for split-real, even if there's no PFFFT setup
 		tmpAligned = (double *)pffftd_aligned_malloc(sizeof(double)*size*2);
@@ -155,7 +166,6 @@ public:
 		// TODO: just go for it, and check for success before allocating `work`
 		if (size < 32) {
 			// PFFFT doesn't support smaller sizes
-			hasSetup = false;
 			fallback = std::unique_ptr<FallbackFFT>{
 				new FallbackFFT(size)
 			};

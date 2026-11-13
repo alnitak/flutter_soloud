@@ -4,10 +4,10 @@ import 'dart:developer' as dev;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud_example/filters/ui/eq_graph.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// This example shows the use of the parametric equalizer filter.
 ///
@@ -126,8 +126,15 @@ class _ParametricEqState extends State<ParametricEq> {
       soloud.filters.parametricEqFilter.bandGain(i).value = 1.0;
       freqs[i].value = soloud.filters.parametricEqFilter.bandFrequency(i);
       soloud.filters.parametricEqFilter.bandFreq(i).value = freqs[i].value;
-      qFactors[i].value = soloud.filters.parametricEqFilter.bandQ(i).value;
+      qFactors[i].value = _bandQ(i);
     }
+  }
+
+  /// The Q of band [i], or the default Q when the EQ is not active and
+  /// there is no Q to read back.
+  double _bandQ(int i) {
+    if (!soloud.filters.parametricEqFilter.isActive) return 1;
+    return soloud.filters.parametricEqFilter.bandQ(i).value;
   }
 
   /// Find nearest power of 2 greater than or equal to x
@@ -290,10 +297,7 @@ class _ParametricEqState extends State<ParametricEq> {
                                   .value = gains[i].value;
                               freqs[i].value = soloud.filters.parametricEqFilter
                                   .bandFrequency(i);
-                              qFactors[i].value = soloud
-                                  .filters.parametricEqFilter
-                                  .bandQ(i)
-                                  .value;
+                              qFactors[i].value = _bandQ(i);
                             }
                           },
                         ),

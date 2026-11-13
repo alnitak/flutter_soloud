@@ -11,7 +11,9 @@
 # treated as a broken environment rather than a reason to pass vacuously; set
 # SOLOUD_LIFECYCLE_TEST_ALLOW_NO_DEVICE=1 to downgrade that to a skip.
 #
-# Pass --tsan to build under ThreadSanitizer.
+# Pass --asan to build under AddressSanitizer (a call that reaches a Player
+# teardown has destroyed is reported there), or --tsan to build under
+# ThreadSanitizer.
 
 set -e
 
@@ -20,7 +22,10 @@ cd "$REPO_ROOT"
 
 SANITIZER=()
 OUT="${TMPDIR:-/tmp}/engine_lifecycle_test"
-if [ "$1" == "--tsan" ]; then
+if [ "$1" == "--asan" ]; then
+    SANITIZER=(-fsanitize=address -fno-omit-frame-pointer -g -O1)
+    OUT="${OUT}_asan"
+elif [ "$1" == "--tsan" ]; then
     SANITIZER=(-fsanitize=thread -g -O1)
     OUT="${OUT}_tsan"
 fi
@@ -65,7 +70,7 @@ c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     src/bindings.cpp \
     src/player.cpp \
     src/analyzer.cpp \
-    src/synth/basic_wave.cpp \
+    src/synth/*.cpp \
     src/waveform/waveform.cpp \
     src/waveform/miniaudio_libvorbis.cpp \
     src/audiobuffer/*.cpp \

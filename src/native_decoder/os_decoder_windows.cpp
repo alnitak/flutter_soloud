@@ -23,10 +23,14 @@
 namespace {
 
 struct MFInitScope {
+    bool comInitialized = false;
     bool initialized = false;
     MFInitScope() {
         HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-        if (SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE) {
+        if (SUCCEEDED(hr)) {
+            comInitialized = true;
+        }
+        if (comInitialized || hr == RPC_E_CHANGED_MODE) {
             hr = MFStartup(MF_VERSION);
             initialized = SUCCEEDED(hr);
         }
@@ -34,6 +38,8 @@ struct MFInitScope {
     ~MFInitScope() {
         if (initialized) {
             MFShutdown();
+        }
+        if (comInitialized) {
             CoUninitialize();
         }
     }
@@ -109,10 +115,6 @@ DecodedAudioData decodeFromReader(IMFSourceReader *pReader) {
             return result;
         }
 
-        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
-            break;
-        }
-
         if (pSample) {
             IMFMediaBuffer *pBuffer = nullptr;
             hr = pSample->ConvertToContiguousBuffer(&pBuffer);
@@ -129,6 +131,10 @@ DecodedAudioData decodeFromReader(IMFSourceReader *pReader) {
                 pBuffer->Release();
             }
             pSample->Release();
+        }
+
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+            break;
         }
     }
 
@@ -238,19 +244,26 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
     // Check if the file is a raw AC-3 or E-AC-3 elementary stream (which IMFSourceReader has no ByteStreamHandler for)
     std::ifstream file(wPath.data(), std::ios::binary);
     if (file.is_open()) {
-        unsigned char header[16] = {0};
+        unsigned char header[128] = {0};
         file.read(reinterpret_cast<char*>(header), sizeof(header));
-        std::streamsize bytesRead = file.gcount();
+        const size_t bytesRead = file.gcount() > 0 ? static_cast<size_t>(file.gcount()) : 0;
         file.seekg(0, std::ios::beg);
 
-        int syncIdx = NativeAudioDecoder::findAc3Syncword(header, static_cast<size_t>(bytesRead));
-        if (syncIdx >= 0) {
-            std::vector<unsigned char> fileData((std::istreambuf_iterator<char>(file)),
-                                                 std::istreambuf_iterator<char>());
-            DetectedType type = NativeAudioDecoder::isEac3(header + syncIdx, static_cast<size_t>(bytesRead) - syncIdx)
-                                    ? DetectedType::BUFFER_EAC3
-                                    : DetectedType::BUFFER_AC3;
-            return decodeElementaryStream(fileData.data(), fileData.size(), type);
+        if (bytesRead >= 6 && !NativeAudioDecoder::isM4aOrMp4(header, bytesRead)) {
+            size_t id3Skip = NativeAudioDecoder::skipId3Header(header, bytesRead);
+            const unsigned char *payload = header + id3Skip;
+            const size_t payloadLen = bytesRead - id3Skip;
+            if (!NativeAudioDecoder::isAacAdts(payload, payloadLen)) {
+                int syncIdx = NativeAudioDecoder::findAc3Syncword(payload, payloadLen);
+                if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= payloadLen) {
+                    std::vector<unsigned char> fileData((std::istreambuf_iterator<char>(file)),
+                                                         std::istreambuf_iterator<char>());
+                    DetectedType type = NativeAudioDecoder::isEac3(payload + syncIdx, payloadLen - syncIdx)
+                                            ? DetectedType::BUFFER_EAC3
+                                            : DetectedType::BUFFER_AC3;
+                    return decodeElementaryStream(fileData.data(), fileData.size(), type);
+                }
+            }
         }
     }
 
@@ -279,16 +292,25 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
         return result;
     }
 
+    const bool isM4a = NativeAudioDecoder::isM4aOrMp4(bytes, length);
+    const size_t id3Skip = NativeAudioDecoder::skipId3Header(bytes, length);
+    const unsigned char *payload = bytes + id3Skip;
+    const size_t payloadLen = length - id3Skip;
+    const bool isAdts = NativeAudioDecoder::isAacAdts(payload, payloadLen);
+
     // Raw AC-3 and E-AC-3 elementary streams lack a Media Foundation container ByteStreamHandler.
-    // Decode them via the Windows MFT stream decoder.
-    int syncIdx = NativeAudioDecoder::findAc3Syncword(bytes, length);
-    if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= length) {
-        const unsigned char *h = bytes + syncIdx;
-        size_t rem = length - syncIdx;
-        if (NativeAudioDecoder::isEac3(h, rem)) {
-            return decodeElementaryStream(bytes, length, DetectedType::BUFFER_EAC3);
-        } else if (NativeAudioDecoder::isAc3(h, rem)) {
-            return decodeElementaryStream(bytes, length, DetectedType::BUFFER_AC3);
+    // Decode them via the Windows MFT stream decoder. Check M4A/MP4 and AAC ADTS first because
+    // compressed AAC payload data can naturally contain 0x0B77.
+    if (!isM4a && !isAdts) {
+        int syncIdx = NativeAudioDecoder::findAc3Syncword(payload, payloadLen);
+        if (syncIdx >= 0 && static_cast<size_t>(syncIdx) + 6 <= payloadLen) {
+            const unsigned char *h = payload + syncIdx;
+            size_t rem = payloadLen - syncIdx;
+            if (NativeAudioDecoder::isEac3(h, rem)) {
+                return decodeElementaryStream(bytes, length, DetectedType::BUFFER_EAC3);
+            } else if (NativeAudioDecoder::isAc3(h, rem)) {
+                return decodeElementaryStream(bytes, length, DetectedType::BUFFER_AC3);
+            }
         }
     }
 
@@ -316,10 +338,10 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
     // Set byte stream attributes so Media Foundation can resolve MP4 / M4A / AAC container handlers
     IMFAttributes *pAttributes = nullptr;
     if (SUCCEEDED(pByteStream->QueryInterface(IID_PPV_ARGS(&pAttributes))) && pAttributes) {
-        if (NativeAudioDecoder::isM4aOrMp4(bytes, length)) {
+        if (isM4a) {
             pAttributes->SetString(MF_BYTESTREAM_CONTENT_TYPE, L"audio/mp4");
             pAttributes->SetString(MF_BYTESTREAM_ORIGIN_NAME, L"audio.m4a");
-        } else if (NativeAudioDecoder::isAacAdts(bytes, length)) {
+        } else if (isAdts) {
             pAttributes->SetString(MF_BYTESTREAM_CONTENT_TYPE, L"audio/aac");
             pAttributes->SetString(MF_BYTESTREAM_ORIGIN_NAME, L"audio.aac");
         }
@@ -335,25 +357,28 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
         wchar_t tempPath[MAX_PATH];
         wchar_t tempFile[MAX_PATH];
         if (GetTempPathW(MAX_PATH, tempPath) > 0 && GetTempFileNameW(tempPath, L"sld", 0, tempFile) > 0) {
-            const wchar_t *ext = L".m4a";
-            if (NativeAudioDecoder::isAacAdts(bytes, length)) ext = L".aac";
+            const wchar_t *ext = isAdts ? L".aac" : L".m4a";
             std::wstring customTempFile = std::wstring(tempFile) + ext;
-            MoveFileW(tempFile, customTempFile.c_str());
+            const bool moved = (MoveFileW(tempFile, customTempFile.c_str()) != 0);
+            const std::wstring &targetTempFile = moved ? customTempFile : std::wstring(tempFile);
 
-            FILE *fp = _wfopen(customTempFile.c_str(), L"wb");
+            FILE *fp = _wfopen(targetTempFile.c_str(), L"wb");
             if (fp) {
-                fwrite(bytes, 1, length, fp);
+                const size_t written = fwrite(bytes, 1, length, fp);
                 fclose(fp);
 
-                int utf8Len = WideCharToMultiByte(CP_UTF8, 0, customTempFile.c_str(), -1, nullptr, 0, nullptr, nullptr);
-                if (utf8Len > 0) {
-                    std::vector<char> utf8Path(utf8Len);
-                    WideCharToMultiByte(CP_UTF8, 0, customTempFile.c_str(), -1, utf8Path.data(), utf8Len, nullptr, nullptr);
-                    result = decodeFile(utf8Path.data());
+                if (written == length) {
+                    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, targetTempFile.c_str(), -1, nullptr, 0, nullptr, nullptr);
+                    if (utf8Len > 0) {
+                        std::vector<char> utf8Path(utf8Len);
+                        WideCharToMultiByte(CP_UTF8, 0, targetTempFile.c_str(), -1, utf8Path.data(), utf8Len, nullptr, nullptr);
+                        result = decodeFile(utf8Path.data());
+                    }
                 }
-                DeleteFileW(customTempFile.c_str());
+                DeleteFileW(targetTempFile.c_str());
                 return result;
             }
+            DeleteFileW(targetTempFile.c_str());
         }
 
         result.errorMessage = "MFCreateSourceReaderFromByteStream failed: " + std::to_string(hr);

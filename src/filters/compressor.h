@@ -2,7 +2,6 @@
 #define COMPRESSOR_H
 
 #include "../soloud/include/soloud.h"
-#include <vector>
 
 class Compressor;
 
@@ -10,7 +9,8 @@ class CompressorInstance : public SoLoud::FilterInstance {
   Compressor *mParent;
   float attackCoef;
   float releaseCoef;
-  std::vector<float> mEnvelope;
+  float mLastSamplerate = 0.0f;
+  float mEnvelope[MAX_CHANNELS] = {};
 
 public:
   virtual void filter(float *aBuffer, unsigned int aSamples,

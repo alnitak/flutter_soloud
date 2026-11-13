@@ -8,7 +8,9 @@
 
 #include "../soloud/include/soloud.h"
 #include "../soloud/include/soloud_filter.h"
+#include "custom_filter.h"
 
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -16,8 +18,10 @@
 struct FilterObject {
   FilterType type;
   std::unique_ptr<SoLoud::Filter> filter;
+  int customFilterId;
 
-  FilterObject(FilterType t, SoLoud::Filter *f) : type(t), filter(f) {}
+  FilterObject(FilterType t, SoLoud::Filter *f, int cid = -1)
+      : type(t), filter(f), customFilterId(cid) {}
 
   bool operator==(FilterType const &i) { return (i == type); }
 };
@@ -31,30 +35,42 @@ public:
   Filters(SoLoud::Soloud *soloud, ActiveSound *sound, BusData *busData);
   ~Filters() {}
 
-  int isFilterActive(FilterType filter);
+  int isFilterActive(FilterType filter, int customFilterId = 0);
 
-  PlayerErrors addFilter(FilterType filterType);
+  PlayerErrors addFilter(FilterType filterType, int customFilterId = -1);
 
-  bool removeFilter(FilterType filterType);
+  bool removeFilter(FilterType filterType, int customFilterId = 0);
+
+  /// Remove every filter, as removeFilter() does for one.
+  void removeAllFilters();
+
+  SoLoud::CustomFilter *getCustomFilter(int customFilterId);
+
+  SoLoud::CustomFilter *getOrCreateCustomFilter(int customFilterId);
 
   std::vector<std::string> getFilterParamNames(FilterType filterType);
 
   /// If [handle]==0 the operation is done to global filters.
   void setFilterParams(SoLoud::handle handle, FilterType filterType,
-                       int attributeId, float value);
+                       int attributeId, float value, int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
-  float getFilterParams(SoLoud::handle handle, FilterType filterType,
-                        int attributeId);
+  /// Stores the parameter in [value] and returns true, or returns false and
+  /// leaves [value] alone if the filter is not active (or, for a bus, if
+  /// [handle] is 0). Every float is a possible parameter value, so none can
+  /// stand for a missing filter.
+  bool getFilterParams(SoLoud::handle handle, FilterType filterType,
+                       int attributeId, float *value, int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
   void fadeFilterParameter(SoLoud::handle handle, FilterType filterType,
-                           int attributeId, float to, float time);
+                           int attributeId, float to, float time,
+                           int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
   void oscillateFilterParameter(SoLoud::handle handle, FilterType filterType,
                                 int attributeId, float from, float to,
-                                float time);
+                                float time, int customFilterId = 0);
 
 private:
   /// main SoLoud engine, the one used by player.cpp
@@ -69,6 +85,12 @@ private:
   BusData *mBusData;
 
   std::vector<std::unique_ptr<FilterObject>> filters;
+
+  /// Pre-configured CustomFilter instances indexed by slot (`0..7`) so
+  /// parameter definitions and callbacks can be configured before `activate()`
+  /// and preserved across `deactivate()` / `activate()` cycles.
+  std::array<std::unique_ptr<SoLoud::CustomFilter>, FILTERS_PER_STREAM>
+      mPendingCustomFilters;
 };
 
 /// Storage for mixing bus instances, keyed by auto-incrementing ID.
@@ -81,7 +103,10 @@ struct BusData {
   // instance."
   // This implies that only one handle is needed for each bus and it is stored
   // here.
-  SoLoud::handle handle; // set when bus is played on engine
+  // Set when bus is played on engine, 0 until then. The bus's live filters
+  // belong to that voice, and handle 0 would address the global filters
+  // instead, so they cannot be reached while it is 0.
+  SoLoud::handle handle = 0;
   Filters filters;
   // The bus's visualization, or null while it is disabled. Owned here rather
   // than by the BusInstance, which the engine deletes whenever it stops the

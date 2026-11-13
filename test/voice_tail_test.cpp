@@ -8,7 +8,9 @@
 // output yet: up to 512 source samples (11.6 ms at 44.1 kHz). Handing a
 // sound off to a copy scheduled at its end left a gap at the seam. Now the
 // voice is stopped once a read made after the end comes back empty, or as
-// soon as it is no longer mixed.
+// soon as it is no longer mixed. Catmull-Rom outputs a source sample one
+// position later than linear, so with it the voice is stopped once it has
+// also output position 1 of that empty block.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -205,6 +207,19 @@ long readPastEnd(unsigned int aLength, long long aStepFixed)
     return (long)((end * kFrac + aStepFixed - 1) / aStepFixed);
 }
 
+// The last output sample the voice owes before it may be stopped, counted
+// as above: the one that reads past the last block. Catmull-Rom outputs
+// source sample n at position n + 2, one later than linear, so the last
+// sample of a sound ending on a block boundary comes out at position 1 of
+// the empty block: the voice owes the first output sample at or after it.
+long lastOwed(unsigned int aLength, long long aStepFixed, unsigned int aResampler)
+{
+    if (aResampler != SoLoud::Soloud::RESAMPLER_CATMULLROM)
+        return readPastEnd(aLength, aStepFixed);
+    const long long end = (long long)((aLength + kBlock - 1) / kBlock) * kBlock;
+    return (long)(((end + 1) * kFrac + aStepFixed - 1) / aStepFixed);
+}
+
 // ---- Tests ------------------------------------------------------------------
 
 // A sound that does not loop, handed off to a looping copy scheduled at its
@@ -277,9 +292,9 @@ void testSeam()
 }
 
 // A single voice that does not loop plays to its last sample and is stopped
-// in the mix call that reads past its last block, no earlier and no later,
-// and a twin that is inaudible but ticking (the second branch of
-// mixBus_internal) is stopped in the same mix call.
+// in the mix call that holds the last output sample it owes (lastOwed), no
+// earlier and no later, and a twin that is inaudible but ticking (the second
+// branch of mixBus_internal) is stopped in the same mix call.
 void testTail()
 {
     std::fprintf(stderr, "testTail\n");
@@ -305,7 +320,7 @@ void testTail()
                         SoLoud::AudioSourceInstance::INAUDIBLE_TICK;
 
                     const long startFrame = frameAt(kStart, rates.engine);
-                    const long emptyRead = startFrame + readPastEnd(length, stepFixed);
+                    const long owed = startFrame + lastOwed(length, stepFixed, resampler);
                     const long limit = startFrame + (long)(length / step) + 4 * 4096;
                     long total = 0, lastSound = -1;
                     int voiceStop = -1, twinStop = -1, expectedStop = -1;
@@ -320,7 +335,7 @@ void testTail()
                         for (unsigned int i = 0; i < n; i++)
                             if (!silent(buffer[i]))
                                 lastSound = total + i;
-                        if (expectedStop < 0 && total + n > emptyRead)
+                        if (expectedStop < 0 && total + n > owed)
                             expectedStop = call;
                         if (voiceStop < 0 && !soloud.isValidVoiceHandle(voice))
                             voiceStop = call;
@@ -342,10 +357,10 @@ void testTail()
                     EXPECT(voiceStop == expectedStop,
                            "%s, %s, %s mix calls, %u samples: the voice is stopped "
                            "in mix call %d, expected %d (the one holding output "
-                           "frame %ld, which reads past the last block)",
+                           "frame %ld, the last it owes)",
                            rates.name, resamplerName(resampler),
                            uneven ? "uneven" : "512-frame", length, voiceStop,
-                           expectedStop, emptyRead);
+                           expectedStop, owed);
                     EXPECT(twinStop == voiceStop,
                            "%s, %s, %s mix calls, %u samples: the ticking twin is "
                            "stopped in mix call %d, the audible voice in %d",
@@ -354,6 +369,99 @@ void testTail()
                            voiceStop);
                 }
             }
+        }
+    }
+}
+
+// A voice whose end is mixed one output sample per call outputs what one
+// long call outputs, up to the last sample it owes, and is stopped right
+// after it. The mix calls end exactly on the sample that reads past the last
+// block, then hold one sample each. Catmull-Rom used to be stopped after that
+// first call, before position 1 of the empty block, cutting up to three
+// output samples: the last sample of a sound ending on a block boundary
+// never came out.
+void testOneSampleCalls()
+{
+    std::fprintf(stderr, "testOneSampleCalls\n");
+    const Rates rates[] = {kRates[0], kRates[1], kRates[2], {"48k in 48k", 48000.0f, 48000}};
+    std::vector<unsigned int> lens = lengths(25);
+    for (unsigned int blocks = 4; blocks <= 6; blocks++)
+        for (unsigned int back = 0; back < 4; back++)
+            lens.push_back(blocks * kBlock - back);
+    for (const Rates &r : rates)
+    {
+        const long long stepFixed = stepFixedOf(r.source, r.engine);
+        for (unsigned int resampler : kResamplers)
+        {
+            unsigned int lost = 0, mistimed = 0, lostLength = 0, mistimedLength = 0;
+            float lostLevel = 0.0f;
+            long mistimedStop = 0, mistimedOwed = 0;
+            for (unsigned int length : lens)
+            {
+                const long startFrame = frameAt(kStart, r.engine);
+                const long emptyRead = startFrame + readPastEnd(length, stepFixed);
+                const long owed = startFrame + lastOwed(length, stepFixed, resampler);
+                const long frames = owed + 16;
+                std::vector<float> out[2];
+                long stoppedAt = -1;
+                for (int split = 0; split < 2; split++)
+                {
+                    SoLoud::Soloud soloud;
+                    initEngine(soloud, r.engine, resampler);
+                    Noise noise(length, r.source);
+                    const SoLoud::handle voice = soloud.playScheduled(kStart, noise, 1.0f);
+                    std::vector<float> buffer;
+                    while ((long)out[split].size() < frames)
+                    {
+                        // The reference mixes the frames around the end in one
+                        // 2048-frame call.
+                        const long pos = (long)out[split].size();
+                        long n = kBlock;
+                        if (split == 0 && pos + (long)kBlock > emptyRead - (long)kBlock)
+                            n = 2048;
+                        else if (split == 1)
+                            n = pos <= emptyRead ? std::min<long>(kBlock, emptyRead + 1 - pos) : 1;
+                        buffer.assign(n, 0.0f);
+                        soloud.mix(buffer.data(), (unsigned int)n);
+                        out[split].insert(out[split].end(), buffer.begin(), buffer.end());
+                        if (split == 1 && stoppedAt < 0 && !soloud.isValidVoiceHandle(voice))
+                            stoppedAt = (long)out[split].size() - 1;
+                    }
+                    soloud.deinit();
+                }
+                // What the voice outputs up to the last sample it owes.
+                float worst = 0.0f;
+                for (long f = 0; f <= owed; f++)
+                    worst = std::max(worst, std::fabs(out[1][f] - out[0][f]));
+                if (worst > 1e-6f)
+                {
+                    lost++;
+                    if (worst > lostLevel)
+                    {
+                        lostLevel = worst;
+                        lostLength = length;
+                    }
+                }
+                // Stopped in the call holding the last sample it owes.
+                if (stoppedAt != owed)
+                {
+                    mistimed++;
+                    mistimedLength = length;
+                    mistimedStop = stoppedAt;
+                    mistimedOwed = owed;
+                }
+            }
+            EXPECT(lost == 0,
+                   "%s, %s, one-sample mix calls: %u of %zu sounds lose output "
+                   "before the last sample they owe, by up to %f (a %u-sample sound)",
+                   r.name, resamplerName(resampler), lost, lens.size(), lostLevel,
+                   lostLength);
+            EXPECT(mistimed == 0,
+                   "%s, %s, one-sample mix calls: %u of %zu voices are not stopped "
+                   "in the call holding the last sample they owe (a %u-sample "
+                   "sound: stopped after frame %ld, owes frame %ld)",
+                   r.name, resamplerName(resampler), mistimed, lens.size(), mistimedLength,
+                   mistimedStop, mistimedOwed);
         }
     }
 }
@@ -448,6 +556,7 @@ int main()
 {
     testSeam();
     testTail();
+    testOneSampleCalls();
     testUnmixed();
 
     std::fprintf(stderr, "\n%d assertions, %d failures\n", gAssertions,

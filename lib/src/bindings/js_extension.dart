@@ -1,6 +1,7 @@
 // ignore_for_file: public_member_api_docs
 
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
@@ -209,6 +210,13 @@ external int wasmStartMixerCapture(
 @JS('Module_soloud._stopMixerCapture')
 external void wasmStopMixerCapture();
 
+@JS('Module_soloud._stopMixerCaptureAndDrain')
+external int wasmStopMixerCaptureAndDrain(
+  int captureId,
+  int chunkBytesPtr,
+  int lengthPtr,
+);
+
 @JS('Module_soloud._isMixerCaptureRunning')
 external int wasmIsMixerCaptureRunning();
 
@@ -232,6 +240,21 @@ external int wasmGetMixerOutputWavHeader();
 
 @JS('Module_soloud._setMixerOutputCallback')
 external void wasmSetMixerOutputCallback(int callbackPtr);
+
+@JS('Module_soloud._takeMixerOutputPacket')
+external int wasmTakeMixerOutputPacket(
+  int token,
+  int captureIdPtr,
+  int lengthPtr,
+);
+
+@JS('Module_soloud._getMixerCaptureId')
+external int wasmGetMixerCaptureId();
+
+/// Whether the loaded wasm module exports [name] (for example
+/// `_getMixerCaptureId`). An older prebuilt module lacks the newer exports,
+/// and calling one that is missing throws.
+bool wasmHasExport(String name) => moduleSoloudInstance?.has(name) ?? false;
 
 @JS('Module_soloud._initEngine')
 external int wasmInitEngine(
@@ -406,6 +429,9 @@ external void wasmResetStreamTime();
 
 @JS('Module_soloud._getEngineTime')
 external double wasmGetEngineTime();
+
+@JS('Module_soloud._getHardwareOutputLatency')
+external double wasmGetHardwareOutputLatency();
 
 @JS('Module_soloud._playScheduled')
 external int wasmPlayScheduled(
@@ -868,6 +894,162 @@ external void wasmBusAnnexSound(int busId, int voiceHandle);
 
 @JS('Module_soloud._busGetActiveVoiceCount')
 external int wasmBusGetActiveVoiceCount(int busId);
+
+/////////////////////////////////////////
+/// Realtime Stream & Custom DSP
+/////////////////////////////////////////
+
+@JS('Module_soloud._setRealtimeStream')
+external int wasmSetRealtimeStream(
+  int hashPtr,
+  int sampleRate,
+  int channels,
+  int format,
+  int bufferFrames,
+  int historyFrames,
+);
+
+@JS('Module_soloud._resetRealtimeStream')
+external int wasmResetRealtimeStream(int hash);
+
+// [sampleCount] is the number of samples readable at [samplesPtr]; native
+// code rejects a push whose frameCount * channels exceeds it.
+@JS('Module_soloud._pushRealtimeFloat32')
+external int wasmPushRealtimeFloat32(
+  int hash,
+  int samplesPtr,
+  int frameCount,
+  int sampleCount,
+);
+
+@JS('Module_soloud._pushRealtimeInt16')
+external int wasmPushRealtimeInt16(
+  int hash,
+  int samplesPtr,
+  int frameCount,
+  int sampleCount,
+);
+
+@JS('Module_soloud._pushRealtimeClockedFloat32')
+external int wasmPushRealtimeClockedFloat32(
+  int hash,
+  double soundTime,
+  int samplesPtr,
+  int frameCount,
+  int sampleCount,
+);
+
+@JS('Module_soloud._pushRealtimeScheduledFloat32')
+external int wasmPushRealtimeScheduledFloat32(
+  int hash,
+  double atTime,
+  int samplesPtr,
+  int frameCount,
+  int sampleCount,
+);
+
+@JS('Module_soloud._getRealtimeAvailableToRead')
+external int wasmGetRealtimeAvailableToRead(int hash);
+
+@JS('Module_soloud._getRealtimeAvailableToWrite')
+external int wasmGetRealtimeAvailableToWrite(int hash);
+
+@JS('Module_soloud._getRealtimeUnderrunCount')
+external int wasmGetRealtimeUnderrunCount(int hash);
+
+@JS('Module_soloud._createCustomAudioSource')
+external int wasmCreateCustomAudioSource(
+  int hashPtr,
+  int sampleRate,
+  int channels,
+  int dspCallbackPtr,
+  int userdataPtr,
+  int lifecycleCallbackPtr,
+  int singleInstance,
+  int webJsCallbackNamePtr,
+  int mustTickWhenInaudible,
+  int killWhenInaudible,
+);
+
+@JS('Module_soloud._addCustomFilter')
+external int wasmAddCustomFilter(int soundHash, int busId, int customFilterId);
+
+@JS('Module_soloud._removeCustomFilter')
+external int wasmRemoveCustomFilter(
+  int soundHash,
+  int busId,
+  int customFilterId,
+);
+
+@JS('Module_soloud._isCustomFilterActive')
+external int wasmIsCustomFilterActive(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  int idPtr,
+);
+
+@JS('Module_soloud._setCustomFilterCallback')
+external int wasmSetCustomFilterCallback(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  int callbackPtr,
+  int userdataPtr,
+  int numParams,
+  int webJsCallbackNamePtr,
+);
+
+@JS('Module_soloud._setCustomFilterParamDefinition')
+external int wasmSetCustomFilterParamDefinition(
+  int soundHash,
+  int busId,
+  int customFilterId,
+  int paramIndex,
+  int namePtr,
+  double minVal,
+  double maxVal,
+  double defaultVal,
+);
+
+@JS('Module_soloud._setCustomFilterParams')
+external int wasmSetCustomFilterParams(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double value,
+);
+
+@JS('Module_soloud._getCustomFilterParams')
+external int wasmGetCustomFilterParams(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  int paramValuePtr,
+);
+
+@JS('Module_soloud._fadeCustomFilterParameter')
+external int wasmFadeCustomFilterParameter(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double to,
+  double time,
+);
+
+@JS('Module_soloud._oscillateCustomFilterParameter')
+external int wasmOscillateCustomFilterParameter(
+  int handle,
+  int busId,
+  int customFilterId,
+  int attributeId,
+  double from,
+  double to,
+  double time,
+);
 
 /// Decodes audio data on the web using the browser's OfflineAudioContext.
 /// Returns interleaved Float32List with metadata, or null on failure.

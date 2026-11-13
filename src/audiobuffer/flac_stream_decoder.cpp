@@ -1,7 +1,9 @@
 #if !defined(NO_XIPH_LIBS)
 
 #include "flac_stream_decoder.h"
+#include "metadata_bounds.h"
 #include "../soloud_common.h"
+#include "../simd/simd_pcm.h"
 #include <cstring> // For memcpy
 
 namespace
@@ -32,7 +34,7 @@ namespace
         size_t pos = 4;
         while (true)
         {
-            if (pos + 4 > data.size())
+            if (!metadataHasBytes(data.size(), pos, 4))
                 return 0; // need more data
 
             const unsigned char blockType = data[pos];
@@ -41,6 +43,10 @@ namespace
                 (static_cast<size_t>(data[pos + 2]) << 8) |
                 static_cast<size_t>(data[pos + 3]);
 
+            // A delivery can end anywhere inside the metadata. The header is
+            // complete only once every byte of every block has arrived.
+            if (!metadataHasBytes(data.size(), pos + 4, blockSize))
+                return 0;
             pos += 4 + blockSize;
 
             if (blockType & 0x80)
@@ -85,7 +91,10 @@ void FlacDecoderWrapper::setIcyMetaInt(int icyMetaInt)
 
 bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
 {
+    (void)engineSamplerate;
+    (void)engineChannels;
     m_drained = false;
+    m_read_pos = 0;
     if (m_pFlacDecoder)
     {
         FLAC__stream_decoder_finish(m_pFlacDecoder);
@@ -119,6 +128,8 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
     if (init_status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
     {
         SOLOUD_DEBUG_LOG("[FlacDecoderWrapper] init_stream failed with status %d\n", init_status);
+        FLAC__stream_decoder_delete(m_pFlacDecoder);
+        m_pFlacDecoder = nullptr;
         return false;
     }
 
@@ -164,9 +175,22 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
             mHeader.assign(m_audioData.begin(), m_audioData.begin() + headerLen);
             SOLOUD_DEBUG_LOG("[FlacDecoderWrapper] captured %zu header bytes\n", headerLen);
         }
-        else if (m_pFlacDecoder == nullptr)
+        else if (m_dataEnded)
         {
-            // Need the full header before we can initialize the decoder.
+            // The data ended inside the metadata, so the header can never
+            // complete. Drop the input and end the stream, or a drain loop
+            // waiting on hasPendingData() would wait forever.
+            m_audioData.clear();
+            m_read_pos = 0;
+            m_drained = true;
+            return {{}, DecoderError::CodecError};
+        }
+        else
+        {
+            // Wait for the rest of the header even when StreamDecoder has
+            // already initialized the codec: once the codec consumes these
+            // bytes the header can no longer be cached, and a seek restarts
+            // the codec from the cached header.
             return {{}, DecoderError::NoError};
         }
     }
@@ -215,9 +239,8 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         }
     }
 
-    m_read_pos = 0;
     unsigned int processCount = 0;
-    size_t last_successful_read_pos = 0;
+    size_t last_successful_read_pos = m_read_pos;
     while ((m_read_pos < m_audioData.size() || m_dataEnded) && processCount < 100000)
     {
         if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
@@ -277,12 +300,21 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
 
     if (m_read_pos > 0)
     {
-        m_streamStartOffset += m_read_pos;
-        m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
+        if (m_read_pos >= m_audioData.size())
+        {
+            m_streamStartOffset += m_read_pos;
+            m_audioData.clear();
+            m_read_pos = 0;
+        }
+        else if (m_read_pos >= 65536 && m_read_pos * 2 >= m_audioData.size())
+        {
+            m_streamStartOffset += m_read_pos;
+            m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
+            m_read_pos = 0;
+        }
     }
-    m_read_pos = 0;
 
-    if (m_dataEnded && m_audioData.empty())
+    if (m_dataEnded && m_read_pos >= m_audioData.size())
     {
         m_drained = true;
     }
@@ -389,19 +421,12 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
 
     const size_t num_samples = frame->header.blocksize;
     const unsigned channels = static_cast<unsigned>(self->m_channels);
-    float divisor = 1.0f;
-    if (self->m_bitsPerSample == 16)
-    {
-        divisor = 32768.0f;
-    }
-    else if (self->m_bitsPerSample == 24)
-    {
-        divisor = 8388608.0f;
-    }
-    else if (self->m_bitsPerSample == 8)
-    {
-        divisor = 128.0f;
-    }
+    unsigned int bps = frame->header.bits_per_sample;
+    if (bps == 0) bps = static_cast<unsigned int>(self->m_bitsPerSample);
+    if (bps == 0) bps = 16;
+    const float scale = (bps > 0 && bps < 32)
+                            ? (1.0f / static_cast<float>(1u << (bps - 1)))
+                            : ((bps == 32) ? (1.0f / 2147483648.0f) : 1.0f);
 
     const size_t frameTotalSamples = num_samples * channels;
     const uint64_t frameStartSample =
@@ -419,18 +444,29 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
         startSample = static_cast<size_t>(self->mPendingSkipTargetSample - frameStartSample);
     }
 
-    // De-interleave with frames outer / channels inner (no per-sample
-    // div/mod) and a single reservation up front.
-    self->m_decodedPcm.reserve(self->m_decodedPcm.size() +
-                               (frameTotalSamples - startSample));
-    const size_t startFrame = startSample / channels;
-    const unsigned startChannel = static_cast<unsigned>(startSample % channels);
-    for (size_t i = startFrame; i < num_samples; ++i)
+    if (startSample == 0 && num_samples > 0 && channels > 0)
     {
-        const unsigned firstChannel = (i == startFrame) ? startChannel : 0;
-        for (unsigned channel = firstChannel; channel < channels; ++channel)
+        const size_t oldSize = self->m_decodedPcm.size();
+        self->m_decodedPcm.resize(oldSize + frameTotalSamples);
+        SoLoud::interleavePlanarInt32ToFloats(
+            reinterpret_cast<const int32_t *const *>(buffer),
+            self->m_decodedPcm.data() + oldSize,
+            static_cast<unsigned int>(num_samples), channels, scale);
+    }
+    else if (channels > 0)
+    {
+        // Partial first frame after seek: de-interleave from startSample.
+        self->m_decodedPcm.reserve(self->m_decodedPcm.size() +
+                                   (frameTotalSamples - startSample));
+        const size_t startFrame = startSample / channels;
+        const unsigned startChannel = static_cast<unsigned>(startSample % channels);
+        for (size_t i = startFrame; i < num_samples; ++i)
         {
-            self->m_decodedPcm.push_back(static_cast<float>(buffer[channel][i]) / divisor);
+            const unsigned firstChannel = (i == startFrame) ? startChannel : 0;
+            for (unsigned channel = firstChannel; channel < channels; ++channel)
+            {
+                self->m_decodedPcm.push_back(static_cast<float>(buffer[channel][i]) * scale);
+            }
         }
     }
 
@@ -476,8 +512,9 @@ double FlacDecoderWrapper::getDuration() const
     return static_cast<double>(mTotalSamples) / static_cast<double>(m_samplerate);
 }
 
-void FlacDecoderWrapper::prepareForSeek(uint64_t targetSample)
+void FlacDecoderWrapper::prepareForSeek(uint64_t targetSample, uint64_t byteOffset)
 {
+    (void)byteOffset; // Offsets are estimated from the file size.
     if (m_pFlacDecoder)
     {
         FLAC__stream_decoder_finish(m_pFlacDecoder);
@@ -503,7 +540,7 @@ bool FlacDecoderWrapper::hasPendingData() const
     {
         return false;
     }
-    if (!m_audioData.empty())
+    if (m_read_pos < m_audioData.size())
     {
         return true;
     }

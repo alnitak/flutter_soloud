@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #ifndef SOLOUD_FILTER_H
 #define SOLOUD_FILTER_H
 
+#include <stdint.h>
 #include "soloud.h"
 
 namespace SoLoud
@@ -39,15 +40,28 @@ namespace SoLoud
 	struct FilterStateSnapshot
 	{
 		virtual ~FilterStateSnapshot() {}
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// False when part of the filter's state lives outside what was
+		// captured (e.g. inside a user DSP callback or a VST3 plugin), so a
+		// re-mix could not reproduce the original output.
+		bool mComplete = true;
+		// Identifies the concrete snapshot type for captureStateInto(): the
+		// address of a static tag owned by that type, or nullptr.
+		const void *mKind = nullptr;
 	};
 
 	class FilterInstance
 	{
 	public:
 		unsigned int mNumParams;
-		unsigned int mParamChanged;
+		uint64_t mParamChanged;
 		float *mParam;
 		Fader *mParamFader;
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		// Unique for the process lifetime (never reused, unlike the instance's
+		// address), so a checkpoint can tell whether a voice's filter slot
+		// still holds the instance it captured.
+		unsigned long long mInstanceId;
 
 
 		FilterInstance();
@@ -61,6 +75,14 @@ namespace SoLoud
 		// Restores a snapshot produced by captureState(). Never called with
 		// nullptr, and only with a snapshot of this instance's own type.
 		virtual void restoreState(FilterStateSnapshot *) {}
+		// Refills aState, a snapshot that is no longer needed (it may come
+		// from another instance or filter type), with this instance's state
+		// without allocating. Returns false, leaving aState untouched, when
+		// it cannot be reused; the caller then falls back to captureState().
+		// Checkpoints call
+		// this on the audio thread every quantum, so filters with large state
+		// (delay lines, reverb tanks) should implement it.
+		virtual bool captureStateInto(FilterStateSnapshot *) { return false; }
 		virtual result initParams(int aNumParams);
 		virtual void updateParams(time aTime);
 		virtual void filter(float *aBuffer, unsigned int aSamples, unsigned int aBufferSize, unsigned int aChannels, float aSamplerate, time aTime);

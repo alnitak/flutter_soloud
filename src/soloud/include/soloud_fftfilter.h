@@ -38,6 +38,7 @@ namespace SoLoud
 		float *mMixBuffer;
 		float *mLastPhase;
 		float *mSumPhase;
+		unsigned int mAllocatedChannels;
 		unsigned int mInputOffset[MAX_CHANNELS];
 		unsigned int mMixOffset[MAX_CHANNELS];
 		unsigned int mReadOffset[MAX_CHANNELS];

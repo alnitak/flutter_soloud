@@ -25,21 +25,45 @@ freely, subject to the following restrictions:
 #include "basic_wave.h"
 #include "soloud_misc.h"
 
+#include <cmath>
 #include <iostream>
+
+namespace
+{
+    // Brings a phase back into [0, 1) whichever way and however far it
+    // moved: a negative frequency makes it fall, and a superwave harmonic of
+    // a high frequency can advance by more than a period per sample.
+    inline double wrapPhase(double aPhase)
+    {
+        if (aPhase >= 0.0 && aPhase < 1.0)
+            return aPhase;
+        aPhase -= std::floor(aPhase);
+        // aPhase - floor(aPhase) rounds to 1.0 for a tiny negative phase.
+        return aPhase < 1.0 ? aPhase : 0.0;
+    }
+}
 
 BasicwaveInstance::BasicwaveInstance(Basicwave *aParent)
 {
     mParent = aParent;
     mT = 0;
     mPhase = 0;
-    mCurrentFrequency = mParent->mFreq;
+    mCurrentFrequency = mParent->mFreq.load(std::memory_order_relaxed);
+    mHarmonicPhases[0] = 0.0;
+    mHarmonicPhases[1] = 0.0;
+    mHarmonicPhases[2] = 0.0;
 }
 
 unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
 {
+    (void)aBufferSize;
     unsigned int i;
-    double d = 1.0 / mSamplerate;
-    double targetFrequency = mParent->mFreq;
+    const double d = 1.0 / mSamplerate;
+    // One snapshot of the parameters per block: the setters may change them
+    // meanwhile.
+    const double targetFrequency = mParent->mFreq.load(std::memory_order_relaxed);
+    const int waveform = mParent->mWaveform.load(std::memory_order_relaxed);
+    const bool superwave = mParent->mSuperwave.load(std::memory_order_relaxed);
 
     // Number of steps for smoothing frequency
     const unsigned int smoothingSteps = aSamplesToRead / 3;
@@ -47,26 +71,16 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
     // Calculate the smoothing factor dynamically
     const double smoothingFactor = smoothingSteps > 0 ? (1.0 / smoothingSteps) : 1.0;
 
-    if (!mParent->mSuperwave)
+    if (!superwave)
     {
         for (i = 0; i < aSamplesToRead; i++)
         {
-            // Smoothly adjust frequency
             mCurrentFrequency += (targetFrequency - mCurrentFrequency) * smoothingFactor;
-
-            // Calculate the phase increment
-            double phaseIncrement = mCurrentFrequency * d;
-
-            // Update the phase
-            mPhase += phaseIncrement;
-
-            // Wrap the phase to keep it in [0.0, 1.0) range
-            if (mPhase >= 1.0)
-                mPhase -= 1.0;
+            mPhase = wrapPhase(mPhase + mCurrentFrequency * d);
 
             aBuffer[i] = SoLoud::Misc::generateWaveform(
-                             mParent->mWaveform,
-                             mPhase) *
+                             waveform,
+                             static_cast<float>(mPhase)) *
                          mParent->mADSR.val(mT, 10000000000000.0);
 
             mT += d;
@@ -74,47 +88,38 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
     }
     else
     {
+        const double detune = mParent->mSuperwaveDetune.load(std::memory_order_relaxed);
+        const double harmMult0 = 2.0;
+        const double harmMult1 = 2.0 + detune;
+        const double harmMult2 = 2.0 + 2.0 * detune;
+        const float scale = static_cast<float>(
+            mParent->mSuperwaveScale.load(std::memory_order_relaxed));
+
         for (i = 0; i < aSamplesToRead; i++)
         {
-            // Smoothly adjust frequency
             mCurrentFrequency += (targetFrequency - mCurrentFrequency) * smoothingFactor;
+            const double phaseIncrement = mCurrentFrequency * d;
 
-            // Calculate the primary phase increment
-            double phaseIncrement = mCurrentFrequency * d;
+            mPhase = wrapPhase(mPhase + phaseIncrement);
+            mHarmonicPhases[0] =
+                wrapPhase(mHarmonicPhases[0] + phaseIncrement * harmMult0);
+            mHarmonicPhases[1] =
+                wrapPhase(mHarmonicPhases[1] + phaseIncrement * harmMult1);
+            mHarmonicPhases[2] =
+                wrapPhase(mHarmonicPhases[2] + phaseIncrement * harmMult2);
 
-            // Update the primary phase
-            mPhase += phaseIncrement;
+            const float env = mParent->mADSR.val(mT, 10000000000000.0);
+            const float primary = SoLoud::Misc::generateWaveform(
+                waveform, static_cast<float>(mPhase));
+            const float harmonics =
+                SoLoud::Misc::generateWaveform(
+                    waveform, static_cast<float>(mHarmonicPhases[0])) +
+                SoLoud::Misc::generateWaveform(
+                    waveform, static_cast<float>(mHarmonicPhases[1])) +
+                SoLoud::Misc::generateWaveform(
+                    waveform, static_cast<float>(mHarmonicPhases[2]));
 
-            // Wrap the primary phase to [0.0, 1.0)
-            if (mPhase >= 1.0)
-                mPhase -= 1.0;
-
-            // Generate the primary waveform
-            aBuffer[i] = SoLoud::Misc::generateWaveform(
-                            mParent->mWaveform, mPhase) *
-                        mParent->mADSR.val(mT, 10000000000000.0);
-
-            // Generate additional harmonics
-            for (int j = 0; j < 3; j++)
-            {
-                // Calculate the harmonic frequency
-                double harmonicFrequency = mCurrentFrequency * (2.0 + j * mParent->mSuperwaveDetune);
-
-                // Calculate the harmonic phase increment
-                double harmonicPhaseIncrement = harmonicFrequency * d;
-
-                // Update and wrap the harmonic phase
-                mHarmonicPhases[j] += harmonicPhaseIncrement;
-                if (mHarmonicPhases[j] >= 1.0)
-                    mHarmonicPhases[j] -= 1.0;
-
-                // Generate the harmonic waveform
-                aBuffer[i] += SoLoud::Misc::generateWaveform(
-                                mParent->mWaveform, mHarmonicPhases[j]) *
-                            mParent->mADSR.val(mT, 10000000000000.0) * mParent->mSuperwaveScale;
-            }
-
-            // Increment the time for ADSR
+            aBuffer[i] = (primary + harmonics * scale) * env;
             mT += d;
         }
     }
@@ -135,9 +140,9 @@ Basicwave::Basicwave(
 {
     setSamplerate(44100);
     setWaveform(waveform);
-    mSuperwave = superWave;
-    mSuperwaveScale = scale;
-    mSuperwaveDetune = detune;
+    mSuperwave.store(superWave, std::memory_order_relaxed);
+    mSuperwaveScale.store(scale, std::memory_order_relaxed);
+    mSuperwaveDetune.store(detune, std::memory_order_relaxed);
 }
 
 Basicwave::~Basicwave()
@@ -147,33 +152,33 @@ Basicwave::~Basicwave()
 
 void Basicwave::setScale(double aScale)
 {
-    mSuperwaveScale = aScale;
+    mSuperwaveScale.store(aScale, std::memory_order_relaxed);
 }
 
 void Basicwave::setDetune(double aDetune)
 {
-    mSuperwaveDetune = aDetune;
+    mSuperwaveDetune.store(aDetune, std::memory_order_relaxed);
 }
 
 void Basicwave::setSamplerate(double aSamplerate)
 {
     mBaseSamplerate = aSamplerate;
-    mFreq = (double)(440 / mBaseSamplerate);
+    mFreq.store((double)(440 / mBaseSamplerate), std::memory_order_relaxed);
 }
 
 void Basicwave::setFreq(double aFreq)
 {
-    mFreq = aFreq;
+    mFreq.store(aFreq, std::memory_order_relaxed);
 }
 
 void Basicwave::setSuperWave(bool aSuperwave)
 {
-    mSuperwave = aSuperwave;
+    mSuperwave.store(aSuperwave, std::memory_order_relaxed);
 }
 
 void Basicwave::setWaveform(int aWaveform)
 {
-    mWaveform = aWaveform;
+    mWaveform.store(aWaveform, std::memory_order_relaxed);
 }
 
 SoLoud::AudioSourceInstance *Basicwave::createInstance()

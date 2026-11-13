@@ -48,6 +48,7 @@ namespace SoLoud
 		// exactly mOffset; snapshot/restore make the source re-mixable.
 		virtual SourceStateSnapshot *captureSourceState();
 		virtual void restoreSourceState(SourceStateSnapshot *aState);
+		virtual bool captureSourceStateInto(SourceStateSnapshot *aState);
 	};
 
 	class Wav : public AudioSource

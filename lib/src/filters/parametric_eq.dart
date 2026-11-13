@@ -278,7 +278,9 @@ class ParametricEqSingle extends _ParametricEqInternal {
   /// bus filters.
   ///
   /// Reads the active filter's configured frequency for this band, falling back
-  /// to the default geometric spacing if not readable.
+  /// to the default geometric spacing if not readable. A filter that is not
+  /// active reports the band's default frequency (see
+  /// [ParametricEqParam.getDefault]).
   double bandFrequency(int bandIndex, {SoundHandle? soundHandle}) {
     if (!kIsWeb || soundHash == null) {
       final ret = SoLoudController().soLoudFFI.getFilterParams(
@@ -292,6 +294,12 @@ class ParametricEqSingle extends _ParametricEqInternal {
       }
     }
     final nBands = getNumBands(soundHandle);
+    // A filter that is not active has no band count to space bands by.
+    if (nBands < 1) {
+      return ParametricEqParam.getDefault(
+        ParametricEqParam.bandFreq(bandIndex),
+      );
+    }
     return calculateBandFrequency(bandIndex, nBands);
   }
 }
@@ -379,7 +387,9 @@ class ParametricEqGlobal extends _ParametricEqInternal {
   /// [bandIndex] should be 0 to nBands-1.
   ///
   /// Reads the active filter's configured frequency for this band, falling back
-  /// to the default geometric spacing if not readable.
+  /// to the default geometric spacing if not readable. A filter that is not
+  /// active reports the band's default frequency (see
+  /// [ParametricEqParam.getDefault]).
   double bandFrequency(int bandIndex) {
     final ret = SoLoudController().soLoudFFI.getFilterParams(
       FilterType.parametricEq,
@@ -389,6 +399,12 @@ class ParametricEqGlobal extends _ParametricEqInternal {
       return ret.value;
     }
     final nBands = getNumBands(null);
+    // A filter that is not active has no band count to space bands by.
+    if (nBands < 1) {
+      return ParametricEqParam.getDefault(
+        ParametricEqParam.bandFreq(bandIndex),
+      );
+    }
     return calculateBandFrequency(bandIndex, nBands);
   }
 }

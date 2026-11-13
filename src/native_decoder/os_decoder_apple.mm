@@ -53,7 +53,10 @@ DecodedAudioData decodeExtAudioFile(ExtAudioFileRef extAudioFile) {
     Float64 sampleRate = fileFormat.mSampleRate;
     if (sampleRate <= 0) sampleRate = 44100.0;
 
-    // Set client format to 32-bit floating point interleaved PCM
+    // Configure output format: 32-bit float, packed interleaved (matching
+    // AppleStreamDecoder's client format across AAC, AC-3, E-AC-3, and ALAC),
+    // then SIMD-deinterleave each L1-hot 4096-frame chunk directly into a
+    // single planar output allocation (halving peak memory vs staging buffer).
     AudioStreamBasicDescription clientFormat;
     std::memset(&clientFormat, 0, sizeof(clientFormat));
     clientFormat.mSampleRate = sampleRate;
@@ -62,27 +65,35 @@ DecodedAudioData decodeExtAudioFile(ExtAudioFileRef extAudioFile) {
     clientFormat.mBitsPerChannel = 32;
     clientFormat.mChannelsPerFrame = channels;
     clientFormat.mFramesPerPacket = 1;
-    clientFormat.mBytesPerFrame = 4 * channels;
-    clientFormat.mBytesPerPacket = 4 * channels;
+    clientFormat.mBytesPerFrame = sizeof(float) * channels;
+    clientFormat.mBytesPerPacket = sizeof(float) * channels;
 
-    status = ExtAudioFileSetProperty(extAudioFile, kExtAudioFileProperty_ClientDataFormat, sizeof(clientFormat), &clientFormat);
+    status = ExtAudioFileSetProperty(
+        extAudioFile, kExtAudioFileProperty_ClientDataFormat, sizeof(clientFormat), &clientFormat);
     if (status != noErr) {
         result.errorMessage = "Failed to set client format, OSStatus: " + std::to_string(status);
         return result;
     }
 
-    // Try to get total frame count hint
     SInt64 totalFrames = 0;
     propSize = sizeof(totalFrames);
     ExtAudioFileGetProperty(extAudioFile, kExtAudioFileProperty_FileLengthFrames, &propSize, &totalFrames);
 
-    std::vector<float> interleavedBuffer;
-    if (totalFrames > 0 && totalFrames < 500000000) { // Safety bound (~3 hours of 44.1kHz audio)
-        interleavedBuffer.reserve(static_cast<size_t>(totalFrames * channels));
-    }
-
     const UInt32 kChunkFrames = 4096;
-    std::vector<float> chunk(kChunkFrames * channels);
+    std::vector<float> chunk(static_cast<size_t>(kChunkFrames) * channels);
+
+    size_t capacity = (totalFrames > 0 && totalFrames < 500000000)
+                          ? static_cast<size_t>(totalFrames)
+                          : static_cast<size_t>(kChunkFrames) * 4;
+    float *planarBuffer = new (std::nothrow) float[capacity * channels];
+    if (!planarBuffer) {
+        capacity = static_cast<size_t>(kChunkFrames);
+        planarBuffer = new (std::nothrow) float[capacity * channels];
+        if (!planarBuffer) {
+            result.errorMessage = "Out of memory allocating planar audio buffer";
+            return result;
+        }
+    }
 
     AudioBufferList bufferList;
     bufferList.mNumberBuffers = 1;
@@ -96,6 +107,7 @@ DecodedAudioData decodeExtAudioFile(ExtAudioFileRef extAudioFile) {
         UInt32 numFrames = kChunkFrames;
         status = ExtAudioFileRead(extAudioFile, &numFrames, &bufferList);
         if (status != noErr) {
+            delete[] planarBuffer;
             result.errorMessage = "ExtAudioFileRead failed with OSStatus: " + std::to_string(status);
             return result;
         }
@@ -104,23 +116,59 @@ DecodedAudioData decodeExtAudioFile(ExtAudioFileRef extAudioFile) {
             break; // Reached end of file
         }
 
-        interleavedBuffer.insert(interleavedBuffer.end(), chunk.begin(), chunk.begin() + (numFrames * channels));
+        if (framesDecoded + numFrames > capacity) {
+            size_t newCap = capacity + (capacity >> 1);
+            if (newCap < framesDecoded + numFrames) {
+                newCap = framesDecoded + numFrames + kChunkFrames;
+            }
+            float *grown = new (std::nothrow) float[newCap * channels];
+            if (!grown) {
+                delete[] planarBuffer;
+                result.errorMessage = "Out of memory growing planar audio buffer";
+                return result;
+            }
+            for (UInt32 c = 0; c < channels; ++c) {
+                std::memcpy(grown + static_cast<size_t>(c) * newCap,
+                            planarBuffer + static_cast<size_t>(c) * capacity,
+                            framesDecoded * sizeof(float));
+            }
+            delete[] planarBuffer;
+            planarBuffer = grown;
+            capacity = newCap;
+        }
+
+        SoLoud::deinterleaveFloatsToPlanar(
+            chunk.data(), planarBuffer + framesDecoded, capacity, numFrames, channels);
         framesDecoded += numFrames;
     }
 
     if (framesDecoded == 0) {
+        delete[] planarBuffer;
         result.errorMessage = "No audio frames decoded";
         return result;
     }
 
-    // Allocate planar buffer for SoLoud
-    float *planarBuffer = new (std::nothrow) float[framesDecoded * channels];
-    if (!planarBuffer) {
-        result.errorMessage = "Out of memory allocating planar audio buffer";
-        return result;
+    if (framesDecoded < capacity) {
+        const size_t slack = capacity - framesDecoded;
+        float *exact = (slack > framesDecoded / 8)
+                           ? new (std::nothrow) float[framesDecoded * channels]
+                           : nullptr;
+        if (exact) {
+            for (UInt32 c = 0; c < channels; ++c) {
+                std::memcpy(exact + static_cast<size_t>(c) * framesDecoded,
+                            planarBuffer + static_cast<size_t>(c) * capacity,
+                            framesDecoded * sizeof(float));
+            }
+            delete[] planarBuffer;
+            planarBuffer = exact;
+        } else {
+            for (UInt32 c = 1; c < channels; ++c) {
+                std::memmove(planarBuffer + static_cast<size_t>(c) * framesDecoded,
+                             planarBuffer + static_cast<size_t>(c) * capacity,
+                             framesDecoded * sizeof(float));
+            }
+        }
     }
-
-    NativeAudioDecoder::interleavedToPlanar(interleavedBuffer.data(), planarBuffer, framesDecoded, channels);
 
     result.samples = planarBuffer;
     result.sampleCount = framesDecoded;

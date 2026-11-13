@@ -35,7 +35,11 @@ namespace SoLoud
         MBOggDecoder();
         ~MBOggDecoder();
 
-        bool open(File *aFile);
+        // ###### flutter_soloud local patch (chained opus length) ######
+        // [aScanLength] false skips working out an Opus file's length, which
+        // reads all of a chained one, for a caller that never asks for it:
+        // getLengthInSamples() is then 0.
+        bool open(File *aFile, bool aScanLength = true);
         bool open(const unsigned char *aData, unsigned int aLength);
         void close();
 
@@ -67,8 +71,11 @@ namespace SoLoud
         };
 
         bool detectCodec();
+        unsigned int plausibleLength(int64_t aFrames, int64_t aMaxFramesPerByte) const;
+        ogg_int64_t scanLastGranule(int *aSerial = nullptr);
+        int64_t scanOpusChainLength();
         bool initVorbis();
-        bool initOpus();
+        bool initOpus(bool aScanLength);
         bool initFlac();
         bool rewindOpus();
 

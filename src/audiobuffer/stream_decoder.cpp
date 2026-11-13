@@ -363,8 +363,8 @@ int StreamDecoder::granuleSampleRate() const
     return 0;
 }
 
-void StreamDecoder::prepareForSeek(uint64_t targetSample)
+void StreamDecoder::prepareForSeek(uint64_t targetSample, uint64_t byteOffset)
 {
     if (mWrapper)
-        mWrapper->prepareForSeek(targetSample);
+        mWrapper->prepareForSeek(targetSample, byteOffset);
 }

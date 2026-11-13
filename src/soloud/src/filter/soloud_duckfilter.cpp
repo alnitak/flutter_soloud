@@ -24,6 +24,7 @@ freely, subject to the following restrictions:
 
 #include "soloud.h"
 #include "soloud_duckfilter.h"
+#include "../../../simd/soloud_simd.h"
 
 namespace SoLoud
 {
@@ -42,10 +43,10 @@ namespace SoLoud
 	{
 		updateParams(aTime);
 		float onramp_step = 1;
-		if (mParam[DuckFilter::ONRAMP] > 0.01)
+		if (mParam[DuckFilter::ONRAMP] > 0.01f)
 			onramp_step = (1.0f - mParam[DuckFilter::LEVEL]) / (mParam[DuckFilter::ONRAMP] * aSamplerate);
 		float offramp_step = 1;
-		if (mParam[DuckFilter::OFFRAMP] > 0.01)
+		if (mParam[DuckFilter::OFFRAMP] > 0.01f)
 			offramp_step = (1.0f - mParam[DuckFilter::LEVEL]) / (mParam[DuckFilter::OFFRAMP] * aSamplerate);
 
 		int soundOn = 0;
@@ -62,20 +63,50 @@ namespace SoLoud
 					soundOn = 1;
 			}
 		}
+		const float targetLevel = mParam[DuckFilter::LEVEL];
+		const float wet = mParam[DuckFilter::WET];
 		float level = mCurrentLevel;
+
+		// Steady-state SIMD fast path when the ducking envelope has settled.
+		if ((soundOn && level <= targetLevel) || (!soundOn && level >= 1.0f))
+		{
+			level = soundOn ? targetLevel : 1.0f;
+			mCurrentLevel = level;
+			const float gain = 1.0f + (level - 1.0f) * wet;
+			if (gain == 1.0f)
+				return;
+			const auto vGain = soloud_simd::f32x4::splat(gain);
+			for (unsigned int j = 0; j < aChannels; j++)
+			{
+				float *chBuf = aBuffer + (size_t)j * (size_t)aBufferSize;
+				unsigned int i = 0;
+				for (; i + 4 <= aSamples; i += 4)
+				{
+					soloud_simd::mul(soloud_simd::f32x4::loadu(chBuf + i), vGain)
+						.storeu(chBuf + i);
+				}
+				for (; i < aSamples; i++)
+				{
+					chBuf[i] *= gain;
+				}
+			}
+			return;
+		}
+
 		for (unsigned int j = 0; j < aChannels; j++)
 		{
 			level = mCurrentLevel;
-			int bchofs = j * aBufferSize;
+			float *chBuf = aBuffer + (size_t)j * (size_t)aBufferSize;
 			for (unsigned int i = 0; i < aSamples; i++)
 			{
-				if (soundOn && level > mParam[DuckFilter::LEVEL])
+				if (soundOn && level > targetLevel)
 					level -= onramp_step;
-				if (!soundOn && level < 1)
+				if (!soundOn && level < 1.0f)
 					level += offramp_step;
-				if (level < mParam[DuckFilter::LEVEL]) level = mParam[DuckFilter::LEVEL];
-				if (level > 1) level = 1;
-				aBuffer[i + bchofs] += (-aBuffer[i + bchofs] + aBuffer[i + bchofs] * level) * mParam[DuckFilter::WET];
+				if (level < targetLevel) level = targetLevel;
+				if (level > 1.0f) level = 1.0f;
+				const float s = chBuf[i];
+				chBuf[i] = s + (s * level - s) * wet;
 			}
 		}
 		mCurrentLevel = level;

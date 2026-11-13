@@ -78,7 +78,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
     if [ ! -f "$OGG_DIR/src/.libs/libogg.a" ] || [ $FORCE_REBUILD_LIBS -eq 1 ]; then
         cd "$OGG_DIR"
         ./autogen.sh
-        emconfigure ./configure CFLAGS="-O2 -fPIC"
+        emconfigure ./configure CFLAGS="-O3 -msimd128 -fPIC"
         emmake make -j$CORES
         cd -
     fi
@@ -93,7 +93,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
             --disable-doc \
             --disable-rtcd \
             --disable-intrinsics \
-            CFLAGS="-O2 -fPIC"
+            CFLAGS="-O3 -msimd128 -fno-math-errno -fno-trapping-math -ffp-contract=fast -fPIC"
         emmake make -j$CORES
         cd -
     fi
@@ -111,7 +111,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         cd "$VORBIS_DIR"
         ./autogen.sh
         emconfigure ./configure \
-            CFLAGS="-O2 -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
+            CFLAGS="-O3 -msimd128 -fno-math-errno -fno-trapping-math -ffp-contract=fast -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
             --with-ogg="$OGG_DIR"
         emmake make -j$CORES
         cd -
@@ -123,7 +123,7 @@ if [ "${SKIP_OPUS_OGG}" != "1" ]; then
         cd "$FLAC_DIR"
         ./autogen.sh
         emconfigure ./configure \
-            CFLAGS="-O2 -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
+            CFLAGS="-O3 -msimd128 -fno-math-errno -fno-trapping-math -ffp-contract=fast -fPIC -L$OGG_DIR/src/.libs -I$OGG_DIR/include" \
             --with-ogg="$OGG_DIR" \
             --disable-cpplibs \
             --disable-doxygen-docs \
@@ -236,7 +236,7 @@ build_flavor() {
         ${SOURCES[@]} \
         ${LIBS[@]} \
         ${COMPILER_DEFINES} \
-        -msimd128 -msse3 \
+        -msimd128 \
         -std=c++17 \
         -s "EXPORTED_RUNTIME_METHODS=['ccall','cwrap','setValue','getValue','UTF8ToString','HEAPF32','HEAPU8']" \
         -s "EXPORTED_FUNCTIONS=['_free', '_malloc', '_memcpy', '_memset']" \

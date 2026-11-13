@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Visualizer for FFT and wave data using the audioVisualizationEvents stream.
 class AudioDataWidget extends StatefulWidget {

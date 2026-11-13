@@ -25,10 +25,20 @@ class OpusOutputEncoder : public MixerOutputEncoder {
   int m_channels = 2;
   size_t m_samplesPerFrame = 960;
   uint64_t m_packetCount = 0;
+  /// Samples (per channel, at 48 kHz) a decoder has produced through the last
+  /// packet written: the granule position of that packet (RFC 7845
+  /// section 4).
   int64_t m_packetGranulepos = 0;
+  /// The encoder's lookahead, written to OpusHead as the pre-skip: the
+  /// decoded samples that precede the first captured one.
+  int m_preSkip = 0;
+  /// Captured samples per channel handed to the encoder, at 48 kHz. The
+  /// end-of-stream granule position is pre-skip plus this.
+  int64_t m_capturedFrames = 0;
 
   std::vector<float> m_inputBuffer;
   std::vector<uint8_t> m_outputAccumulator;
+  std::vector<uint8_t> m_packetScratch;
 
   void *m_encoder = nullptr;
 
@@ -41,6 +51,7 @@ class OpusOutputEncoder : public MixerOutputEncoder {
   double m_resamplerPhase = 0.0;
   std::vector<float> m_resamplerLastFrame;
   std::vector<float> m_resampledBuffer;
+  std::vector<float> m_combineScratch;
 
 #ifndef NO_XIPH_LIBS
   void flushPages(bool force = false);

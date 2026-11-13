@@ -49,20 +49,21 @@ namespace SoLoud
 
 		float mag()
 		{
-			return (float)sqrt(mX * mX + mY * mY + mZ * mZ);
+			return sqrtf(mX * mX + mY * mY + mZ * mZ);
 		}
 		
 		void normalize()
 		{
-			float m = mag();
-			if (m == 0)
+			float m2 = mX * mX + mY * mY + mZ * mZ;
+			if (m2 == 0.0f)
 			{
 				mX = mY = mZ = 0;
 				return;
 			}
-			mX /= m;
-			mY /= m;
-			mZ /= m;
+			float invM = 1.0f / sqrtf(m2);
+			mX *= invM;
+			mY *= invM;
+			mZ *= invM;
 		}
 		
 		float dot(const vec3 &a)
@@ -171,7 +172,7 @@ namespace SoLoud
 	{
 		float distance = MAX(aDistance, aMinDistance);
 		distance = MIN(distance, aMaxDistance);
-		return (float)pow(distance / aMinDistance, -aRolloffFactor);
+		return powf(distance / aMinDistance, -aRolloffFactor);
 	}
 
 	void Soloud::update3dVoices_internal(unsigned int *aVoiceArray, unsigned int aVoiceCount)
@@ -363,48 +364,55 @@ namespace SoLoud
 	}
 
 
+	static void configureLoopingLocked_internal(AudioSourceInstance *aVoice, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
+	{
+		if (!aLooping)
+			return;
+		aVoice->mFlags |= AudioSourceInstance::LOOPING;
+		if (aLoopStartOffset >= 0 || aLoopEndOffset >= 0)
+		{
+			if (aLoopStartOffset >= 0) aVoice->mLoopStartFrame = aLoopStartOffset;
+			if (aLoopEndOffset >= 0) aVoice->mLoopEndFrame = aLoopEndOffset;
+		}
+		else
+		{
+			aVoice->mLoopPoint = aLoopPoint < 0 ? 0 : aLoopPoint;
+			aVoice->mLoopEndPoint = (aLoopEndPoint > aVoice->mLoopPoint) ? aLoopEndPoint : 0;
+		}
+	}
+
 	handle Soloud::play3d(AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, bool aPaused, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
-		handle h = play(aSound, aVolume, 0, 1, aBus);
-		if (h == 0)
-			return 0;
-		if (aScale != 1.0f && aScale > 0.0f)
+		if (aSound.mFlags & AudioSource::SINGLE_INSTANCE)
 		{
-			setRelativePlaySpeed(h, aScale);
+			aSound.stop();
 		}
-		if (aLooping)
-		{
-			if (aLoopStartOffset >= 0 || aLoopEndOffset >= 0)
-			{
-				lockAudioMutex_internal();
-				int ch = getVoiceFromHandle_internal(h);
-				if (ch >= 0)
-				{
-					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
-					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
-				}
-				unlockAudioMutex_internal();
-			}
-			else
-			{
-				setLoopPoint(h, aLoopPoint);
-				setLoopEndPoint(h, aLoopEndPoint);
-			}
-			setLooping(h, 1);
-		}
-		// No voice was allocated: don't resolve the sentinel as a handle.
-		if (h == 0)
-			return 0;
+		aSound.mSoloud = this;
+		SoLoud::AudioSourceInstance *instance = aSound.createInstance();
+
 		lockAudioMutex_internal();
-		int v = getVoiceFromHandle_internal(h);
+		int v = insertVoice_internal(aSound, instance, aVolume, 0, 1, aBus);
 		if (v < 0)
 		{
+			delete instance;
 			unlockAudioMutex_internal();
-			return h;
+			return 0;
 		}
+		handle h = getHandleFromVoice_internal(v);
+		if (aScale != 1.0f && aScale > 0.0f)
+		{
+			setVoiceRelativePlaySpeed_internal(v, aScale);
+		}
+		configureLoopingLocked_internal(mVoice[v], aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+
 		m3dData[v].mHandle = h;
 		mVoice[v]->mFlags |= AudioSourceInstance::PROCESS_3D;
-		set3dSourceParameters(h, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ);
+		m3dData[v].m3dPosition[0] = aPosX;
+		m3dData[v].m3dPosition[1] = aPosY;
+		m3dData[v].m3dPosition[2] = aPosZ;
+		m3dData[v].m3dVelocity[0] = aVelX;
+		m3dData[v].m3dVelocity[1] = aVelY;
+		m3dData[v].m3dVelocity[2] = aVelZ;
 
 		int samples = 0;
 		if (aSound.mFlags & AudioSource::DISTANCE_DELAY)
@@ -420,10 +428,11 @@ namespace SoLoud
 				pos.mZ -= m3dPosition[2];
 			}
 			float dist = pos.mag();
-			samples += (int)floor((dist / m3dSoundSpeed) * mSamplerate);
+			samples += (int)floorf((dist / m3dSoundSpeed) * (float)mSamplerate);
 		}
 
-		update3dVoices_internal((unsigned int *)&v, 1);
+		unsigned int uv = (unsigned int)v;
+		update3dVoices_internal(&uv, 1);
 		updateVoiceRelativePlaySpeed_internal(v);
 		int j;
 		for (j = 0; j < MAX_CHANNELS; j++)
@@ -455,71 +464,65 @@ namespace SoLoud
 			mVoice[v]->mFlags &= ~AudioSourceInstance::INAUDIBLE;
 		}
 		mActiveVoiceDirty = true;
-
+		if (mVoice[v])
+		{
+			mVoice[v]->mDelaySamples = samples > 0 ? (unsigned int)samples : 0;
+			setVoicePause_internal(v, aPaused ? 1 : 0);
+			if (mRenderRing.isInited())
+			{
+				journalBirth_internal(v, mStreamTime + (time)mVoice[v]->mDelaySamples / (time)mSamplerate);
+			}
+		}
 		unlockAudioMutex_internal();
-		setDelaySamples(h, samples);
-		setPause(h, aPaused);
 		return h;
 	}
 
 	handle Soloud::play3dClocked(time aSoundTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
-		handle h = play(aSound, aVolume, 0, 1, aBus);
-		if (h == 0)
-			return 0;
-		if (aScale != 1.0f && aScale > 0.0f)
+		if (aSound.mFlags & AudioSource::SINGLE_INSTANCE)
 		{
-			setRelativePlaySpeed(h, aScale);
+			aSound.stop();
 		}
-		if (aLooping)
-		{
-			if (aLoopStartOffset >= 0 || aLoopEndOffset >= 0)
-			{
-				lockAudioMutex_internal();
-				int ch = getVoiceFromHandle_internal(h);
-				if (ch >= 0)
-				{
-					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
-					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
-				}
-				unlockAudioMutex_internal();
-			}
-			else
-			{
-				setLoopPoint(h, aLoopPoint);
-				setLoopEndPoint(h, aLoopEndPoint);
-			}
-			setLooping(h, 1);
-		}
-		// No voice was allocated: don't resolve the sentinel as a handle.
-		if (h == 0)
-			return 0;
+		aSound.mSoloud = this;
+		SoLoud::AudioSourceInstance *instance = aSound.createInstance();
+
 		lockAudioMutex_internal();
-		int v = getVoiceFromHandle_internal(h);
+		int v = insertVoice_internal(aSound, instance, aVolume, 0, 1, aBus);
 		if (v < 0)
 		{
+			delete instance;
 			unlockAudioMutex_internal();
-			return h;
+			return 0;
 		}
+		handle h = getHandleFromVoice_internal(v);
+		if (aScale != 1.0f && aScale > 0.0f)
+		{
+			setVoiceRelativePlaySpeed_internal(v, aScale);
+		}
+		configureLoopingLocked_internal(mVoice[v], aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+
 		m3dData[v].mHandle = h;
 		mVoice[v]->mFlags |= AudioSourceInstance::PROCESS_3D;
-		set3dSourceParameters(h, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ);
-		vec3 pos;
-		pos.mX = aPosX;
-		pos.mY = aPosY;
-		pos.mZ = aPosZ;
-		unlockAudioMutex_internal();
+		m3dData[v].m3dPosition[0] = aPosX;
+		m3dData[v].m3dPosition[1] = aPosY;
+		m3dData[v].m3dPosition[2] = aPosZ;
+		m3dData[v].m3dVelocity[0] = aVelX;
+		m3dData[v].m3dVelocity[1] = aVelY;
+		m3dData[v].m3dVelocity[2] = aVelZ;
 
-		int samples = (int)getClockedDelaySamples(aSoundTime);
-
+		int samples = (int)getClockedDelaySamplesLocked_internal(aSoundTime);
 		if (aSound.mFlags & AudioSource::DISTANCE_DELAY)
 		{
+			vec3 pos;
+			pos.mX = aPosX;
+			pos.mY = aPosY;
+			pos.mZ = aPosZ;
 			float dist = pos.mag();
-			samples += (int)floor((dist / m3dSoundSpeed) * mSamplerate);
+			samples += (int)floorf((dist / m3dSoundSpeed) * (float)mSamplerate);
 		}
 
-		update3dVoices_internal((unsigned int *)&v, 1);
-		lockAudioMutex_internal();
+		unsigned int uv = (unsigned int)v;
+		update3dVoices_internal(&uv, 1);
 		updateVoiceRelativePlaySpeed_internal(v);
 		int j;
 		for (j = 0; j < MAX_CHANNELS; j++)
@@ -551,71 +554,65 @@ namespace SoLoud
 			mVoice[v]->mFlags &= ~AudioSourceInstance::INAUDIBLE;
 		}
 		mActiveVoiceDirty = true;
+		if (mVoice[v])
+		{
+			mVoice[v]->mDelaySamples = samples > 0 ? (unsigned int)samples : 0;
+			setVoicePause_internal(v, 0);
+			if (mRenderRing.isInited())
+			{
+				journalBirth_internal(v, mStreamTime + (time)mVoice[v]->mDelaySamples / (time)mSamplerate);
+			}
+		}
 		unlockAudioMutex_internal();
-
-		setDelaySamples(h, samples);
-		setPause(h, 0);
 		return h;
 	}
 
 	handle Soloud::play3dScheduled(time aEngineTime, AudioSource &aSound, float aPosX, float aPosY, float aPosZ, float aVelX, float aVelY, float aVelZ, float aVolume, unsigned int aBus, float aScale, bool aLooping, time aLoopPoint, time aLoopEndPoint, long long aLoopStartOffset, long long aLoopEndOffset)
 	{
-		handle h = play(aSound, aVolume, 0, 1, aBus);
-		if (h == 0)
-			return 0;
-		if (aScale != 1.0f && aScale > 0.0f)
+		if (aSound.mFlags & AudioSource::SINGLE_INSTANCE)
 		{
-			setRelativePlaySpeed(h, aScale);
+			aSound.stop();
 		}
-		if (aLooping)
-		{
-			if (aLoopStartOffset >= 0 || aLoopEndOffset >= 0)
-			{
-				lockAudioMutex_internal();
-				int ch = getVoiceFromHandle_internal(h);
-				if (ch >= 0)
-				{
-					if (aLoopStartOffset >= 0) mVoice[ch]->mLoopStartFrame = aLoopStartOffset;
-					if (aLoopEndOffset >= 0) mVoice[ch]->mLoopEndFrame = aLoopEndOffset;
-				}
-				unlockAudioMutex_internal();
-			}
-			else
-			{
-				setLoopPoint(h, aLoopPoint);
-				setLoopEndPoint(h, aLoopEndPoint);
-			}
-			setLooping(h, 1);
-		}
-		// No voice was allocated: don't resolve the sentinel as a handle.
-		if (h == 0)
-			return 0;
+		aSound.mSoloud = this;
+		SoLoud::AudioSourceInstance *instance = aSound.createInstance();
+
 		lockAudioMutex_internal();
-		int v = getVoiceFromHandle_internal(h);
+		int v = insertVoice_internal(aSound, instance, aVolume, 0, 1, aBus);
 		if (v < 0)
 		{
+			delete instance;
 			unlockAudioMutex_internal();
-			return h;
+			return 0;
 		}
+		handle h = getHandleFromVoice_internal(v);
+		if (aScale != 1.0f && aScale > 0.0f)
+		{
+			setVoiceRelativePlaySpeed_internal(v, aScale);
+		}
+		configureLoopingLocked_internal(mVoice[v], aLooping, aLoopPoint, aLoopEndPoint, aLoopStartOffset, aLoopEndOffset);
+
 		m3dData[v].mHandle = h;
 		mVoice[v]->mFlags |= AudioSourceInstance::PROCESS_3D;
-		set3dSourceParameters(h, aPosX, aPosY, aPosZ, aVelX, aVelY, aVelZ);
-		vec3 pos;
-		pos.mX = aPosX;
-		pos.mY = aPosY;
-		pos.mZ = aPosZ;
-		unlockAudioMutex_internal();
+		m3dData[v].m3dPosition[0] = aPosX;
+		m3dData[v].m3dPosition[1] = aPosY;
+		m3dData[v].m3dPosition[2] = aPosZ;
+		m3dData[v].m3dVelocity[0] = aVelX;
+		m3dData[v].m3dVelocity[1] = aVelY;
+		m3dData[v].m3dVelocity[2] = aVelZ;
 
-		int samples = (int)getScheduledDelaySamples(aEngineTime);
-
+		int samples = (int)getScheduledDelaySamplesLocked_internal(aEngineTime);
 		if (aSound.mFlags & AudioSource::DISTANCE_DELAY)
 		{
+			vec3 pos;
+			pos.mX = aPosX;
+			pos.mY = aPosY;
+			pos.mZ = aPosZ;
 			float dist = pos.mag();
-			samples += (int)floor((dist / m3dSoundSpeed) * mSamplerate);
+			samples += (int)floorf((dist / m3dSoundSpeed) * (float)mSamplerate);
 		}
 
-		update3dVoices_internal((unsigned int *)&v, 1);
-		lockAudioMutex_internal();
+		unsigned int uv = (unsigned int)v;
+		update3dVoices_internal(&uv, 1);
 		updateVoiceRelativePlaySpeed_internal(v);
 		int j;
 		for (j = 0; j < MAX_CHANNELS; j++)
@@ -647,10 +644,16 @@ namespace SoLoud
 			mVoice[v]->mFlags &= ~AudioSourceInstance::INAUDIBLE;
 		}
 		mActiveVoiceDirty = true;
+		if (mVoice[v])
+		{
+			mVoice[v]->mDelaySamples = samples > 0 ? (unsigned int)samples : 0;
+			setVoicePause_internal(v, 0);
+			if (mRenderRing.isInited())
+			{
+				journalBirth_internal(v, mStreamTime + (time)mVoice[v]->mDelaySamples / (time)mSamplerate);
+			}
+		}
 		unlockAudioMutex_internal();
-
-		setDelaySamples(h, samples);
-		setPause(h, 0);
 		return h;
 	}
 

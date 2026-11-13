@@ -2,6 +2,8 @@
 
 #if !defined(NO_XIPH_LIBS)
 
+#include "../../../../simd/simd_pcm.h"
+#include <climits>
 #include <cstdio>
 #include <iostream>
 #include <stdint.h>
@@ -122,7 +124,7 @@ void MBOggDecoder::close() {
 // ------------------------------------------------------------------
 // Open / Detection
 // ------------------------------------------------------------------
-bool MBOggDecoder::open(File *aFile) {
+bool MBOggDecoder::open(File *aFile, bool aScanLength) {
   close();
   mDataSource.file = aFile;
   mDataSource.mem = nullptr;
@@ -141,7 +143,7 @@ bool MBOggDecoder::open(File *aFile) {
     ok = initVorbis();
     break;
   case CODEC_OPUS:
-    ok = initOpus();
+    ok = initOpus(aScanLength);
     break;
   case CODEC_FLAC:
     ok = initFlac();
@@ -172,7 +174,7 @@ bool MBOggDecoder::open(const unsigned char *aData, unsigned int aLength) {
     ok = initVorbis();
     break;
   case CODEC_OPUS:
-    ok = initOpus();
+    ok = initOpus(true);
     break;
   case CODEC_FLAC:
     ok = initFlac();
@@ -225,6 +227,155 @@ bool MBOggDecoder::detectCodec() {
   return mCodecType != CODEC_UNKNOWN;
 }
 
+// ###### flutter_soloud local patch (ogg length bound) ######
+// [aFrames], what a granule position or STREAMINFO says the length is, if
+// the file can hold that many frames: a damaged or crafted file can say
+// 2^62, and Wav sizes its buffer from the length. More frames than the
+// file's bytes can decode to, at [aMaxFramesPerByte] (the most a packet of
+// the codec decodes to, as every packet takes a byte at least), or than
+// getLengthInSamples() returns, are no length: 0, unknown, and Wav decodes
+// to the end of the file instead.
+unsigned int MBOggDecoder::plausibleLength(int64_t aFrames,
+                                           int64_t aMaxFramesPerByte) const {
+  if (aFrames <= 0 || aFrames > UINT_MAX ||
+      aFrames > (int64_t)mDataSource.length() * aMaxFramesPerByte)
+    return 0;
+  return (unsigned int)aFrames;
+}
+
+ogg_int64_t MBOggDecoder::scanLastGranule(int *aSerial) {
+  const unsigned int savedPos = mDataSource.tell();
+  const unsigned int totalLen = mDataSource.length();
+
+  auto scanFrom = [&](unsigned int startOffset) -> ogg_int64_t {
+    if (!mDataSource.seek((int)startOffset))
+      return -1;
+    ogg_sync_state scanOy;
+    ogg_page scanOg;
+    ogg_sync_init(&scanOy);
+    ogg_int64_t lastGranule = -1;
+
+    while (true) {
+      int ret = ogg_sync_pageout(&scanOy, &scanOg);
+      if (ret == 1) {
+        ogg_int64_t granule = ogg_page_granulepos(&scanOg);
+        if (granule >= 0) {
+          lastGranule = granule;
+          if (aSerial)
+            *aSerial = ogg_page_serialno(&scanOg);
+        }
+      } else if (ret == 0) {
+        char *buf = ogg_sync_buffer(&scanOy, 8192);
+        unsigned int bytes = mDataSource.read((unsigned char *)buf, 8192);
+        if (bytes == 0)
+          break;
+        ogg_sync_wrote(&scanOy, bytes);
+      } else {
+        // Resyncing to first complete OggS page after mid-file seek
+        continue;
+      }
+    }
+    ogg_sync_clear(&scanOy);
+    return lastGranule;
+  };
+
+  constexpr unsigned int kTailScanBytes = 65536;
+  ogg_int64_t lastGranule = -1;
+  if (totalLen > kTailScanBytes) {
+    lastGranule = scanFrom(totalLen - kTailScanBytes);
+  }
+  if (lastGranule < 0) {
+    lastGranule = scanFrom(0);
+  }
+
+  mDataSource.seek((int)savedPos);
+  return lastGranule;
+}
+
+// ###### flutter_soloud local patch (chained opus length) ######
+// The length of a chained Opus file in 48 kHz samples: the sum over the links
+// that play of the last granule position less the pre-skip, as each link
+// counts its granule positions from 0. A link starts at a page of a new
+// serial number, as in feedOpusData(), and plays when its headers, read
+// packet by packet as decodeOpusPacket() reads them, give an OpusHead it
+// decodes and then an OpusTags: the others are skipped when playing too. 0,
+// an unknown length, when a link that plays has no granule position past its
+// pre-skip: how much it plays is only known by decoding it. Reads the whole
+// file.
+int64_t MBOggDecoder::scanOpusChainLength() {
+  const unsigned int savedPos = mDataSource.tell();
+  mDataSource.seek(0);
+  ogg_sync_state oy;
+  ogg_sync_init(&oy);
+  ogg_stream_state os;
+  bool inLink = false;
+  bool headOk = false;
+  bool tagsSeen = false;
+  int preSkip = 0;
+  ogg_int64_t lastGranule = -1;
+  int64_t total = 0;
+  bool unknown = false;
+  auto endLink = [&]() {
+    if (!inLink || !headOk || !tagsSeen)
+      return;
+    if (lastGranule <= preSkip) {
+      unknown = true;
+      return;
+    }
+    const int64_t frames = lastGranule - preSkip;
+    total = frames > INT64_MAX - total ? INT64_MAX : total + frames;
+  };
+
+  while (true) {
+    ogg_page og;
+    const int ret = ogg_sync_pageout(&oy, &og);
+    if (ret == 0) {
+      char *buf = ogg_sync_buffer(&oy, 8192);
+      const unsigned int bytes = mDataSource.read((unsigned char *)buf, 8192);
+      if (bytes == 0)
+        break;
+      ogg_sync_wrote(&oy, bytes);
+      continue;
+    }
+    if (ret < 0)
+      continue; // skipped bytes up to the next page
+    if (!inLink || ogg_page_serialno(&og) != os.serialno) {
+      endLink();
+      if (inLink)
+        ogg_stream_clear(&os);
+      ogg_stream_init(&os, ogg_page_serialno(&og));
+      inLink = true;
+      headOk = false;
+      tagsSeen = false;
+      preSkip = 0;
+      lastGranule = -1;
+    }
+    if (!tagsSeen && ogg_stream_pagein(&os, &og) == 0) {
+      ogg_packet op;
+      while (!tagsSeen && ogg_stream_packetout(&os, &op) == 1) {
+        if (op.bytes >= 8 && memcmp(op.packet, "OpusHead", 8) == 0) {
+          const int channels = op.bytes >= 19 ? op.packet[9] : 0;
+          headOk = channels >= 1 && channels <= 2;
+          if (headOk)
+            preSkip = op.packet[10] | (op.packet[11] << 8);
+        } else if (op.bytes >= 8 && memcmp(op.packet, "OpusTags", 8) == 0) {
+          tagsSeen = true;
+        }
+      }
+    }
+    const ogg_int64_t granule = ogg_page_granulepos(&og);
+    if (granule >= 0)
+      lastGranule = granule;
+  }
+  endLink();
+
+  if (inLink)
+    ogg_stream_clear(&os);
+  ogg_sync_clear(&oy);
+  mDataSource.seek((int)savedPos);
+  return unknown ? 0 : total;
+}
+
 // ------------------------------------------------------------------
 // Vorbis
 // ------------------------------------------------------------------
@@ -247,8 +398,8 @@ bool MBOggDecoder::initVorbis() {
 
   mChannels = info->channels;
   mSampleRate = (int)info->rate;
-  ogg_int64_t total = ov_pcm_total(&mVorbisFile, -1);
-  mLengthInSamples = (total >= 0) ? (unsigned int)total : 0;
+  // A Vorbis packet decodes to at most half its largest block, 4096 frames.
+  mLengthInSamples = plausibleLength(ov_pcm_total(&mVorbisFile, -1), 4096);
   return true;
 }
 
@@ -267,9 +418,27 @@ unsigned int MBOggDecoder::readVorbis(float *aBuffer, unsigned int aSamples,
     if (ret <= 0)
       break;
 
-    for (int ch = 0; ch < outChannels; ch++) {
-      memcpy(aBuffer + ch * aBufferSize + samplesRead, pcm[ch],
-             sizeof(float) * ret);
+    // ###### flutter_soloud local patch (chained vorbis channels) ######
+    // pcm holds the channels of the link being read. In a chained file that
+    // can differ from mChannels, the first link's, which callers size their
+    // buffers for: a link with fewer channels repeats them, so a mono link
+    // plays on both channels of a stereo stream, and a mono stream gets the
+    // mix of a link with more, as libopus gives it for Opus.
+    const vorbis_info *info = ov_info(&mVorbisFile, bitstream);
+    const int linkChannels = info && info->channels > 0 ? info->channels : 1;
+    if (outChannels == 1 && linkChannels > 1) {
+      float *out = aBuffer + samplesRead;
+      for (long i = 0; i < ret; i++) {
+        float sum = 0.0f;
+        for (int ch = 0; ch < linkChannels; ch++)
+          sum += pcm[ch][i];
+        out[i] = sum / (float)linkChannels;
+      }
+    } else {
+      for (int ch = 0; ch < outChannels; ch++) {
+        memcpy(aBuffer + ch * aBufferSize + samplesRead,
+               pcm[ch % linkChannels], sizeof(float) * ret);
+      }
     }
     samplesRead += (unsigned int)ret;
   }
@@ -317,10 +486,19 @@ long MBOggDecoder::vorbisTellCb(void *datasource) {
 // ------------------------------------------------------------------
 // Opus
 // ------------------------------------------------------------------
-bool MBOggDecoder::initOpus() {
+bool MBOggDecoder::initOpus(bool aScanLength) {
   mSampleRate = 48000;
-  mChannels = 2;
+  // Set by the first link's OpusHead (see decodeOpusPacket()).
+  mChannels = 0;
   mOpusPreSkip = 0;
+
+  // Scan the final Ogg granule position first (O(1) 64 KB tail scan with
+  // full-file fallback) so headers only need to be parsed once without
+  // tearing down and recreating mOpusOs / mOpusDecoder.
+  int lastSerial = 0;
+  const ogg_int64_t lastGranule =
+      aScanLength ? scanLastGranule(&lastSerial) : -1;
+  mDataSource.seek(0);
 
   ogg_sync_init(&mOpusOy);
   mOpusStreamInit = false;
@@ -338,69 +516,33 @@ bool MBOggDecoder::initOpus() {
     if (!feedOpusData()) {
       printf(
           "[MBOggDecoder] initOpus: feedOpusData failed during header parse\n");
+      if (mOpusStreamInit) {
+        ogg_stream_clear(&mOpusOs);
+        mOpusStreamInit = false;
+      }
+      if (mOpusDecoder) {
+        opus_decoder_destroy(mOpusDecoder);
+        mOpusDecoder = nullptr;
+      }
       ogg_sync_clear(&mOpusOy);
       return false;
     }
   }
-
-  // Scan for total length from beginning
-  mDataSource.seek(0);
-  ogg_sync_state scanOy;
-  ogg_page scanOg;
-  ogg_sync_init(&scanOy);
-  ogg_int64_t lastGranule = -1;
-
-  while (true) {
-    int ret = ogg_sync_pageout(&scanOy, &scanOg);
-    if (ret == 1) {
-      ogg_int64_t granule = ogg_page_granulepos(&scanOg);
-      if (granule >= 0)
-        lastGranule = granule;
-    } else if (ret == 0) {
-      char *buf = ogg_sync_buffer(&scanOy, 4096);
-      unsigned int bytes = mDataSource.read((unsigned char *)buf, 4096);
-      if (bytes == 0)
-        break;
-      ogg_sync_wrote(&scanOy, bytes);
-    } else {
-      continue;
-    }
-  }
-  ogg_sync_clear(&scanOy);
 
   if (lastGranule >= 0) {
     int64_t trimmed = (int64_t)lastGranule - mOpusPreSkip;
-    if (trimmed < 0)
-      trimmed = 0;
+    // ###### flutter_soloud local patch (chained opus length) ######
+    // The last page belongs to another link than the first, whose stream
+    // the headers just set up: a chained file. Its last granule position is
+    // the last link's length alone, so add up the links.
+    if (lastSerial != mOpusOs.serialno)
+      trimmed = scanOpusChainLength();
+    // An Opus packet decodes to at most 120 ms, 5760 frames. Bounded, the
+    // length cannot overflow the conversion below either.
+    trimmed = plausibleLength(trimmed, 5760);
     mLengthInSamples = (unsigned int)((trimmed * mSampleRate + 47999) / 48000);
   } else {
     mLengthInSamples = 0;
-  }
-
-  // Reset for actual decoding
-  mDataSource.seek(0);
-  ogg_sync_clear(&mOpusOy);
-  ogg_sync_init(&mOpusOy);
-  if (mOpusDecoder) {
-    opus_decoder_destroy(mOpusDecoder);
-    mOpusDecoder = nullptr;
-  }
-  mOpusStreamInit = false;
-  mOpusHeaderParsed = false;
-  mOpusPacketCount = 0;
-  mOpusSkipSamples = 0;
-  mOpusTotalOutputSamples = 0;
-  mOpusTotalSamplesExpected = -1;
-  mOpusPcmBuffer.clear();
-  mOpusPcmReadPos = 0;
-
-  // Re-parse headers
-  while (!mOpusHeaderParsed) {
-    if (!feedOpusData()) {
-      printf("[MBOggDecoder] initOpus: feedOpusData failed during re-parse\n");
-      ogg_sync_clear(&mOpusOy);
-      return false;
-    }
   }
 
   printf("[MBOggDecoder] initOpus: success - channels=%d, sampleRate=%d, "
@@ -461,24 +603,38 @@ bool MBOggDecoder::feedOpusData() {
 bool MBOggDecoder::decodeOpusPacket(ogg_packet *packet) {
   if (!mOpusHeaderParsed) {
     if (packet->bytes >= 8 && memcmp(packet->packet, "OpusHead", 8) == 0) {
-      if (packet->bytes >= 19) {
-        unsigned char *data = (unsigned char *)packet->packet;
-        mChannels = data[9];
-        mOpusPreSkip = (uint16_t)(data[10] | (data[11] << 8));
-
-        int error = OPUS_OK;
-        if (mOpusDecoder)
-          opus_decoder_destroy(mOpusDecoder);
-        mOpusDecoder = opus_decoder_create(48000, mChannels, &error);
-        if (error != OPUS_OK || !mOpusDecoder) {
-          mOpusDecoder = nullptr;
-          return false;
-        }
-        opus_decoder_ctl(mOpusDecoder, OPUS_RESET_STATE);
-        mOpusMaxFrameSize = 48000 * 60 / 1000;
-        mOpusOutputBuffer.resize(mOpusMaxFrameSize * mChannels);
-        mOpusSkipSamples = (int)((int64_t)mOpusPreSkip * 48000 + 47999) / 48000;
+      // ###### flutter_soloud local patch (chained opus channels) ######
+      // mChannels is the channel count of the whole stream, the first
+      // link's: getChannels() reports it and callers size their buffers for
+      // it. Each link of a chained file is decoded at that count (libopus
+      // outputs a mono link as stereo and a stereo link as mono). A link
+      // whose header declares no channels, or more than an Opus decoder
+      // without a channel mapping takes, gets no decoder, so its audio is
+      // skipped; the first link must decode.
+      if (mOpusDecoder) {
+        opus_decoder_destroy(mOpusDecoder);
+        mOpusDecoder = nullptr;
       }
+      const unsigned char *data = (const unsigned char *)packet->packet;
+      const int linkChannels = packet->bytes >= 19 ? data[9] : 0;
+      if (linkChannels < 1 || linkChannels > 2) {
+        mOpusPacketCount++;
+        return mChannels > 0;
+      }
+      if (mChannels == 0)
+        mChannels = linkChannels;
+      mOpusPreSkip = (uint16_t)(data[10] | (data[11] << 8));
+
+      int error = OPUS_OK;
+      mOpusDecoder = opus_decoder_create(48000, mChannels, &error);
+      if (error != OPUS_OK || !mOpusDecoder) {
+        mOpusDecoder = nullptr;
+        return false;
+      }
+      opus_decoder_ctl(mOpusDecoder, OPUS_RESET_STATE);
+      mOpusMaxFrameSize = 48000 * 60 / 1000;
+      mOpusOutputBuffer.resize(mOpusMaxFrameSize * mChannels);
+      mOpusSkipSamples = (int)((int64_t)mOpusPreSkip * 48000 + 47999) / 48000;
     } else if (packet->bytes >= 8 &&
                memcmp(packet->packet, "OpusTags", 8) == 0) {
       mOpusHeaderParsed = true;
@@ -532,10 +688,16 @@ unsigned int MBOggDecoder::readOpus(float *aBuffer, unsigned int aSamples,
     size_t avail = (mOpusPcmBuffer.size() - mOpusPcmReadPos) / mChannels;
     if (avail > 0) {
       size_t toCopy = std::min((size_t)(aSamples - samplesRead), avail);
-      for (int ch = 0; ch < outChannels; ch++) {
-        for (size_t i = 0; i < toCopy; i++) {
-          aBuffer[ch * aBufferSize + samplesRead + i] =
-              mOpusPcmBuffer[mOpusPcmReadPos + i * mChannels + ch];
+      if (mChannels == outChannels) {
+        deinterleaveFloatsToPlanar(mOpusPcmBuffer.data() + mOpusPcmReadPos,
+                                   aBuffer + samplesRead, aBufferSize, toCopy,
+                                   (uint32_t)outChannels);
+      } else {
+        for (int ch = 0; ch < outChannels; ch++) {
+          for (size_t i = 0; i < toCopy; i++) {
+            aBuffer[ch * aBufferSize + samplesRead + i] =
+                mOpusPcmBuffer[mOpusPcmReadPos + i * mChannels + ch];
+          }
         }
       }
       mOpusPcmReadPos += toCopy * mChannels;
@@ -599,37 +761,12 @@ bool MBOggDecoder::seekOpus(unsigned int aSample) {
 // ------------------------------------------------------------------
 bool MBOggDecoder::initFlac() {
   // For OGG/FLAC, STREAMINFO may report total_samples=0.
-  // Scan Ogg pages for the last granule position before initializing the
-  // decoder.
-  unsigned int savedPos = mDataSource.tell();
-  ogg_sync_state scanOy;
-  ogg_page scanOg;
-  ogg_sync_init(&scanOy);
-  ogg_int64_t lastGranule = -1;
+  // Scan the tail Ogg pages (with full-scan fallback) for the last granule
+  // position before initializing the decoder.
+  const ogg_int64_t lastGranule = scanLastGranule();
 
-  while (true) {
-    int ret = ogg_sync_pageout(&scanOy, &scanOg);
-    if (ret == 1) {
-      ogg_int64_t granule = ogg_page_granulepos(&scanOg);
-      if (granule >= 0)
-        lastGranule = granule;
-    } else if (ret == 0) {
-      char *buf = ogg_sync_buffer(&scanOy, 4096);
-      unsigned int bytes = mDataSource.read((unsigned char *)buf, 4096);
-      if (bytes == 0)
-        break;
-      ogg_sync_wrote(&scanOy, bytes);
-    } else {
-      continue;
-    }
-  }
-  ogg_sync_clear(&scanOy);
-  mDataSource.seek(savedPos);
-
-  unsigned int scannedLength = 0;
-  if (lastGranule >= 0) {
-    scannedLength = (unsigned int)lastGranule;
-  }
+  // A FLAC block is 65535 samples per channel at most.
+  const unsigned int scannedLength = plausibleLength(lastGranule, 65535);
 
   mFlacDecoder = FLAC__stream_decoder_new();
   if (!mFlacDecoder) {
@@ -693,10 +830,16 @@ unsigned int MBOggDecoder::readFlac(float *aBuffer, unsigned int aSamples,
     size_t avail = (mFlacPcmBuffer.size() - mFlacPcmReadPos) / mChannels;
     if (avail > 0) {
       size_t toCopy = std::min((size_t)(aSamples - samplesRead), avail);
-      for (int ch = 0; ch < outChannels; ch++) {
-        for (size_t i = 0; i < toCopy; i++) {
-          aBuffer[ch * aBufferSize + samplesRead + i] =
-              mFlacPcmBuffer[mFlacPcmReadPos + i * mChannels + ch];
+      if (mChannels == outChannels) {
+        deinterleaveFloatsToPlanar(mFlacPcmBuffer.data() + mFlacPcmReadPos,
+                                   aBuffer + samplesRead, aBufferSize, toCopy,
+                                   (uint32_t)outChannels);
+      } else {
+        for (int ch = 0; ch < outChannels; ch++) {
+          for (size_t i = 0; i < toCopy; i++) {
+            aBuffer[ch * aBufferSize + samplesRead + i] =
+                mFlacPcmBuffer[mFlacPcmReadPos + i * mChannels + ch];
+          }
         }
       }
       mFlacPcmReadPos += toCopy * mChannels;
@@ -803,12 +946,13 @@ FLAC__StreamDecoderWriteStatus MBOggDecoder::flacWriteCb(
     divisor = 2147483648.0f;
   }
 
-  for (unsigned int i = 0; i < blocksize; i++) {
-    for (unsigned int ch = 0; ch < channels; ch++) {
-      self->mFlacPcmBuffer.push_back(static_cast<float>(buffer[ch][i]) /
-                                     divisor);
-    }
-  }
+  const float invScale = 1.0f / divisor;
+  const size_t oldSize = self->mFlacPcmBuffer.size();
+  const size_t addCount = (size_t)blocksize * channels;
+  self->mFlacPcmBuffer.resize(oldSize + addCount);
+  interleavePlanarInt32ToFloats(
+      reinterpret_cast<const int32_t *const *>(buffer),
+      self->mFlacPcmBuffer.data() + oldSize, blocksize, channels, invScale);
   return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
 }
 
@@ -821,8 +965,8 @@ void MBOggDecoder::flacMetadataCb(const FLAC__StreamDecoder *decoder,
     self->mSampleRate = metadata->data.stream_info.sample_rate;
     self->mChannels = metadata->data.stream_info.channels;
     self->mFlacBitsPerSample = metadata->data.stream_info.bits_per_sample;
-    self->mLengthInSamples =
-        (unsigned int)metadata->data.stream_info.total_samples;
+    self->mLengthInSamples = self->plausibleLength(
+        (int64_t)metadata->data.stream_info.total_samples, 65535);
   }
 }
 

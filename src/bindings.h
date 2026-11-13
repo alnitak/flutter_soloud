@@ -114,20 +114,63 @@ extern "C"
   /// Start capturing the master mixer output.
   ///
   /// [format] the output format from the MixerOutputFormat enum.
-  /// [sampleRate] desired sample rate, or <=0 to use the engine sample rate.
-  /// [channels] desired channel count, or <=0 to use the engine channel count.
+  /// [sampleRate] the engine sample rate, or <=0 to follow it. Capture does
+  /// not resample: another rate is refused with invalidParameter.
+  /// [channels] the engine channel count, or <=0 to follow it. Capture does
+  /// not remix: another count is refused with invalidParameter.
   /// [bufferSizeBytes] size of the circular buffer in bytes.
   /// [notificationThresholdBytes] number of available bytes before a callback
   /// is fired.
   /// [chunkPCMFrames] fixed PCM chunk size in frames, or 0 to disable chunk
   /// mode.
-  /// Returns [PlayerErrors.noError] if success.
+  /// Returns [PlayerErrors.noError] if success, backendNotInited without an
+  /// initialized engine.
   FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCapture(
       int format, int sampleRate, int channels, int bufferSizeBytes,
       int notificationThresholdBytes, int chunkPCMFrames);
 
+#ifndef __EMSCRIPTEN__
+  /// Start capturing like [startMixerCapture], delivering each packet token
+  /// to the Dart native [port] (a `RawReceivePort`'s) with Dart_PostInteger,
+  /// which is resolved from [apiData], `NativeApi.initializeApiDLData`.
+  /// Unlike a NativeCallable, a port can be posted to after its isolate has
+  /// ended: the post is refused, and the next start stops that capture.
+  ///
+  /// The port is published only once the start is admitted, so a refused
+  /// start leaves a running capture's listener alone. [ownerEngineId] names
+  /// the FlutterEngine of the calling isolate, or -1 to join the live
+  /// registration. [captureId] receives the id of the capture started.
+  /// Returns invalidParameter for an [apiData] without Dart_PostInteger or a
+  /// port of 0, and otherwise what [startMixerCapture] returns.
+  FFI_PLUGIN_EXPORT enum PlayerErrors startMixerCaptureOnPort(
+      int format, int sampleRate, int channels, int bufferSizeBytes,
+      int notificationThresholdBytes, int chunkPCMFrames,
+      unsigned int *captureId, void *apiData, int64_t port,
+      int64_t ownerEngineId);
+#endif
+
   /// Stop capturing the master mixer output.
   FFI_PLUGIN_EXPORT void stopMixerCapture();
+
+  /// Stop the capture [captureId] names, unless another start has superseded
+  /// it, and return what its listener has not been given: the chunks notified
+  /// but never claimed, then the unread tail, copied under the capture
+  /// lifecycle lock. A superseded capture's own unclaimed chunks come back and
+  /// the newer capture keeps running. Free with nativeFree(). [chunkBytes]
+  /// receives the size of a fixed chunk when the capture emitted them (0
+  /// otherwise) and [length] the size of the result; nullptr when empty.
+  FFI_PLUGIN_EXPORT unsigned char *stopMixerCaptureAndDrain(
+      unsigned int captureId, size_t *chunkBytes, size_t *length);
+
+  /// Claim the capture packet a mixer output notification names by [token].
+  /// Returns its bytes, which the caller frees with nativeFree(), and sets
+  /// [captureId] to the capture that produced it and [length] to its size;
+  /// returns nullptr for a token already claimed or discarded.
+  FFI_PLUGIN_EXPORT unsigned char *takeMixerOutputPacket(
+      unsigned char *token, unsigned int *captureId, size_t *length);
+
+  /// The id of the current (or last) mixer capture. Each start changes it.
+  FFI_PLUGIN_EXPORT unsigned int getMixerCaptureId();
 
   /// Returns 1 if mixer capture is running, 0 otherwise.
   FFI_PLUGIN_EXPORT int isMixerCaptureRunning();
@@ -246,10 +289,21 @@ extern "C"
   /// notification callback. This is intentionally absent from the public API.
   FFI_PLUGIN_EXPORT void debugTriggerAudioInterruption(unsigned int began);
 
-  /// List playback devices.
+  /// List playback devices, at most 50 of them. This export takes no
+  /// capacity, and the web bindings, which still call it, allocate arrays of
+  /// 50 entries. Prefer listPlaybackDevicesBounded().
   FFI_PLUGIN_EXPORT void listPlaybackDevices(char **devicesName,
                                              int **deviceId, int **isDefault,
                                              int *n_devices);
+
+  /// List at most [capacity] playback devices into the caller's arrays, each
+  /// of which must hold [capacity] entries. [n_devices] is the number
+  /// written.
+  FFI_PLUGIN_EXPORT void listPlaybackDevicesBounded(char **devicesName,
+                                                    int **deviceId,
+                                                    int **isDefault,
+                                                    int *n_devices,
+                                                    int capacity);
 
   /// Change the playback device.
   ///
@@ -731,6 +785,10 @@ extern "C"
   /// device period). 0 when the render-ahead ring is disabled.
   FFI_PLUGIN_EXPORT double getOutputLatency();
 
+  /// Estimated hardware presentation latency in seconds (DAC, OS buffers,
+  /// driver queues, and route delays).
+  FFI_PLUGIN_EXPORT double getHardwareOutputLatency();
+
   /// Whether the render-ahead ring (the retroactive re-mix prerequisite) is
   /// active. Enabled at init time via `initEngine`'s `renderAheadFrames`.
   FFI_PLUGIN_EXPORT unsigned int isRenderAheadEnabled();
@@ -1118,9 +1176,26 @@ extern "C"
   ///
   /// [filterType] filter to get param names.
   /// Returns [PlayerErrors.noError] if no errors and the list of param names.
+  ///
+  /// [names] must have room for one pointer per parameter, and the filter
+  /// does not say how many it has beforehand (the parametric EQ has 195):
+  /// prefer [getFilterParamNamesBounded].
   FFI_PLUGIN_EXPORT enum PlayerErrors
   getFilterParamNames(enum FilterType filterType, int *paramsCount,
                       char **names);
+
+  /// Get parameters names of the given filter.
+  ///
+  /// [filterType] filter to get param names.
+  /// [paramsCount] receives the number of parameters of the filter, which can
+  /// be more than [capacity].
+  /// [names] receives the first [capacity] names at most. Each one is
+  /// allocated with malloc(): free it with nativeFree(). [names] can be null
+  /// when [capacity] is 0, to get the count only.
+  /// Returns [PlayerErrors.noError] if no errors.
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  getFilterParamNamesBounded(enum FilterType filterType, int *paramsCount,
+                             char **names, int capacity);
 
   /// Add the filter [filterType] to [soundHash]. If [soundHash]==0 the
   /// filter is added to global filters.
@@ -1172,8 +1247,10 @@ extern "C"
   /// [busId] the bus to check the filter.
   /// If both [handle] and [busId] are =0 this function searches in the global
   /// filters.
-  /// [filterType] filter to modify a param. Returns the value of param or
-  /// 9999.0 if the filter is not found.
+  /// [filterType] filter to modify a param. The value of the param is stored
+  /// in [filterValue]. Returns [PlayerErrors.filterNotFound] if the filter
+  /// is not active, and [PlayerErrors.filterParameterGetError] if the value
+  /// is NaN or infinite.
   FFI_PLUGIN_EXPORT enum PlayerErrors getFilterParams(
       unsigned int handle, unsigned int busId, enum FilterType filterType,
       int attributeId, float *filterValue);
@@ -1212,6 +1289,99 @@ extern "C"
   oscillateFilterParameter(unsigned int handle, unsigned int busId,
                            enum FilterType filterType, int attributeId,
                            float from, float to, float time);
+
+  /////////////////////////////////////////
+  /// Real-time PCM streaming & Custom DSP
+  /////////////////////////////////////////
+
+  /// [historyFrames] is the minimum rewind window in frames (0 = default);
+  /// native code raises it as needed to cover the render-ahead window.
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  setRealtimeStream(unsigned int *hash, unsigned int sampleRate,
+                    unsigned int channels, int format,
+                    unsigned int bufferCapacityFrames,
+                    unsigned int historyFrames);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash);
+
+  /// For the realtime pushes below, [numSamples] is the number of samples
+  /// readable at [data]; a push whose numFrames * channels exceeds it is
+  /// rejected and returns 0.
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeFloat32(unsigned int hash, const float *data,
+                      unsigned int numFrames, unsigned int numSamples);
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeInt16(unsigned int hash, const int16_t *data,
+                    unsigned int numFrames, unsigned int numSamples);
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeClockedFloat32(unsigned int hash, double soundTime,
+                             const float *data, unsigned int numFrames,
+                             unsigned int numSamples);
+
+  FFI_PLUGIN_EXPORT unsigned int
+  pushRealtimeScheduledFloat32(unsigned int hash, double engineTime,
+                               const float *data, unsigned int numFrames,
+                               unsigned int numSamples);
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToRead(unsigned int hash);
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeAvailableToWrite(unsigned int hash);
+
+  FFI_PLUGIN_EXPORT unsigned int getRealtimeUnderrunCount(unsigned int hash);
+
+  /// [lifecycleCallback] receives both the created (aIsCreated == 1) and the
+  /// destroyed (aIsCreated == 0) event of every voice instance.
+  /// [mustTickWhenInaudible] / [killWhenInaudible] set the source's inaudible
+  /// behavior (see AudioSource::setInaudibleBehavior) for all its voices.
+  FFI_PLUGIN_EXPORT enum PlayerErrors createCustomAudioSource(
+      unsigned int *hash, unsigned int sampleRate, unsigned int channels,
+      SoLoudSourceDspCallback_t callback, void *userData,
+      SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
+      bool singleInstance, const char *webJsCallbackName,
+      bool mustTickWhenInaudible, bool killWhenInaudible);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  addCustomFilter(unsigned int soundHash, unsigned int busId,
+                  int customFilterId);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  removeCustomFilter(unsigned int soundHash, unsigned int busId,
+                     int customFilterId);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  isCustomFilterActive(unsigned int soundHash, unsigned int busId,
+                       int customFilterId, int *index);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors setCustomFilterCallback(
+      unsigned int soundHash, unsigned int busId, int customFilterId,
+      SoLoudFilterDspCallback_t callback, void *userData,
+      unsigned int numParams, const char *webJsCallbackName);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors setCustomFilterParamDefinition(
+      unsigned int soundHash, unsigned int busId, int customFilterId,
+      unsigned int paramIndex, const char *name, float minVal, float maxVal,
+      float defaultVal);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  setCustomFilterParams(unsigned int handle, unsigned int busId,
+                        int customFilterId, int attributeId, float value);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  getCustomFilterParams(unsigned int handle, unsigned int busId,
+                        int customFilterId, int attributeId,
+                        float *filterValue);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  fadeCustomFilterParameter(unsigned int handle, unsigned int busId,
+                            int customFilterId, int attributeId, float to,
+                            float time);
+
+  FFI_PLUGIN_EXPORT enum PlayerErrors
+  oscillateCustomFilterParameter(unsigned int handle, unsigned int busId,
+                                 int customFilterId, int attributeId,
+                                 float from, float to, float time);
 
   /////////////////////////////////////////
   /// 3D audio methods
@@ -1490,6 +1660,164 @@ extern "C"
   /// [busId] the bus ID.
   /// Returns the active voice count, or 0 if the bus is not found.
   FFI_PLUGIN_EXPORT unsigned int busGetActiveVoiceCount(unsigned int busId);
+
+  /////////////////////////////////////////
+  /// VST3 Plugin Hosting API (Desktop: macOS, Windows, Linux)
+  /////////////////////////////////////////
+
+  /// Returns 1 if flutter_soloud was compiled with SOLOUD_ENABLE_VST3 on a
+  /// supported desktop OS (macOS, Windows, Linux), or 0 otherwise.
+  FFI_PLUGIN_EXPORT int soloud_vst3IsSupported(void);
+
+  /// Scans a .vst3 bundle path and returns the number of audio plugin classes
+  /// inside it. Populates parallel arrays of class UIDs (32-char hex), names,
+  /// and subcategories ("Fx", "Instrument|Synth", etc.).
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3ScanBundle(
+      const char *bundlePath,
+      int *outClassCount,
+      char ***outClassUids,
+      char ***outClassNames,
+      char ***outSubCategories);
+
+  /// Frees the string arrays allocated by soloud_vst3ScanBundle().
+  FFI_PLUGIN_EXPORT void soloud_vst3FreeScanResults(
+      int classCount,
+      char **classUids,
+      char **classNames,
+      char **subCategories);
+
+  /// Loads and initializes a VST3 plugin from [bundlePath] with [classUidHex].
+  /// If [classUidHex] is empty or NULL, loads the first audio processor class.
+  /// Returns a positive [outPluginHandle] on success.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3LoadPlugin(
+      const char *bundlePath,
+      const char *classUidHex,
+      unsigned int sampleRate,
+      unsigned int maxBlockSize,
+      unsigned int channels,
+      int *outPluginHandle);
+
+  /// Unloads and destroys a VST3 plugin instance (closing its editor window if
+  /// open). Ensure the CustomFilterSlot or CustomAudioSource using it has been
+  /// deactivated/disposed first.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3UnloadPlugin(int pluginHandle);
+
+  /// Returns the native function pointer address of `vst3FilterDspCallback`
+  /// (matching `SoLoudFilterDspCallback_t`) to pass to
+  /// `CustomFilterSlot.setNativeCallback(callbackAddress: ...)`.
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetFilterCallbackPtr(void);
+
+  /// Returns the native function pointer address of `vst3SourceDspCallback`
+  /// (matching `SoLoudSourceDspCallback_t`) to pass to
+  /// `SoLoud.instance.createCustomAudioSource(dspCallbackAddress: ...)`.
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetSourceCallbackPtr(void);
+
+  /// Returns the opaque `Vst3PluginInstance*` pointer to pass as
+  /// `userdataAddress` in `CustomFilterSlot.setNativeCallback` or
+  /// `SoLoud.instance.createCustomAudioSource`.
+  FFI_PLUGIN_EXPORT void *soloud_vst3GetPluginUserData(int pluginHandle);
+
+  /// Returns the lookahead latency reported by `IAudioProcessor::getLatencySamples()`.
+  FFI_PLUGIN_EXPORT unsigned int soloud_vst3GetLatencySamples(int pluginHandle);
+
+  /// Returns the number of parameters exposed by the VST3 plugin.
+  FFI_PLUGIN_EXPORT int soloud_vst3GetParameterCount(int pluginHandle);
+
+  /// Queries metadata for parameter at [paramIndex] (0 .. count - 1).
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetParameterInfo(
+      int pluginHandle,
+      int paramIndex,
+      unsigned int *outParamId,
+      char *outTitle,
+      int titleBufferLen,
+      char *outUnits,
+      int unitsBufferLen,
+      double *outDefaultNormalized,
+      int *outStepCount,
+      unsigned int *outFlags);
+
+  /// Reads the current normalized [0.0, 1.0] value of [paramId] and formats its
+  /// display string (e.g. "-3.5 dB") via IEditController::getParamStringByValue.
+  FFI_PLUGIN_EXPORT double soloud_vst3GetParameterNormalized(
+      int pluginHandle,
+      unsigned int paramId,
+      char *outDisplayText,
+      int displayBufferLen);
+
+  /// Enqueues a thread-safe normalized [0.0, 1.0] parameter change for [paramId]
+  /// and updates the IEditController on the main thread if an editor GUI is open.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetParameterNormalized(
+      int pluginHandle,
+      unsigned int paramId,
+      double normalizedValue);
+
+  /// Maps a SoLoud CustomFilterSlot parameter index (1..7) to a VST3 [paramId]
+  /// so SoLoud's native C++ Fader (`fadeFilterParameter`) and LFO
+  /// (`oscillateFilterParameter`) drive that VST3 parameter on the audio thread.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3MapSlotParameter(
+      int pluginHandle,
+      int customFilterParamIndex,
+      unsigned int vst3ParamId);
+
+  /// Configures the synthetic musical transport (BPM & time signature) passed to
+  /// the VST3 plugin's `ProcessContext` on each audio block.
+  FFI_PLUGIN_EXPORT void soloud_vst3SetTransport(
+      int pluginHandle,
+      double bpm,
+      int timeSigNumerator,
+      int timeSigDenominator,
+      int isPlaying);
+
+  /// Enqueues a real-time MIDI Note-On or Note-Off event for VST3 Instruments.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SendMidiNote(
+      int pluginHandle,
+      int isNoteOn,
+      int channel,
+      int pitch,
+      float velocity,
+      int sampleOffset);
+
+  /// Exports the plugin's binary processor + controller state chunk.
+  /// Caller frees `*outData` via `nativeFree()`.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3GetState(
+      int pluginHandle,
+      unsigned char **outData,
+      unsigned int *outSize);
+
+  /// Restores the plugin's binary processor + controller state chunk.
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3SetState(
+      int pluginHandle,
+      const unsigned char *data,
+      unsigned int size);
+
+  /// Returns 1 if the plugin provides a custom native GUI (`createView("editor")`).
+  FFI_PLUGIN_EXPORT int soloud_vst3HasEditor(int pluginHandle);
+
+  /// Opens the native VST3 editor GUI in a standalone OS window (NSWindow on
+  /// macOS, HWND on Windows, X11 Window + IRunLoop on Linux).
+  FFI_PLUGIN_EXPORT enum PlayerErrors soloud_vst3OpenEditor(
+      int pluginHandle,
+      const char *windowTitle);
+
+  /// Closes the native VST3 editor GUI window if open.
+  FFI_PLUGIN_EXPORT void soloud_vst3CloseEditor(int pluginHandle);
+
+  /// Returns 1 if the native VST3 editor GUI window is currently open.
+  FFI_PLUGIN_EXPORT int soloud_vst3IsEditorOpen(int pluginHandle);
+
+  /// Registers a Dart NativeCallable.listener callback invoked whenever the user
+  /// adjusts a parameter inside the native VST3 editor GUI window.
+  FFI_PLUGIN_EXPORT void soloud_vst3SetParameterEditCallback(
+      dartVst3ParameterEditCallback_t callback);
+
+  /// Registers a Dart NativeCallable.listener callback invoked whenever a VST3
+  /// plugin calls IComponentHandler::restartComponent to signal parameter,
+  /// latency, or bus changes.
+  FFI_PLUGIN_EXPORT void soloud_vst3SetRestartComponentCallback(
+      dartVst3RestartComponentCallback_t callback);
+
+  /// Synchronously unloads all hosted VST3 plugins and releases cached modules.
+  FFI_PLUGIN_EXPORT void soloud_vst3HostUnloadAll(void);
 
 #ifdef __cplusplus
 }

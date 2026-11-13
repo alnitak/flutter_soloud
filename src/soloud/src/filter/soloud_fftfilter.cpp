@@ -55,6 +55,7 @@ namespace SoLoud
 		mTemp = 0;
 		mLastPhase = 0;
 		mSumPhase = 0;
+		mAllocatedChannels = 0;
 		mParent = 0;
 		int i;
 		for (i = 0; i < MAX_CHANNELS; i++)
@@ -87,8 +88,14 @@ namespace SoLoud
 
 		// Chicken-egg problem: we don't know channel count before this. 
 		// Could allocate max_channels but that would potentially waste a lot of memory.
-		if (mInputBuffer == 0)
+		if (mInputBuffer == 0 || aChannels > mAllocatedChannels)
 		{
+			delete[] mInputBuffer;
+			delete[] mMixBuffer;
+			delete[] mTemp;
+			delete[] mLastPhase;
+			delete[] mSumPhase;
+			mAllocatedChannels = aChannels;
 			mInputBuffer = new float[STFT_WINDOW_TWICE * aChannels];
 			mMixBuffer = new float[STFT_WINDOW_TWICE * aChannels];
 			mTemp = new float[STFT_WINDOW_SIZE];
@@ -172,7 +179,6 @@ namespace SoLoud
 		float freqPerBin = aSamplerate / aSamples;
 		for (unsigned int i = 0; i < aSamples; i++)
 		{
-			float mag = aFFTBuffer[i * 2];
 			float pha = aFFTBuffer[i * 2 + 1];
 
 			/* compute phase difference */
@@ -207,7 +213,6 @@ namespace SoLoud
 		for (unsigned int i = 0; i < aSamples; i++)
 		{
 			/* get magnitude and true frequency from synthesis arrays */
-			float mag = aFFTBuffer[i * 2];
 			float freq = aFFTBuffer[i * 2 + 1];
 
 			/* subtract bin mid frequency */
@@ -235,8 +240,8 @@ namespace SoLoud
 		{
 			float mag = aFFTBuffer[i * 2];
 			float pha = aFFTBuffer[i * 2 + 1];
-			aFFTBuffer[i * 2] = (float)cos(pha) * mag;
-			aFFTBuffer[i * 2 + 1] = (float)sin(pha) * mag;
+			aFFTBuffer[i * 2] = cosf(pha) * mag;
+			aFFTBuffer[i * 2 + 1] = sinf(pha) * mag;
 		}
 	}
 

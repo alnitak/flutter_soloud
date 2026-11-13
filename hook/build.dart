@@ -18,10 +18,12 @@
 
 // ignore_for_file: avoid_print
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:code_assets/code_assets.dart';
 import 'package:hooks/hooks.dart';
+import 'package:meta/meta.dart';
 import 'package:native_toolchain_c/native_toolchain_c.dart';
 
 /// The asset id is `package:flutter_soloud/src/bindings.cpp`, matching the
@@ -115,6 +117,16 @@ void main(List<String> args) async {
       xiph = await XiphLink.forPrebuild(input);
     }
 
+    final isDesktop = os == OS.macOS || os == OS.windows || os == OS.linux;
+    final enableVst3 =
+        isDesktop &&
+        (parseBool(input.userDefines['enable_vst3']) ??
+            parseBool(Platform.environment['SOLOUD_ENABLE_VST3']) ??
+            false);
+    final vst3 = enableVst3
+        ? await Vst3Link.forPrebuild(input)
+        : Vst3Link.empty();
+
     final platformDisplayName = switch (os) {
       OS.macOS => 'macOS',
       OS.iOS => 'iOS',
@@ -127,14 +139,122 @@ void main(List<String> args) async {
 
     print(
       '[flutter_soloud] Building on $platformDisplayName ($arch) with Xiph '
-      'libs [$xiphMode]',
+      'libs [$xiphMode]${enableVst3 ? ', VST3 [prebuilt]' : ''}',
     );
+
+    String? vst3HelperPath;
+    if (enableVst3 && vst3.libraryDirectories.isNotEmpty) {
+      if (os == OS.macOS) {
+        vst3HelperPath =
+            '${vst3.libraryDirectories.first}/soloud_vst3_editor_helper';
+        final archFlag = arch == Architecture.arm64 ? 'arm64' : 'x86_64';
+        final res = await Process.run('xcrun', [
+          'clang++',
+          '-std=c++17',
+          '-arch',
+          archFlag,
+          '-O3',
+          '-fobjc-arc',
+          '-DSOLOUD_ENABLE_VST3=1',
+          '-DSOLOUD_VST3_HELPER_MAIN=1',
+          '-DNDEBUG=1',
+          '-Wno-unnecessary-virtual-specifier',
+          '-I${input.packageRoot.resolve('src').toFilePath()}',
+          '-I${input.packageRoot.resolve('src/vst3').toFilePath()}',
+          for (final inc in vst3.includeDirs) ...['-isystem', inc],
+          input.packageRoot
+              .resolve('src/vst3/vst3_editor_helper_macos.mm')
+              .toFilePath(),
+          input.packageRoot
+              .resolve('src/vst3/vst3_editor_macos.mm')
+              .toFilePath(),
+          '${vst3.libraryDirectories.first}/libvst3_hosting.a',
+          '-framework',
+          'Cocoa',
+          '-framework',
+          'QuartzCore',
+          '-framework',
+          'CoreFoundation',
+          '-Wl,-dead_strip',
+          '-o',
+          vst3HelperPath,
+        ]);
+        if (res.exitCode != 0) {
+          throw StateError(
+            '[flutter_soloud] Failed to build soloud_vst3_editor_helper:\n'
+            '${res.stderr}',
+          );
+        }
+        output.dependencies.addAll([
+          input.packageRoot.resolve('src/vst3/vst3_editor_helper_macos.mm'),
+          input.packageRoot.resolve('src/vst3/vst3_editor_macos.mm'),
+          input.packageRoot.resolve('src/vst3/vst3_editor_shm.h'),
+        ]);
+      } else if (os == OS.linux || os == OS.windows) {
+        final exeName = os.executableFileName('soloud_vst3_editor_helper');
+        final helperBuilder = CBuilder.executable(
+          name: 'soloud_vst3_editor_helper',
+          language: Language.cpp,
+          std: 'c++17',
+          sources: [
+            'src/vst3/vst3_editor_helper_desktop.cpp',
+            if (os == OS.linux) 'src/vst3/vst3_editor_linux.cpp',
+            if (os == OS.windows) 'src/vst3/vst3_editor_windows.cpp',
+          ],
+          includes: ['src', 'src/vst3', ...vst3.includeDirs],
+          defines: {
+            'SOLOUD_ENABLE_VST3': '1',
+            'SOLOUD_VST3_HELPER_MAIN': '1',
+            'NDEBUG': '1',
+            if (os == OS.windows) ...{
+              'NOMINMAX': null,
+              '_CRT_SECURE_NO_WARNINGS': null,
+            },
+          },
+          flags: [
+            if (os == OS.windows) ...[
+              '/O2',
+              '/Zc:inline',
+              '/EHsc',
+            ] else ...[
+              '-O3',
+              '-fvisibility=hidden',
+              '-Wno-unused-command-line-argument',
+            ],
+          ],
+          libraries: [
+            ...vst3.libraries,
+            if (os == OS.linux) ...['dl', 'pthread'],
+            if (os == OS.windows) ...['ole32', 'user32', 'gdi32', 'shell32'],
+          ],
+          libraryDirectories: vst3.libraryDirectories,
+        );
+        await helperBuilder.run(input: input, output: output);
+        final builtExe = File.fromUri(input.outputDirectory.resolve(exeName));
+        final targetExe = File('${vst3.libraryDirectories.first}/$exeName');
+        if (builtExe.existsSync()) {
+          builtExe.copySync(targetExe.path);
+          vst3HelperPath = targetExe.path.replaceAll(r'\', '/');
+        }
+        output.dependencies.addAll([
+          input.packageRoot.resolve('src/vst3/vst3_editor_helper_desktop.cpp'),
+          input.packageRoot.resolve('src/vst3/vst3_editor_shm.h'),
+        ]);
+      }
+    }
 
     final defines = <String, String?>{
       'FLUTTER_PLUGIN_IMPL': null,
-      'SIGNALSMITH_USE_PFFFT': null,
+      if (isApple)
+        'SIGNALSMITH_USE_ACCELERATE': null
+      else
+        'SIGNALSMITH_USE_PFFFT': null,
       'WITH_MINIAUDIO': null,
       'WITH_NULL': null,
+      'MA_NO_RESOURCE_MANAGER': null,
+      'MA_NO_NODE_GRAPH': null,
+      'MA_NO_ENGINE': null,
+      'MA_NO_GENERATION': null,
       // Force NDEBUG across all compilers (comment out for native debugging).
       'NDEBUG': null,
       if (os == OS.windows) ...{
@@ -142,24 +262,39 @@ void main(List<String> args) async {
         '_CRT_SECURE_NO_WARNINGS': null,
       },
       if (noXiph) 'NO_XIPH_LIBS': null,
+      if (enableVst3) 'SOLOUD_ENABLE_VST3': null,
+      if (vst3HelperPath != null)
+        'SOLOUD_VST3_HELPER_PATH': '"$vst3HelperPath"',
     };
 
     final flags = <String>[
-      if (os != OS.windows) ...[
-        '-fvisibility=hidden',
-        '-Wno-unused-command-line-argument',
-      ],
       // Force maximum optimization regardless of Flutter build mode.
-      // For native debugging: comment out 'NDEBUG' above and replace the line
-      // below with: if (os == OS.windows) ...['/Od', '/Zi', '/EHsc'] else ...['-O0', '-g'],
-      if (os == OS.windows) ...['/Ox', '/EHsc'] else '-O3',
-      if (os == OS.android) ...[
-        '-Wl,--build-id=sha1',
-        '-ffast-math',
-        '-funroll-loops',
-        '-fomit-frame-pointer',
+      // For native debugging: comment out 'NDEBUG' above and replace the block
+      // below with:
+      // if (os == OS.windows) ...['/Od', '/Zi', '/EHsc'] else ...['-O0', '-g'],
+      if (os == OS.windows) ...[
+        '/O2',
+        '/Zc:inline',
+        '/fp:fast',
+        '/EHsc',
+      ] else ...[
+        '-O3',
+        '-fno-math-errno',
+        '-fno-trapping-math',
+        '-fno-signed-zeros',
+        '-ffp-contract=fast',
+        '-fvisibility=hidden',
         '-ffunction-sections',
         '-fdata-sections',
+        '-fsigned-char',
+        '-Wno-unused-command-line-argument',
+        '-Wno-vla',
+        '-Wno-vla-cxx-extension',
+      ],
+      if (os == OS.android) ...[
+        '-Wl,--build-id=sha1',
+        '-funroll-loops',
+        '-fomit-frame-pointer',
         '-Wl,--gc-sections',
         // Support Android 15 16k page size.
         '-Wl,-z,max-page-size=16384',
@@ -167,19 +302,19 @@ void main(List<String> args) async {
         // enable NEON explicitly (hard-float is the default on modern NDKs;
         // -mfloat=softfp was removed from NDK r25+ clang).
         if (arch == Architecture.arm) '-mfpu=neon',
-        if (arch == Architecture.ia32 || arch == Architecture.x64) ...[
+        if (arch == Architecture.ia32) ...['-msse2', '-msse3'],
+        if (arch == Architecture.x64) ...[
           '-msse2',
           '-msse3',
+          '-msse4.1',
+          '-mpopcnt',
         ],
       ],
-      if (os != OS.windows) ...[
-        '-fvisibility=hidden',
-        '-Wno-unused-command-line-argument',
-        '-fsigned-char',
-        '-Wno-vla',
-        '-Wno-vla-cxx-extension',
+      if (os == OS.linux) ...[
+        '-Wl,--gc-sections',
+        if (arch == Architecture.x64) ...['-msse2', '-msse3'],
       ],
-      if (os == OS.linux && arch == Architecture.x64) ...['-msse2', '-msse3'],
+      if (isApple && arch == Architecture.x64) '-msse4.1',
     ];
 
     final includes = [
@@ -189,6 +324,7 @@ void main(List<String> args) async {
       'src/pffft',
       'src/native_decoder',
       ...xiph.includeDirs,
+      ...vst3.includeDirs,
     ];
 
     // iOS 26.4+/Xcode 16+ duplicate-symbol workaround for miniaudio's
@@ -210,10 +346,11 @@ void main(List<String> args) async {
         language: Language.objectiveC,
         std: 'c++17',
         linkModePreference: LinkModePreference.static,
-        sources: const [
+        sources: [
           'src/soloud_miniaudio_objc.mm',
           'src/native_decoder/os_decoder_apple.mm',
           'src/audiobuffer/aac_stream_decoder_apple.mm',
+          if (enableVst3 && os == OS.macOS) 'src/vst3/vst3_editor_macos.mm',
         ],
         includes: includes,
         forcedIncludes: forcedIncludes,
@@ -228,7 +365,7 @@ void main(List<String> args) async {
       assetName: _assetName,
       language: Language.cpp,
       std: 'c++17',
-      sources: collectSources(input.packageRoot, os),
+      sources: collectSources(input.packageRoot, os, enableVst3: enableVst3),
       includes: includes,
       forcedIncludes: forcedIncludes,
       defines: defines,
@@ -238,10 +375,18 @@ void main(List<String> args) async {
       // into the APK now that the CMake/AGP wiring is gone.
       cppLinkStdLib: os == OS.android ? 'c++_static' : null,
       frameworks: isApple
-          ? const ['Foundation', 'AudioToolbox', 'AVFAudio', 'CoreAudio']
+          ? [
+              'Foundation',
+              'Accelerate',
+              'AudioToolbox',
+              'AVFAudio',
+              'CoreAudio',
+              if (enableVst3 && os == OS.macOS) ...['AppKit', 'QuartzCore'],
+            ]
           : const [],
       libraries: [
         ...xiph.libraries,
+        ...vst3.libraries,
         if (isApple) 'flutter_soloud_miniaudio_objc',
         if (os == OS.android) ...['log', 'android', 'mediandk'],
         if (os == OS.windows) ...[
@@ -250,12 +395,17 @@ void main(List<String> args) async {
           'mfuuid',
           'shlwapi',
           'ole32',
+          if (enableVst3) ...['user32', 'gdi32'],
         ],
-        if (os == OS.linux) ...['dl'],
+        if (os == OS.linux) ...['dl', if (enableVst3) 'pthread'],
       ],
       // '.' is the hook output directory, where the miniaudio ObjC++ static
       // library was just built.
-      libraryDirectories: [if (isApple) '.', ...xiph.libraryDirectories],
+      libraryDirectories: [
+        if (isApple) '.',
+        ...xiph.libraryDirectories,
+        ...vst3.libraryDirectories,
+      ],
     );
     await builder.run(input: input, output: output);
 
@@ -267,6 +417,16 @@ void main(List<String> args) async {
     for (final dependency in xiph.dependencies) {
       output.dependencies.add(dependency);
     }
+    for (final dependency in vst3.dependencies) {
+      output.dependencies.add(dependency);
+    }
+    for (final src in collectSources(
+      input.packageRoot,
+      os,
+      enableVst3: enableVst3,
+    )) {
+      output.dependencies.add(input.packageRoot.resolve(src));
+    }
   });
 }
 
@@ -276,7 +436,11 @@ void main(List<String> args) async {
 
 /// Collects the plugin sources (paths relative to [packageRoot]) for
 /// [targetOS].
-List<String> collectSources(Uri packageRoot, OS targetOS) {
+List<String> collectSources(
+  Uri packageRoot,
+  OS targetOS, {
+  bool enableVst3 = false,
+}) {
   final rootPath = packageRoot.toFilePath().replaceAll(r'\', '/');
   final isApple = targetOS == OS.macOS || targetOS == OS.iOS;
   final sources = <String>[];
@@ -326,6 +490,22 @@ List<String> collectSources(Uri packageRoot, OS targetOS) {
   addDir('filters/');
   addDir('mixeroutput/');
   addDir('synth/');
+  if (enableVst3) {
+    addDir(
+      'vst3/',
+      exclude: (p) {
+        if (p.endsWith('.mm')) return true; // Built by objcBuilder on macOS
+        if (p.endsWith('vst3_editor_helper_desktop.cpp')) return true;
+        if (p.endsWith('vst3_editor_windows.cpp') && targetOS != OS.windows) {
+          return true;
+        }
+        if (p.endsWith('vst3_editor_linux.cpp') && targetOS != OS.linux) {
+          return true;
+        }
+        return false;
+      },
+    );
+  }
   // Each file compiles to nothing on platforms it doesn't serve.
   addDir('native_stream/');
   addDir('waveform/');
@@ -613,31 +793,203 @@ final class XiphLink {
   static const String _prebuildVersionFileName =
       'flutter_soloud_prebuild_version.txt';
 
-  static String _baseUrlForTag(String tag) => tag == 'latest'
-      ? 'https://github.com/$_prebuildRepo/releases/latest/download'
-      : 'https://github.com/$_prebuildRepo/releases/download/$tag';
+  /// The last file written into an install, VST3's too, holding its release
+  /// tag; see [_isInstalled]. Not the version file: the archives carry one of
+  /// their own, which an extraction cut short can leave behind.
+  static const String _installMarkerFileName =
+      'flutter_soloud_prebuild_installed.txt';
 
-  static File _getVersionFile(Directory dir) {
-    final file = File('${dir.path}/$_prebuildVersionFileName');
-    if (file.existsSync()) return file;
-    return File('${dir.path}/version.txt');
+  /// Where the prebuilt archives are downloaded from in place of the GitHub
+  /// release, for VST3's too: a local server, for tests. Null in a build.
+  @visibleForTesting
+  static String? debugBaseUrl;
+
+  static String _baseUrlForTag(String tag) =>
+      debugBaseUrl ??
+      (tag == 'latest'
+          ? 'https://github.com/$_prebuildRepo/releases/latest/download'
+          : 'https://github.com/$_prebuildRepo/releases/download/$tag');
+
+  /// [_ensurePrebuildInclude], for tests.
+  @visibleForTesting
+  static Future<Directory> debugEnsurePrebuildInclude(
+    Uri packageRoot,
+    String tag,
+  ) => _ensurePrebuildInclude(packageRoot, tag);
+
+  /// [_ensurePrebuildPlatform] for a .tar.gz archive, for tests.
+  @visibleForTesting
+  static Future<Directory> debugEnsurePrebuildPlatform({
+    required Uri packageRoot,
+    required OS os,
+    required Architecture arch,
+    required String subDir,
+    required String archiveName,
+    required bool Function(Directory dir) validator,
+    String tag = _defaultPrebuildTag,
+  }) => _ensurePrebuildPlatform(
+    packageRoot: packageRoot,
+    os: os,
+    arch: arch,
+    subDir: subDir,
+    archiveName: archiveName,
+    isZip: false,
+    validator: validator,
+    tag: tag,
+  );
+
+  /// [_downloadWithHttpClient], for tests.
+  @visibleForTesting
+  static Future<String?> debugDownloadWithHttpClient(
+    String url,
+    File file, {
+    Duration deadline = _downloadDeadline,
+  }) => _downloadWithHttpClient(url, file, deadline: deadline);
+
+  /// Whether [dir] holds a complete install of [tag] that [validator]
+  /// accepts.
+  ///
+  /// An install is only ever put in place whole: extracted into a staging
+  /// directory, marked last, then renamed into place (see
+  /// [_downloadAndInstall]). The marker tells it from what an extraction in
+  /// place, as this hook used to do, can leave when it is cut short: every
+  /// file a validator looks for, with the last one truncated. A directory
+  /// without the marker is downloaded again.
+  static bool _isInstalled(
+    Directory dir,
+    String tag,
+    bool Function(Directory dir) validator,
+  ) {
+    final marker = File('${dir.path}/$_installMarkerFileName');
+    if (!marker.existsSync()) return false;
+    if (tag != 'latest') {
+      final v = marker.readAsStringSync().trim();
+      if (v != tag && 'v$v' != tag) return false;
+    }
+    return validator(dir);
   }
 
-  static bool _hasHeaders(Directory dir, [String targetTag = 'latest']) {
-    if (!dir.existsSync()) return false;
-    if (targetTag != 'latest') {
-      final versionFile = _getVersionFile(dir);
-      if (versionFile.existsSync()) {
-        final v = versionFile.readAsStringSync().trim();
-        if (v != targetTag && 'v$v' != targetTag) return false;
+  /// Downloads the archive at [url], extracts it into a new staging directory
+  /// in [parent], and has [install] move what it needs from there into place
+  /// with [_moveIntoPlace]. The staging directory is then deleted with
+  /// whatever is left in it, so a download or an extraction that fails or is
+  /// cut short leaves nothing where a build looks. Returns the release tag
+  /// the download resolved to, if any.
+  ///
+  /// The archive goes into a directory inside the staging directory, not into
+  /// the staging directory itself: createTempSync() makes that one private
+  /// (0700), and an install that is the extracted archive would keep the
+  /// mode. The inner one gets the mode the umask gives a new directory, as
+  /// an extraction in place did, and the files keep the modes tar gives them.
+  static Future<String?> _downloadAndInstall(
+    String url,
+    Directory parent, {
+    required bool isZip,
+    required void Function(Directory extracted, String? resolvedTag) install,
+  }) async {
+    parent.createSync(recursive: true);
+    final staging = parent.createTempSync('.staging-');
+    try {
+      final extracted = Directory('${staging.path}/archive')..createSync();
+      final resolvedTag = await _downloadAndExtract(
+        url,
+        extracted,
+        isZip: isZip,
+      );
+      install(extracted, resolvedTag);
+      return resolvedTag;
+    } finally {
+      if (staging.existsSync()) {
+        staging.deleteSync(recursive: true);
       }
     }
-    return File('${dir.path}/ogg/ogg.h').existsSync() &&
-        File('${dir.path}/ogg/config_types.h').existsSync() &&
-        File('${dir.path}/vorbis/codec.h').existsSync() &&
-        File('${dir.path}/opus/opus.h').existsSync() &&
-        File('${dir.path}/FLAC/all.h').existsSync();
   }
+
+  /// Marks [staged], extracted in full, as an install of [resolvedTag] (or
+  /// [tag]), and renames it to [target], unless [target] holds an install of
+  /// [tag] by then; see [_isInstalled]. The marker is written last.
+  ///
+  /// Other invocations of the hook, for the build's other architectures or
+  /// another build of the same app, can install the same [target] at the
+  /// same time. So a rename that fails because [target] is there is not an
+  /// error when [target] is installed by then, and what is there is only
+  /// replaced when it is not an install: what an older hook or an older
+  /// release left. It is moved into the staging directory, to be deleted
+  /// with it, rather than deleted where a build could see it half gone.
+  static void _moveIntoPlace(
+    Directory staged,
+    Directory target,
+    String tag,
+    bool Function(Directory dir) validator, {
+    String? resolvedTag,
+  }) {
+    final installedTag = resolvedTag ?? tag;
+    File(
+      '${staged.path}/$_prebuildVersionFileName',
+    ).writeAsStringSync('$installedTag\n');
+    File(
+      '${staged.path}/$_installMarkerFileName',
+    ).writeAsStringSync('$installedTag\n');
+    FileSystemException? lastError;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      if (_isInstalled(target, tag, validator)) return;
+      try {
+        // Fails while target is there (on POSIX, unless it is empty).
+        staged.renameSync(target.path);
+        return;
+      } on FileSystemException catch (error) {
+        lastError = error;
+      }
+      if (_isInstalled(target, tag, validator)) return;
+      try {
+        target.renameSync('${staged.path}.replaced$attempt');
+      } on FileSystemException catch (error) {
+        // Moved or replaced by another invocation meanwhile: look again.
+        lastError = error;
+      }
+    }
+    if (!_isInstalled(target, tag, validator)) throw lastError!;
+  }
+
+  /// How long a staging directory, and everything directly in it, must go
+  /// unmodified to count as left behind by a build that was killed. A live
+  /// one is younger than that: each download is limited to a few minutes and
+  /// starts a new file in it.
+  static const Duration _staleStagingAge = Duration(hours: 1);
+
+  /// Deletes the staging directories in [parent] that builds killed part-way
+  /// left behind (see [_staleStagingAge]). Safe while other invocations
+  /// install, as theirs are never that old. Best effort: what cannot be read
+  /// or deleted is left.
+  static void _pruneStaleStaging(Directory parent) {
+    final cutoff = DateTime.now().subtract(_staleStagingAge);
+    final List<FileSystemEntity> entries;
+    try {
+      entries = parent.listSync(followLinks: false);
+    } on FileSystemException {
+      return;
+    }
+    for (final entry in entries) {
+      final name = entry.path.substring(parent.path.length + 1);
+      if (entry is! Directory || !name.startsWith('.staging-')) continue;
+      try {
+        final stale = [
+          entry,
+          ...entry.listSync(followLinks: false),
+        ].every((e) => e.statSync().modified.isBefore(cutoff));
+        if (stale) entry.deleteSync(recursive: true);
+      } on FileSystemException {
+        // Deleted meanwhile, by another invocation.
+      }
+    }
+  }
+
+  static bool _hasHeaders(Directory dir) =>
+      File('${dir.path}/ogg/ogg.h').existsSync() &&
+      File('${dir.path}/ogg/config_types.h').existsSync() &&
+      File('${dir.path}/vorbis/codec.h').existsSync() &&
+      File('${dir.path}/opus/opus.h').existsSync() &&
+      File('${dir.path}/FLAC/all.h').existsSync();
 
   static Future<Directory> _ensurePrebuildInclude(
     Uri packageRoot, [
@@ -646,24 +998,37 @@ final class XiphLink {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/include'),
     );
-    if (_hasHeaders(cacheDir, tag)) return cacheDir;
+    _pruneStaleStaging(cacheDir.parent);
+    if (_isInstalled(cacheDir, tag, _hasHeaders)) return cacheDir;
 
     print(
       '[flutter_soloud] Downloading Xiph headers ($tag) from '
       '$_prebuildRepo...',
     );
-    if (cacheDir.existsSync()) {
-      cacheDir.deleteSync(recursive: true);
-    }
-    final resolvedTag = await _downloadAndExtract(
-      '${_baseUrlForTag(tag)}/xiph-include.tar.gz',
-      cacheDir,
+    final url = '${_baseUrlForTag(tag)}/xiph-include.tar.gz';
+    final resolvedTag = await _downloadAndInstall(
+      url,
+      cacheDir.parent,
       isZip: false,
+      install: (Directory extracted, String? resolvedTag) {
+        if (_hasHeaders(extracted)) {
+          _moveIntoPlace(
+            extracted,
+            cacheDir,
+            tag,
+            _hasHeaders,
+            resolvedTag: resolvedTag,
+          );
+        }
+      },
     );
+    if (!_isInstalled(cacheDir, tag, _hasHeaders)) {
+      throw StateError(
+        'Downloaded the Xiph headers from $url, but validation failed in '
+        '${cacheDir.path}.',
+      );
+    }
     final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
 
     File.fromUri(
         packageRoot.resolve(
@@ -688,46 +1053,147 @@ final class XiphLink {
     final cacheDir = Directory.fromUri(
       packageRoot.resolve('.dart_tool/flutter_soloud/xiph/prebuild/$subDir'),
     );
-    final versionFile = _getVersionFile(cacheDir);
-    if (tag != 'latest' && versionFile.existsSync()) {
-      final v = versionFile.readAsStringSync().trim();
-      if (v != tag && 'v$v' != tag) {
-        if (cacheDir.existsSync()) {
-          cacheDir.deleteSync(recursive: true);
-        }
-      }
-    }
-    if (validator(cacheDir)) return cacheDir;
+    _pruneStaleStaging(cacheDir.parent);
+    if (_isInstalled(cacheDir, tag, validator)) return cacheDir;
 
     print(
       '[flutter_soloud] Downloading prebuilt Xiph libraries ($tag) '
       'for $os ($arch)...',
     );
-    final extractTarget = (os == OS.android)
-        ? Directory.fromUri(
-            packageRoot.resolve(
-              '.dart_tool/flutter_soloud/xiph/prebuild/android',
-            ),
-          )
-        : cacheDir;
-    final resolvedTag = await _downloadAndExtract(
-      '${_baseUrlForTag(tag)}/$archiveName',
-      extractTarget,
+    final url = '${_baseUrlForTag(tag)}/$archiveName';
+    await _downloadAndInstall(
+      url,
+      cacheDir.parent,
       isZip: isZip,
+      install: (Directory extracted, String? resolvedTag) {
+        if (os != OS.android) {
+          if (validator(extracted)) {
+            _moveIntoPlace(
+              extracted,
+              cacheDir,
+              tag,
+              validator,
+              resolvedTag: resolvedTag,
+            );
+          }
+          return;
+        }
+        // The Android archive holds a directory per ABI. Install each one
+        // that is not installed yet, so that the build's other ABIs need no
+        // download of their own, and leave the installed ones alone.
+        for (final staged in extracted.listSync().whereType<Directory>()) {
+          final name = staged.path.substring(extracted.path.length + 1);
+          final target = Directory('${cacheDir.parent.path}/$name');
+          if (validator(staged)) {
+            _moveIntoPlace(
+              staged,
+              target,
+              tag,
+              validator,
+              resolvedTag: resolvedTag,
+            );
+          }
+        }
+      },
     );
-    final tagToWrite = resolvedTag ?? tag;
-    File(
-      '${cacheDir.path}/$_prebuildVersionFileName',
-    ).writeAsStringSync('$tagToWrite\n');
 
-    if (!validator(cacheDir)) {
+    if (!_isInstalled(cacheDir, tag, validator)) {
       throw StateError(
-        'Downloaded prebuilt Xiph libraries for $os ($arch) from '
-        '${_baseUrlForTag(tag)}/$archiveName, but validation failed in '
-        '${cacheDir.path}.',
+        'Downloaded prebuilt Xiph libraries for $os ($arch) from $url, but '
+        'validation failed in ${cacheDir.path}.',
       );
     }
     return cacheDir;
+  }
+
+  static const String _browserUserAgent =
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  static const String _browserAcceptHeader =
+      'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+
+  static bool? _cachedHasCurl;
+  static Future<bool> _hasSystemCurl() async {
+    if (_cachedHasCurl != null) return _cachedHasCurl!;
+    try {
+      final res = await Process.run('curl', ['--version']);
+      return _cachedHasCurl = (res.exitCode == 0);
+    } catch (_) {
+      return _cachedHasCurl = false;
+    }
+  }
+
+  /// The limit on one whole download attempt, curl's `-m 60`.
+  static const Duration _downloadDeadline = Duration(seconds: 60);
+
+  /// Downloads [url] into [file] with Dart's HttpClient, the fallback for
+  /// when curl is unavailable or failed. Returns the release tag a redirect
+  /// resolved to, if any. Throws when the transfer fails or is empty, and a
+  /// [TimeoutException] when it is not complete within [deadline].
+  static Future<String?> _downloadWithHttpClient(
+    String url,
+    File file, {
+    Duration deadline = _downloadDeadline,
+  }) async {
+    String? resolvedTag;
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15)
+      ..userAgent = _browserUserAgent;
+    // The timeouts below cover the connection and the response headers but
+    // not the body, which can stall for good after them. Like curl's -m 60,
+    // this bounds the whole attempt: closing the client ends a transfer in
+    // flight with an error.
+    var timedOut = false;
+    final deadlineTimer = Timer(deadline, () {
+      timedOut = true;
+      client.close(force: true);
+    });
+    try {
+      final uri = Uri.parse(url);
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 15));
+      request.headers.set(HttpHeaders.acceptHeader, _browserAcceptHeader);
+      request.headers.set(HttpHeaders.acceptLanguageHeader, 'en-US,en;q=0.9');
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException(
+          'HTTP ${response.statusCode} (${response.reasonPhrase})',
+          uri: uri,
+        );
+      }
+
+      for (final r in response.redirects) {
+        final match = RegExp(
+          '/releases/download/([^/]+)/',
+        ).firstMatch(r.location.toString());
+        if (match != null) {
+          resolvedTag = match.group(1);
+          break;
+        }
+      }
+
+      final sink = file.openWrite();
+      await response.pipe(sink);
+      if (!file.existsSync() || file.lengthSync() == 0) {
+        throw const FileSystemException('Downloaded file is empty');
+      }
+      return resolvedTag;
+    } catch (_) {
+      if (timedOut) {
+        throw TimeoutException(
+          'Download not complete within ${deadline.inSeconds} s',
+          deadline,
+        );
+      }
+      rethrow;
+    } finally {
+      deadlineTimer.cancel();
+      client.close();
+    }
   }
 
   static Future<String?> _downloadAndExtract(
@@ -740,35 +1206,123 @@ final class XiphLink {
       '${destination.path}/dl_${DateTime.now().millisecondsSinceEpoch}.${isZip ? 'zip' : 'tar.gz'}',
     );
 
+    const maxAttempts = 4;
     String? resolvedTag;
-    final client = HttpClient();
-    try {
-      final uri = Uri.parse(url);
-      final request = await client.getUrl(uri);
-      final response = await request.close();
-      if (response.statusCode != HttpStatus.ok) {
-        throw HttpException(
-          'Failed to download prebuilt libraries from $url '
-          '(HTTP ${response.statusCode}). Ensure you have an internet '
-          'connection or build from source using '
-          '`<platform>_force_build_libs: true`.',
-          uri: uri,
-        );
+    dynamic lastError;
+    var downloadSuccess = false;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (tempFile.existsSync()) {
+        try {
+          tempFile.deleteSync();
+        } catch (_) {}
       }
-      for (final r in response.redirects) {
-        final match = RegExp(
-          '/releases/download/([^/]+)/',
-        ).firstMatch(r.location.toString());
-        if (match != null) {
-          resolvedTag = match.group(1);
-          break;
+
+      if (attempt == 1) {
+        print('[flutter_soloud] Downloading prebuild archive: $url');
+      } else {
+        final backoffSeconds = 2 * (1 << (attempt - 2)); // 2s, 4s, 8s...
+        print(
+          '[flutter_soloud] Retrying prebuild download (attempt $attempt/$maxAttempts) '
+          'in ${backoffSeconds}s after previous error: $lastError',
+        );
+        await Future<void>.delayed(Duration(seconds: backoffSeconds));
+        print('[flutter_soloud] Downloading prebuild archive: $url');
+      }
+
+      // 1. Try system curl first if available (supports HTTP/2 & built-in retries)
+      if (await _hasSystemCurl()) {
+        try {
+          final curlRes = await Process.run('curl', [
+            '-f',
+            '-s',
+            '-S',
+            '-L',
+            '--retry',
+            '3',
+            '--retry-delay',
+            '2',
+            '--connect-timeout',
+            '15',
+            '-m',
+            '60',
+            '-A',
+            _browserUserAgent,
+            '-H',
+            'Accept: $_browserAcceptHeader',
+            '-w',
+            '\n%{url_effective}',
+            '-o',
+            tempFile.path,
+            url,
+          ]);
+
+          if (curlRes.exitCode == 0 &&
+              tempFile.existsSync() &&
+              tempFile.lengthSync() > 0) {
+            downloadSuccess = true;
+            final stdoutStr = curlRes.stdout.toString().trim();
+            final match = RegExp(
+              '/releases/download/([^/]+)/',
+            ).firstMatch(stdoutStr);
+            if (match != null) {
+              resolvedTag = match.group(1);
+            }
+            print(
+              '[flutter_soloud] Download completed successfully via curl '
+              '(${tempFile.lengthSync()} bytes).',
+            );
+            break;
+          } else {
+            final err = curlRes.stderr.toString().trim();
+            lastError = 'curl failed (exit ${curlRes.exitCode}): $err';
+            print('[flutter_soloud] curl download failed: $lastError');
+          }
+        } catch (curlEx) {
+          lastError = curlEx;
+          print('[flutter_soloud] Failed to execute curl process: $curlEx');
         }
       }
-      await response.pipe(tempFile.openWrite());
-    } finally {
-      client.close();
+
+      // 2. Fall back to Dart HttpClient if curl was unavailable or failed
+      if (!downloadSuccess) {
+        if (tempFile.existsSync()) {
+          try {
+            tempFile.deleteSync();
+          } catch (_) {}
+        }
+        try {
+          print('[flutter_soloud] Trying Dart HttpClient download...');
+          resolvedTag = await _downloadWithHttpClient(url, tempFile);
+          downloadSuccess = true;
+          print(
+            '[flutter_soloud] Download completed successfully '
+            '(${tempFile.lengthSync()} bytes).',
+          );
+          break;
+        } catch (e) {
+          lastError = e;
+          print('[flutter_soloud] Dart HttpClient download failed: $e');
+        }
+      }
     }
 
+    if (!downloadSuccess) {
+      if (tempFile.existsSync()) {
+        try {
+          tempFile.deleteSync();
+        } catch (_) {}
+      }
+      throw HttpException(
+        'Failed to download prebuilt libraries from $url after '
+        '$maxAttempts attempts (last error: $lastError). Ensure you have '
+        'an internet connection or build from source using '
+        '`<platform>_force_build_libs: true`.',
+        uri: Uri.parse(url),
+      );
+    }
+
+    print('[flutter_soloud] Extracting archive to ${destination.path}...');
     try {
       if (isZip && Platform.isWindows) {
         final tarRes = await Process.run('tar', [
@@ -811,6 +1365,7 @@ final class XiphLink {
           );
         }
       }
+      print('[flutter_soloud] Extraction completed successfully.');
     } finally {
       if (tempFile.existsSync()) {
         tempFile.deleteSync();
@@ -1155,15 +1710,38 @@ final class XiphLink {
     const androidLinkerFlags =
         '-DCMAKE_SHARED_LINKER_FLAGS='
         '-Wl,-z,max-page-size=16384,--gc-sections -flto';
+    final androidAbiCFlags = switch (androidAbi) {
+      'armeabi-v7a' => ' -mfpu=neon',
+      'x86' => ' -msse2 -msse3',
+      'x86_64' => ' -msse2 -msse3 -msse4.1 -mpopcnt',
+      _ => '',
+    };
+    const baseFastCFlags =
+        '-O3 -fno-math-errno -fno-trapping-math -ffp-contract=fast';
+    final androidCFlags =
+        '-DCMAKE_C_FLAGS=$baseFastCFlags$androidAbiCFlags '
+        '-flto -ffunction-sections -fdata-sections';
     final androidFlags = [
       if (os == OS.android) ...[
         '-DCMAKE_TOOLCHAIN_FILE=$androidNdk/build/cmake/android.toolchain.cmake',
         '-DANDROID_ABI=$androidAbi',
         '-DANDROID_PLATFORM=android-$androidNdkApi',
-        '-DCMAKE_C_FLAGS=-Os -flto -ffunction-sections -fdata-sections',
+        androidCFlags,
         androidLinkerFlags,
       ],
     ];
+
+    final appleArchCFlags = arch == Architecture.x64 ? ' -msse4.1' : '';
+    final appleXiphCFlags =
+        '$baseFastCFlags$appleArchCFlags '
+        '-fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables';
+    final linuxArchCFlags = arch == Architecture.x64 ? ' -msse2 -msse3' : '';
+    final linuxCFlags =
+        '-DCMAKE_C_FLAGS=$baseFastCFlags$linuxArchCFlags '
+        '-flto -ffunction-sections -fdata-sections';
+    const winSharedLinkerFlags =
+        '-DCMAKE_SHARED_LINKER_FLAGS_RELEASE='
+        '/INCREMENTAL:NO /LTCG /OPT:REF /OPT:ICF';
 
     final commonCmakePlatformFlags = [
       if (isApple) ...[
@@ -1171,6 +1749,7 @@ final class XiphLink {
         '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
         '-DCMAKE_OSX_ARCHITECTURES=$archStr',
         '-DCMAKE_OSX_DEPLOYMENT_TARGET=$osxDeploymentTarget',
+        '-DCMAKE_C_FLAGS=$appleXiphCFlags',
         if (os == OS.iOS) ...[
           '-DCMAKE_SYSTEM_NAME=iOS',
           '-DCMAKE_OSX_SYSROOT=$appleSysroot',
@@ -1178,6 +1757,8 @@ final class XiphLink {
       ] else if (os == OS.windows) ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded',
+        '-DCMAKE_C_FLAGS_RELEASE=/O2 /Ob2 /Oi /Ot /GL /Gy /Zc:inline /DNDEBUG',
+        winSharedLinkerFlags,
         if (arch == Architecture.arm64) ...['-A', 'ARM64'],
       ] else if (os == OS.android) ...[
         '-DBUILD_SHARED_LIBS=ON',
@@ -1185,7 +1766,7 @@ final class XiphLink {
       ] else ...[
         '-DBUILD_SHARED_LIBS=ON',
         '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
-        '-DCMAKE_C_FLAGS=-O2 -flto -ffunction-sections -fdata-sections',
+        linuxCFlags,
         '-DCMAKE_SHARED_LINKER_FLAGS=-Wl,--gc-sections -flto',
         if (os == OS.linux &&
             arch == Architecture.arm64 &&
@@ -1231,9 +1812,6 @@ final class XiphLink {
     ]);
 
     // Build opus
-    const opusAppleFlags =
-        '-Os -fno-exceptions -fno-unwind-tables '
-        '-fno-asynchronous-unwind-tables';
     print('[flutter_soloud] Configuring opus with CMake ($archStr)...');
     prepareBuildDir('opus');
     await _runCmake([
@@ -1248,10 +1826,9 @@ final class XiphLink {
       '-DOPUS_BUILD_TESTING=OFF',
       '-DOPUS_STACK_PROTECTOR=OFF',
       '-DOPUS_CUSTOM_MODES=ON',
-      if (isApple) ...[
-        '-DOPUS_BUILD_SHARED_LIBRARY=OFF',
-        '-DCMAKE_C_FLAGS=$opusAppleFlags',
-      ],
+      if (isApple) '-DOPUS_BUILD_SHARED_LIBRARY=OFF',
+      if ((isApple || os == OS.android) && arch == Architecture.x64)
+        '-DOPUS_X86_PRESUME_SSE4_1=ON',
       ...commonCmakePlatformFlags,
     ]);
     print('[flutter_soloud] Compiling and installing opus...');
@@ -1711,4 +2288,249 @@ Future<XiphLink> _linkFromInstall(
     bundledAssets: bundledAssets,
     dependencies: dependencies,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Prebuilt Steinberg VST3 Hosting SDK library wiring
+// ---------------------------------------------------------------------------
+
+final class Vst3Link {
+  Vst3Link._({
+    required this.libraries,
+    required this.libraryDirectories,
+    required this.includeDirs,
+    required this.dependencies,
+  });
+
+  factory Vst3Link.empty() => Vst3Link._(
+    libraries: const [],
+    libraryDirectories: const [],
+    includeDirs: const [],
+    dependencies: const [],
+  );
+
+  final List<String> libraries;
+  final List<String> libraryDirectories;
+  final List<String> includeDirs;
+  final List<Uri> dependencies;
+
+  static const String _prebuildRepo = 'alnitak/flutter_soloud_prebuilds';
+  static const String _defaultPrebuildTag = 'latest';
+
+  static String _baseUrlForTag(String tag) =>
+      XiphLink.debugBaseUrl ??
+      (tag == 'latest'
+          ? 'https://github.com/$_prebuildRepo/releases/latest/download'
+          : 'https://github.com/$_prebuildRepo/releases/download/$tag');
+
+  /// [_ensureVst3Include], for tests.
+  @visibleForTesting
+  static Future<Directory> debugEnsureVst3Include(
+    Uri packageRoot,
+    String tag,
+  ) => _ensureVst3Include(packageRoot, tag);
+
+  /// [_ensureVst3Platform] for a .tar.gz archive, for tests.
+  @visibleForTesting
+  static Future<Directory> debugEnsureVst3Platform({
+    required Uri packageRoot,
+    required OS os,
+    required Architecture arch,
+    required String subDir,
+    required String archiveName,
+    required bool Function(Directory dir) validator,
+    String tag = _defaultPrebuildTag,
+  }) => _ensureVst3Platform(
+    packageRoot: packageRoot,
+    os: os,
+    arch: arch,
+    subDir: subDir,
+    archiveName: archiveName,
+    isZip: false,
+    validator: validator,
+    tag: tag,
+  );
+
+  static Future<Vst3Link> forPrebuild(BuildInput input) async {
+    final code = input.config.code;
+    final os = code.targetOS;
+    final arch = code.targetArchitecture;
+    final packageRoot = input.packageRoot;
+
+    final tag =
+        (input.userDefines['prebuild_tag'] as String?)?.trim() ??
+        _defaultPrebuildTag;
+
+    final includeDir = await _ensureVst3Include(packageRoot, tag);
+
+    switch (os) {
+      case OS.macOS:
+        final dir = await _ensureVst3Platform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'macos',
+          archiveName: 'vst3-macos.tar.gz',
+          isZip: false,
+          tag: tag,
+          validator: (Directory d) =>
+              File('${d.path}/libvst3_hosting.a').existsSync(),
+        );
+        return Vst3Link._(
+          libraries: const ['vst3_hosting'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
+          dependencies: [File('${dir.path}/libvst3_hosting.a').uri],
+        );
+
+      case OS.linux:
+        if (arch != Architecture.x64 && arch != Architecture.arm64) {
+          throw UnsupportedError(
+            '[flutter_soloud] Prebuilt VST3 Linux libraries only support '
+            'x64 and arm64 (got ${arch.name}).',
+          );
+        }
+        final archStr = arch == Architecture.arm64 ? 'arm64' : 'x64';
+        final dir = await _ensureVst3Platform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'linux/$archStr',
+          archiveName: 'vst3-linux-$archStr.tar.gz',
+          isZip: false,
+          tag: tag,
+          validator: (Directory d) =>
+              File('${d.path}/libvst3_hosting.a').existsSync(),
+        );
+        return Vst3Link._(
+          libraries: const ['vst3_hosting'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
+          dependencies: [File('${dir.path}/libvst3_hosting.a').uri],
+        );
+
+      case OS.windows:
+        if (arch != Architecture.x64 && arch != Architecture.arm64) {
+          throw UnsupportedError(
+            '[flutter_soloud] Prebuilt VST3 Windows libraries only support '
+            'x64 and arm64 (got ${arch.name}).',
+          );
+        }
+        final archStr = arch == Architecture.arm64 ? 'arm64' : 'x64';
+        final dir = await _ensureVst3Platform(
+          packageRoot: packageRoot,
+          os: os,
+          arch: arch,
+          subDir: 'windows/$archStr',
+          archiveName: 'vst3-windows-$archStr.zip',
+          isZip: true,
+          tag: tag,
+          validator: (Directory d) =>
+              File('${d.path}/vst3_hosting.lib').existsSync(),
+        );
+        return Vst3Link._(
+          libraries: const ['vst3_hosting'],
+          libraryDirectories: [dir.path],
+          includeDirs: [includeDir.path],
+          dependencies: [File('${dir.path}/vst3_hosting.lib').uri],
+        );
+
+      default:
+        return Vst3Link.empty();
+    }
+  }
+
+  static bool _hasHeaders(Directory dir) =>
+      File(
+        '${dir.path}/pluginterfaces/vst/ivstaudioprocessor.h',
+      ).existsSync() &&
+      File('${dir.path}/public.sdk/source/vst/hosting/module.h').existsSync();
+
+  /// Installs like XiphLink._ensurePrebuildInclude().
+  static Future<Directory> _ensureVst3Include(
+    Uri packageRoot, [
+    String tag = _defaultPrebuildTag,
+  ]) async {
+    final cacheDir = Directory.fromUri(
+      packageRoot.resolve('.dart_tool/flutter_soloud/vst3/prebuild/include'),
+    );
+    XiphLink._pruneStaleStaging(cacheDir.parent);
+    if (XiphLink._isInstalled(cacheDir, tag, _hasHeaders)) return cacheDir;
+
+    print(
+      '[flutter_soloud] Downloading VST3 headers ($tag) from '
+      '$_prebuildRepo...',
+    );
+    final url = '${_baseUrlForTag(tag)}/vst3-include.tar.gz';
+    await XiphLink._downloadAndInstall(
+      url,
+      cacheDir.parent,
+      isZip: false,
+      install: (Directory extracted, String? resolvedTag) {
+        if (_hasHeaders(extracted)) {
+          XiphLink._moveIntoPlace(
+            extracted,
+            cacheDir,
+            tag,
+            _hasHeaders,
+            resolvedTag: resolvedTag,
+          );
+        }
+      },
+    );
+    if (!XiphLink._isInstalled(cacheDir, tag, _hasHeaders)) {
+      throw StateError(
+        'Downloaded the VST3 headers from $url, but validation failed in '
+        '${cacheDir.path}.',
+      );
+    }
+    return cacheDir;
+  }
+
+  static Future<Directory> _ensureVst3Platform({
+    required Uri packageRoot,
+    required OS os,
+    required Architecture arch,
+    required String subDir,
+    required String archiveName,
+    required bool isZip,
+    required bool Function(Directory dir) validator,
+    String tag = _defaultPrebuildTag,
+  }) async {
+    final cacheDir = Directory.fromUri(
+      packageRoot.resolve('.dart_tool/flutter_soloud/vst3/prebuild/$subDir'),
+    );
+    XiphLink._pruneStaleStaging(cacheDir.parent);
+    if (XiphLink._isInstalled(cacheDir, tag, validator)) return cacheDir;
+
+    print(
+      '[flutter_soloud] Downloading prebuilt VST3 library ($tag) '
+      'for $os ($arch)...',
+    );
+    final url = '${_baseUrlForTag(tag)}/$archiveName';
+    await XiphLink._downloadAndInstall(
+      url,
+      cacheDir.parent,
+      isZip: isZip,
+      install: (Directory extracted, String? resolvedTag) {
+        if (validator(extracted)) {
+          XiphLink._moveIntoPlace(
+            extracted,
+            cacheDir,
+            tag,
+            validator,
+            resolvedTag: resolvedTag,
+          );
+        }
+      },
+    );
+
+    if (!XiphLink._isInstalled(cacheDir, tag, validator)) {
+      throw StateError(
+        'Downloaded prebuilt VST3 library for $os ($arch) from $url, but '
+        'validation failed in ${cacheDir.path}.',
+      );
+    }
+    return cacheDir;
+  }
 }

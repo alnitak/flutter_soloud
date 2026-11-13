@@ -1,4 +1,5 @@
 #include "limiter.h"
+#include "../simd/soloud_simd.h"
 
 #include <algorithm>
 #include <vector>
@@ -20,6 +21,18 @@ LimiterInstance::LimiterInstance(Limiter *aParent)
     mWritePos = 0;
     mSmoothedGain = 1.0f;
     mReleaseCoef = 0.0f;
+
+    // Pre-reserve lookahead capacity outside the audio thread for up to
+    // max ATTACK_TIME (200 ms) at stereo 96 kHz (or mParent->mSamplerate if
+    // higher) so parameter automation in filter() does not heap-allocate.
+    const unsigned int maxSr =
+        std::max<unsigned int>(mParent->mSamplerate, 96000u);
+    const size_t maxLookahead =
+        static_cast<size_t>(mParent->getParamMax(Limiter::ATTACK_TIME) *
+                                0.001f * static_cast<float>(maxSr) +
+                            2.0f);
+    mDelayBuffer.reserve(maxLookahead * 2u);
+    mGainEnv.reserve(maxLookahead);
 }
 
 void LimiterInstance::resizeBuffers(int lookaheadSamples, int channels)
@@ -40,6 +53,11 @@ void LimiterInstance::filter(
     float aSamplerate,
     SoLoud::time aTime)
 {
+    if (aChannels == 0 || aSamples == 0) {
+        return;
+    }
+
+    soloud_simd::ScopedFlushDenormals flushDenormals;
     updateParams(aTime);
 
     const float thresholdDb = mParam[Limiter::THRESHOLD];
@@ -48,9 +66,16 @@ void LimiterInstance::filter(
     const float lookaheadMs = mParam[Limiter::ATTACK_TIME];
     const float releaseMs = mParam[Limiter::RELEASE_TIME];
 
-    const float ceilingLin = powf(10.0f, ceilingDb / 20.0f);
-    const float driveDb = -thresholdDb;
-    const float driveLin = powf(10.0f, driveDb / 20.0f);
+    if (ceilingDb != mCachedCeilingDb) {
+        mCachedCeilingDb = ceilingDb;
+        mCeilingLin = powf(10.0f, ceilingDb / 20.0f);
+    }
+    if (thresholdDb != mCachedThresholdDb) {
+        mCachedThresholdDb = thresholdDb;
+        mDriveLin = powf(10.0f, -thresholdDb / 20.0f);
+    }
+    const float ceilingLin = mCeilingLin;
+    const float driveLin = mDriveLin;
 
     // Look-ahead window in samples. Need at least 2 for a meaningful ramp.
     int desiredLookahead = (int)(lookaheadMs * 0.001f * aSamplerate + 0.5f);
@@ -60,100 +85,139 @@ void LimiterInstance::filter(
         resizeBuffers(desiredLookahead, (int)aChannels);
     }
 
-    // One-pole release coefficient. Recomputed every call: cheap, and tracks
-    // parameter changes without a click.
-    mReleaseCoef = expf(-1.0f / fmaxf(releaseMs * 0.001f * aSamplerate, 1.0f));
+    if (releaseMs != mCachedReleaseMs || aSamplerate != mCachedSamplerate) {
+        mCachedReleaseMs = releaseMs;
+        mCachedSamplerate = aSamplerate;
+        mReleaseCoef = expf(-1.0f / fmaxf(releaseMs * 0.001f * aSamplerate, 1.0f));
+    }
 
     const int ringSize = mRingSize;
     const float perStepBase = 1.0f / (float)(ringSize - 1);
+    const float releaseCoef = mReleaseCoef;
+    const float oneMinusRelease = 1.0f - releaseCoef;
+    const float dryMix = 1.0f - wet;
 
     // SoLoud passes audio in PLANAR layout: channel ch occupies the contiguous
     // range [ch*aBufferSize, ch*aBufferSize + aSamples). The internal delay
     // buffer remains frame-major (channel-interleaved) for cache locality of
     // the per-frame read/write.
     const size_t stride = (size_t)aBufferSize;
+    float *delayBuf = mDelayBuffer.data();
+    float *gainEnv = mGainEnv.data();
+    int writePos = mWritePos;
+    float smoothedGain = mSmoothedGain;
 
-    for (unsigned int i = 0; i < aSamples; ++i) {
-        // 1. Stereo-linked driven peak across all channels for this sample frame.
-        float peak = 0.0f;
-        for (unsigned int ch = 0; ch < aChannels; ++ch) {
-            float a = fabsf(aBuffer[i + (size_t)ch * stride]) * driveLin;
-            if (a > peak) peak = a;
-        }
+    if (aChannels == 2) {
+        float *ch0 = aBuffer;
+        float *ch1 = aBuffer + stride;
+        for (unsigned int i = 0; i < aSamples; ++i) {
+            const float in0 = ch0[i];
+            const float in1 = ch1[i];
+            const float peak = fmaxf(fabsf(in0), fabsf(in1)) * driveLin;
+            const float reqGain = (peak > ceilingLin) ? (ceilingLin / peak) : 1.0f;
 
-        // 2. Required gain reduction (dB) after maximizer drive. THRESHOLD is
-        //    interpreted as DAW-style limiter drive/autogain: -6 dB means
-        //    +6 dB into the brickwall. OUTPUT_CEILING is the only final peak
-        //    target.
-        float peakDb = 20.0f * log10f(fmaxf(peak, 1e-8f));
-        float reductionDb = peakDb - ceilingDb;
-        if (reductionDb < 0.0f) reductionDb = 0.0f;
+            delayBuf[(size_t)writePos * 2u] = in0;
+            delayBuf[(size_t)writePos * 2u + 1u] = in1;
+            gainEnv[writePos] = reqGain;
 
-        float reqGain = powf(10.0f, -reductionDb / 20.0f);
-        if (reqGain > 1.0f) reqGain = 1.0f;
-
-        // 3. Write the new sample frame and its required gain into the ring.
-        for (unsigned int ch = 0; ch < aChannels; ++ch) {
-            mDelayBuffer[(size_t)mWritePos * (size_t)aChannels + ch] =
-                aBuffer[i + (size_t)ch * stride];
-        }
-        mGainEnv[mWritePos] = reqGain;
-
-        // 4. Backward scan: walk back through the look-ahead window and lower
-        //    any earlier required-gain values that would not allow a smooth
-        //    linear ramp down to reqGain by the time it reaches the output.
-        //    This is what makes the limiter "look ahead" — it pre-emptively
-        //    starts ramping the gain down so the offending sample arrives
-        //    already attenuated, instead of being clipped after the fact.
-        if (reqGain < 1.0f) {
-            float perStep = (1.0f - reqGain) * perStepBase;
-            float threshGain = reqGain;
-            for (int back = 1; back < ringSize; ++back) {
-                threshGain += perStep;
-                if (threshGain >= 1.0f) break;
-                int idx = mWritePos - back;
-                if (idx < 0) idx += ringSize;
-                if (mGainEnv[idx] > threshGain) {
-                    mGainEnv[idx] = threshGain;
-                } else {
-                    // The earlier sample already demands an equal or lower
-                    // gain; its own backward scan covers everything before it.
-                    break;
+            if (reqGain < 1.0f) {
+                const float perStep = (1.0f - reqGain) * perStepBase;
+                float threshGain = reqGain;
+                for (int back = 1; back < ringSize; ++back) {
+                    threshGain += perStep;
+                    if (threshGain >= 1.0f) break;
+                    int idx = writePos - back;
+                    if (idx < 0) idx += ringSize;
+                    if (gainEnv[idx] > threshGain) {
+                        gainEnv[idx] = threshGain;
+                    } else {
+                        break;
+                    }
                 }
             }
+
+            int readPos = writePos + 1;
+            if (readPos >= ringSize) readPos = 0;
+            const float envGain = gainEnv[readPos];
+
+            if (envGain >= smoothedGain) {
+                smoothedGain = releaseCoef * smoothedGain + oneMinusRelease * envGain;
+            } else {
+                smoothedGain = envGain;
+            }
+
+            const float effDrive = driveLin * smoothedGain;
+            float dry0 = delayBuf[(size_t)readPos * 2u];
+            float dry1 = delayBuf[(size_t)readPos * 2u + 1u];
+            float out0 = wet * (dry0 * effDrive) + dryMix * dry0;
+            float out1 = wet * (dry1 * effDrive) + dryMix * dry1;
+            if (out0 > ceilingLin) out0 = ceilingLin;
+            else if (out0 < -ceilingLin) out0 = -ceilingLin;
+            if (out1 > ceilingLin) out1 = ceilingLin;
+            else if (out1 < -ceilingLin) out1 = -ceilingLin;
+            ch0[i] = out0;
+            ch1[i] = out1;
+
+            writePos = readPos;
         }
+    } else {
+        for (unsigned int i = 0; i < aSamples; ++i) {
+            float peak = 0.0f;
+            for (unsigned int ch = 0; ch < aChannels; ++ch) {
+                float a = fabsf(aBuffer[i + (size_t)ch * stride]) * driveLin;
+                if (a > peak) peak = a;
+            }
 
-        // 5. Read the oldest frame in the ring (the one being emitted now).
-        int readPos = mWritePos + 1;
-        if (readPos >= ringSize) readPos = 0;
-        float envGain = mGainEnv[readPos];
+            float reqGain = (peak > ceilingLin) ? (ceilingLin / peak) : 1.0f;
 
-        // 6. Release smoothing only. Attack is encoded in the envelope ramp,
-        //    so going DOWN tracks the envelope sample-accurately; going UP
-        //    is smoothed by the one-pole release filter.
-        if (envGain >= mSmoothedGain) {
-            mSmoothedGain = mReleaseCoef * mSmoothedGain +
-                            (1.0f - mReleaseCoef) * envGain;
-        } else {
-            mSmoothedGain = envGain;
+            for (unsigned int ch = 0; ch < aChannels; ++ch) {
+                delayBuf[(size_t)writePos * (size_t)aChannels + ch] =
+                    aBuffer[i + (size_t)ch * stride];
+            }
+            gainEnv[writePos] = reqGain;
+
+            if (reqGain < 1.0f) {
+                float perStep = (1.0f - reqGain) * perStepBase;
+                float threshGain = reqGain;
+                for (int back = 1; back < ringSize; ++back) {
+                    threshGain += perStep;
+                    if (threshGain >= 1.0f) break;
+                    int idx = writePos - back;
+                    if (idx < 0) idx += ringSize;
+                    if (gainEnv[idx] > threshGain) {
+                        gainEnv[idx] = threshGain;
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            int readPos = writePos + 1;
+            if (readPos >= ringSize) readPos = 0;
+            float envGain = gainEnv[readPos];
+
+            if (envGain >= smoothedGain) {
+                smoothedGain = releaseCoef * smoothedGain +
+                               oneMinusRelease * envGain;
+            } else {
+                smoothedGain = envGain;
+            }
+
+            for (unsigned int ch = 0; ch < aChannels; ++ch) {
+                float dry = delayBuf[(size_t)readPos * (size_t)aChannels + ch];
+                float limited = dry * driveLin * smoothedGain;
+                float out = wet * limited + dryMix * dry;
+                if (out > ceilingLin) out = ceilingLin;
+                else if (out < -ceilingLin) out = -ceilingLin;
+                aBuffer[i + (size_t)ch * stride] = out;
+            }
+
+            writePos = readPos;
         }
-
-        // 7. Apply gain to the delayed sample, mix wet/dry (both delayed so
-        //    they stay phase-aligned), and hard-clip at ceiling as a safety
-        //    net for any dry-path overshoot.
-        for (unsigned int ch = 0; ch < aChannels; ++ch) {
-            float dry = mDelayBuffer[(size_t)readPos * (size_t)aChannels + ch];
-            float limited = dry * driveLin * mSmoothedGain;
-            float out = wet * limited + (1.0f - wet) * dry;
-            if (out > ceilingLin) out = ceilingLin;
-            else if (out < -ceilingLin) out = -ceilingLin;
-            aBuffer[i + (size_t)ch * stride] = out;
-        }
-
-        // 8. Advance the write head.
-        mWritePos++;
-        if (mWritePos >= ringSize) mWritePos = 0;
     }
+
+    mWritePos = writePos;
+    mSmoothedGain = smoothedGain;
 }
 
 void LimiterInstance::setFilterParameter(unsigned int aAttributeId, float aValue)
@@ -204,7 +268,7 @@ void LimiterInstance::setFilterParameter(unsigned int aAttributeId, float aValue
         break;
     }
 
-    mParamChanged |= 1 << aAttributeId;
+    mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
 }
 
 SoLoud::result Limiter::setParam(unsigned int aParamIndex, float aValue)

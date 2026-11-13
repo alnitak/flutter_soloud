@@ -1,7 +1,8 @@
 #!/bin/bash
 # Build and run the standalone native retroactive re-mix tests (Phase 3a of
 # the retroactive re-mixing feature). Uses the null backend, so no audio
-# hardware is needed.
+# hardware is needed. SOLOUD_RETRO_TEST_HOOKS compiles in the hook the tests
+# use to read the ring where the device may.
 
 set -e
 
@@ -10,15 +11,35 @@ cd "$REPO_ROOT"
 
 OUT="${TMPDIR:-/tmp}/retroactive_remix_test"
 
+EXTRA_SRC=()
+EXTRA_LDFLAGS=()
+if [ "$(uname -s)" = "Darwin" ]; then
+    EXTRA_SRC+=("src/native_decoder/os_decoder_apple.mm")
+    EXTRA_SRC+=("src/audiobuffer/aac_stream_decoder_apple.mm")
+    EXTRA_LDFLAGS+=("-framework" "AudioToolbox" "-framework" "CoreFoundation" "-framework" "Foundation")
+else
+    EXTRA_SRC+=("src/audiobuffer/aac_stream_decoder_linux.cpp")
+    EXTRA_LDFLAGS+=("-ldl")
+fi
+
 c++ -std=c++17 -O2 -Wall -Wextra -pthread \
     -DWITH_NULL \
     -DNO_XIPH_LIBS \
+    -DSOLOUD_RETRO_TEST_HOOKS \
+    -I src \
+    -I src/native_decoder \
+    -I src/audiobuffer \
     -I src/soloud/include \
     -o "$OUT" \
     test/retroactive_remix_test.cpp \
     src/soloud/src/core/*.cpp \
     src/soloud/src/audiosource/wav/*.cpp \
     src/audiobuffer/mp3_stream_decoder.cpp \
-    src/soloud/src/backend/null/soloud_null.cpp
+    src/audiobuffer/m4a_metadata.cpp \
+    src/audiobuffer/aac_stream_decoder.cpp \
+    src/native_decoder/*.cpp \
+    "${EXTRA_SRC[@]}" \
+    src/soloud/src/backend/null/soloud_null.cpp \
+    "${EXTRA_LDFLAGS[@]}"
 
 "$OUT"

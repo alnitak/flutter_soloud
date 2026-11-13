@@ -32,6 +32,7 @@ namespace SoLoud
 		mParent = aParent;
 		mBuffer = 0;
 		mBufferLength = 0;
+		mBufferChannels = 0;
 		mOffset = 0;
 		mIndex = 0;
 		initParams(3);
@@ -44,39 +45,160 @@ namespace SoLoud
 	{
 		updateParams(aTime);
 
-		if (mBufferLength < mParam[FlangerFilter::DELAY] * aSamplerate)
+		if (mBufferLength < mParam[FlangerFilter::DELAY] * aSamplerate ||
+			aChannels != mBufferChannels)
 		{
 			delete[] mBuffer;
 			mBufferLength = (int)ceil(mParam[FlangerFilter::DELAY] * aSamplerate);
+			mBufferChannels = aChannels;
 			mBuffer = new float[mBufferLength * aChannels];
 			if (mBuffer == NULL)
 			{
 				mBufferLength = 0;
+				mBufferChannels = 0;
 				return;
 			}
 			memset(mBuffer, 0, sizeof(float) * mBufferLength * aChannels);
 		}
 
-		unsigned int i, j;
+		const unsigned int len = mBufferLength;
+		if (len == 0 || aSamples == 0)
+			return;
 		int maxsamples = (int)ceil(mParam[FlangerFilter::DELAY] * aSamplerate);
-		double inc = mParam[FlangerFilter::FREQ] * M_PI * 2 / aSamplerate;
-		for (i = 0; i < aChannels; i++)
+		const double inc = mParam[FlangerFilter::FREQ] * M_PI * 2 / aSamplerate;
+		const double cosInc = cos(inc);
+		const double sinInc = sin(inc);
+		const float wetHalf = 0.5f * mParam[FlangerFilter::WET];
+		const unsigned int startOffset = mOffset % len;
+
+		// ###### flutter_soloud local patch (flanger LFO per frame) ######
+		// Every channel runs the LFO over this block's frames from the same
+		// phase. Stock SoLoud let each channel carry on from where the
+		// previous one ended, so with more than one channel the LFO ran
+		// that many times too fast and its phase depended on the block size.
+		for (unsigned int i = 0; i < aChannels; i++)
 		{
-			int mbofs = i * mBufferLength;
-			int abofs = i * aBufferSize;
-			for (j = 0; j < aSamples; j++, abofs++)
+			float *dBuf = mBuffer + (size_t)i * (size_t)len;
+			float *aBuf = aBuffer + (size_t)i * (size_t)aBufferSize;
+			unsigned int wrOfs = startOffset;
+			double c = cos(mIndex);
+			double s = sin(mIndex);
+			for (unsigned int j = 0; j < aSamples; j++)
 			{
-				int delay = (int)floor(maxsamples * (1 + cos(mIndex))) / 2;
-				mIndex += inc;
-				mBuffer[mbofs + mOffset % mBufferLength] = aBuffer[abofs];
-				float n = 0.5f * (aBuffer[abofs] + mBuffer[mbofs + (mBufferLength - delay + mOffset) % mBufferLength]);
-				mOffset++;
-				aBuffer[abofs] += (n - aBuffer[abofs]) * mParam[FlangerFilter::WET];
+				unsigned int delay = (unsigned int)((int)floor(maxsamples * (1.0 + c)) / 2);
+				if (delay >= len)
+					delay %= len;
+				const double nextC = c * cosInc - s * sinInc;
+				s = s * cosInc + c * sinInc;
+				c = nextC;
+
+				const float in = aBuf[j];
+				dBuf[wrOfs] = in;
+				const unsigned int rdOfs = (wrOfs >= delay) ? (wrOfs - delay) : (wrOfs + len - delay);
+				aBuf[j] = in + (dBuf[rdOfs] - in) * wetHalf;
+				if (++wrOfs >= len)
+					wrOfs = 0;
 			}
-			mOffset -= aSamples;
 		}
-		mOffset += aSamples;
-		mOffset %= mBufferLength;
+		mIndex += inc * (double)aSamples;
+		mOffset = (startOffset + aSamples) % len;
+	}
+
+	struct FlangerFilterSnapshot : public FilterStateSnapshot
+	{
+		float *mBuffer;
+		unsigned int mBufferLength;
+		unsigned int mBufferChannels;
+		unsigned int mOffset;
+		double mIndex;
+		uint64_t mParamChanged;
+		float mParam[3];
+		Fader mParamFader[3];
+		FlangerFilterSnapshot() : mBuffer(0), mBufferLength(0), mBufferChannels(0), mOffset(0), mIndex(0), mParamChanged(0) {}
+		size_t floats() const { return (size_t)mBufferLength * (size_t)mBufferChannels; }
+		virtual ~FlangerFilterSnapshot() { delete[] mBuffer; }
+	};
+
+	static const char kFlangerSnapshotKind = 0;
+
+	// Copies everything but the delay line, which the callers size.
+	static void fillFlangerSnapshot(FlangerFilterSnapshot *s, unsigned int aBufferLength,
+		unsigned int aBufferChannels, unsigned int aOffset, double aIndex,
+		uint64_t aParamChanged, const float *aParam, const Fader *aParamFader)
+	{
+		s->mKind = &kFlangerSnapshotKind;
+		s->mBufferLength = aBufferLength;
+		s->mBufferChannels = aBufferChannels;
+		s->mOffset = aOffset;
+		s->mIndex = aIndex;
+		s->mParamChanged = aParamChanged;
+		for (int i = 0; i < 3; i++)
+		{
+			s->mParam[i] = aParam[i];
+			s->mParamFader[i] = aParamFader[i];
+		}
+	}
+
+	FilterStateSnapshot *FlangerFilterInstance::captureState()
+	{
+		FlangerFilterSnapshot *s = new FlangerFilterSnapshot();
+		fillFlangerSnapshot(s, mBufferLength, mBufferChannels, mOffset, mIndex, mParamChanged, mParam, mParamFader);
+		// The delay line holds every channel (see mBufferChannels).
+		if (mBuffer && s->floats() > 0)
+		{
+			s->mBuffer = new float[s->floats()];
+			memcpy(s->mBuffer, mBuffer, sizeof(float) * s->floats());
+		}
+		return s;
+	}
+
+	bool FlangerFilterInstance::captureStateInto(FilterStateSnapshot *aState)
+	{
+		if (aState == NULL || aState->mKind != &kFlangerSnapshotKind)
+			return false;
+		FlangerFilterSnapshot *s = static_cast<FlangerFilterSnapshot *>(aState);
+		const size_t floats = (size_t)mBufferLength * (size_t)mBufferChannels;
+		const bool hasBuffer = mBuffer && floats > 0;
+		// The delay line must match in size (or both be absent).
+		if (hasBuffer != (s->mBuffer != 0) || (hasBuffer && s->floats() != floats))
+			return false;
+		fillFlangerSnapshot(s, mBufferLength, mBufferChannels, mOffset, mIndex, mParamChanged, mParam, mParamFader);
+		if (hasBuffer)
+			memcpy(s->mBuffer, mBuffer, sizeof(float) * floats);
+		return true;
+	}
+
+	void FlangerFilterInstance::restoreState(FilterStateSnapshot *aSnapshot)
+	{
+		FlangerFilterSnapshot *s = static_cast<FlangerFilterSnapshot *>(aSnapshot);
+		mOffset = s->mOffset;
+		mIndex = s->mIndex;
+		mParamChanged = s->mParamChanged;
+		for (int i = 0; i < 3; i++)
+		{
+			mParam[i] = s->mParam[i];
+			mParamFader[i] = s->mParamFader[i];
+		}
+		if (s->mBuffer && s->floats() > 0)
+		{
+			// Same layout as the snapshot: mBufferLength floats per channel.
+			if (mBufferLength != s->mBufferLength ||
+				mBufferChannels != s->mBufferChannels || mBuffer == 0)
+			{
+				delete[] mBuffer;
+				mBufferLength = s->mBufferLength;
+				mBufferChannels = s->mBufferChannels;
+				mBuffer = new float[s->floats()];
+			}
+			memcpy(mBuffer, s->mBuffer, sizeof(float) * s->floats());
+		}
+		else if (mBuffer)
+		{
+			// The snapshot predates the first block, when the delay line was
+			// still empty: silence the live one rather than replay what it
+			// heard since. Its storage is kept, so nothing is allocated here.
+			memset(mBuffer, 0, sizeof(float) * (size_t)mBufferLength * (size_t)mBufferChannels);
+		}
 	}
 
 	FlangerFilterInstance::~FlangerFilterInstance()
