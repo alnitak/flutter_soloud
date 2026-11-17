@@ -31,7 +31,7 @@ constexpr unsigned int kSampleRate = 44100;
 constexpr unsigned int kQuantum = 1024;      // engine mix quantum (bufferSize)
 constexpr unsigned int kRenderAhead = 4096;  // render-ahead depth in frames
 constexpr unsigned int kDevicePeriod = 512;  // small device period in frames
-constexpr unsigned int kQuanta = 8;          // quanta mixed before the rollback
+constexpr unsigned int kQuanta = 10;         // quanta mixed before the rollback
 constexpr unsigned int kRollbackQuantum = 3; // re-mix starts at this quantum
 
 int gFailures = 0;
@@ -164,8 +164,9 @@ void testBitExactRemix()
     EXPECT(result == SoLoud::SO_NO_ERROR, "init failed: %d", result);
     EXPECT(engine.isRenderAheadEnabled(), "ring must be enabled");
 
-    const unsigned int expectedPool =
-        (kRenderAhead + kQuantum - 1) / kQuantum + 2;
+    const unsigned int rawPool =
+        (kRenderAhead + kQuantum - 1) / kQuantum + 4;
+    const unsigned int expectedPool = rawPool < 8 ? 8 : rawPool;
     EXPECT(engine.mCheckpointPool.size() == expectedPool,
            "pool size %zu != expected %u", engine.mCheckpointPool.size(),
            expectedPool);

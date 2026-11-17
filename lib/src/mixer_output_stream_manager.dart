@@ -34,6 +34,14 @@ class MixerOutputStreamManager {
   /// The broadcast stream of captured mixer output data.
   StreamController<Uint8List>? _streamController;
 
+  /// The controller delivering an event right now, if any: a listener that
+  /// stops the stream runs inside that delivery.
+  StreamController<Uint8List>? _dispatchingController;
+
+  /// Whether this manager has a stream open, even one whose capture has
+  /// stopped.
+  bool get hasStream => _streamController != null;
+
   /// Captures the master mixer output as a [Stream] of [Uint8List] chunks.
   ///
   /// The signature mirrors SoLoud.startMixerOutputStream. See the public
@@ -63,7 +71,13 @@ class MixerOutputStreamManager {
     }
 
     if (_streamController != null) {
-      return _streamController!.stream;
+      if (bindings.isCurrentMixerOutputCapture()) {
+        return _streamController!.stream;
+      }
+      // The capture behind this stream was stopped without this manager, by
+      // an engine deinitialization in another isolate, say: end that stream
+      // first.
+      stop();
     }
 
     // The controller must be synchronous: [stop] flushes the captured tail
@@ -101,62 +115,61 @@ class MixerOutputStreamManager {
 
   void _emitChunk(Uint8List chunk) {
     final controller = _streamController;
-    if (controller == null || controller.isClosed) {
+    if (controller != null) {
+      _emitTo(controller, chunk);
+    }
+  }
+
+  void _emitTo(StreamController<Uint8List> controller, Uint8List chunk) {
+    if (controller.isClosed || chunk.isEmpty) {
       return;
     }
-
-    if (chunk.isEmpty) {
-      return;
+    final previous = _dispatchingController;
+    _dispatchingController = controller;
+    try {
+      controller.add(chunk);
+    } finally {
+      _dispatchingController = previous;
     }
-
-    controller.add(chunk);
   }
 
   /// Stops the mixer output capture stream and releases associated resources.
   void stop() {
+    // Detached before anything reaches a listener, so a start from a
+    // listener gets a stream of its own, which never sees this one's end.
+    final controller = _streamController;
+    _streamController = null;
     _subscription?.cancel();
     _subscription = null;
-    bindings.stopMixerOutputCapture();
-
-    // Flush any captured data that did not reach the notification threshold.
-    // The native side keeps the buffer alive after stopping so we can copy the
-    // tail synchronously and avoid losing compressed-format headers.
-    _flushRemaining();
-
-    _streamController?.close();
-    _streamController = null;
-  }
-
-  void _flushRemaining() {
-    final controller = _streamController;
-    if (controller == null || controller.isClosed) {
+    // Only one capture runs at a time: a manager without one of its own (a
+    // worker isolate stopping defensively, say) must not end another's.
+    bindings.stopMixerOutputCapture(onlyOwned: true);
+    if (controller == null) {
+      // A manager without a stream leaves what the bindings collected for
+      // the one that has.
       return;
     }
 
-    final available = bindings.getMixerOutputAvailableBytes();
-    if (available <= 0) {
-      return;
+    // What the capture still owed this stream when it stopped, copied by the
+    // bindings before another isolate could restart it: the chunks whose
+    // notifications had not been handled yet, then the tail that never
+    // reached the notification threshold or filled a chunk (for compressed
+    // formats, the end of the stream).
+    final stopped = bindings.takeStoppedMixerOutput();
+    void finish() {
+      for (final chunk in stopped) {
+        _emitTo(controller, chunk);
+      }
+      controller.close();
     }
 
-    final bufferSize = bindings.getMixerOutputBufferSize();
-    final readOffset = bindings.getMixerOutputReadOffset();
-    final firstLength = available < bufferSize - readOffset
-        ? available
-        : bufferSize - readOffset;
-
-    if (firstLength > 0) {
-      final chunk = bindings.copyMixerOutputBuffer(readOffset, firstLength);
-      if (chunk.isNotEmpty) {
-        controller.add(chunk);
-      }
-    }
-
-    if (available > firstLength) {
-      final secondLength = available - firstLength;
-      final chunk = bindings.copyMixerOutputBuffer(0, secondLength);
-      if (chunk.isNotEmpty) {
-        controller.add(chunk);
-      }
+    if (identical(_dispatchingController, controller)) {
+      // A listener is stopping its own stream: the controller can neither
+      // add nor close while it delivers that listener's event. Finish once
+      // the delivery is over.
+      scheduleMicrotask(finish);
+    } else {
+      finish();
     }
   }
 

@@ -26,7 +26,11 @@ jobs:
       run: flutter doctor
 
     - name: Check pub dependencies
-      run: flutter pub get
+      run: |
+        flutter pub get
+        if [ -f "example/lib/realtime_audio/custom_dsp/pubspec.yaml" ]; then
+          (cd example/lib/realtime_audio/custom_dsp && flutter pub get)
+        fi
 
     - name: "Run Dart Analyze"
       uses: invertase/github-action-dart-analyzer@v3

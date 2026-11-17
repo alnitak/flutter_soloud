@@ -1,7 +1,7 @@
 ---
 name: flutter-soloud-scheduling
-version: 1
-description: Teaches sample-accurate audio scheduling in flutter_soloud with playClocked (sounds anchored to a running "physics time" clock) and playScheduled (absolute engine-time scheduling with sample-accurate auto-stop), plus the clock helpers getEngineTime/getPlayheadTime/getOutputLatency/resetStreamTime and stopScheduled/fadeScheduled. Use when the user asks for a metronome, step sequencer, rhythm game, pre-computed music timeline/score, evenly spaced repeated SFX, or complains that periodic play() calls clump or drift.
+version: 2
+description: Teaches sample-accurate audio scheduling in flutter_soloud with playClocked (sounds anchored to a running "physics time" clock) and playScheduled (absolute engine-time scheduling with sample-accurate auto-stop), plus the clock helpers getEngineTime/getPlayheadTime/getOutputLatency/getHardwareOutputLatency/resetStreamTime and stopScheduled/fadeScheduled. Use when the user asks for a metronome, step sequencer, rhythm game, pre-computed music timeline/score, evenly spaced repeated SFX, or complains that periodic play() calls clump or drift.
 ---
 
 # Sample-accurate scheduling
@@ -92,10 +92,11 @@ SoundHandle playScheduled(
 Clock helpers:
 
 ```dart
-Duration getEngineTime();    // engine's global mix clock; time base for playScheduled/stopScheduled/fadeScheduled. Advances only while the device is mixing.
-Duration getPlayheadTime();  // engine time of the sample currently reaching the device ("true output" clock). Equals getEngineTime() when the render-ahead ring is disabled (default) and on web.
-Duration getOutputLatency(); // estimated output latency; Duration.zero when render-ahead is disabled and on web.
-void resetStreamTime();      // reset the playClocked/play3dClocked anchor; the next clocked call re-anchors. Call when (re)starting a session.
+Duration getEngineTime();            // engine's global mix clock; time base for playScheduled/stopScheduled/fadeScheduled. Advances only while the device is mixing.
+Duration getPlayheadTime();          // engine time of the sample currently reaching the device ("true output" clock). Equals getEngineTime() when the render-ahead ring is disabled (default) and on web.
+Duration getOutputLatency();         // internal software mix cushion (render-ahead ring depth + 1 device period); Duration.zero when render-ahead is disabled and on web.
+Duration getHardwareOutputLatency(); // external OS/HAL/DAC presentation delay (AAudio timestamp, AVAudioSession/CoreAudio, WASAPI, Web Audio); Duration.zero during warm-up or when unsupported.
+void resetStreamTime();              // reset the playClocked/play3dClocked anchor; the next clocked call re-anchors. Call when (re)starting a session.
 ```
 
 Scheduled stop/fade (sample-accurate, pinned to the engine clock — unlike `scheduleStop`, which measures from call time and is buffer-quantized):
@@ -148,7 +149,8 @@ When `init(renderAheadFrames: >0)` is passed on native platforms, the engine pre
 - Reactive `play()` and `playScheduled()` calls are retroactively remixed into the unconsumed section of the ring, achieving hardware-level latency (~11 ms with `devicePeriodFrames: 512`) even when `bufferSize` is set to 2048 or 4096.
 - `SoLoud.instance.isRenderAheadEnabled`: checks if the ring buffer is active.
 - `SoLoud.instance.getPlayheadTime()`: engine time of the sample currently reaching the device (use this to sync UI/animations to what the listener hears right now).
-- `SoLoud.instance.getOutputLatency()`: estimated hardware + ring latency.
+- `SoLoud.instance.getOutputLatency()`: internal software mix cushion (render-ahead ring depth plus one device period; `Duration.zero` when disabled or on web).
+- `SoLoud.instance.getHardwareOutputLatency()`: external OS/HAL/DAC presentation delay from the device callback to the physical transducer (speakers, headphones, USB DAC, Bluetooth). Works independently of the render-ahead ring across Android (AAudio), iOS (`AVAudioSession`), macOS (CoreAudio), Windows (WASAPI), and Web (Web Audio `AudioContext`). Total delay from an engine mix quantum to the listener's ear is `getOutputLatency() + getHardwareOutputLatency()`.
 
 ## Traps
 
@@ -161,13 +163,13 @@ When `init(renderAheadFrames: >0)` is passed on native platforms, the engine pre
 - **No `Future`, no completion callback per call.** These are synchronous fire-and-forget; device-start failures cannot throw — listen to `SoLoud.instance.audioDeviceStartFailures` if that matters.
 - **Voice limit still applies.** Default max active voices is 16 (`setMaxActiveVoiceCount`); a dense sequencer scheduling many simultaneous notes must raise it.
 - **`playClocked` does not support buffer streams with `BufferingType.released`** (throws `SoLoudBufferStreamCanBePlayedOnlyOnceCppException` on second play), same as `play`.
-- **Web**: `getPlayheadTime()` equals `getEngineTime()` and `getOutputLatency()` returns zero (render-ahead ring is native-only); scheduling itself works on web.
-- **`getPlayheadTime` vs `getEngineTime`**: use `getPlayheadTime()` for "what is the listener hearing right now" (e.g. syncing visuals to a rhythm game); use `getEngineTime()` as the time base for scheduling.
+- **Web**: `getPlayheadTime()` equals `getEngineTime()` and `getOutputLatency()` returns zero (render-ahead ring is native-only), while `getHardwareOutputLatency()` queries the Web Audio `AudioContext` (`outputLatency + baseLatency`); scheduling itself works on web.
+- **`getPlayheadTime` vs `getEngineTime`**: use `getPlayheadTime()` for "what is the listener hearing right now" (e.g. syncing visuals to a rhythm game); use `getEngineTime()` as the time base for scheduling. To compensate for downstream OS/DAC/Bluetooth route delay on top of the playhead clock, factor in `getHardwareOutputLatency()`.
 
 ## More depth
 
 - Demo: `example/lib/metronome/metronome.dart` — all three modes, slider-driven BPM changes with correct reset/re-anchor.
-- Tests worth skimming for edge behavior: `example/tests/tests/play_clocked.dart`, `example/tests/tests/play_scheduled.dart`, `example/tests/tests/latency_test.dart`.
+- Tests worth skimming for edge behavior: `example/tests/tests/play_clocked.dart`, `example/tests/tests/play_scheduled.dart`, `example/tests/tests/latency_test.dart`, `example/tests/tests/hardware_output_latency.dart`.
 - Render-ahead ring (`init(renderAheadFrames: ...)`, native only) for combining large mix buffers with low reactive latency — see `isRenderAheadEnabled` in `lib/src/soloud.dart`.
 
 ## Keeping this skill current

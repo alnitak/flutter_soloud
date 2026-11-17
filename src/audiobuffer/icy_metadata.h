@@ -24,11 +24,22 @@ inline void stripIcyMetadataEx(const std::vector<unsigned char> &buffer,
                                int icyMetaInt, IcyStripState &state,
                                std::vector<unsigned char> &cleanOut,
                                OnStreamMeta &&onStreamMeta) {
-  cleanOut.reserve(cleanOut.size() + buffer.size());
-  for (unsigned char byte : buffer) {
+  if (icyMetaInt <= 0 || buffer.empty()) {
+    return;
+  }
+  const unsigned char *src = buffer.data();
+  const size_t bufSize = buffer.size();
+  cleanOut.reserve(cleanOut.size() + bufSize);
+  size_t pos = 0;
+  while (pos < bufSize) {
     if (state.icyMetaSize > 0) {
-      state.icyMetadata.push_back(byte);
-      if (--state.icyMetaSize == 0) {
+      const size_t span = std::min<size_t>(
+          bufSize - pos, static_cast<size_t>(state.icyMetaSize));
+      state.icyMetadata.insert(state.icyMetadata.end(), src + pos,
+                               src + pos + span);
+      pos += span;
+      state.icyMetaSize -= static_cast<int>(span);
+      if (state.icyMetaSize == 0) {
         const std::string meta(state.icyMetadata.begin(),
                                state.icyMetadata.end());
         std::string title = state.streamTitle;
@@ -55,11 +66,16 @@ inline void stripIcyMetadataEx(const std::vector<unsigned char> &buffer,
         state.icyMetadata.clear();
       }
     } else if (state.audioBytesCount == icyMetaInt) {
-      state.icyMetaSize = byte * 16;
+      state.icyMetaSize = static_cast<int>(src[pos]) * 16;
       state.audioBytesCount = 0;
+      ++pos;
     } else {
-      cleanOut.push_back(byte);
-      ++state.audioBytesCount;
+      const size_t audioRemaining =
+          static_cast<size_t>(icyMetaInt - state.audioBytesCount);
+      const size_t span = std::min<size_t>(bufSize - pos, audioRemaining);
+      cleanOut.insert(cleanOut.end(), src + pos, src + pos + span);
+      pos += span;
+      state.audioBytesCount += static_cast<int>(span);
     }
   }
 }

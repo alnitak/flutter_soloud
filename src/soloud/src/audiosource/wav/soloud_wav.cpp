@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #include "soloud_wav.h"
 #include "soloud.h"
 #include "soloud_file.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +36,8 @@ freely, subject to the following restrictions:
 #include "dr_mp3.h"
 #include "dr_wav.h"
 #include "native_audio_decoder.h"
+#include "../../../../simd/simd_pcm.h"
+#include <vector>
 
 namespace SoLoud {
 WavInstance::WavInstance(Wav *aParent) {
@@ -75,12 +78,22 @@ public:
   unsigned int mOffset;
 };
 
+static const char kWavSnapshotKind = 0;
+
 SourceStateSnapshot *WavInstance::captureSourceState() {
   // The wav data is fully decoded in memory (mParent->mData), so the
   // consumption state is exactly the read offset.
   WavSourceStateSnapshot *s = new WavSourceStateSnapshot();
+  s->mKind = &kWavSnapshotKind;
   s->mOffset = mOffset;
   return s;
+}
+
+bool WavInstance::captureSourceStateInto(SourceStateSnapshot *aState) {
+  if (aState == NULL || aState->mKind != &kWavSnapshotKind)
+    return false;
+  static_cast<WavSourceStateSnapshot *>(aState)->mOffset = mOffset;
+  return true;
 }
 
 void WavInstance::restoreSourceState(SourceStateSnapshot *aState) {
@@ -92,24 +105,18 @@ void WavInstance::restoreSourceState(SourceStateSnapshot *aState) {
 
 result WavInstance::seek(double aSeconds, float *mScratch,
                          unsigned int mScratchSize) {
-  double offset = aSeconds - mStreamPosition;
-  if (offset <= 0) {
-    if (rewind() != SO_NO_ERROR) {
-      // can't do generic seek backwards unless we can rewind.
-      return NOT_IMPLEMENTED;
-    }
-    offset = aSeconds;
+  (void)mScratch;
+  (void)mScratchSize;
+  if (aSeconds <= 0.0) {
+    return rewind();
   }
-  long samples_to_discard = (long)floor(mSamplerate * offset);
-
-  while (samples_to_discard) {
-    long samples = mScratchSize / mChannels;
-    if (samples > samples_to_discard)
-      samples = samples_to_discard;
-    getAudio(mScratch, samples, samples);
-    samples_to_discard -= samples;
+  if (mParent == NULL || mBaseSamplerate <= 0.0f) {
+    return INVALID_PARAMETER;
   }
-  int pos = (int)floor(mBaseSamplerate * aSeconds);
+  unsigned int pos = (unsigned int)floor(mBaseSamplerate * aSeconds + 0.5);
+  if (pos > mParent->mActualSampleCount) {
+    pos = mParent->mActualSampleCount;
+  }
   mOffset = pos;
   mStreamPosition = float(pos / mBaseSamplerate);
   return SO_NO_ERROR;
@@ -146,25 +153,48 @@ result Wav::loadwav(MemoryFile *aReader) {
 
   drwav_uint64 samples = decoder.totalPCMFrameCount;
 
-  if (!samples) {
+  if (!samples || decoder.channels == 0) {
     drwav_uninit(&decoder);
     return FILE_LOAD_FAILED;
   }
 
-  mData = new float[(unsigned int)(samples * decoder.channels)];
+  mChannels = decoder.channels > MAX_CHANNELS ? MAX_CHANNELS : decoder.channels;
+  mData = new float[(size_t)samples * mChannels];
   mBaseSamplerate = (float)decoder.sampleRate;
   mSampleCount = (unsigned int)samples;
   mActualSampleCount = (unsigned int)samples;
-  mChannels = decoder.channels;
 
-  unsigned int i, j, k;
-  for (i = 0; i < mSampleCount; i += 512) {
-    float tmp[512 * MAX_CHANNELS];
-    unsigned int blockSize = (mSampleCount - i) > 512 ? 512 : mSampleCount - i;
-    drwav_read_pcm_frames_f32(&decoder, blockSize, tmp);
-    for (j = 0; j < blockSize; j++) {
-      for (k = 0; k < decoder.channels; k++) {
-        mData[k * mSampleCount + i + j] = tmp[j * decoder.channels + k];
+  constexpr unsigned int kChunkFrames = 1024;
+  if (decoder.channels <= MAX_CHANNELS) {
+    float tmp[kChunkFrames * MAX_CHANNELS];
+    for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
+      unsigned int blockSize =
+          (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
+      unsigned int got =
+          (unsigned int)drwav_read_pcm_frames_f32(&decoder, blockSize, tmp);
+      if (got < blockSize) {
+        memset(tmp + (size_t)got * decoder.channels, 0,
+               sizeof(float) * (blockSize - got) * decoder.channels);
+      }
+      deinterleaveFloatsToPlanar(tmp, mData + i, mSampleCount, blockSize,
+                                 mChannels);
+    }
+  } else {
+    std::vector<float> tmp((size_t)kChunkFrames * decoder.channels);
+    for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
+      unsigned int blockSize =
+          (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
+      unsigned int got = (unsigned int)drwav_read_pcm_frames_f32(
+          &decoder, blockSize, tmp.data());
+      if (got < blockSize) {
+        memset(tmp.data() + (size_t)got * decoder.channels, 0,
+               sizeof(float) * (blockSize - got) * decoder.channels);
+      }
+      for (unsigned int j = 0; j < blockSize; j++) {
+        for (unsigned int k = 0; k < mChannels; k++) {
+          mData[(size_t)k * mSampleCount + i + j] =
+              tmp[(size_t)j * decoder.channels + k];
+        }
       }
     }
   }
@@ -175,6 +205,7 @@ result Wav::loadwav(MemoryFile *aReader) {
 
 result Wav::loadogg(MemoryFile *aReader) {
 #if defined(NO_XIPH_LIBS)
+  (void)aReader;
   printf("[Wav::loadogg] NO_XIPH_LIBS defined, returning FILE_LOAD_FAILED\n");
   return FILE_LOAD_FAILED;
 #else
@@ -185,8 +216,16 @@ result Wav::loadogg(MemoryFile *aReader) {
   }
 
   mBaseSamplerate = (float)decoder.getSampleRate();
-  int totalSamples = (int)decoder.getLengthInSamples();
+  // ###### flutter_soloud local patch (ogg length bound) ######
+  // The frame count is an int here: a length past INT_MAX, which the
+  // decoder takes for plausible for a file that size, is decoded to the end
+  // of the file like an unknown one.
+  const unsigned int length = decoder.getLengthInSamples();
+  int totalSamples = length <= (unsigned int)INT_MAX ? (int)length : 0;
 
+  if (decoder.getChannels() <= 0) {
+    return FILE_LOAD_FAILED;
+  }
   if (decoder.getChannels() > MAX_CHANNELS) {
     mChannels = MAX_CHANNELS;
   } else {
@@ -194,52 +233,43 @@ result Wav::loadogg(MemoryFile *aReader) {
   }
 
   if (totalSamples == 0) {
-    // Unknown length (e.g. OGG/FLAC) - read dynamically into temp buffer
-    std::vector<float> tempBuffer;
-    float tmp[512 * MAX_CHANNELS];
+    // Unknown length (e.g. unseekable OGG/FLAC) - accumulate planar channels
+    // directly without interleave/deinterleave round-trips.
+    std::vector<float> chBuffers[MAX_CHANNELS];
+    constexpr unsigned int kChunk = 1024;
+    float tmp[kChunk * MAX_CHANNELS];
     while (true) {
-      unsigned int got = decoder.read(tmp, 512, 512);
+      unsigned int got = decoder.read(tmp, kChunk, kChunk);
       if (got == 0) {
         break;
       }
-      for (unsigned int i = 0; i < got; i++) {
-        for (int ch = 0; ch < mChannels; ch++) {
-          tempBuffer.push_back(tmp[ch * 512 + i]);
-        }
+      for (unsigned int ch = 0; ch < mChannels; ch++) {
+        const float *chSrc = tmp + (size_t)ch * kChunk;
+        chBuffers[ch].insert(chBuffers[ch].end(), chSrc, chSrc + got);
       }
     }
-    totalSamples = (int)(tempBuffer.size() / mChannels);
-    mData = new float[totalSamples * mChannels];
-    memset(mData, 0, totalSamples * mChannels * sizeof(float));
-    mSampleCount = totalSamples;
-    for (int ch = 0; ch < mChannels; ch++) {
-      for (int i = 0; i < totalSamples; i++) {
-        mData[ch * mSampleCount + i] = tempBuffer[i * mChannels + ch];
+    totalSamples = (int)chBuffers[0].size();
+    mData = new float[(size_t)totalSamples * mChannels];
+    mSampleCount = (unsigned int)totalSamples;
+    for (unsigned int ch = 0; ch < mChannels; ch++) {
+      if (totalSamples > 0) {
+        memcpy(mData + (size_t)ch * mSampleCount, chBuffers[ch].data(),
+               (size_t)totalSamples * sizeof(float));
       }
     }
-    mActualSampleCount = totalSamples;
+    mActualSampleCount = (unsigned int)totalSamples;
     return 0;
   }
 
-  mData = new float[totalSamples * mChannels];
-  memset(mData, 0, totalSamples * mChannels * sizeof(float));
-  mSampleCount = totalSamples;
-  unsigned int decodedSamples = 0;
-  float tmp[512 * MAX_CHANNELS];
-  while (decodedSamples < (unsigned int)totalSamples) {
-    unsigned int toRead = ((unsigned int)totalSamples - decodedSamples) > 512
-                              ? 512
-                              : ((unsigned int)totalSamples - decodedSamples);
-    unsigned int got = decoder.read(tmp, toRead, toRead);
-    if (got == 0) {
-      break;
+  mData = new float[(size_t)totalSamples * mChannels];
+  mSampleCount = (unsigned int)totalSamples;
+  unsigned int decodedSamples =
+      decoder.read(mData, (unsigned int)totalSamples, mSampleCount);
+  if (decodedSamples < mSampleCount) {
+    for (unsigned int ch = 0; ch < mChannels; ch++) {
+      memset(mData + (size_t)ch * mSampleCount + decodedSamples, 0,
+             sizeof(float) * (mSampleCount - decodedSamples));
     }
-    for (int ch = 0; ch < mChannels; ch++) {
-      for (unsigned int i = 0; i < got; i++) {
-        mData[ch * mSampleCount + decodedSamples + i] = tmp[ch * toRead + i];
-      }
-    }
-    decodedSamples += got;
   }
 
   // Set mActualSampleCount to the actual decoded samples.
@@ -262,32 +292,65 @@ result Wav::loadmp3(MemoryFile *aReader) {
 
   drmp3_uint64 samples = drmp3_get_pcm_frame_count(&decoder);
 
-  if (!samples) {
+  if (!samples || decoder.channels == 0) {
     drmp3_uninit(&decoder);
     return FILE_LOAD_FAILED;
   }
 
-  mData = new float[(unsigned int)(samples * decoder.channels)];
+  mChannels = decoder.channels > MAX_CHANNELS ? MAX_CHANNELS : decoder.channels;
+  mData = new float[(size_t)samples * mChannels];
   mBaseSamplerate = (float)decoder.sampleRate;
   mSampleCount = (unsigned int)samples;
   mActualSampleCount = (unsigned int)samples;
-  mChannels = decoder.channels;
   drmp3_seek_to_pcm_frame(&decoder, 0);
 
-  unsigned int i, j, k;
+  constexpr unsigned int kChunkFrames = 1024;
   unsigned int decodedSamples = 0;
-  for (i = 0; i < mSampleCount; i += 512) {
-    float tmp[512 * MAX_CHANNELS];
-    unsigned int blockSize = (mSampleCount - i) > 512 ? 512 : mSampleCount - i;
-    unsigned int got = (unsigned int)drmp3_read_pcm_frames_f32(&decoder, blockSize, tmp);
-    for (j = 0; j < got; j++) {
-      for (k = 0; k < decoder.channels; k++) {
-        mData[k * mSampleCount + decodedSamples + j] = tmp[j * decoder.channels + k];
+  if (decoder.channels <= MAX_CHANNELS) {
+    float tmp[kChunkFrames * MAX_CHANNELS];
+    for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
+      unsigned int blockSize =
+          (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
+      unsigned int got =
+          (unsigned int)drmp3_read_pcm_frames_f32(&decoder, blockSize, tmp);
+      if (got < blockSize) {
+        memset(tmp + (size_t)got * decoder.channels, 0,
+               sizeof(float) * (blockSize - got) * decoder.channels);
+      }
+      deinterleaveFloatsToPlanar(tmp, mData + i, mSampleCount, blockSize,
+                                 mChannels);
+      decodedSamples += got;
+      if (got < blockSize) {
+        break;
       }
     }
-    decodedSamples += got;
-    if (got < blockSize) {
-      break;
+  } else {
+    std::vector<float> tmp((size_t)kChunkFrames * decoder.channels);
+    for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
+      unsigned int blockSize =
+          (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
+      unsigned int got = (unsigned int)drmp3_read_pcm_frames_f32(
+          &decoder, blockSize, tmp.data());
+      if (got < blockSize) {
+        memset(tmp.data() + (size_t)got * decoder.channels, 0,
+               sizeof(float) * (blockSize - got) * decoder.channels);
+      }
+      for (unsigned int j = 0; j < blockSize; j++) {
+        for (unsigned int k = 0; k < mChannels; k++) {
+          mData[(size_t)k * mSampleCount + i + j] =
+              tmp[(size_t)j * decoder.channels + k];
+        }
+      }
+      decodedSamples += got;
+      if (got < blockSize) {
+        break;
+      }
+    }
+  }
+  if (decodedSamples < mSampleCount) {
+    for (unsigned int ch = 0; ch < mChannels; ch++) {
+      memset(mData + (size_t)ch * mSampleCount + decodedSamples, 0,
+             sizeof(float) * (mSampleCount - decodedSamples));
     }
   }
   mActualSampleCount = decodedSamples;
@@ -306,26 +369,50 @@ result Wav::loadflac(MemoryFile *aReader) {
 
   drflac_uint64 samples = decoder->totalPCMFrameCount;
 
-  if (!samples) {
+  if (!samples || decoder->channels == 0) {
     drflac_close(decoder);
     return FILE_LOAD_FAILED;
   }
 
-  mData = new float[(unsigned int)(samples * decoder->channels)];
+  mChannels =
+      decoder->channels > MAX_CHANNELS ? MAX_CHANNELS : decoder->channels;
+  mData = new float[(size_t)samples * mChannels];
   mBaseSamplerate = (float)decoder->sampleRate;
   mSampleCount = (unsigned int)samples;
   mActualSampleCount = (unsigned int)samples;
-  mChannels = decoder->channels;
   drflac_seek_to_pcm_frame(decoder, 0);
 
-  unsigned int i, j, k;
-  for (i = 0; i < mSampleCount; i += 512) {
-    float tmp[512 * MAX_CHANNELS];
-    unsigned int blockSize = (mSampleCount - i) > 512 ? 512 : mSampleCount - i;
-    drflac_read_pcm_frames_f32(decoder, blockSize, tmp);
-    for (j = 0; j < blockSize; j++) {
-      for (k = 0; k < decoder->channels; k++) {
-        mData[k * mSampleCount + i + j] = tmp[j * decoder->channels + k];
+  constexpr unsigned int kChunkFrames = 1024;
+  if (decoder->channels <= MAX_CHANNELS) {
+    float tmp[kChunkFrames * MAX_CHANNELS];
+    for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
+      unsigned int blockSize =
+          (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
+      unsigned int got =
+          (unsigned int)drflac_read_pcm_frames_f32(decoder, blockSize, tmp);
+      if (got < blockSize) {
+        memset(tmp + (size_t)got * decoder->channels, 0,
+               sizeof(float) * (blockSize - got) * decoder->channels);
+      }
+      deinterleaveFloatsToPlanar(tmp, mData + i, mSampleCount, blockSize,
+                                 mChannels);
+    }
+  } else {
+    std::vector<float> tmp((size_t)kChunkFrames * decoder->channels);
+    for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
+      unsigned int blockSize =
+          (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
+      unsigned int got = (unsigned int)drflac_read_pcm_frames_f32(
+          decoder, blockSize, tmp.data());
+      if (got < blockSize) {
+        memset(tmp.data() + (size_t)got * decoder->channels, 0,
+               sizeof(float) * (blockSize - got) * decoder->channels);
+      }
+      for (unsigned int j = 0; j < blockSize; j++) {
+        for (unsigned int k = 0; k < mChannels; k++) {
+          mData[(size_t)k * mSampleCount + i + j] =
+              tmp[(size_t)j * decoder->channels + k];
+        }
       }
     }
   }
@@ -334,23 +421,42 @@ result Wav::loadflac(MemoryFile *aReader) {
   return SO_NO_ERROR;
 }
 
+// Takes ownership of a native decoder result. Rejects results SoLoud cannot
+// represent (sample counts are unsigned int, at most MAX_CHANNELS channels).
+static result adoptNativeDecoded(Wav *aWav, DecodedAudioData aDecoded) {
+  if (!aDecoded.success || aDecoded.samples == nullptr || aDecoded.sampleCount == 0 ||
+      aDecoded.sampleCount > 0xFFFFFFFFu || aDecoded.channels == 0 ||
+      aDecoded.channels > MAX_CHANNELS || !(aDecoded.sampleRate > 0.0f)) {
+    if (!aDecoded.errorMessage.empty())
+      printf("[Wav::loadnative] %s\n", aDecoded.errorMessage.c_str());
+    aDecoded.freeSamples();
+    return FILE_LOAD_FAILED;
+  }
+
+  delete[] aWav->mData;
+  aWav->mData = aDecoded.samples;
+  aWav->mSampleCount = (unsigned int)aDecoded.sampleCount;
+  aWav->mActualSampleCount = (unsigned int)aDecoded.sampleCount;
+  aWav->mChannels = aDecoded.channels;
+  aWav->mBaseSamplerate = aDecoded.sampleRate;
+  return SO_NO_ERROR;
+}
+
 result Wav::loadnative(MemoryFile *aReader) {
   if (aReader == nullptr || aReader->length() == 0) {
     return INVALID_PARAMETER;
   }
 
-  DecodedAudioData decoded = NativeAudioDecoder::decodeMemory(aReader->getMemPtr(), aReader->length());
-  if (!decoded.success || decoded.samples == nullptr || decoded.sampleCount == 0) {
-    return FILE_LOAD_FAILED;
-  }
+  return adoptNativeDecoded(this, NativeAudioDecoder::decodeMemory(aReader->getMemPtr(), aReader->length()));
+}
 
+result Wav::loadnativefile(const char *aFilename) {
   delete[] mData;
-  mData = decoded.samples;
-  mSampleCount = (unsigned int)decoded.sampleCount;
-  mActualSampleCount = (unsigned int)decoded.sampleCount;
-  mChannels = decoded.channels;
-  mBaseSamplerate = decoded.sampleRate;
-  return SO_NO_ERROR;
+  mData = 0;
+  mSampleCount = 0;
+  mActualSampleCount = 0;
+  mChannels = 1;
+  return adoptNativeDecoded(this, NativeAudioDecoder::decodeFile(aFilename));
 }
 
 result Wav::testAndLoadFile(MemoryFile *aReader) {
@@ -386,15 +492,29 @@ result Wav::load(const char *aFilename) {
   stop();
   DiskFile dr;
   int res = dr.open(aFilename);
-  if (res == SO_NO_ERROR)
-    return loadFile(&dr);
-  return res;
+  if (res != SO_NO_ERROR)
+    return res;
+#if !defined(__EMSCRIPTEN__)
+  // MP4/M4A containers go straight to the platform decoder by path, avoiding
+  // an unnecessary file -> memory round trip (and on Linux/Android, a temp file).
+  unsigned char header[8];
+  if (dr.read(header, sizeof(header)) == sizeof(header) &&
+      NativeAudioDecoder::isM4aOrMp4(header, sizeof(header))) {
+    return loadnativefile(aFilename);
+  }
+  dr.seek(0);
+#endif
+  return loadFile(&dr);
 }
 
 result Wav::loadMem(const unsigned char *aMem, unsigned int aLength, bool aCopy,
                     bool aTakeOwnership) {
-  if (aMem == NULL || aLength == 0)
+  if (aMem == NULL || aLength == 0) {
+    if (aTakeOwnership && !aCopy && aMem != NULL) {
+      delete[] aMem;
+    }
     return INVALID_PARAMETER;
+  }
   stop();
 
   MemoryFile dr;
@@ -435,9 +555,9 @@ result Wav::loadRawWave8(unsigned char *aMem, unsigned int aLength,
   mActualSampleCount = mSampleCount;
   mChannels = aChannels;
   mBaseSamplerate = aSamplerate;
-  unsigned int i;
-  for (i = 0; i < aLength; i++)
-    mData[i] = ((signed)aMem[i] - 128) / (float)0x80;
+  constexpr float kInv128 = 1.0f / 128.0f;
+  for (unsigned int i = 0; i < aLength; i++)
+    mData[i] = ((int)aMem[i] - 128) * kInv128;
   return SO_NO_ERROR;
 }
 
@@ -452,17 +572,19 @@ result Wav::loadRawWave16(short *aMem, unsigned int aLength, float aSamplerate,
   mActualSampleCount = mSampleCount;
   mChannels = aChannels;
   mBaseSamplerate = aSamplerate;
-  unsigned int i;
-  for (i = 0; i < aLength; i++)
-    mData[i] = ((signed short)aMem[i]) / (float)0x8000;
+  convertInt16ToFloats(reinterpret_cast<const int16_t *>(aMem), mData, aLength);
   return SO_NO_ERROR;
 }
 
 result Wav::loadRawWave(float *aMem, unsigned int aLength, float aSamplerate,
                         unsigned int aChannels, bool aCopy,
                         bool aTakeOwndership) {
-  if (aMem == 0 || aLength == 0 || aSamplerate <= 0 || aChannels < 1)
+  if (aMem == 0 || aLength == 0 || aSamplerate <= 0 || aChannels < 1) {
+    if (aTakeOwndership && !aCopy && aMem != 0) {
+      delete[] aMem;
+    }
     return INVALID_PARAMETER;
+  }
   stop();
   delete[] mData;
   if (aCopy == true || aTakeOwndership == false) {

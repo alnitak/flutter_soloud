@@ -37,6 +37,7 @@ struct OpusOutputEncoder::OggState {
 #ifndef NO_XIPH_LIBS
   ogg_stream_state stream;
   opus_int32 serial = 0;
+  bool streamInitialized = false;
 #endif
 };
 
@@ -44,6 +45,10 @@ OpusOutputEncoder::OpusOutputEncoder() = default;
 
 OpusOutputEncoder::~OpusOutputEncoder() {
 #ifndef NO_XIPH_LIBS
+  if (m_ogg != nullptr && m_ogg->streamInitialized) {
+    ogg_stream_clear(&m_ogg->stream);
+    m_ogg->streamInitialized = false;
+  }
   if (m_encoder != nullptr) {
     opus_encoder_destroy(static_cast<OpusEncoder *>(m_encoder));
     m_encoder = nullptr;
@@ -69,10 +74,25 @@ bool OpusOutputEncoder::initialize(int sampleRate, int channels) {
     return false;
   }
 
+  // The decoder's first output samples are this padding, not captured
+  // audio: OpusHead tells players to skip them (RFC 7845 section 4.2).
+  opus_int32 lookahead = 0;
+  if (opus_encoder_ctl(encoder, OPUS_GET_LOOKAHEAD(&lookahead)) != OPUS_OK ||
+      lookahead < 0 || lookahead > 0xFFFF) {
+    opus_encoder_destroy(encoder);
+    return false;
+  }
+
   m_engineSampleRate = sampleRate;
   m_channels = channels;
   m_resamplerLastFrame.clear();
   m_resamplerPhase = 0.0;
+  m_inputBuffer.clear();
+  m_outputAccumulator.clear();
+  m_packetCount = 0;
+  m_packetGranulepos = 0;
+  m_preSkip = static_cast<int>(lookahead);
+  m_capturedFrames = 0;
 
   // Opus only supports 8/12/16/24/48 kHz. Always encode at 48 kHz and
   // resample the input when necessary.
@@ -87,14 +107,20 @@ bool OpusOutputEncoder::initialize(int sampleRate, int channels) {
   std::mt19937 gen(rd());
   std::uniform_int_distribution<opus_int32> dist(1, INT32_MAX);
   m_ogg->serial = dist(gen);
-  ogg_stream_init(&m_ogg->stream, m_ogg->serial);
+  if (ogg_stream_init(&m_ogg->stream, m_ogg->serial) != 0) {
+    opus_encoder_destroy(static_cast<OpusEncoder *>(m_encoder));
+    m_encoder = nullptr;
+    m_ogg.reset();
+    return false;
+  }
+  m_ogg->streamInitialized = true;
 
   // Write OpusHead packet.
   uint8_t head[19];
   std::memcpy(head, kOpusHeadMagic, 8);
   head[8] = 1;                        // version
   head[9] = static_cast<uint8_t>(channels);
-  writeLE16(head + 10, 0);            // pre-skip
+  writeLE16(head + 10, static_cast<uint16_t>(m_preSkip));  // pre-skip
   writeLE32(head + 12, m_engineSampleRate);   // original sample rate
   writeLE16(head + 16, 0);            // output gain
   head[18] = 0;                       // channel mapping family (mono/stereo)
@@ -150,23 +176,36 @@ bool OpusOutputEncoder::encode(const float *input, size_t samples,
 
   m_inputBuffer.insert(m_inputBuffer.end(), m_resampledBuffer.begin(),
                        m_resampledBuffer.end());
+  m_capturedFrames +=
+      static_cast<int64_t>(m_resampledBuffer.size() / m_channels);
 
   const size_t frameSamples = m_samplesPerFrame * m_channels;
-  std::vector<uint8_t> packet;
-  packet.resize(1275);  // Max Opus packet size.
+  if (m_packetScratch.size() < 1275) {
+    m_packetScratch.resize(1275);  // Max Opus packet size.
+  }
 
-  while (m_inputBuffer.size() >= frameSamples) {
+  size_t consumedSamples = 0;
+  while (m_inputBuffer.size() - consumedSamples >= frameSamples) {
     opus_int32 encodedBytes = opus_encode_float(
-        static_cast<OpusEncoder *>(m_encoder), m_inputBuffer.data(),
-        static_cast<int>(m_samplesPerFrame), packet.data(),
-        static_cast<opus_int32>(packet.size()));
+        static_cast<OpusEncoder *>(m_encoder),
+        m_inputBuffer.data() + consumedSamples,
+        static_cast<int>(m_samplesPerFrame), m_packetScratch.data(),
+        static_cast<opus_int32>(m_packetScratch.size()));
 
     if (encodedBytes < 0) {
+      if (consumedSamples > 0) {
+        m_inputBuffer.erase(m_inputBuffer.begin(),
+                            m_inputBuffer.begin() + consumedSamples);
+      }
       return false;
     }
 
+    // A page's granule position counts the samples decoded through the last
+    // packet completed on it, this one included (RFC 7845 section 4): a decoder
+    // must reject a first audio page whose position is smaller.
+    m_packetGranulepos += m_samplesPerFrame;
     ogg_packet op;
-    op.packet = packet.data();
+    op.packet = m_packetScratch.data();
     op.bytes = encodedBytes;
     op.b_o_s = 0;
     op.e_o_s = 0;
@@ -174,18 +213,24 @@ bool OpusOutputEncoder::encode(const float *input, size_t samples,
     op.packetno = 2 + m_packetCount;
     ogg_stream_packetin(&m_ogg->stream, &op);
     m_packetCount++;
-    m_packetGranulepos += m_samplesPerFrame;
 
     flushPages();
 
+    consumedSamples += frameSamples;
+  }
+
+  if (consumedSamples > 0) {
     m_inputBuffer.erase(m_inputBuffer.begin(),
-                        m_inputBuffer.begin() + frameSamples);
+                        m_inputBuffer.begin() + consumedSamples);
   }
 
   output.swap(m_outputAccumulator);
   m_outputAccumulator.clear();
   return true;
 #else
+  (void)input;
+  (void)samples;
+  (void)output;
   return false;
 #endif
 }
@@ -196,32 +241,46 @@ bool OpusOutputEncoder::finalize(std::vector<uint8_t> &output) {
     return false;
   }
 
-  // Encode any remaining samples with padding if necessary.
+  // Encode the remaining samples padded with silence, and keep going until
+  // the stream decodes the last captured sample: it comes out pre-skip
+  // samples after it went in. The end-of-stream granule position then
+  // trims the padding, so a player plays exactly the captured samples
+  // (RFC 7845 section 4.4).
   const size_t frameSamples = m_samplesPerFrame * m_channels;
-  if (!m_inputBuffer.empty()) {
-    std::vector<float> padded(frameSamples, 0.0f);
-    std::copy(m_inputBuffer.begin(), m_inputBuffer.end(), padded.begin());
+  const int64_t endGranulepos = m_preSkip + m_capturedFrames;
+  if (m_packetScratch.size() < 1275) {
+    m_packetScratch.resize(1275);
+  }
+  std::vector<float> padded(frameSamples, 0.0f);
+  bool last = false;
+  while (!last) {
+    std::fill(padded.begin(), padded.end(), 0.0f);
+    const size_t take = std::min(m_inputBuffer.size(), frameSamples);
+    std::copy(m_inputBuffer.begin(), m_inputBuffer.begin() + take,
+              padded.begin());
+    m_inputBuffer.erase(m_inputBuffer.begin(), m_inputBuffer.begin() + take);
 
-    std::vector<uint8_t> packet;
-    packet.resize(1275);
     opus_int32 encodedBytes = opus_encode_float(
         static_cast<OpusEncoder *>(m_encoder), padded.data(),
-        static_cast<int>(m_samplesPerFrame), packet.data(),
-        static_cast<opus_int32>(packet.size()));
-
-    if (encodedBytes > 0) {
-      ogg_packet op;
-      op.packet = packet.data();
-      op.bytes = encodedBytes;
-      op.b_o_s = 0;
-      op.e_o_s = 1;
-      op.granulepos = m_packetGranulepos;
-      op.packetno = 2 + m_packetCount;
-      ogg_stream_packetin(&m_ogg->stream, &op);
-      m_packetCount++;
-      m_packetGranulepos += m_samplesPerFrame;
+        static_cast<int>(m_samplesPerFrame), m_packetScratch.data(),
+        static_cast<opus_int32>(m_packetScratch.size()));
+    if (encodedBytes <= 0) {
+      break;
     }
+
+    m_packetGranulepos += m_samplesPerFrame;
+    last = m_inputBuffer.empty() && m_packetGranulepos >= endGranulepos;
+    ogg_packet op;
+    op.packet = m_packetScratch.data();
+    op.bytes = encodedBytes;
+    op.b_o_s = 0;
+    op.e_o_s = last ? 1 : 0;
+    op.granulepos = last ? endGranulepos : m_packetGranulepos;
+    op.packetno = 2 + m_packetCount;
+    ogg_stream_packetin(&m_ogg->stream, &op);
+    m_packetCount++;
   }
+  m_inputBuffer.clear();
 
   ogg_page page;
   while (ogg_stream_flush(&m_ogg->stream, &page) != 0) {
@@ -231,7 +290,10 @@ bool OpusOutputEncoder::finalize(std::vector<uint8_t> &output) {
                                page.body + page.body_len);
   }
 
-  ogg_stream_clear(&m_ogg->stream);
+  if (m_ogg != nullptr && m_ogg->streamInitialized) {
+    ogg_stream_clear(&m_ogg->stream);
+    m_ogg->streamInitialized = false;
+  }
 
   opus_encoder_destroy(static_cast<OpusEncoder *>(m_encoder));
   m_encoder = nullptr;
@@ -241,6 +303,7 @@ bool OpusOutputEncoder::finalize(std::vector<uint8_t> &output) {
   m_outputAccumulator.clear();
   return true;
 #else
+  (void)output;
   return false;
 #endif
 }
@@ -257,15 +320,16 @@ bool OpusOutputEncoder::resampleTo48k(const float *input, size_t samples) {
 
   // Combine the last frame from the previous chunk with the new input so
   // interpolation is seamless across chunk boundaries.
-  std::vector<float> combined;
-  combined.reserve(m_resamplerLastFrame.size() + samples);
+  m_combineScratch.clear();
+  m_combineScratch.reserve(m_resamplerLastFrame.size() + samples);
   if (!m_resamplerLastFrame.empty()) {
-    combined.insert(combined.end(), m_resamplerLastFrame.begin(),
-                    m_resamplerLastFrame.end());
+    m_combineScratch.insert(m_combineScratch.end(),
+                            m_resamplerLastFrame.begin(),
+                            m_resamplerLastFrame.end());
   }
-  combined.insert(combined.end(), input, input + samples);
+  m_combineScratch.insert(m_combineScratch.end(), input, input + samples);
 
-  const size_t combinedFrames = combined.size() / m_channels;
+  const size_t combinedFrames = m_combineScratch.size() / m_channels;
   if (combinedFrames < 2) {
     m_resamplerLastFrame.assign(input, input + samples);
     m_resampledBuffer.clear();
@@ -273,6 +337,9 @@ bool OpusOutputEncoder::resampleTo48k(const float *input, size_t samples) {
   }
 
   m_resampledBuffer.clear();
+  const size_t estimatedOutFrames =
+      static_cast<size_t>(static_cast<double>(combinedFrames) / ratio) + 2;
+  m_resampledBuffer.reserve(estimatedOutFrames * m_channels);
   double phase = m_resamplerPhase;
 
   while (true) {
@@ -286,20 +353,21 @@ bool OpusOutputEncoder::resampleTo48k(const float *input, size_t samples) {
     const float frac = static_cast<float>(inputFrame - static_cast<double>(i0));
     const float invFrac = 1.0f - frac;
     for (int ch = 0; ch < m_channels; ++ch) {
-      const float s0 = combined[i0 * m_channels + ch];
-      const float s1 = combined[i1 * m_channels + ch];
+      const float s0 = m_combineScratch[i0 * m_channels + ch];
+      const float s1 = m_combineScratch[i1 * m_channels + ch];
       m_resampledBuffer.push_back(s0 * invFrac + s1 * frac);
     }
     phase += ratio;
   }
 
-  const size_t consumedFrames = static_cast<size_t>(phase);
-  if (consumedFrames > 0) {
-    const size_t start = (consumedFrames - 1) * m_channels;
-    m_resamplerLastFrame.assign(combined.begin() + start,
-                                combined.begin() + start + m_channels);
-  }
-  m_resamplerPhase = phase - static_cast<double>(consumedFrames);
+  // The loop stopped at the first position that needs a frame after this
+  // block. Carry the block's last frame, which becomes frame 0 of the next
+  // combined block, and rebase the phase on it.
+  const size_t lastFrame = combinedFrames - 1;
+  m_resamplerLastFrame.assign(
+      m_combineScratch.begin() + lastFrame * m_channels,
+      m_combineScratch.begin() + combinedFrames * m_channels);
+  m_resamplerPhase = phase - static_cast<double>(lastFrame);
 
   return true;
 }

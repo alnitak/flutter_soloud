@@ -16,11 +16,16 @@ SECONDS_TO_RUN="${1:-30}"
 ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 NDK="${ANDROID_NDK_HOME:-$(ls -d "$ANDROID_HOME"/ndk/* | sort -V | tail -1)}"
 HOST_TAG="$(ls "$NDK/toolchains/llvm/prebuilt" | head -1)"
-API=31
+# Built for the device's own API level (capped at 31), so the binary also runs
+# on the Android 11 devices the AAudio close workaround is for.
+DEVICE_API="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+API=$(( DEVICE_API < 31 ? DEVICE_API : 31 ))
 
 case "$(adb shell getprop ro.product.cpu.abi | tr -d '\r')" in
     arm64-v8a) TARGET=aarch64-linux-android ;;
+    armeabi-v7a) TARGET=armv7a-linux-androideabi ;;
     x86_64) TARGET=x86_64-linux-android ;;
+    x86) TARGET=i686-linux-android ;;
     *) echo "unsupported device ABI"; exit 1 ;;
 esac
 

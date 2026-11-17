@@ -2,12 +2,14 @@
 
 #include "ogg_flac_stream_decoder.h"
 #include "../soloud_common.h"
+#include "../simd/simd_pcm.h"
 #include <cstring> // For memcpy
 
 OggFlacDecoderWrapper::OggFlacDecoderWrapper()
     : m_pFlacDecoder(nullptr),
       m_streamInfoProcessed(false),
       m_read_pos(0),
+      m_syncInitialized(false),
       m_streamInitialized(false),
       m_dataEnded(false),
       m_drained(false),
@@ -30,7 +32,10 @@ OggFlacDecoderWrapper::~OggFlacDecoderWrapper()
     {
         ogg_stream_clear(&m_os);
     }
-    ogg_sync_clear(&m_oy);
+    if (m_syncInitialized)
+    {
+        ogg_sync_clear(&m_oy);
+    }
 }
 
 void OggFlacDecoderWrapper::setIcyMetaInt(int icyMetaInt)
@@ -43,7 +48,28 @@ void OggFlacDecoderWrapper::setIcyMetaInt(int icyMetaInt)
 
 bool OggFlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels)
 {
+    (void)engineSamplerate;
+    (void)engineChannels;
+    if (m_pFlacDecoder)
+    {
+        FLAC__stream_decoder_finish(m_pFlacDecoder);
+        FLAC__stream_decoder_delete(m_pFlacDecoder);
+        m_pFlacDecoder = nullptr;
+    }
+    if (m_streamInitialized)
+    {
+        ogg_stream_clear(&m_os);
+        m_streamInitialized = false;
+    }
+    if (m_syncInitialized)
+    {
+        ogg_sync_clear(&m_oy);
+        m_syncInitialized = false;
+    }
+
     m_drained = false;
+    m_read_pos = 0;
+    m_streamInfoProcessed = false;
     m_pFlacDecoder = FLAC__stream_decoder_new();
     if (m_pFlacDecoder == nullptr)
     {
@@ -70,11 +96,14 @@ bool OggFlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCh
     if (init_status != FLAC__STREAM_DECODER_INIT_STATUS_OK)
     {
         SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper] init_ogg_stream failed with status %d\n", init_status);
+        FLAC__stream_decoder_delete(m_pFlacDecoder);
+        m_pFlacDecoder = nullptr;
         return false;
     }
 
     SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper] decoder initialized OK\n");
     ogg_sync_init(&m_oy);
+    m_syncInitialized = true;
     return true;
 }
 
@@ -133,6 +162,11 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
                 return {m_decodedPcm, DecoderError::FailedToCreateDecoder};
             }
             m_streamInitialized = true;
+            if (m_streamInfoProcessed && m_pFlacDecoder != nullptr)
+            {
+                FLAC__stream_decoder_reset(m_pFlacDecoder);
+                m_streamInfoProcessed = false;
+            }
         }
 
         if (ogg_stream_pagein(&m_os, &og) < 0)
@@ -171,7 +205,7 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
     }
 
     unsigned int processCount = 0;
-    size_t last_successful_read_pos = 0;
+    size_t last_successful_read_pos = m_read_pos;
     while ((m_read_pos < m_audioData.size() || m_dataEnded) && processCount < 100000)
     {
         if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
@@ -232,12 +266,21 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
 
     if (m_read_pos > 0)
     {
-        m_streamStartOffset += m_read_pos;
-        m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
+        if (m_read_pos >= m_audioData.size())
+        {
+            m_streamStartOffset += m_read_pos;
+            m_audioData.clear();
+            m_read_pos = 0;
+        }
+        else if (m_read_pos >= 65536 && m_read_pos * 2 >= m_audioData.size())
+        {
+            m_streamStartOffset += m_read_pos;
+            m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
+            m_read_pos = 0;
+        }
     }
-    m_read_pos = 0;
 
-    if (m_dataEnded && m_audioData.empty() && m_oy.fill == m_oy.returned)
+    if (m_dataEnded && m_read_pos >= m_audioData.size() && m_oy.fill == m_oy.returned)
     {
         m_drained = true;
     }
@@ -348,20 +391,18 @@ FLAC__StreamDecoderWriteStatus OggFlacDecoderWrapper::write_callback(const FLAC_
     if (bps == 0) bps = self->m_bitsPerSample;
     if (bps == 0) bps = 16;
 
-    float divisor = 1.0f;
-    if (bps > 0 && bps < 32) {
-        divisor = (float)(1u << (bps - 1));
-    } else if (bps == 32) {
-        divisor = 2147483648.0f;
-    }
+    const float scale = (bps > 0 && bps < 32)
+                            ? (1.0f / static_cast<float>(1u << (bps - 1)))
+                            : ((bps == 32) ? (1.0f / 2147483648.0f) : 1.0f);
 
-    self->m_decodedPcm.reserve(self->m_decodedPcm.size() + num_samples * channels);
-    for (size_t i = 0; i < num_samples; ++i)
+    if (num_samples > 0 && channels > 0)
     {
-        for (unsigned channel = 0; channel < channels; ++channel)
-        {
-            self->m_decodedPcm.push_back(static_cast<float>(buffer[channel][i]) / divisor);
-        }
+        const size_t oldSize = self->m_decodedPcm.size();
+        self->m_decodedPcm.resize(oldSize + num_samples * channels);
+        SoLoud::interleavePlanarInt32ToFloats(
+            reinterpret_cast<const int32_t *const *>(buffer),
+            self->m_decodedPcm.data() + oldSize,
+            static_cast<unsigned int>(num_samples), channels, scale);
     }
 
     return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
@@ -410,7 +451,7 @@ bool OggFlacDecoderWrapper::hasPendingData() const
     {
         return false;
     }
-    if (!m_audioData.empty())
+    if (m_read_pos < m_audioData.size())
     {
         return true;
     }

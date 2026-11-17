@@ -1,32 +1,11 @@
 #include "flac_output_encoder.h"
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include "../simd/simd_pcm.h"
 
 #ifndef NO_XIPH_LIBS
 #include <FLAC/format.h>
 #include <FLAC/stream_encoder.h>
 #endif
-
-namespace {
-void flacLog(const char *msg) {
-  const char *dir = getenv("TMPDIR");
-  if (dir == nullptr) {
-    dir = getenv("HOME");
-  }
-  if (dir == nullptr) {
-    dir = "/tmp";
-  }
-  char path[1024];
-  snprintf(path, sizeof(path), "%s/flac_debug.log", dir);
-  FILE *fp = fopen(path, "a");
-  if (fp != nullptr) {
-    fprintf(fp, "%s\n", msg);
-    fclose(fp);
-  }
-}
-}  // namespace
 
 FlacOutputEncoder::FlacOutputEncoder() = default;
 
@@ -84,39 +63,35 @@ bool FlacOutputEncoder::initialize(int sampleRate, int channels) {
 bool FlacOutputEncoder::encode(const float *input, size_t samples,
                                std::vector<uint8_t> &output) {
 #ifndef NO_XIPH_LIBS
-  flacLog("encode() called");
   if (!m_initialized || m_encoder == nullptr || input == nullptr ||
       samples == 0) {
-    char buf[256];
-    snprintf(buf, sizeof(buf), "encode() early return init=%d enc=%p samples=%zu",
-             m_initialized, m_encoder, samples);
-    flacLog(buf);
     return false;
-  }
-
-  // Convert float [-1, 1] to 16-bit PCM in int32 containers.
-  m_inputBuffer.resize(samples);
-  for (size_t i = 0; i < samples; ++i) {
-    const float clamped = std::max(-1.0f, std::min(1.0f, input[i]));
-    m_inputBuffer[i] = static_cast<FLAC__int32>(clamped * 32767.0f);
   }
 
   const size_t frames = samples / m_channels;
   if (frames == 0) {
+    output.clear();
     return true;
+  }
+
+  const size_t validSamples = frames * static_cast<size_t>(m_channels);
+
+  // Convert float [-1, 1] to 16-bit PCM in int32 containers using SIMD.
+  m_inputBuffer.resize(validSamples);
+  size_t done = 0;
+  while (done < validSamples) {
+    const unsigned int chunk = static_cast<unsigned int>(
+        (validSamples - done) > 0x40000000u ? 0x40000000u : (validSamples - done));
+    SoLoud::convertFloatsToInt32ScaledClamped(
+        input + done, m_inputBuffer.data() + done, chunk, 32767.0f);
+    done += chunk;
   }
 
   FLAC__bool ok = FLAC__stream_encoder_process_interleaved(
       static_cast<FLAC__StreamEncoder *>(m_encoder), m_inputBuffer.data(),
       frames);
 
-  char buf[256];
-  snprintf(buf, sizeof(buf), "encode() frames=%zu ok=%d output=%zu",
-           frames, ok, m_outputAccumulator.size());
-  flacLog(buf);
-
   if (!ok) {
-    flacLog("encode() process_interleaved failed");
     return false;
   }
 
@@ -124,24 +99,21 @@ bool FlacOutputEncoder::encode(const float *input, size_t samples,
   m_outputAccumulator.clear();
   return true;
 #else
+  (void)input;
+  (void)samples;
+  (void)output;
   return false;
 #endif
 }
 
 bool FlacOutputEncoder::finalize(std::vector<uint8_t> &output) {
 #ifndef NO_XIPH_LIBS
-  flacLog("finalize() called");
   if (!m_initialized || m_encoder == nullptr) {
-    flacLog("finalize() early return");
     return false;
   }
 
   FLAC__bool ok = FLAC__stream_encoder_finish(
       static_cast<FLAC__StreamEncoder *>(m_encoder));
-
-  char buf[256];
-  snprintf(buf, sizeof(buf), "finalize() ok=%d output=%zu", ok, m_outputAccumulator.size());
-  flacLog(buf);
 
   output.swap(m_outputAccumulator);
   m_outputAccumulator.clear();
@@ -152,6 +124,7 @@ bool FlacOutputEncoder::finalize(std::vector<uint8_t> &output) {
 
   return ok != 0;
 #else
+  (void)output;
   return false;
 #endif
 }

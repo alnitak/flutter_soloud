@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include "../simd/simd_pcm.h"
+
 namespace SoLoud {
 
 CircularFloatBuffer::CircularFloatBuffer(size_t capacitySamples) {
@@ -94,6 +96,51 @@ size_t CircularFloatBuffer::read(float *out, size_t count) {
   }
 
   return readTotal;
+}
+
+size_t CircularFloatBuffer::readPlanar(float *dstPlanar,
+                                       size_t dstChannelStride, size_t frames,
+                                       unsigned int channels) {
+  if (dstPlanar == nullptr || frames == 0 || channels == 0 || m_capacity == 0) {
+    return 0;
+  }
+
+  std::lock_guard<std::mutex> lock(m_mutex);
+  size_t framesRead = 0;
+  while (framesRead < frames) {
+    const size_t currentSize = m_size.load(std::memory_order_relaxed);
+    if (currentSize < channels) break;
+
+    size_t segment;
+    if (m_writeOffset > m_readOffset) {
+      segment = m_writeOffset - m_readOffset;
+    } else {
+      segment = m_capacity - m_readOffset;
+    }
+    segment = std::min(segment, currentSize);
+
+    if (segment >= channels) {
+      const size_t segFrames =
+          std::min(frames - framesRead, segment / channels);
+      const size_t floatsConsumed = segFrames * channels;
+      deinterleaveFloatsToPlanar(
+          m_buffer.data() + m_readOffset, dstPlanar + framesRead,
+          static_cast<unsigned int>(dstChannelStride),
+          static_cast<unsigned int>(segFrames), channels);
+      m_readOffset = (m_readOffset + floatsConsumed) % m_capacity;
+      m_size.fetch_sub(floatsConsumed, std::memory_order_relaxed);
+      framesRead += segFrames;
+    } else {
+      // Unaligned ring capacity fallback: 1 frame straddling wrap boundary.
+      for (unsigned int ch = 0; ch < channels; ++ch) {
+        dstPlanar[ch * dstChannelStride + framesRead] = m_buffer[m_readOffset];
+        m_readOffset = (m_readOffset + 1) % m_capacity;
+      }
+      m_size.fetch_sub(channels, std::memory_order_relaxed);
+      framesRead += 1;
+    }
+  }
+  return framesRead;
 }
 
 void CircularFloatBuffer::advanceRead(size_t count) {

@@ -499,6 +499,37 @@ template<typename V, size_t alignBytes=sizeof(V)>
 struct Temporary {
 	// This is called if we don't have enough reserved space and end up allocating
 	std::function<void(size_t)> allocationWarning;
+
+	Temporary() = default;
+	~Temporary() {
+		delete[] buffer;
+	}
+	Temporary(const Temporary &) = delete;
+	Temporary &operator=(const Temporary &) = delete;
+	Temporary(Temporary &&other) noexcept
+		: allocationWarning(std::move(other.allocationWarning)),
+		  depth(other.depth),
+		  start(other.start),
+		  end(other.end),
+		  buffer(other.buffer),
+		  alignedBuffer(other.alignedBuffer),
+		  fallbacks(std::move(other.fallbacks)) {
+		other.start = other.end = other.buffer = other.alignedBuffer = nullptr;
+	}
+	Temporary &operator=(Temporary &&other) noexcept {
+		if (this != &other) {
+			delete[] buffer;
+			allocationWarning = std::move(other.allocationWarning);
+			depth = other.depth;
+			start = other.start;
+			end = other.end;
+			buffer = other.buffer;
+			alignedBuffer = other.alignedBuffer;
+			fallbacks = std::move(other.fallbacks);
+			other.start = other.end = other.buffer = other.alignedBuffer = nullptr;
+		}
+		return *this;
+	}
 	
 	void reserve(size_t size) {
 		if (buffer) delete[] buffer;

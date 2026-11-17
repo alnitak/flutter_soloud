@@ -6,6 +6,7 @@
 
 #include "aac_stream_decoder.h"
 #include "../native_decoder/native_audio_decoder.h"
+#include "../simd/simd_pcm.h"
 #include <windows.h>
 #include <mfapi.h>
 #include <mftransform.h>
@@ -55,6 +56,7 @@ public:
         hr = MFStartup(MF_VERSION);
         if (FAILED(hr)) {
             std::cerr << "[flutter_soloud] MFStartup failed: " << hr << std::endl;
+            cleanup();
             return false;
         }
         mMfStarted = true;
@@ -82,9 +84,11 @@ public:
             &count
         );
 
-        if (SUCCEEDED(hr) && count > 0) {
-            hr = ppActivate[0]->ActivateObject(IID_PPV_ARGS(&mTransform));
-            for (UINT32 i = 0; i < count; i++) ppActivate[i]->Release();
+        if (SUCCEEDED(hr) && ppActivate) {
+            if (count > 0) {
+                hr = ppActivate[0]->ActivateObject(IID_PPV_ARGS(&mTransform));
+                for (UINT32 i = 0; i < count; i++) ppActivate[i]->Release();
+            }
             CoTaskMemFree(ppActivate);
         }
 
@@ -96,6 +100,7 @@ public:
         if (!mTransform) {
             std::cerr << "[flutter_soloud] Failed to create Media Foundation Transform audio decoder for format "
                       << static_cast<int>(mFormat) << std::endl;
+            cleanup();
             return false;
         }
 
@@ -159,10 +164,9 @@ public:
             // Count available complete frames in buffer
             size_t frameCount = 0;
             size_t offset = 0;
-            std::vector<unsigned char> tempBuffer = buffer;
-            while (offset < tempBuffer.size()) {
-                size_t frameLen = getNextFrameLength(tempBuffer.data() + offset, tempBuffer.size() - offset);
-                if (frameLen == 0 || offset + frameLen > tempBuffer.size()) break;
+            while (offset < buffer.size()) {
+                size_t frameLen = getNextFrameLength(buffer.data() + offset, buffer.size() - offset);
+                if (frameLen == 0 || offset + frameLen > buffer.size()) break;
                 frameCount++;
                 offset += frameLen;
             }
@@ -505,10 +509,9 @@ private:
                         } else {
                             size_t sampleCount = len / sizeof(int16_t);
                             const int16_t *src = reinterpret_cast<const int16_t *>(pAudio);
-                            frameSamples.reserve(sampleCount);
-                            for (size_t s = 0; s < sampleCount; s++) {
-                                frameSamples.push_back(src[s] / 32768.0f);
-                            }
+                            frameSamples.resize(sampleCount);
+                            SoLoud::convertInt16ToFloats(src, frameSamples.data(),
+                                                         static_cast<unsigned int>(sampleCount));
                         }
 
                         size_t available = (maxOutputSamples > 0 && out.size() < maxOutputSamples)

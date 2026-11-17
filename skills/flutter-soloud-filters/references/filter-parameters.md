@@ -161,31 +161,42 @@ N-band equalizer (1–64 bands), STFT-based. Source:
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | |
 | stftWindowSize | 32 | 4096 | 1024 | **must be a power of two**; invalid values are ignored with a log warning. Larger = better frequency resolution, more latency/CPU |
-| numBands | 1 | 64 | 3 | set before `bandGain(i)` so enough band slots exist |
+| numBands | 1 | 64 | 3 | number of active bands |
 | bandGain(i) | 0 | 4 | 1 | per band `i` in 0..63; 1 = flat, >1 boost, <1 cut |
+| bandFreq(i) | 10 | 24000 | geometric | per band `i` center frequency (Hz); defaults to 30 Hz .. 12 kHz geometric distribution |
+| bandQ(i) | 0.1 | 20 | defaultQ | per band `i` Q factor (bell curve sharpness); defaults to spacing-based Q (~1.0) |
 
-Extra API: `bandFrequency(i)` returns the center frequency (Hz) of band `i`,
-read against the active filter's `numBands`. Bands are distributed
-logarithmically between 30 Hz and 12 kHz; with a single band the center is
-1 kHz. Example with 3 bands: 30 Hz, 600 Hz, 12 kHz.
+Extra API: `bandFrequency(i)` returns the current center frequency (Hz) of band `i`
+(alias `bandFrequencyParam(i)` for `bandFreq(i)`). Bands use smooth Gaussian bell curves on
+a logarithmic frequency scale. Defaults distribute 30 Hz to 12 kHz (e.g. 3 bands: 30 Hz, 600 Hz, 12 kHz).
 
 See `example/lib/filters/parametric_eq.dart`.
 
 ## amplitudeModulator
 
-Sine ring modulator (bipolar amplitude modulation). Not part of stock SoLoud
-(`src/filters/amplitude_modulator_filter.cpp`). At full wet the output is
-`input * sin(2π * frequency * t)`. The carrier has no DC bias, so this is not
-a tremolo: a sine input at `f1` comes out as two components at
-`frequency - f1` and `frequency + f1` (e.g. 1 kHz with a 16 kHz carrier gives
-15 kHz + 17 kHz).
+Bipolar amplitude modulator / ring modulator with selectable waveforms (`src/filters/amplitude_modulator_filter.cpp`).
+At full wet the output is `input * carrier(2π * frequency * t)`. The carrier has no DC bias, so this is suppressed-carrier
+ring modulation: with a sine carrier, an input at `f1` produces sidebands at `frequency - f1` and `frequency + f1`
+(e.g. 1 kHz with a 16 kHz carrier gives 15 kHz + 17 kHz).
 
 | Param | min | max | def | Notes |
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | 0 = transparent, 1 = only the modulated signal |
 | frequency | 0.1 | 20000 | 440 | Hz; clamped just below Nyquist (0.49 × sample rate) while processing, the queried value stays as set |
+| waveform | 0 | 3 | 0 | Carrier waveform: `0` = Sine, `1` = Triangle, `2` = Square, `3` = Saw |
 
 The carrier phase is continuous across buffers and frequency changes, so
 `fadeFilterParameter`/`oscillateFilterParameter` on `frequency` sweep without
 clicks. All channels share the same carrier phase. As a per-sound filter it
 runs at the sound's sample rate, so Nyquist is that of the sound.
+
+## customFilter(id)
+
+Multi-instance user-programmable synchronous DSP filter (`src/filters/custom_filter.cpp`).
+Up to 8 independent instances (`id` in `0..7`) can be activated on the same scope (`filters.customFilter(0)` .. `filters.customFilter(7)`).
+
+| Param | min | max | def | Notes |
+|---|---|---|---|---|
+| wet | 0 | 1 | 1 | `0.0` = hard bypass (callback not invoked); `1.0` = zero-copy in-place; `0 < wet < 1` = automatic dry/wet blend |
+| p1 .. p15 (`param(1)` .. `param(15)`) | 0 (customizable) | 1 (customizable) | 0 (customizable) | Use `defineParam(index, name: ..., min: ..., max: ..., def: ...)` before `activate()` |
+

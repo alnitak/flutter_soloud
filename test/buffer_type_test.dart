@@ -31,7 +31,7 @@ List<String> _nativeBufferTypes() {
 void main() {
   group('BufferType synchronization', () {
     test('BufferType value corresponds to its position', () {
-      expect(BufferType.values.length, 5);
+      expect(BufferType.values.length, 6);
       for (final type in BufferType.values) {
         expect(
           type.value,
@@ -53,8 +53,10 @@ void main() {
         'PCM_S16LE',
         'PCM_S32LE',
         'AUTO',
+        'PCM_F32LE_PLANAR',
       ]);
       expect(BufferType.auto.value, 4);
+      expect(BufferType.f32lePlanar.value, 5);
     });
 
     test('BufferType toString representation', () {
@@ -63,6 +65,10 @@ void main() {
       expect(BufferType.s16le.toString(), 'Little Endian Signed 16-bit');
       expect(BufferType.s32le.toString(), 'Little Endian Signed 32-bit');
       expect(BufferType.auto.toString(), 'Auto Detect Audio Format');
+      expect(
+        BufferType.f32lePlanar.toString(),
+        'Little Endian Float 32-bit Planar',
+      );
     });
   });
 }

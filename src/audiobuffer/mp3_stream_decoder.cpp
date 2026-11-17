@@ -1,3 +1,5 @@
+#include "id3_text.h"
+#include "metadata_bounds.h"
 #define DR_MP3_IMPLEMENTATION
 #define DR_MP3_NO_STDIO
 #define DR_MP3_FLOAT_OUTPUT
@@ -47,50 +49,7 @@ drmp3_bool32 MP3DecoderWrapper::on_seek(void *pUserData, int offset,
 }
 
 static std::string parseId3TextFrame(const unsigned char *data, size_t frameSize) {
-  if (frameSize <= 1) return "";
-  uint8_t encoding = data[0];
-  const unsigned char *textData = data + 1;
-  size_t textLen = frameSize - 1;
-
-  if (encoding == 1 || encoding == 2) { // UTF-16
-    bool isLE = true;
-    if (encoding == 1 && textLen >= 2) {
-      if (textData[0] == 0xFF && textData[1] == 0xFE) {
-        isLE = true;
-        textData += 2;
-        textLen -= 2;
-      } else if (textData[0] == 0xFE && textData[1] == 0xFF) {
-        isLE = false;
-        textData += 2;
-        textLen -= 2;
-      }
-    } else if (encoding == 2) {
-      isLE = false; // UTF-16BE
-    }
-    std::string utf8;
-    for (size_t i = 0; i + 1 < textLen; i += 2) {
-      uint16_t ch = isLE ? (textData[i] | (textData[i + 1] << 8))
-                         : ((textData[i] << 8) | textData[i + 1]);
-      if (ch == 0) break;
-      if (ch < 0x80) {
-        utf8.push_back(static_cast<char>(ch));
-      } else if (ch < 0x800) {
-        utf8.push_back(static_cast<char>(0xC0 | (ch >> 6)));
-        utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-      } else {
-        utf8.push_back(static_cast<char>(0xE0 | (ch >> 12)));
-        utf8.push_back(static_cast<char>(0x80 | ((ch >> 6) & 0x3F)));
-        utf8.push_back(static_cast<char>(0x80 | (ch & 0x3F)));
-      }
-    }
-    return utf8;
-  }
-
-  std::string result(reinterpret_cast<const char *>(textData), textLen);
-  while (!result.empty() && result.back() == '\0') {
-    result.pop_back();
-  }
-  return result;
+  return id3TextToUtf8(data, frameSize);
 }
 
 void MP3DecoderWrapper::on_meta(void *pUserData,
@@ -112,7 +71,7 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
 
     size_t pos = 10; // Skip ID3v2 header
 
-    while (pos + 10 < totalTagSize) {
+    while (metadataHasBytes(totalTagSize, pos, 11)) {
       char frame_id[5] = {0};
       memcpy(frame_id, rawData + pos, 4);
 
@@ -136,11 +95,11 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
 
       pos += 10; // Move to frame content
 
-      if (pos + frame_size > totalTagSize)
+      if (!metadataHasBytes(totalTagSize, pos, frame_size))
         break; // Malformed tag
 
       if (frame_id[0] == 'T') {      // Common text frames
-        if (pos + frame_size <= totalTagSize) {
+        if (metadataHasBytes(totalTagSize, pos, frame_size)) {
           std::string value = parseId3TextFrame(rawData + pos, frame_size);
 
           if (strcmp(frame_id, "TIT2") == 0)
@@ -200,6 +159,9 @@ void MP3DecoderWrapper::cleanup() {
     isInitialized = false;
   }
   audioData.clear();
+  mSeekPoints.clear();
+  m_seekTableSampleRate = 0;
+  mAfterSeek = false;
   m_read_pos = 0;
   m_audioDataBaseOffset = 0;
   m_seekTableBaseOffset = 0;
@@ -390,14 +352,15 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
   // to the window start, and m_audioDataBaseOffset tracks where the window
   // begins in the stream so seek-table entries stay absolute.
   constexpr size_t kKeepBehindBytes = 32 * 1024;
-  if (m_read_pos > kKeepBehindBytes) {
+  constexpr size_t kMinDiscardBytes = 64 * 1024;
+  if (m_read_pos > kKeepBehindBytes + kMinDiscardBytes) {
     const size_t toDiscard = m_read_pos - kKeepBehindBytes;
     audioData.erase(audioData.begin(), audioData.begin() + toDiscard);
     m_read_pos -= toDiscard;
     m_audioDataBaseOffset += toDiscard;
   }
 
-  return {decodedData, DecoderError::NoError};
+  return {std::move(decodedData), DecoderError::NoError};
 }
 
 bool MP3DecoderWrapper::hasPendingData() const {
@@ -414,7 +377,10 @@ bool MP3DecoderWrapper::hasPendingData() const {
 }
 
 void MP3DecoderWrapper::buildSeekTable() {
-  if (!isInitialized || !mSeekPoints.empty()) {
+  // MP3 frames carry no timestamp: a table built from data that starts at a
+  // seek would count time from the seek. Only the original stream anchors
+  // the table to the file.
+  if (mAfterSeek || !isInitialized || !mSeekPoints.empty()) {
     return;
   }
 
@@ -430,11 +396,35 @@ void MP3DecoderWrapper::buildSeekTable() {
     // Seek point byte positions are relative to the current window start;
     // remember the base so timeToByteOffset can return absolute offsets.
     m_seekTableBaseOffset = m_audioDataBaseOffset;
+    m_seekTableSampleRate = decoder.sampleRate;
   }
 }
 
+void MP3DecoderWrapper::prepareForSeek(uint64_t targetSample,
+                                       uint64_t byteOffset) {
+  (void)targetSample;
+  if (isInitialized) {
+    drmp3_uninit(&decoder);
+    isInitialized = false;
+  }
+  audioData.clear();
+  m_read_pos = 0;
+  m_audioDataBaseOffset = byteOffset;
+  mDataEnded = false;
+  mDrained = false;
+  // Keep mSeekPoints, its base offset and its sample rate: they map times to
+  // offsets in the whole file, which the data fed next does not start.
+  mAfterSeek = true;
+}
+
 bool MP3DecoderWrapper::canSeekToTime(double seconds) const {
-  return isInitialized && !mSeekPoints.empty() && seconds > 0.0;
+  if (mSeekPoints.empty() || m_seekTableSampleRate == 0 || !(seconds > 0.0))
+    return false;
+  // The table can cover only the start of the file: it is built from the
+  // first data, and never again after a seek.
+  const double frame = seconds * m_seekTableSampleRate;
+  return frame >= static_cast<double>(mSeekPoints.front().pcmFrameIndex) &&
+         frame <= static_cast<double>(mSeekPoints.back().pcmFrameIndex);
 }
 
 uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
@@ -445,8 +435,15 @@ uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
     return 0;
   }
 
+  // A target past the table stays unmapped even once all the data has been
+  // delivered: the end of the data does not extend a table built from its
+  // start. The pull stream then estimates the offset from the duration.
+  if (!canSeekToTime(seconds)) {
+    return 0;
+  }
+
   const uint64_t targetFrame = static_cast<uint64_t>(
-      std::floor(seconds * decoder.sampleRate));
+      std::floor(seconds * m_seekTableSampleRate));
 
   // Seek points are sorted by pcmFrameIndex; binary-search the last one at or
   // before the target frame.
@@ -459,12 +456,6 @@ uint64_t MP3DecoderWrapper::timeToByteOffset(double seconds) {
     return 0;
   }
   const drmp3_seek_point &best = *(it - 1);
-
-  // Block out-of-buffer seeks until the table covers the target.
-  if (targetFrame > mSeekPoints.back().pcmFrameIndex && !mDataEnded) {
-    return 0;
-  }
-
   return m_seekTableBaseOffset + best.seekPosInBytes;
 }
 
@@ -527,7 +518,7 @@ double MP3DecoderWrapper::estimateBitrateFromFirstFrame() const {
     if (pos >= audioData.size()) return 0.0;
   }
 
-  while (pos + 4 < audioData.size()) {
+  while (metadataHasBytes(audioData.size(), pos, 5)) {
     if (audioData[pos] == 0xff && (audioData[pos + 1] & 0xe0) == 0xe0) {
       const uint8_t byte1 = audioData[pos + 1];
       const uint8_t version = (byte1 >> 3) & 0x3;
@@ -585,7 +576,7 @@ double MP3DecoderWrapper::parseDurationFromXingVbri() const {
   }
 
   // Find first MP3 frame sync word.
-  while (pos + 4 < audioData.size()) {
+  while (metadataHasBytes(audioData.size(), pos, 5)) {
     if (audioData[pos] == 0xff && (audioData[pos + 1] & 0xe0) == 0xe0) {
       const uint8_t byte1 = audioData[pos + 1];
       const uint8_t version = (byte1 >> 3) & 0x3; // 3=MPEG1, 2=MPEG2, 0=MPEG2.5
@@ -617,13 +608,13 @@ double MP3DecoderWrapper::parseDurationFromXingVbri() const {
         }
       }
       const int headerOffset = 4 + sideInfoSize + (protection ? 0 : 2);
-      if (pos + headerOffset + 4 > audioData.size()) return -1.0;
+      if (!metadataHasBytes(audioData.size(), pos, static_cast<uint64_t>(headerOffset) + 4)) return -1.0;
 
       const size_t xingOffset = pos + headerOffset;
       // Check Xing/Info
       if (std::memcmp(audioData.data() + xingOffset, "Xing", 4) == 0 ||
           std::memcmp(audioData.data() + xingOffset, "Info", 4) == 0) {
-        if (xingOffset + 16 > audioData.size()) return -1.0;
+        if (!metadataHasBytes(audioData.size(), xingOffset, 16)) return -1.0;
         const uint32_t flags = (audioData[xingOffset + 4] << 24) |
                                (audioData[xingOffset + 5] << 16) |
                                (audioData[xingOffset + 6] << 8) |
@@ -649,10 +640,10 @@ double MP3DecoderWrapper::parseDurationFromXingVbri() const {
       }
 
       // Check VBRI (commonly placed at the end of the side info).
-      if (pos + headerOffset + 4 <= audioData.size()) {
+      if (metadataHasBytes(audioData.size(), pos, static_cast<uint64_t>(headerOffset) + 4)) {
         const size_t vbriOffset = pos + headerOffset;
         if (std::memcmp(audioData.data() + vbriOffset, "VBRI", 4) == 0) {
-          if (vbriOffset + 18 > audioData.size()) return -1.0;
+          if (!metadataHasBytes(audioData.size(), vbriOffset, 18)) return -1.0;
           const uint32_t frames = (audioData[vbriOffset + 14] << 24) |
                                   (audioData[vbriOffset + 15] << 16) |
                                   (audioData[vbriOffset + 16] << 8) |

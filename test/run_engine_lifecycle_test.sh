@@ -11,7 +11,9 @@
 # treated as a broken environment rather than a reason to pass vacuously; set
 # SOLOUD_LIFECYCLE_TEST_ALLOW_NO_DEVICE=1 to downgrade that to a skip.
 #
-# Pass --tsan to build under ThreadSanitizer.
+# Pass --asan to build under AddressSanitizer (a call that reaches a Player
+# teardown has destroyed is reported there), or --tsan to build under
+# ThreadSanitizer.
 
 set -e
 
@@ -20,7 +22,10 @@ cd "$REPO_ROOT"
 
 SANITIZER=()
 OUT="${TMPDIR:-/tmp}/engine_lifecycle_test"
-if [ "$1" == "--tsan" ]; then
+if [ "$1" == "--asan" ]; then
+    SANITIZER=(-fsanitize=address -fno-omit-frame-pointer -g -O1)
+    OUT="${OUT}_asan"
+elif [ "$1" == "--tsan" ]; then
     SANITIZER=(-fsanitize=thread -g -O1)
     OUT="${OUT}_tsan"
 fi
@@ -35,6 +40,19 @@ cc -std=gnu99 -O2 -c "${SANITIZER[@]}" \
     -o "$WORK_DIR/pffft.o" \
     src/pffft/pffft.c
 
+# The OS decoder backends are compiled per platform, like src/CMakeLists.txt.
+PLATFORM_SOURCES=()
+PLATFORM_LIBS=()
+if [ "$(uname)" == "Darwin" ]; then
+    PLATFORM_SOURCES=(
+        src/native_decoder/os_decoder_apple.mm
+        src/audiobuffer/aac_stream_decoder_apple.mm
+    )
+    PLATFORM_LIBS=(-framework AudioToolbox -framework CoreFoundation)
+else
+    PLATFORM_SOURCES=(src/native_decoder/os_decoder_linux.cpp)
+fi
+
 c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     -DWITH_MINIAUDIO \
     -DNO_XIPH_LIBS \
@@ -43,6 +61,7 @@ c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     -I src/soloud/src \
     -I src/pffft \
     -I src \
+    -I src/native_decoder \
     -o "$OUT" \
     test/engine_lifecycle_test.cpp \
     "$WORK_DIR/pffft.o" \
@@ -51,10 +70,13 @@ c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     src/bindings.cpp \
     src/player.cpp \
     src/analyzer.cpp \
-    src/synth/basic_wave.cpp \
+    src/synth/*.cpp \
     src/waveform/waveform.cpp \
     src/waveform/miniaudio_libvorbis.cpp \
     src/audiobuffer/*.cpp \
+    src/native_stream/*.cpp \
+    src/native_decoder/native_audio_decoder.cpp \
+    "${PLATFORM_SOURCES[@]}" \
     src/filters/*.cpp \
     src/mixeroutput/*.cpp \
     src/soloud/src/core/*.cpp \
@@ -69,6 +91,7 @@ c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     src/soloud/src/audiosource/vizsn/*.cpp \
     src/soloud/src/audiosource/wav/*.cpp \
     src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp \
+    "${PLATFORM_LIBS[@]}" \
     -ldl -lm
 
 "$OUT"

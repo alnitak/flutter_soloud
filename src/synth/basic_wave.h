@@ -28,6 +28,8 @@ freely, subject to the following restrictions:
 #include "soloud.h"
 #include "soloud_adsr.h"
 
+#include <atomic>
+
 class Basicwave;
 
 class BasicwaveInstance : public SoLoud::AudioSourceInstance
@@ -48,11 +50,13 @@ class Basicwave : public SoLoud::AudioSource
 {
 public:
 	ADSR mADSR;
-	double mFreq;
-	double mSuperwaveScale;
-	double mSuperwaveDetune;
-	int mWaveform;
-	bool mSuperwave;
+	// The setters run on the app's threads while the mixer renders the
+	// instances, which read each parameter once per block.
+	std::atomic<double> mFreq;
+	std::atomic<double> mSuperwaveScale;
+	std::atomic<double> mSuperwaveDetune;
+	std::atomic<int> mWaveform;
+	std::atomic<bool> mSuperwave;
 	Basicwave(
 		SoLoud::Soloud::WAVEFORM waveform,
 		bool superWave,

@@ -4,6 +4,8 @@
 #include <cstring>
 #include <random>
 
+#include "../simd/simd_pcm.h"
+
 #ifndef NO_XIPH_LIBS
 #include <ogg/ogg.h>
 #include <vorbis/codec.h>
@@ -21,32 +23,50 @@ VorbisOutputEncoder::~VorbisOutputEncoder() {
 #ifndef NO_XIPH_LIBS
 void VorbisOutputEncoder::clearState() {
   if (m_vb != nullptr) {
-    vorbis_block_clear(static_cast<vorbis_block *>(m_vb));
+    if (m_vbInited) {
+      vorbis_block_clear(static_cast<vorbis_block *>(m_vb));
+      m_vbInited = false;
+    }
     delete static_cast<vorbis_block *>(m_vb);
     m_vb = nullptr;
   }
   if (m_vd != nullptr) {
-    vorbis_dsp_clear(static_cast<vorbis_dsp_state *>(m_vd));
+    if (m_vdInited) {
+      vorbis_dsp_clear(static_cast<vorbis_dsp_state *>(m_vd));
+      m_vdInited = false;
+    }
     delete static_cast<vorbis_dsp_state *>(m_vd);
     m_vd = nullptr;
   }
   if (m_vc != nullptr) {
-    vorbis_comment_clear(static_cast<vorbis_comment *>(m_vc));
+    if (m_vcInited) {
+      vorbis_comment_clear(static_cast<vorbis_comment *>(m_vc));
+      m_vcInited = false;
+    }
     delete static_cast<vorbis_comment *>(m_vc);
     m_vc = nullptr;
   }
   if (m_vi != nullptr) {
-    vorbis_info_clear(static_cast<vorbis_info *>(m_vi));
+    if (m_viInited) {
+      vorbis_info_clear(static_cast<vorbis_info *>(m_vi));
+      m_viInited = false;
+    }
     delete static_cast<vorbis_info *>(m_vi);
     m_vi = nullptr;
   }
   if (m_os != nullptr) {
-    ogg_stream_clear(static_cast<ogg_stream_state *>(m_os));
+    if (m_osInited) {
+      ogg_stream_clear(static_cast<ogg_stream_state *>(m_os));
+      m_osInited = false;
+    }
     delete static_cast<ogg_stream_state *>(m_os);
     m_os = nullptr;
   }
   if (m_oy != nullptr) {
-    ogg_sync_clear(static_cast<ogg_sync_state *>(m_oy));
+    if (m_oyInited) {
+      ogg_sync_clear(static_cast<ogg_sync_state *>(m_oy));
+      m_oyInited = false;
+    }
     delete static_cast<ogg_sync_state *>(m_oy);
     m_oy = nullptr;
   }
@@ -121,20 +141,12 @@ bool VorbisOutputEncoder::initialize(int sampleRate, int channels) {
 
   m_sampleRate = sampleRate;
   m_channels = channels;
+  m_outputAccumulator.clear();
 
   m_vi = new vorbis_info();
-  m_vc = new vorbis_comment();
-  m_vd = new vorbis_dsp_state();
-  m_vb = new vorbis_block();
-  m_os = new ogg_stream_state();
-
   auto *vi = static_cast<vorbis_info *>(m_vi);
-  auto *vc = static_cast<vorbis_comment *>(m_vc);
-  auto *vd = static_cast<vorbis_dsp_state *>(m_vd);
-  auto *vb = static_cast<vorbis_block *>(m_vb);
-  auto *os = static_cast<ogg_stream_state *>(m_os);
-
   vorbis_info_init(vi);
+  m_viInited = true;
 
   // Quality 0.4 gives ~128 kbps stereo.
   if (vorbis_encode_init_vbr(vi, channels, sampleRate, 0.4f) != 0) {
@@ -142,24 +154,39 @@ bool VorbisOutputEncoder::initialize(int sampleRate, int channels) {
     return false;
   }
 
+  m_vc = new vorbis_comment();
+  auto *vc = static_cast<vorbis_comment *>(m_vc);
   vorbis_comment_init(vc);
+  m_vcInited = true;
   vorbis_comment_add_tag(vc, const_cast<char *>("ENCODER"),
                          const_cast<char *>("flutter_soloud"));
 
+  m_vd = new vorbis_dsp_state();
+  auto *vd = static_cast<vorbis_dsp_state *>(m_vd);
   if (vorbis_analysis_init(vd, vi) != 0) {
     clearState();
     return false;
   }
+  m_vdInited = true;
 
+  m_vb = new vorbis_block();
+  auto *vb = static_cast<vorbis_block *>(m_vb);
   if (vorbis_block_init(vd, vb) != 0) {
     clearState();
     return false;
   }
+  m_vbInited = true;
 
+  m_os = new ogg_stream_state();
+  auto *os = static_cast<ogg_stream_state *>(m_os);
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_int_distribution<int> dist(1, INT32_MAX);
-  ogg_stream_init(os, dist(gen));
+  if (ogg_stream_init(os, dist(gen)) != 0) {
+    clearState();
+    return false;
+  }
+  m_osInited = true;
 
   if (!writeHeaders()) {
     clearState();
@@ -169,6 +196,8 @@ bool VorbisOutputEncoder::initialize(int sampleRate, int channels) {
   m_initialized = true;
   return true;
 #else
+  (void)sampleRate;
+  (void)channels;
   return false;
 #endif
 }
@@ -193,9 +222,22 @@ bool VorbisOutputEncoder::encode(const float *input, size_t samples,
     return false;
   }
 
-  for (size_t frame = 0; frame < frames; ++frame) {
-    for (int ch = 0; ch < m_channels; ++ch) {
-      buffer[ch][frame] = input[frame * m_channels + ch];
+  if (m_channels == 1) {
+    std::memcpy(buffer[0], input, frames * sizeof(float));
+  } else if (m_channels == 2) {
+    size_t done = 0;
+    while (done < frames) {
+      const unsigned int chunk = static_cast<unsigned int>(
+          (frames - done) > 0x40000000u ? 0x40000000u : (frames - done));
+      SoLoud::deinterleaveStereoFloats(input + done * 2, buffer[0] + done,
+                                       buffer[1] + done, chunk);
+      done += chunk;
+    }
+  } else {
+    for (size_t frame = 0; frame < frames; ++frame) {
+      for (int ch = 0; ch < m_channels; ++ch) {
+        buffer[ch][frame] = input[frame * m_channels + ch];
+      }
     }
   }
 
@@ -209,6 +251,9 @@ bool VorbisOutputEncoder::encode(const float *input, size_t samples,
   m_outputAccumulator.clear();
   return true;
 #else
+  (void)input;
+  (void)samples;
+  (void)output;
   return false;
 #endif
 }

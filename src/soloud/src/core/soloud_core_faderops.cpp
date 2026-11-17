@@ -36,7 +36,11 @@ namespace SoLoud
 			return;
 		}
 		FOR_ALL_VOICES_PRE
-		mVoice[ch]->mPauseScheduler.set(1, 0, aTime, mVoice[ch]->mStreamTime);
+		if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_PAUSE, 1.0f, aTime, playheadTimeLocked_internal()))
+		{
+			mVoice[ch]->mPauseScheduler.set(1, 0, aTime, mVoice[ch]->mStreamTime);
+			journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAUSE, 1.0f, mStreamTime, aTime);
+		}
 		FOR_ALL_VOICES_POST
 	}
 
@@ -48,14 +52,24 @@ namespace SoLoud
 			return;
 		}
 		FOR_ALL_VOICES_PRE
-		mVoice[ch]->mStopScheduler.set(1, 0, aTime, mVoice[ch]->mStreamTime);
+		if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_STOP, 1.0f, aTime, playheadTimeLocked_internal()))
+		{
+			mVoice[ch]->mStopScheduler.set(1, 0, aTime, mVoice[ch]->mStreamTime);
+			journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_STOP, 1.0f, mStreamTime, aTime);
+		}
 		FOR_ALL_VOICES_POST
 	}
 
 	void Soloud::scheduleStopAt(handle aVoiceHandle, time aEngineTime)
 	{
 		lockAudioMutex_internal();
+		const time halfSample = mSamplerate > 0 ? (0.5 / (time)mSamplerate) : 0;
 		time rel = aEngineTime - mStreamTime;
+		if (rel < 0 && rel >= -halfSample)
+		{
+			aEngineTime = mStreamTime;
+			rel = 0;
+		}
 		unlockAudioMutex_internal();
 		// The countdown is in output samples and, like the delay countdown
 		// used by playScheduled, starts from the first sample of the next
@@ -79,29 +93,59 @@ namespace SoLoud
 			else
 			{
 				mVoice[ch]->mStopSamplesLeft = samples;
-				journalDeath_internal(ch, aEngineTime);
 			}
 		}
 		FOR_ALL_VOICES_POST
 	}
 
+	// ###### flutter_soloud local patch (group fades) ######
+	// The fades below start each voice from its own volume, pan or speed,
+	// read under the audio mutex. A voice-group handle has none of its own:
+	// the getters read the group's first voice, and every voice used to fade
+	// from that value (or was set to aTo at once when it was equal to it).
 	void Soloud::scheduleFadeAt(handle aVoiceHandle, time aEngineTime, float aTo, time aFadeTime, bool aThenStop)
 	{
-		float from = getVolume(aVoiceHandle);
 		lockAudioMutex_internal();
 		const time playhead = playheadTimeLocked_internal();
 		if (aEngineTime < playhead)
 			aEngineTime = playhead;
+		const time halfSample = mSamplerate > 0 ? (0.5 / (time)mSamplerate) : 0;
 		time rel = aEngineTime - mStreamTime;
+		if (rel < 0 && rel >= -halfSample)
+		{
+			aEngineTime = mStreamTime;
+			rel = 0;
+		}
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
 		// A fade starting inside the rendered-but-unplayed window can start
 		// at exactly aEngineTime instead of at the write head.
-		bool tryRetro = mRenderRing.isInited() && rel < 0;
+		// Note-off release fades (aThenStop with aFadeTime >= 8ms) do not need
+		// retroactive re-mixing; fading from mStreamTime avoids costly ring rewrites
+		// and prevents audio thread starvation during polyphonic releases.
+		bool tryRetro = mRenderRing.isInited() && rel < 0 && (!aThenStop || aFadeTime < 0.008);
 		unlockAudioMutex_internal();
-		if (rel <= 0 && !tryRetro)
+		if (rel < 0 && !tryRetro)
 		{
-			// The scheduled time is already in the past: fade from now.
-			fadeVolume(aVoiceHandle, aTo, aFadeTime);
+			// The scheduled time is already in the past: fade from write head.
+			FOR_ALL_VOICES_PRE
+			const float from = mVoice[ch]->mSetVolume;
+			if (aFadeTime <= 0 || aTo == from)
+			{
+				mVoice[ch]->mVolumeFader.mActive = 0;
+				setVoiceVolume_internal(ch, aTo);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, 0);
+			}
+			else
+			{
+				mVoice[ch]->mVolumeFader.set(from, aTo, aFadeTime, mVoice[ch]->mStreamTime);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, aFadeTime);
+			}
+			FOR_ALL_VOICES_POST
+			if (aThenStop)
+			{
+				scheduleStopAt(aVoiceHandle, mStreamTime + aFadeTime);
+			}
+			return;
 		}
 		else if (tryRetro)
 		{
@@ -109,14 +153,17 @@ namespace SoLoud
 			if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_VOLUME, aTo, aFadeTime, aEngineTime))
 			{
 				// Gate declined: keep the legacy "fade from now" fallback.
+				const float from = mVoice[ch]->mSetVolume;
 				if (aFadeTime <= 0 || aTo == from)
 				{
 					mVoice[ch]->mVolumeFader.mActive = 0;
 					setVoiceVolume_internal(ch, aTo);
+					journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, 0);
 				}
 				else
 				{
 					mVoice[ch]->mVolumeFader.set(from, aTo, aFadeTime, mVoice[ch]->mStreamTime);
+					journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, aFadeTime);
 				}
 			}
 			FOR_ALL_VOICES_POST
@@ -124,7 +171,8 @@ namespace SoLoud
 		else
 		{
 			FOR_ALL_VOICES_PRE
-			mVoice[ch]->mVolumeFader.setScheduled(from, aTo, aFadeTime, mVoice[ch]->mStreamTime + rel);
+			mVoice[ch]->mVolumeFader.setScheduled(mVoice[ch]->mSetVolume, aTo, aFadeTime, mVoice[ch]->mStreamTime + rel);
+			journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime + rel, aFadeTime);
 			FOR_ALL_VOICES_POST
 		}
 		if (aThenStop)
@@ -135,8 +183,7 @@ namespace SoLoud
 
 	void Soloud::fadeVolume(handle aVoiceHandle, float aTo, time aTime)
 	{
-		float from = getVolume(aVoiceHandle);
-		if (aTime <= 0 || aTo == from)
+		if (aTime <= 0)
 		{
 			setVolume(aVoiceHandle, aTo);
 			return;
@@ -144,16 +191,31 @@ namespace SoLoud
 
 		FOR_ALL_VOICES_PRE
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
-		// Start the fade at the playhead when the ring allows it.
+		// Start the fade at the playhead when the ring allows it. It fades
+		// from the voice's value there, which the write head may already
+		// have left: only the going-forward fade, from the write head, sets
+		// a voice that is already at aTo there, as setVolume() would.
 		if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_VOLUME, aTo, aTime, playheadTimeLocked_internal()))
-			mVoice[ch]->mVolumeFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+		{
+			const float from = mVoice[ch]->mSetVolume;
+			if (aTo == from)
+			{
+				mVoice[ch]->mVolumeFader.mActive = 0;
+				setVoiceVolume_internal(ch, aTo);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, 0);
+			}
+			else
+			{
+				mVoice[ch]->mVolumeFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_VOLUME, aTo, mStreamTime, aTime);
+			}
+		}
 		FOR_ALL_VOICES_POST
 	}
 
 	void Soloud::fadePan(handle aVoiceHandle, float aTo, time aTime)
 	{
-		float from = getPan(aVoiceHandle);
-		if (aTime <= 0 || aTo == from)
+		if (aTime <= 0)
 		{
 			setPan(aVoiceHandle, aTo);
 			return;
@@ -161,23 +223,50 @@ namespace SoLoud
 
 		FOR_ALL_VOICES_PRE
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// As in fadeVolume().
 		if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_PAN, aTo, aTime, playheadTimeLocked_internal()))
-			mVoice[ch]->mPanFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+		{
+			const float from = mVoice[ch]->mPan;
+			if (aTo == from)
+			{
+				mVoice[ch]->mPanFader.mActive = 0;
+				setVoicePan_internal(ch, aTo);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAN, aTo, mStreamTime, 0);
+			}
+			else
+			{
+				mVoice[ch]->mPanFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_PAN, aTo, mStreamTime, aTime);
+			}
+		}
 		FOR_ALL_VOICES_POST
 	}
 
 	void Soloud::fadeRelativePlaySpeed(handle aVoiceHandle, float aTo, time aTime)
 	{
-		float from = getRelativePlaySpeed(aVoiceHandle);
-		if (aTime <= 0 || aTo == from)
+		if (aTime <= 0)
 		{
 			setRelativePlaySpeed(aVoiceHandle, aTo);
 			return;
 		}
 		FOR_ALL_VOICES_PRE
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// As in fadeVolume().
 		if (!retroactiveParam_internal(ch, RetroJournalEntry::PARAM_SPEED, aTo, aTime, playheadTimeLocked_internal()))
-			mVoice[ch]->mRelativePlaySpeedFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+		{
+			const float from = mVoice[ch]->mSetRelativePlaySpeed;
+			if (aTo == from)
+			{
+				mVoice[ch]->mRelativePlaySpeedFader.mActive = 0;
+				if (setVoiceRelativePlaySpeed_internal(ch, aTo) == SO_NO_ERROR)
+					journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_SPEED, aTo, mStreamTime, 0);
+			}
+			else
+			{
+				mVoice[ch]->mRelativePlaySpeedFader.set(from, aTo, aTime, mVoice[ch]->mStreamTime);
+				journalParam_internal(ch, mVoice[ch]->mPlayIndex, RetroJournalEntry::PARAM_SPEED, aTo, mStreamTime, aTime);
+			}
+		}
 		FOR_ALL_VOICES_POST
 	}
 
@@ -189,7 +278,11 @@ namespace SoLoud
 			setGlobalVolume(aTo);
 			return;
 		}
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		lockAudioMutex_internal();
 		mGlobalVolumeFader.set(from, aTo, aTime, mStreamTime);
+		engineStateChanged_internal();
+		unlockAudioMutex_internal();
 	}
 
 
@@ -203,6 +296,8 @@ namespace SoLoud
 
 		FOR_ALL_VOICES_PRE
 		mVoice[ch]->mVolumeFader.setLFO(aFrom, aTo, aTime, mVoice[ch]->mStreamTime);
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -216,6 +311,8 @@ namespace SoLoud
 
 		FOR_ALL_VOICES_PRE
 		mVoice[ch]->mPanFader.setLFO(aFrom, aTo, aTime, mVoice[ch]->mStreamTime);
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -229,6 +326,8 @@ namespace SoLoud
 		
 		FOR_ALL_VOICES_PRE
 		mVoice[ch]->mRelativePlaySpeedFader.setLFO(aFrom, aTo, aTime, mVoice[ch]->mStreamTime);
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		voiceStateChanged_internal(ch);
 		FOR_ALL_VOICES_POST
 	}
 
@@ -239,6 +338,10 @@ namespace SoLoud
 			setGlobalVolume(aTo);
 			return;
 		}
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		lockAudioMutex_internal();
 		mGlobalVolumeFader.setLFO(aFrom, aTo, aTime, mStreamTime);
+		engineStateChanged_internal();
+		unlockAudioMutex_internal();
 	}
 }

@@ -16,13 +16,21 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
+
+namespace SoLoud {
+class BufferStream;
+class PullBufferStream;
+class RealtimeStream;
+}
 
 struct PlaybackDevice
 {
@@ -130,6 +138,47 @@ public:
   /// @param hash return the hash of the sound.
   PlayerErrors loadMem(const std::string &uniqueName, unsigned char *mem,
                        int length, bool loadIntoMem, unsigned int &hash);
+
+  /// @brief A sound decoded by [decodeFile], [decodeMem] or
+  /// [decodeJoinedSources] that is not yet owned by any Player.
+  struct PendingSound
+  {
+    std::unique_ptr<ActiveSound> sound;
+    PlayerErrors error = noError;
+  };
+
+  /// @brief Decode [completeFileName] without touching any Player state, so
+  /// callers can run it without holding the engine lifecycle locks. This is
+  /// the slow part of [loadFile]: formats with no streaming decoder (AAC,
+  /// AC-3, E-AC-3 elementary streams, and M4A/MP4 on platforms without a
+  /// NativeStream backend) and Ogg Opus/FLAC are decoded in full to PCM even
+  /// when [loadIntoMem] is false. M4A/MP4 on Apple and Android only decodes a
+  /// short head here (see NativeStream). Ogg Opus decodes to [engineSampleRate] and
+  /// [engineChannels].
+  static PendingSound decodeFile(const std::string &completeFileName,
+                                 bool loadIntoMem,
+                                 unsigned int engineSampleRate,
+                                 unsigned int engineChannels);
+
+  /// @brief Same as [decodeFile] for audio bytes in [mem].
+  static PendingSound decodeMem(const std::string &uniqueName,
+                                unsigned char *mem, int length,
+                                bool loadIntoMem,
+                                unsigned int engineSampleRate,
+                                unsigned int engineChannels);
+
+  /// @brief The decoding half of [joinTwoSources], which, like [decodeFile],
+  /// touches no Player state. The result is resampled to [engineSampleRate].
+  static PendingSound decodeJoinedSources(const std::string &uniqueName,
+                                          unsigned char *mem1,
+                                          unsigned char *mem2,
+                                          int length1, int length2,
+                                          unsigned int engineSampleRate);
+
+  /// @brief Give [pending] a unique hash and add it to the loaded sounds.
+  /// @return [fileAlreadyLoaded] when the name's hash was already in use (a
+  /// new unique hash is assigned anyway), or [pending]'s decode error.
+  PlayerErrors registerSound(PendingSound pending, unsigned int &hash);
 
   /// @brief Load two sounds stored into [mem1] and [mem2], convert them to mono
   /// if needed, resample them to the engine's sample rate, and join them into a
@@ -244,6 +293,60 @@ public:
   /// @param sizeInBytes return the size in bytes.
   /// @return Returns [PlayerErrors.SO_NO_ERROR] if success.
   PlayerErrors getBufferSize(unsigned int hash, unsigned int *sizeInBytes);
+
+  /// @brief Set up a lock-free real-time PCM stream with instantaneous
+  /// playing-window injection.
+  /// @param historyFrames minimum rewind window in frames (0 = default). It
+  /// is raised as needed to cover the render-ahead window.
+  PlayerErrors setRealtimeStream(unsigned int &hash, unsigned int sampleRate,
+                                 unsigned int channels, BufferType format,
+                                 unsigned int bufferCapacityFrames,
+                                 unsigned int historyFrames = 0);
+
+  /// @brief Reset the real-time PCM stream ring buffer.
+  PlayerErrors resetRealtimeStream(unsigned int hash);
+
+  // For every realtime push, [numSamples] is the number of samples readable
+  // at [data]. A push whose numFrames * channels exceeds it is rejected
+  // (returns 0) instead of reading past the caller's buffer.
+
+  /// @brief Push float32 PCM frames to a real-time stream (interleaved or
+  /// planar according to the stream's configured BufferType).
+  unsigned int pushRealtimeFloat32(unsigned int hash, const float *data,
+                                   unsigned int numFrames,
+                                   unsigned int numSamples);
+
+  /// @brief Push interleaved int16 PCM frames to a real-time stream.
+  unsigned int pushRealtimeInt16(unsigned int hash, const int16_t *data,
+                                 unsigned int numFrames,
+                                 unsigned int numSamples);
+
+  /// @brief Push float32 PCM frames clocked to [soundTime] (like playClocked).
+  unsigned int pushRealtimeClockedFloat32(unsigned int hash, double soundTime,
+                                          const float *data,
+                                          unsigned int numFrames,
+                                          unsigned int numSamples);
+
+  /// @brief Push float32 PCM frames scheduled at [engineTime] (like
+  /// playScheduled).
+  unsigned int pushRealtimeScheduledFloat32(unsigned int hash,
+                                            double engineTime,
+                                            const float *data,
+                                            unsigned int numFrames,
+                                            unsigned int numSamples);
+
+  unsigned int getRealtimeAvailableToRead(unsigned int hash);
+  unsigned int getRealtimeAvailableToWrite(unsigned int hash);
+  unsigned int getRealtimeUnderrunCount(unsigned int hash);
+
+  /// @brief Create a custom DSP AudioSource driven by a synchronous C/Wasm/JS
+  /// callback on the audio thread.
+  PlayerErrors createCustomAudioSource(
+      unsigned int &hash, unsigned int sampleRate, unsigned int channels,
+      SoLoudSourceDspCallback_t callback, void *userData,
+      SoLoudSourceInstanceLifecycleCallback_t lifecycleCallback,
+      bool singleInstance, const char *webJsCallbackName = nullptr,
+      bool mustTickWhenInaudible = true, bool killWhenInaudible = false);
 
   /// @brief Load a new sound which will be generated by the given params.
   /// @param waveform the type of [SoLoud::Soloud::WAVEFORM] to generate.
@@ -409,8 +512,10 @@ public:
   float getRelativePlaySpeed(unsigned int handle);
 
   /// @brief Gets the approximate volume for output per output channel (i.e, per speaker).
+  /// It is the peak of the latest window analyzed by the engine output's
+  /// visualization, so it needs visualization enabled.
   /// @param channel the channel.
-  /// @return zero for invalid parameters.
+  /// @return zero for invalid parameters or while visualization is disabled.
   float getApproximateVolume(unsigned int channel);
 
   /// @brief Play already loaded sound identified by [soundHash].
@@ -500,6 +605,10 @@ public:
   /// @brief Estimated output latency in seconds (ring depth plus one device
   /// period). 0 when the render-ahead ring is disabled.
   double getOutputLatency();
+
+  /// @brief Estimated hardware presentation latency in seconds (DAC, OS
+  /// buffers, driver queues, and route delays).
+  double getHardwareOutputLatency();
 
   /// @brief Whether the render-ahead ring (retroactive re-mix prerequisite)
   /// is active. Set at [init] time via `renderAheadFrames`.
@@ -768,6 +877,16 @@ public:
   /// @return If not found, return nullptr.
   ActiveSound *findByHash(unsigned int hash);
 
+  /// @brief Find a sound by its hash without acquiring sounds_mutex.
+  /// Caller MUST hold sounds_mutex.
+  ActiveSound *findByHashUnlocked(unsigned int hash);
+
+  /// @brief Look up a RealtimeStream by hash without acquiring sounds_mutex.
+  /// Caller MUST hold sounds_mutex for as long as it uses the returned
+  /// pointer: disposeSound() can otherwise destroy the stream underneath it.
+  /// Returns nullptr if not found or not a realtime stream.
+  SoLoud::RealtimeStream *findRealtimeStreamUnlocked(unsigned int hash);
+
   /////////////////////////////////////////
   /// voice groups
   /////////////////////////////////////////
@@ -1011,9 +1130,24 @@ public:
   PlayerErrors busPlayOnEngine(unsigned int busId, float volume, bool paused,
                                unsigned int &handle);
   int busSetChannels(unsigned int busId, unsigned int channels);
-  void busSetVisualizationEnable(unsigned int busId, bool enable);
-  float *busCalcFFT(unsigned int busId);
-  float *busGetWave(unsigned int busId);
+  /// @brief Enable or disable the visualization of a bus: what is mixed into
+  /// the bus, before its own filters, volume and pan. It belongs to the bus,
+  /// so it survives the bus voice being stopped and played again.
+  /// @param busId the bus ID.
+  /// @param enabled whether visualization is enabled.
+  /// @param windowSize power of two from 128 to 8192.
+  /// @param kind wave only, FFT only, or wave and FFT.
+  /// @param channel VISUALIZATION_CHANNEL_MERGED, VISUALIZATION_CHANNEL_ALL,
+  /// or a channel index.
+  /// @return [noError] if success, [busIdNotFound] if [busId] is unknown,
+  /// [invalidParameter] for invalid settings (nothing changes then),
+  /// [outOfMemory] if the buffers could not be allocated.
+  PlayerErrors busSetVisualizationEnabled(unsigned int busId, bool enabled,
+                                          int windowSize,
+                                          VisualizationKind kind, int channel);
+  bool busIsVisualizationEnabled(unsigned int busId);
+  /// @brief The peak of [channel] over the latest window analyzed by the bus
+  /// visualization, or zero if it is disabled or [busId] is unknown.
   float busGetApproximateVolume(unsigned int busId, unsigned int channel);
   void busAnnexSound(unsigned int busId, unsigned int voiceHandle);
   unsigned int busGetActiveVoiceCount(unsigned int busId);
@@ -1041,8 +1175,35 @@ public:
   unsigned int mChannels;
 
 private:
+  // Their buffering checks lock sounds_mutex (see their checkBuffering()).
+  friend class SoLoud::BufferStream;
+  friend class SoLoud::PullBufferStream;
+
+  /// @brief Run [work] holding sounds_mutex: a BufferStream's buffering check,
+  /// which reads and updates its sound's handle list, from a caller that may
+  /// not hold it yet. With [cancelled], for a thread that must not wait for
+  /// the mutex unconditionally (a BufferStream's background decode thread,
+  /// which a reset or a disposal stops and joins while holding it): tries the
+  /// mutex until it gets it or [cancelled] returns true, and checks
+  /// [cancelled] again once it holds it.
+  /// @return whether [work] ran.
+  bool runWithSoundsLock(const std::function<void()> &work,
+                         const std::function<bool()> &cancelled = nullptr);
+
+  /// Looks the pull stream [hash] up under sounds_mutex and pins it (see
+  /// PullBufferStream::pin()) into [stream]; the caller unpins it.
+  PlayerErrors pinPullBufferStream(unsigned int hash,
+                                   SoLoud::PullBufferStream *&stream);
+  /// Waits, without sounds_mutex, until no call pins [sound]'s pull stream:
+  /// a disposal, which has removed the sound, calls it before destroying it.
+  void waitForPinnedCalls(ActiveSound *sound);
+
   std::mutex remove_handle_mutex;
-  mutable std::recursive_mutex sounds_mutex; // Protects the sounds vector (recursive to avoid deadlock in destructors)
+  mutable std::recursive_mutex sounds_mutex; // Protects sounds, mSoundByHash, and mSoundByHandle
+  std::unordered_map<unsigned int, ActiveSound *> mSoundByHash;
+  std::unordered_map<SoLoud::handle, ActiveSound *> mSoundByHandle;
+  alignas(64) float mFftData[256] = {};
+  alignas(64) float mWaveData[256] = {};
   unsigned int mBufferSize;
 
   std::map<unsigned int, BusData> busMap;

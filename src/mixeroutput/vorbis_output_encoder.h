@@ -32,6 +32,12 @@ class VorbisOutputEncoder : public MixerOutputEncoder {
   void *m_vb = nullptr;
   void *m_oy = nullptr;
   void *m_os = nullptr;
+  bool m_viInited = false;
+  bool m_vcInited = false;
+  bool m_vdInited = false;
+  bool m_vbInited = false;
+  bool m_oyInited = false;
+  bool m_osInited = false;
 
   void clearState();
   bool writeHeaders();

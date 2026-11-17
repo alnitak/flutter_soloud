@@ -1,5 +1,7 @@
 // ignore_for_file: public_member_api_docs
 
+import 'dart:convert';
+
 import 'package:flutter_soloud/src/bindings/js_extension.dart';
 import 'package:flutter_soloud/src/metadata.dart';
 
@@ -69,13 +71,14 @@ abstract class _MetadataJS {
   final int ptr;
 
   String _readString(int offset, int length) {
+    // The native side stores UTF-8, and 'i8' reads each byte signed.
     final bytes = <int>[];
     for (var i = 0; i < length; i++) {
-      final charCode = wasmGetI32Value(ptr + offset + i, 'i8');
-      if (charCode == 0) break;
-      bytes.add(charCode);
+      final byte = wasmGetI32Value(ptr + offset + i, 'i8') & 0xff;
+      if (byte == 0) break;
+      bytes.add(byte);
     }
-    return String.fromCharCodes(bytes);
+    return utf8.decode(bytes, allowMalformed: true);
   }
 }
 

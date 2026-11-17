@@ -48,6 +48,7 @@ namespace SoLoud
 		// exactly mOffset; snapshot/restore make the source re-mixable.
 		virtual SourceStateSnapshot *captureSourceState();
 		virtual void restoreSourceState(SourceStateSnapshot *aState);
+		virtual bool captureSourceStateInto(SourceStateSnapshot *aState);
 	};
 
 	class Wav : public AudioSource
@@ -57,6 +58,7 @@ namespace SoLoud
 		result loadmp3(MemoryFile *aReader);
 		result loadflac(MemoryFile *aReader);
 		result loadnative(MemoryFile *aReader);
+		result loadnativefile(const char *aFilename);
 		result testAndLoadFile(MemoryFile *aReader);
 	public:
 		float *mData;

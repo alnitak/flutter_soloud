@@ -32,6 +32,8 @@ freely, subject to the following restrictions:
 #include "dr_wav.h"
 #include "soloud_wavstream.h"
 #include "soloud_file.h"
+#include "../../../../simd/simd_pcm.h"
+#include <vector>
 #if !defined(NO_XIPH_LIBS)
 #include "mb_ogg.h"
 #endif
@@ -134,8 +136,13 @@ namespace SoLoud
 		if (aParent->mFilename)
 		{
 			DiskFile *df = new DiskFile;
+			if (df->open(aParent->mFilename) != SO_NO_ERROR)
+			{
+				delete df;
+				mFile = 0;
+				return;
+			}
 			mFile = df;
-			df->open(aParent->mFilename);
 		}
 		else
 		if (aParent->mStreamFile)
@@ -167,7 +174,11 @@ namespace SoLoud
 			if (mParent->mFiletype == WAVSTREAM_OGG)
 			{
 				mCodec.mOgg = new MBOggDecoder();
-				if (!mCodec.mOgg->open(mFile))
+				// ###### flutter_soloud local patch (chained opus length) ######
+				// A voice never asks its decoder for the length, which
+				// WavStream::loadogg() got once: skip the scan that finds it,
+				// all of a chained Opus file, at every play().
+				if (!mCodec.mOgg->open(mFile, false))
 				{
 					delete mCodec.mOgg;
 					mCodec.mOgg = 0;
@@ -253,7 +264,7 @@ namespace SoLoud
 	}
 
 	unsigned int WavStreamInstance::getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize)
-	{			
+	{
 		unsigned int offset = 0;
 		float tmp[512 * MAX_CHANNELS];
 		if (mFile == NULL)
@@ -262,24 +273,37 @@ namespace SoLoud
 		{
 		case WAVSTREAM_FLAC:
 			{
-				unsigned int i, j, k;
+				const unsigned int srcCh = mCodec.mFlac->channels;
+				std::vector<float> bigTmp;
+				if (srcCh > MAX_CHANNELS)
+					bigTmp.resize(512 * srcCh);
+				float *decodeBuf = srcCh > MAX_CHANNELS ? bigTmp.data() : tmp;
 
-				for (i = 0; i < aSamplesToRead; i += 512)
+				for (unsigned int i = 0; i < aSamplesToRead; i += 512)
 				{
 					unsigned int blockSize = (aSamplesToRead - i) > 512 ? 512 : aSamplesToRead - i;
-					unsigned int got = (unsigned int)drflac_read_pcm_frames_f32(mCodec.mFlac, blockSize, tmp);
-
-					for (j = 0; j < got; j++)
+					unsigned int got = (unsigned int)drflac_read_pcm_frames_f32(mCodec.mFlac, blockSize, decodeBuf);
+					offset += got;
+					if (got > 0)
 					{
-						for (k = 0; k < mChannels; k++)
+						if (srcCh == mChannels)
 						{
-							aBuffer[k * aBufferSize + offset + j] = tmp[j * mCodec.mFlac->channels + k];
+							deinterleaveFloatsToPlanar(decodeBuf, aBuffer + i, aBufferSize, got, mChannels);
+						}
+						else
+						{
+							for (unsigned int j = 0; j < got; j++)
+							{
+								for (unsigned int k = 0; k < mChannels; k++)
+								{
+									aBuffer[k * aBufferSize + i + j] = decodeBuf[j * srcCh + k];
+								}
+							}
 						}
 					}
-					offset += got;
 					if (got < blockSize)
 					{
-						mStreamEnded = true;
+						mStreamEnded = mFile->eof() != 0;
 						break;
 					}
 				}
@@ -289,24 +313,37 @@ namespace SoLoud
 			break;
 		case WAVSTREAM_MP3:
 			{
-				unsigned int i, j, k;
+				const unsigned int srcCh = mCodec.mMp3->channels;
+				std::vector<float> bigTmp;
+				if (srcCh > MAX_CHANNELS)
+					bigTmp.resize(512 * srcCh);
+				float *decodeBuf = srcCh > MAX_CHANNELS ? bigTmp.data() : tmp;
 
-				for (i = 0; i < aSamplesToRead; i += 512)
+				for (unsigned int i = 0; i < aSamplesToRead; i += 512)
 				{
 					unsigned int blockSize = (aSamplesToRead - i) > 512 ? 512 : aSamplesToRead - i;
-					unsigned int got = (unsigned int)drmp3_read_pcm_frames_f32(mCodec.mMp3, blockSize, tmp);
-
-					for (j = 0; j < got; j++)
+					unsigned int got = (unsigned int)drmp3_read_pcm_frames_f32(mCodec.mMp3, blockSize, decodeBuf);
+					offset += got;
+					if (got > 0)
 					{
-						for (k = 0; k < mChannels; k++)
+						if (srcCh == mChannels)
 						{
-							aBuffer[k * aBufferSize + offset + j] = tmp[j * mCodec.mMp3->channels + k];
+							deinterleaveFloatsToPlanar(decodeBuf, aBuffer + i, aBufferSize, got, mChannels);
+						}
+						else
+						{
+							for (unsigned int j = 0; j < got; j++)
+							{
+								for (unsigned int k = 0; k < mChannels; k++)
+								{
+									aBuffer[k * aBufferSize + i + j] = decodeBuf[j * srcCh + k];
+								}
+							}
 						}
 					}
-					offset += got;
 					if (got < blockSize)
 					{
-						mStreamEnded = true;
+						mStreamEnded = mFile->eof() != 0 || (mCodec.mMp3 && mCodec.mMp3->atEnd != 0);
 						break;
 					}
 				}
@@ -317,16 +354,13 @@ namespace SoLoud
 #if !defined(NO_XIPH_LIBS)
 		case WAVSTREAM_OGG:
 			{
-				unsigned int i;
-				for (i = 0; i < aSamplesToRead; i += 512)
+				if (aSamplesToRead > 0)
 				{
-					unsigned int blockSize = (aSamplesToRead - i) > 512 ? 512 : aSamplesToRead - i;
-					unsigned int got = mCodec.mOgg->read(aBuffer + i, blockSize, aBufferSize);
+					unsigned int got = mCodec.mOgg->read(aBuffer, aSamplesToRead, aBufferSize);
 					offset += got;
 					if (got == 0)
 					{
 						mStreamEnded = true;
-						mOffset += offset;
 						return offset;
 					}
 				}
@@ -337,24 +371,37 @@ namespace SoLoud
 #endif
 		case WAVSTREAM_WAV:
 			{
-				unsigned int i, j, k;
+				const unsigned int srcCh = mCodec.mWav->channels;
+				std::vector<float> bigTmp;
+				if (srcCh > MAX_CHANNELS)
+					bigTmp.resize(512 * srcCh);
+				float *decodeBuf = srcCh > MAX_CHANNELS ? bigTmp.data() : tmp;
 
-				for (i = 0; i < aSamplesToRead; i += 512)
+				for (unsigned int i = 0; i < aSamplesToRead; i += 512)
 				{
 					unsigned int blockSize = (aSamplesToRead - i) > 512 ? 512 : aSamplesToRead - i;
-					unsigned int got = (unsigned int)drwav_read_pcm_frames_f32(mCodec.mWav, blockSize, tmp);
-
-					for (j = 0; j < got; j++)
+					unsigned int got = (unsigned int)drwav_read_pcm_frames_f32(mCodec.mWav, blockSize, decodeBuf);
+					offset += got;
+					if (got > 0)
 					{
-						for (k = 0; k < mChannels; k++)
+						if (srcCh == mChannels)
 						{
-							aBuffer[k * aBufferSize + offset + j] = tmp[j * mCodec.mWav->channels + k];
+							deinterleaveFloatsToPlanar(decodeBuf, aBuffer + i, aBufferSize, got, mChannels);
+						}
+						else
+						{
+							for (unsigned int j = 0; j < got; j++)
+							{
+								for (unsigned int k = 0; k < mChannels; k++)
+								{
+									aBuffer[k * aBufferSize + i + j] = decodeBuf[j * srcCh + k];
+								}
+							}
 						}
 					}
-					offset += got;
 					if (got < blockSize)
 					{
-						mStreamEnded = true;
+						mStreamEnded = mFile->eof() != 0;
 						break;
 					}
 				}
@@ -370,8 +417,8 @@ namespace SoLoud
 	{
 		if (mCodec.mOgg)
 		{
-			int pos = (int)floor(mBaseSamplerate * aSeconds);
-			double newPosition;
+			int pos = (int)floor(mBaseSamplerate * aSeconds + 0.5);
+			mStreamEnded = false;
 
 			switch (mParent->mFiletype)
 			{
@@ -379,16 +426,13 @@ namespace SoLoud
 			case WAVSTREAM_OGG:
 				mCodec.mOgg->seek(pos);
 				mOffset = pos;
-				newPosition = float(pos / mBaseSamplerate);
-				mStreamPosition = newPosition;
-				mStreamEnded = false;
+				mStreamPosition = float(pos / mBaseSamplerate);
 				return 0;
 #endif
 			case WAVSTREAM_FLAC:
 				drflac_seek_to_pcm_frame(mCodec.mFlac, pos);
 				mOffset = pos;
 				mStreamPosition = float(pos / mBaseSamplerate);
-				mStreamEnded = false;
 				return 0;
 			case WAVSTREAM_MP3:
 				// When using TYPE_WAVSTREAM for mp3 and seeking backward,
@@ -400,13 +444,11 @@ namespace SoLoud
 				drmp3_seek_to_pcm_frame(mCodec.mMp3, pos);
 				mOffset = pos;
 				mStreamPosition = float(pos / mBaseSamplerate);
-				mStreamEnded = false;
 				return 0;
 			case WAVSTREAM_WAV:
 				drwav_seek_to_pcm_frame(mCodec.mWav, pos);
 				mOffset = pos;
 				mStreamPosition = float(pos / mBaseSamplerate);
-				mStreamEnded = false;
 				return 0;
 			default:
 				break;
@@ -460,16 +502,26 @@ namespace SoLoud
 
 	bool WavStreamInstance::hasEnded()
 	{
-		if (mStreamEnded)
+		// ###### flutter_soloud local patch (wavstream missing file) ######
+		// No file: it could not be opened (deleted or moved since the source
+		// was loaded), or no decoder accepted it. getAudio() plays nothing,
+		// so the voice ends instead of staying silent forever.
+		if (mFile == NULL)
 		{
 			return 1;
 		}
 		// For OGG streams, use the stream ended flag since mSampleCount may not
 		// match actual decoded samples (empty final page in OGG), and for OGG/FLAC
 		// the STREAMINFO total_samples can be 0 so we must not check mOffset >= mSampleCount.
-		if (mParent->mFiletype == WAVSTREAM_OGG)
+		// ###### flutter_soloud local patch (wavstream end of file) ######
+		// The other formats set the flag too, when a read comes up short at
+		// the end of the file: the file was truncated while the voice played,
+		// or holds less than its header says, and mOffset would never reach
+		// mSampleCount. A short read before the end of the file, at a frame
+		// that does not decode, is not the end: the next read goes on after it.
+		if (mParent->mFiletype == WAVSTREAM_OGG || mStreamEnded)
 		{
-			return 0;
+			return mStreamEnded;
 		}
 		if (mOffset >= mParent->mSampleCount)
 		{
@@ -521,6 +573,7 @@ namespace SoLoud
 	result WavStream::loadogg(File * fp)
 	{
 #if defined(NO_XIPH_LIBS)
+		(void)fp;
         printf("[WavStream::loadogg] NO_XIPH_LIBS defined, returning FILE_LOAD_FAILED\n");
 		return FILE_LOAD_FAILED;
 #else
@@ -629,7 +682,11 @@ namespace SoLoud
 		mSampleCount = 0;
 
 		if (aData == NULL || aDataLen == 0)
+		{
+			if (aTakeOwnership && !aCopy && aData != NULL)
+				delete[] aData;
 			return INVALID_PARAMETER;
+		}
 
 		MemoryFile *mf = new MemoryFile();
 		int res = mf->openMem(aData, aDataLen, aCopy, aTakeOwnership);

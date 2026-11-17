@@ -13,7 +13,10 @@
 //   ./test/run_render_ring_device_test.sh
 
 #include "soloud.h"
+#include "soloud_biquadresonantfilter.h"
 #include "soloud_wav.h"
+
+#include <atomic>
 
 #include <cmath>
 #include <cstdio>
@@ -108,8 +111,42 @@ int main()
     check(soloud.getEngineTime() > before,
           "engine time stalled across retroactive calls");
 
+    // The device callback only reads the ring; a render worker mixes.
+    check(soloud.isRenderWorkerRunning_internal(),
+          "the render worker should be running with a real device");
+
+    // An API thread rewriting the window (retroactive play/stop/volume)
+    // while the worker mixes, the device reads and a global filter runs
+    // after the ring with its parameter changing: no data race (run under
+    // -fsanitize=thread) and the clock keeps moving.
+    SoLoud::BiquadResonantFilter lowpass;
+    lowpass.setParams(SoLoud::BiquadResonantFilter::LOWPASS, 4000.0f, 1.0f);
+    soloud.setGlobalFilter(0, &lowpass);
+    std::atomic<bool> stopApi{false};
+    std::thread api([&] {
+        int i = 0;
+        while (!stopApi.load()) {
+            SoLoud::handle h2 = soloud.play(wav, 0.3f);
+            soloud.setVolume(h, (i & 1) ? 0.4f : 0.6f);
+            soloud.setFilterParameter(0, 0, SoLoud::BiquadResonantFilter::FREQUENCY,
+                                      (i & 1) ? 2000.0f : 3000.0f);
+            soloud.stop(h2);
+            ++i;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    });
+    const SoLoud::time stressStart = soloud.getEngineTime();
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    stopApi.store(true);
+    api.join();
+    check(soloud.getEngineTime() > stressStart + 0.2,
+          "engine time stalled while the API thread rewrote the window");
+    soloud.setGlobalFilter(0, nullptr);
+
     soloud.stopAll();
     soloud.deinit();
+    check(!soloud.isRenderWorkerRunning_internal(),
+          "deinit() must stop the render worker");
 
     if (gFailures == 0)
     {

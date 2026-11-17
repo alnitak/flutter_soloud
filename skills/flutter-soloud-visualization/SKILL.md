@@ -1,14 +1,14 @@
 ---
 name: flutter-soloud-visualization
-version: 1
-description: Teaches flutter_soloud's two visualization paths — live FFT/wave data via setVisualizationEnabled + the audioVisualizationEvents stream, and offline waveform extraction via readSamplesFromFile/readSamplesFromMem (plus getApproximateVolume for VU meters). Use when the user asks for a spectrum/waveform visualizer, audio-reactive UI, VU/level meter, or a static waveform preview of an audio file.
+version: 2
+description: Teaches flutter_soloud's two visualization paths — live FFT/wave data via setVisualizationEnabled + the audioVisualizationEvents stream (of the engine output, or of one mixing bus via Bus.setVisualizationEnabled), and offline waveform extraction via readSamplesFromFile/readSamplesFromMem (plus getApproximateVolume / Bus.getChannelVolume for VU meters). Use when the user asks for a spectrum/waveform visualizer, audio-reactive UI, VU/level meter, a per-group (music/SFX) visualizer, or a static waveform preview of an audio file.
 ---
 
 # Visualization in flutter_soloud
 
 flutter_soloud has two unrelated ways to get drawable sample data out of the SoLoud engine:
 
-1. **Live visualization** — the engine emits `AudioVisualizationData` packets (waveform and/or FFT magnitudes of the *mixed output*) on a broadcast stream, at mixer rate. For real-time spectrum/waveform widgets.
+1. **Live visualization** — the engine emits `AudioVisualizationData` packets (waveform and/or FFT magnitudes of the *mixed output*, or of what plays through one mixing bus) on a broadcast stream, at mixer rate. For real-time spectrum/waveform widgets.
 2. **Offline waveform reading** — `readSamplesFromFile` / `readSamplesFromMem` decode an audio file in a background isolate and return a fixed number of equally-spaced samples. For static waveform previews (SoundCloud-style).
 
 Pick the right one. The live stream cannot give you the waveform of a not-yet-played file; the offline readers cannot follow playback.
@@ -121,8 +121,27 @@ All on `SoLoud.instance` (singleton), imported from `package:flutter_soloud/flut
 - `AudioVisualizationData` — `channelCount`, `wave` (`List<Float32List>`, one per channel, length `windowSize`, values `[-1.0, 1.0]`), `fft` (`List<Float32List>`, one per channel, length `windowSize / 2`, magnitudes `[0.0, 1.0]`). Either list is **empty** if its kind is disabled. `waveData` / `fftData` are nullable convenience getters for `wave.first` / `fft.first`.
 - `VisualizationKind` — real enum: `wave`, `fft`, `waveAndFft`.
 - `VisualizationChannel` — **not an enum**, an `abstract final class` of int constants: `merged = -1` (downmix to mono), `all = -2` (per-channel lists), or pass any 0-based channel index (`0` = left). There is no `VisualizationChannel.values`; don't switch over it.
-- `void setFftSmoothing(double smooth)` — exponential decay on falling FFT bins, `0.0`–`1.0`. Rise is never smoothed.
-- `double getApproximateVolume(int channel)` — instantaneous overall output volume per *output* channel (speaker). Poll it on a `Timer` for a VU meter. Returns 0 for invalid channels.
+- `void setFftSmoothing(double smooth)` — exponential decay on falling FFT bins, `0.0`–`1.0`. Rise is never smoothed. Shared by the engine output and every bus, like `setFftDecibelRange`.
+- `double getApproximateVolume(int channel)` — peak of the latest analyzed window per *output* channel (speaker). **Needs `setVisualizationEnabled(true)`**, reads 0 otherwise. Poll it on a `Timer` for a VU meter. Returns 0 for invalid channels.
+
+### Per mixing bus
+
+The same analyzer, for what plays through one `Bus` (see skill `flutter-soloud-mixing-bus`):
+
+```dart
+final musicBus = SoLoud.instance.createMixingBus(name: 'music')..playOnEngine();
+musicBus.setVisualizationEnabled(true, kind: VisualizationKind.fft);
+final sub = musicBus.audioVisualizationEvents.listen((data) {
+  // data.fftData of the music only
+});
+final left = musicBus.getChannelVolume(0); // peak, like getApproximateVolume
+```
+
+- `bus.setVisualizationEnabled(bool enabled, {windowSize, kind, channel})`, `bus.getVisualizationEnabled()`, `bus.audioVisualizationEvents` — same options and packets as the engine-wide ones. Throws `SoLoudCppException` on bad params or before `init()`.
+- The data is **pre-bus-filter, pre-bus-volume, pre-bus-pan**: what is mixed *into* the bus. To visualize after the bus's filters, play it through an outer bus and visualize that one.
+- **Nothing is emitted while nothing is mixed through the bus**: before `playOnEngine()`, while the bus (or an outer bus) is paused or stopped, or the device is stopped. A playing bus with no sound in it emits **silent** packets — that is how to tell "silence" from "not playing".
+- A bus mixes at 44100 Hz whatever the engine rate: FFT bin `k` is at `k * 44100 / windowSize` Hz.
+- The visualization belongs to the bus: it survives `stopAll()` and replaying the bus, and ends on `bus.setVisualizationEnabled(false)`, `bus.dispose()` (which also closes the stream) or `deinit()`.
 
 ### Offline
 
@@ -132,9 +151,9 @@ All on `SoLoud.instance` (singleton), imported from `package:flutter_soloud/flut
 
 ### Divergences from audioplayers / just_audio / web Audio API assumptions
 
-- No `AudioPlayer`-style per-sound analyser. Live visualization taps the **whole mixed engine output** (all voices, post-filter), not an individual track.
+- No `AudioPlayer`-style per-sound analyser. Live visualization taps the **whole mixed engine output** (all voices, post-filter), or a whole mixing bus — route a single track through its own bus to visualize it alone.
 - There is no `onPositionChanged`-style callback to hook FFT onto; you enable the analyzer once and consume a stream.
-- `getApproximateVolume` is per **output channel**, not per voice — there is no built-in per-sound level meter.
+- `getApproximateVolume` is per **output channel**, not per voice — for a per-group level meter use a bus and `bus.getChannelVolume`.
 - The offline readers don't require `init()` and don't need the sound loaded via `loadMem`/`loadAsset` first — they decode independently (asset bytes via `rootBundle.load` are fine).
 
 ## Traps

@@ -45,7 +45,7 @@ namespace SoLoud
 			SAMPLERATE,
 			BITDEPTH
 		};
-		LofiChannelData mChannelData[2];
+		LofiChannelData mChannelData[MAX_CHANNELS];
 		
 		LofiFilter *mParent;
 	public:

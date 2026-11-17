@@ -10,10 +10,6 @@ class ParametricEq;
 
 class ParametricEqInstance : public SoLoud::FilterInstance {
   ParametricEq *mParent;
-  // float* mBuffer;          // Temporary buffer for FFT processing
-  // float* mWindow;          // Window function coefficients
-  // unsigned int mBufferSize;
-  // unsigned int mBufferPos;
   float *mInputBuffer[MAX_CHANNELS];
   float *mMixBuffer[MAX_CHANNELS];
   float *mTemp;
@@ -24,20 +20,36 @@ class ParametricEqInstance : public SoLoud::FilterInstance {
   unsigned int mMixOffset[MAX_CHANNELS];
   unsigned int mReadOffset[MAX_CHANNELS];
 
-  // Band information precomputed for fast lookup
   int mBands;
-  std::vector<float> mBandCenter;
-  std::vector<float> mBandBoundary; // size = mBands+1, boundaries between bands
+  // This instance's STFT window. Not read from the shared parent: changing
+  // the window size rebuilds only this instance's buffers.
+  int mWinSize = 0;
+  int mWinHalf = 0;
+  int mWinTwice = 0;
+  float mFFTScale = 0.0f;
+  bool mUseRealFFT = true;
+  std::vector<float> mHannWindow;
+  std::vector<float> mLogBinIndex;
+  std::vector<float> mBinGainTable;
+  float mCachedSampleRate = 0.0f;
+  bool mGainTableDirty = true;
+  bool mHasActiveBands = false;
 
   // Helper functions for FFT processing
   void comp2MagPhase(float *aFFTBuffer, unsigned int aSamples);
   void magPhase2Comp(float *aFFTBuffer, unsigned int aSamples);
 
-  // Initialize band parameters (centers, boundaries, gains)
+  // Initialize band parameters (gains, frequencies, Q factors)
   void initBandParameters();
+
+  // Set this instance's window size and the values derived from it.
+  void setWindowSize(int aWindowSize);
 
   // Initialize FFT setup and allocate buffers
   void initFFTBuffers();
+
+  // Recompute cached per-bin gain table when parameters or sample rate change
+  void updateBinGainTable(unsigned int aSamples, float aSamplerate);
 
 public:
   ParametricEqInstance(ParametricEq *aParent);
@@ -53,13 +65,18 @@ public:
 
 class ParametricEq : public SoLoud::Filter {
 public:
-  // Wet param is index 0 in the filter param list; band gains start at index 1
-  unsigned int mBands;      // number of EQ bands (user configurable)
+  static constexpr unsigned int MAX_BANDS = 64;
+  static constexpr unsigned int BAND_GAIN_OFFSET = 3;
+  static constexpr unsigned int BAND_FREQ_OFFSET = 3 + MAX_BANDS;   // 67
+  static constexpr unsigned int BAND_Q_OFFSET = 3 + MAX_BANDS * 2;  // 131
+  static constexpr unsigned int NUM_PARAMS = 3 + MAX_BANDS * 3;     // 195
+
+  unsigned int mBands;      // number of active EQ bands (user configurable)
   float mWet;
-  std::vector<float> mGain; // per-band gain
-  std::vector<float> mFreq; // per-band center frequency
-  int mSTFT_WINDOW_SIZE; // Increased for better frequency resolution. Must be a
-                         // power of 2.
+  std::vector<float> mGain; // per-band gain (size MAX_BANDS)
+  std::vector<float> mFreq; // per-band center frequency (size MAX_BANDS)
+  std::vector<float> mQ;    // per-band Q factor (size MAX_BANDS)
+  int mSTFT_WINDOW_SIZE;    // FFT window size (power of 2, 32-4096)
   int mSTFT_WINDOW_HALF;
   int mSTFT_WINDOW_TWICE;
   float mFFT_SCALE;

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include "../simd/simd_pcm.h"
+
 bool WavOutputEncoder::initialize(int sampleRate, int channels) {
   m_sampleRate = sampleRate;
   m_channels = channels;
@@ -21,16 +23,30 @@ bool WavOutputEncoder::encode(const float *input, size_t samples,
     return false;
   }
 
-  m_inputBuffer.resize(samples);
-  for (size_t i = 0; i < samples; ++i) {
-    const float clamped = std::max(-1.0f, std::min(1.0f, input[i]));
-    m_inputBuffer[i] = static_cast<int16_t>(clamped * 32767.0f);
-  }
-
   m_totalSamples += samples;
-
   output.resize(samples * sizeof(int16_t));
-  std::memcpy(output.data(), m_inputBuffer.data(), output.size());
+
+  if ((reinterpret_cast<uintptr_t>(output.data()) & 1u) == 0u) {
+    auto *dst = reinterpret_cast<int16_t *>(output.data());
+    size_t done = 0;
+    while (done < samples) {
+      const unsigned int chunk = static_cast<unsigned int>(
+          (samples - done) > 0x40000000u ? 0x40000000u : (samples - done));
+      SoLoud::convertFloatsToInt16Clamped(input + done, dst + done, chunk);
+      done += chunk;
+    }
+  } else {
+    m_inputBuffer.resize(samples);
+    size_t done = 0;
+    while (done < samples) {
+      const unsigned int chunk = static_cast<unsigned int>(
+          (samples - done) > 0x40000000u ? 0x40000000u : (samples - done));
+      SoLoud::convertFloatsToInt16Clamped(input + done,
+                                          m_inputBuffer.data() + done, chunk);
+      done += chunk;
+    }
+    std::memcpy(output.data(), m_inputBuffer.data(), output.size());
+  }
   return true;
 }
 

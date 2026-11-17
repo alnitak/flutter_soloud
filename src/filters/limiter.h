@@ -44,7 +44,13 @@ class LimiterInstance : public SoLoud::FilterInstance {
   int mChannels;       // cached channel count
   int mWritePos;       // ring index for the newest sample
   float mSmoothedGain; // gain after release smoothing
-  float mReleaseCoef;  // one-pole release coefficient (recomputed per block)
+  float mReleaseCoef;  // one-pole release coefficient
+  float mCachedThresholdDb = 1e9f;
+  float mCachedCeilingDb = 1e9f;
+  float mCachedReleaseMs = -1.0f;
+  float mCachedSamplerate = 0.0f;
+  float mDriveLin = 1.0f;
+  float mCeilingLin = 1.0f;
 
   void resizeBuffers(int lookaheadSamples, int channels);
 

@@ -3,6 +3,7 @@
 #ifndef FLUTTER_SOLOUD_DART_CALLBACK_GATE_H
 #define FLUTTER_SOLOUD_DART_CALLBACK_GATE_H
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <shared_mutex>
@@ -60,8 +61,10 @@ namespace dart_callbacks
       std::shared_mutex mutex;
       /// The only generation allowed to run, or kNoGeneration when retired.
       uint64_t liveGeneration = kNoGeneration;
-      /// Monotonic source of generations. Never reused.
-      uint64_t lastGeneration = kNoGeneration;
+      /// Monotonic source of generations. Never reused. Only advanced with
+      /// the gate held exclusively, but atomic so lastClaimedGeneration() can
+      /// read it without the gate.
+      std::atomic<uint64_t> lastGeneration{kNoGeneration};
       /// Which FlutterEngine published the live registration.
       int64_t ownerEngineId = kNoEngineId;
     };
@@ -180,6 +183,16 @@ namespace dart_callbacks
   private:
     std::unique_lock<std::shared_mutex> mLock;
   };
+
+  /// The generation of the latest registration claimed, live or since retired.
+  ///
+  /// Read without the gate, so code that retired a registration and released
+  /// the gate can still tell, under locks of its own, whether a newer one has
+  /// been claimed since: the value it read while retiring has moved on.
+  inline uint64_t lastClaimedGeneration()
+  {
+    return detail::gate().lastGeneration.load(std::memory_order_acquire);
+  }
 
   /// The generation a source-owned registration must record when it stores its
   /// callables. kNoGeneration when nothing is live, which leaves the source

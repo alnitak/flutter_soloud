@@ -22,9 +22,11 @@ freely, subject to the following restrictions:
    distribution.
 */
 
+#include <math.h>
 #include <string.h>
 #include "soloud.h"
 #include "soloud_eqfilter.h"
+#include "../../../simd/soloud_simd.h"
 
 
 namespace SoLoud
@@ -58,23 +60,58 @@ namespace SoLoud
 
 	void EqFilterInstance::fftFilterChannel(float *aFFTBuffer, unsigned int aSamples, float /*aSamplerate*/, time /*aTime*/, unsigned int /*aChannel*/, unsigned int /*aChannels*/)
 	{
-		comp2MagPhase(aFFTBuffer, aSamples / 2);
-		unsigned int p;		
-		for (p = 0; p < aSamples / 2; p++)
+		// Scaling interleaved (re, im) directly by 2 * gain is algebraically
+		// identical to comp2MagPhase -> *= gain -> magPhase2Comp while avoiding
+		// per-bin sqrt/atan2/sin/cos transcendentals.
+		const unsigned int halfBins = aSamples / 2;
+		const unsigned int bandWidth = aSamples / 16;
+		if (halfBins == 0 || bandWidth == 0)
 		{
-			int i = (int)floor(sqrt(p / (float)(aSamples / 2)) * (aSamples / 2));
-			int p2 = (i / (aSamples / 16));
+			memset(aFFTBuffer + aSamples, 0, sizeof(float) * aSamples);
+			return;
+		}
+		const float invHalf = 1.0f / (float)halfBins;
+		const float invBandWidth = 1.0f / (float)bandWidth;
+		unsigned int p = 0;
+		for (; p + 2 <= halfBins; p += 2)
+		{
+			float g[2];
+			for (unsigned int k = 0; k < 2; k++)
+			{
+				const unsigned int bin = p + k;
+				const int i = (int)floorf(sqrtf((float)bin * invHalf) * (float)halfBins);
+				int p2 = (int)(i / (int)bandWidth);
+				int p1 = p2 - 1;
+				int p0 = p1 - 1;
+				int p3 = p2 + 1;
+				if (p1 < 0) p1 = 0;
+				if (p0 < 0) p0 = 0;
+				if (p2 > 7) p2 = 7;
+				if (p3 > 7) p3 = 7;
+				const float v = (float)(i % (int)bandWidth) * invBandWidth;
+				g[k] = 2.0f * catmullrom(v, mParam[p0 + 1], mParam[p1 + 1], mParam[p2 + 1], mParam[p3 + 1]);
+			}
+			const auto vGain = soloud_simd::f32x4::make(g[0], g[0], g[1], g[1]);
+			soloud_simd::mul(soloud_simd::f32x4::loadu(aFFTBuffer + p * 2), vGain)
+				.storeu(aFFTBuffer + p * 2);
+		}
+		for (; p < halfBins; p++)
+		{
+			const int i = (int)floorf(sqrtf((float)p * invHalf) * (float)halfBins);
+			int p2 = (int)(i / (int)bandWidth);
 			int p1 = p2 - 1;
 			int p0 = p1 - 1;
 			int p3 = p2 + 1;
 			if (p1 < 0) p1 = 0;
 			if (p0 < 0) p0 = 0;
+			if (p2 > 7) p2 = 7;
 			if (p3 > 7) p3 = 7;
-			float v = (float)(i % (aSamples / 16)) / (float)(aSamples / 16);
-			aFFTBuffer[p * 2] *= catmullrom(v, mParam[p0 + 1], mParam[p1 + 1], mParam[p2 + 1], mParam[p3 + 1]);
+			const float v = (float)(i % (int)bandWidth) * invBandWidth;
+			const float gain = 2.0f * catmullrom(v, mParam[p0 + 1], mParam[p1 + 1], mParam[p2 + 1], mParam[p3 + 1]);
+			aFFTBuffer[p * 2] *= gain;
+			aFFTBuffer[p * 2 + 1] *= gain;
 		}
 		memset(aFFTBuffer + aSamples, 0, sizeof(float) * aSamples);
-		magPhase2Comp(aFFTBuffer, aSamples / 2);
 	}
 
 	result EqFilter::setParam(unsigned int aBand, float aVolume)

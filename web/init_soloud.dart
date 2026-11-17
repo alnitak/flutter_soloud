@@ -117,7 +117,7 @@ Future<void> initializeModule() async {
       print(msg);
       web.console.log(msg.toJS);
       await _loadScript(
-        '$_assetsBase/libflutter_soloud_plugin${useMt ? '_mt' : ''}.js',
+        '${_assetsBase}libflutter_soloud_plugin${useMt ? '_mt' : ''}.js',
       );
       if (moduleFactory == null) {
         throw StateError('Module_soloud not found after loading the glue.');

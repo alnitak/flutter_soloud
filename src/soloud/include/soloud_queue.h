@@ -47,6 +47,7 @@ namespace SoLoud
 	{
 	public:
 		Queue();
+		virtual ~Queue();
 		virtual QueueInstance *createInstance();
 		// Play sound through the queue
 		result play(AudioSource &aSound);

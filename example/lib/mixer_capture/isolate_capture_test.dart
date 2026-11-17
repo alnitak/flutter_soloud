@@ -5,8 +5,8 @@ import 'dart:developer' as dev;
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
+import 'package:material_ui/material_ui.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();

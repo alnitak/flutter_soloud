@@ -29,6 +29,11 @@ freely, subject to the following restrictions:
 #include <pthread.h>
 #include <unistd.h>
 #include <time.h>
+#if defined(__APPLE__)
+#include <pthread/qos.h>
+#elif defined(__linux__) && !defined(__EMSCRIPTEN__)
+#include <sys/resource.h>
+#endif
 #endif
 
 #if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
@@ -113,6 +118,7 @@ namespace SoLoud
 			HANDLE h = CreateThread(NULL,0,threadfunc,d,0,NULL);
             if (0 == h)
             {
+                delete d;
                 return 0;
             }
             ThreadHandleData *threadHandle = new ThreadHandleData;
@@ -125,13 +131,22 @@ namespace SoLoud
 			Sleep(aMSec);
 		}
 
+		void raiseCurrentThreadPriority()
+		{
+			SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+		}
+
         void wait(ThreadHandle aThreadHandle)
         {
+            if (!aThreadHandle)
+                return;
             WaitForSingleObject(aThreadHandle->thread, INFINITE);
         }
 
         void release(ThreadHandle aThreadHandle)
         {
+            if (!aThreadHandle)
+                return;
             CloseHandle(aThreadHandle->thread);
             delete aThreadHandle;
         }
@@ -271,6 +286,7 @@ namespace SoLoud
 #endif
 
 			pthread_mutex_init(mutex, &attr);
+			pthread_mutexattr_destroy(&attr);
 
 			return (void*)mutex;
 		}
@@ -336,14 +352,31 @@ namespace SoLoud
 			d->mParam = aParameter;
 
 			ThreadHandleData *threadHandle = new ThreadHandleData;
-			pthread_create(&threadHandle->thread, NULL, threadfunc, (void*)d);
-            return threadHandle;
+			if (pthread_create(&threadHandle->thread, NULL, threadfunc, (void*)d) != 0)
+			{
+				delete d;
+				delete threadHandle;
+				return 0;
+			}
+			return threadHandle;
+		}
+
+		void raiseCurrentThreadPriority()
+		{
+#if defined(__APPLE__)
+			pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#elif defined(__linux__) && !defined(__EMSCRIPTEN__)
+			// Per thread on Linux and Android. -16 is Android's
+			// THREAD_PRIORITY_AUDIO; without the privilege to go below 0 the
+			// call fails and the thread keeps its default priority.
+			setpriority(PRIO_PROCESS, 0, -16);
+#endif
 		}
 
 		void sleep(int aMSec)
 		{
 			//usleep(aMSec * 1000);
-			struct timespec req = {0};
+			struct timespec req = {0, 0};
 			req.tv_sec = 0;
 			req.tv_nsec = aMSec * 1000000L;
 			nanosleep(&req, (struct timespec *)NULL);
@@ -351,11 +384,15 @@ namespace SoLoud
 
         void wait(ThreadHandle aThreadHandle)
         {
+            if (!aThreadHandle)
+                return;
             pthread_join(aThreadHandle->thread, 0);
         }
 
         void release(ThreadHandle aThreadHandle)
         {
+            if (!aThreadHandle)
+                return;
             delete aThreadHandle;
         }
 

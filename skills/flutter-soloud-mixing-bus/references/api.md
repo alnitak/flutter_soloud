@@ -80,7 +80,11 @@ sfxBus.annexSound(handle); // now plays through sfxBus
 
 ```dart
 bus.setChannels(channels: Channels.mono); // default Channels.stereo
-final left = bus.getChannelVolume(0);  // needs setVisualizationEnabled(true)
+bus.setVisualizationEnabled(true);     // this bus's own analyzer
+final left = bus.getChannelVolume(0);  // peak of the latest analyzed window
+bus.audioVisualizationEvents.listen((data) {
+  // wave/FFT of what plays through the bus, before its filters/volume/pan
+});
 ```
 
 `Channels`: `mono(1)`, `stereo(2)`, `quad(4)`, `surround51(6)`, `dolby71(8)`.

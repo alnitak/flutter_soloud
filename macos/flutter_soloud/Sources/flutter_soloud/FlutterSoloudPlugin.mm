@@ -63,6 +63,9 @@ static const int64_t kNoEngineId = -1;
     _engineId = kNoEngineId;
     clearDartCallbackRegistrationsForEngine(engineId);
   }
+  // Synchronously unload all hosted VST3 plugins before exit() invokes C++
+  // static destructors in reverse load order.
+  soloud_vst3HostUnloadAll();
 }
 
 - (void)handleMethodCall:(FlutterMethodCall *)call

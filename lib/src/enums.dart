@@ -117,7 +117,10 @@ enum PlayerErrors {
   audioDeviceFailedToStart(34),
 
   /// SoLoud didn't return a valid voice handle when starting the playback.
-  failedToStartPlayback(35);
+  failedToStartPlayback(35),
+
+  /// Given hash doesn't belong to a realtime stream.
+  hashIsNotARealtimeStream(36);
 
   const PlayerErrors(this.value);
 
@@ -224,6 +227,8 @@ enum PlayerErrors {
       case PlayerErrors.failedToStartPlayback:
         return 'Failed to start the playback. The audio engine could not '
             'create a valid voice for this sound.';
+      case PlayerErrors.hashIsNotARealtimeStream:
+        return "Given hash doesn't belong to a realtime stream.";
     }
   }
 
@@ -324,6 +329,22 @@ enum LoadMode {
 
   /// Keep the file on disk and only load chunks as needed.
   /// More CPU, less memory allocated, seeking lags with MP3s.
+  ///
+  /// M4A/MP4 files (AAC, and AC-3/E-AC-3 where the device has a decoder)
+  /// stream from disk on Android, iOS and macOS: loading decodes only the
+  /// first fraction of a second, and each playing voice decodes the rest on
+  /// its own background thread. Seeking is sample-accurate and loops are
+  /// gapless. A seek outside what is already decoded starts playing once its
+  /// first frames are decoded (usually a few milliseconds), so no audio after
+  /// the seek target is skipped. If decoding falls behind during playback,
+  /// the voice plays silence and stays in time. The file stays open while
+  /// the sound is loaded, so deleting or replacing it meanwhile doesn't
+  /// affect playback. Each playing voice uses its own platform decoder.
+  ///
+  /// Other formats decoded by the platform's native decoder (raw AAC, AC-3
+  /// and E-AC-3 streams, and M4A/MP4 on Windows and Linux) cannot be streamed
+  /// from disk: they are fully decoded to PCM in memory when loaded, exactly
+  /// like [memory].
   disk,
 }
 
@@ -479,7 +500,12 @@ enum BufferType {
 
   /// Auto detect the audio format (e.g. MP3, OGG Opus, OGG Vorbis, WAV, FLAC,
   /// AAC, AC-3, E-AC-3).
-  auto(4);
+  auto(4),
+
+  /// 32-bit floating point, little-endian, planar (contiguous channel0, then
+  /// channel1, ...).
+  @experimental
+  f32lePlanar(5);
 
   /// The integer value of the PCM type.
   final int value;
@@ -502,6 +528,8 @@ enum BufferType {
         return 'Little Endian Float 32-bit';
       case BufferType.auto:
         return 'Auto Detect Audio Format';
+      case BufferType.f32lePlanar:
+        return 'Little Endian Float 32-bit Planar';
     }
   }
 }
@@ -627,8 +655,8 @@ enum VisualizationKind {
 
 /// Channel selection constants for audio visualization.
 abstract final class VisualizationChannel {
-  /// Mix down all active playback channels to a single mono stream using
-  /// miniaudio's spatial channel downmixer.
+  /// Average all channels into a single mono stream, as miniaudio downmixes
+  /// to mono.
   static const int merged = -1;
 
   /// Process and emit separate visualization data for each active channel

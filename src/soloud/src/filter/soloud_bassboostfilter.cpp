@@ -25,6 +25,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include "soloud.h"
 #include "soloud_bassboostfilter.h"
+#include "../../../simd/soloud_simd.h"
 
 
 namespace SoLoud
@@ -38,13 +39,10 @@ namespace SoLoud
 
 	void BassboostFilterInstance::fftFilterChannel(float *aFFTBuffer, unsigned int /*aSamples*/, float /*aSamplerate*/, time /*aTime*/, unsigned int /*aChannel*/, unsigned int /*aChannels*/)
 	{
-		comp2MagPhase(aFFTBuffer, 2);
-		unsigned int i;
-		for (i = 0; i < 2; i++)
-		{
-			aFFTBuffer[i*2] *= mParam[BOOST];
-		}
-		magPhase2Comp(aFFTBuffer, 2);
+		// Scale first two complex bins (re0, im0, re1, im1) directly by 2 * boost,
+		// avoiding comp2MagPhase + magPhase2Comp transcendentals.
+		const auto vGain = soloud_simd::f32x4::splat(2.0f * mParam[BOOST]);
+		soloud_simd::mul(soloud_simd::f32x4::loadu(aFFTBuffer), vGain).storeu(aFFTBuffer);
 	}
 
 	result BassboostFilter::setParams(float aBoost)

@@ -77,6 +77,16 @@ namespace SoLoud
 		for (i = 0; i < SOLOUD_QUEUE_MAX; i++)
 			mSource[i] = 0;
 	}
+
+	Queue::~Queue()
+	{
+		stop();
+		for (int i = 0; i < SOLOUD_QUEUE_MAX; i++)
+		{
+			delete mSource[i];
+			mSource[i] = 0;
+		}
+	}
 	
 	QueueInstance * Queue::createInstance()
 	{
@@ -175,10 +185,10 @@ namespace SoLoud
 	
 	result Queue::setParams(float aSamplerate, unsigned int aChannels)
 	{
-	    if (aChannels < 1 || aChannels > MAX_CHANNELS)
-	        return INVALID_PARAMETER;
+		if (aChannels < 1 || aChannels > MAX_CHANNELS)
+			return INVALID_PARAMETER;
 		mChannels = aChannels;
 		mBaseSamplerate = aSamplerate;
-	    return SO_NO_ERROR;
+		return SO_NO_ERROR;
 	}
 };

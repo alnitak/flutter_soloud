@@ -29,21 +29,51 @@
 //   * both hooks return promptly while init_deinit_mutex is held by an
 //     unrelated operation -- they run on Android's platform thread, where
 //     waiting for a device operation is an ANR;
-//   * duplicate destroy/detach notifications tear down exactly once.
+//   * retirement stops the visualizations without holding the gate their
+//     worker dispatches through, so it cannot deadlock against a dispatch,
+//     and does not stop what a registration claimed meanwhile started;
+//   * a visualization has one packet in flight to Dart at a time;
+//   * a mixer capture posts to the port of the isolate whose start was
+//     admitted; a port that refuses (its isolate ended) leaves the capture to
+//     the next start, and a refused start leaves the running capture's port
+//     alone;
+//   * a stopped capture's tail is copied before another isolate's start can
+//     replace the ring, a stop for a superseded capture leaves the newer one
+//     running, and the WAV header is copied under the same lock;
+//   * duplicate destroy/detach notifications tear down exactly once;
+//   * loadFile() decodes without the lifecycle locks, so disposing sounds or
+//     the engine never waits for a decode, and a sound decoded for an engine
+//     that was torn down meanwhile is dropped;
+//   * an M4A loaded with LoadMode.disk streams (one decoder worker per voice)
+//     and disposing it, or the engine, never waits for those workers.
 //
 // Build and run from the flutter_soloud repository root with:
 //
 //   ./test/run_engine_lifecycle_test.sh
 
 #include "audiobuffer/metadata_ffi.h"
+#include "device_lifecycle_test_hooks.h"
 #include "enums.h"
+#include "mixeroutput/mixer_output.h"
+#include "native_stream/native_stream_source.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <set>
+#include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 extern "C"
 {
@@ -68,7 +98,38 @@ extern "C"
                                         int notificationThresholdBytes,
                                         int chunkPCMFrames);
     void stopMixerCapture();
+    enum PlayerErrors startMixerCaptureOnPort(
+        int format, int sampleRate, int channels, int bufferSizeBytes,
+        int notificationThresholdBytes, int chunkPCMFrames,
+        unsigned int *captureId, void *apiData, int64_t port,
+        int64_t ownerEngineId);
+    unsigned int getMixerCaptureId();
+    unsigned char *takeMixerOutputPacket(unsigned char *token,
+                                         unsigned int *captureId,
+                                         size_t *length);
+    unsigned char *stopMixerCaptureAndDrain(unsigned int captureId,
+                                            size_t *chunkBytes,
+                                            size_t *length);
+    int getMixerCaptureAvailableBytes();
+    int getMixerCaptureBufferSize();
+    int getMixerCaptureReadOffset();
+    unsigned char *getMixerCaptureBufferPointer();
+    unsigned char *getMixerOutputWavHeader();
+    void nativeFree(void *pointer);
     int isMixerCaptureRunning();
+    bool setVisualizationCallbackForEngine(dartVisualizationCallback_t callback,
+                                           int64_t owner_engine_id);
+    void visualizationPacketDone(float *packet);
+    enum PlayerErrors setVisualizationEnabled(bool enabled, int windowSize,
+                                              int kind, int channel);
+    int getVisualizationEnabled();
+    unsigned int createBus();
+    enum PlayerErrors busPlayOnEngine(unsigned int busId, float volume,
+                                      bool paused, unsigned int *handle);
+    enum PlayerErrors busSetVisualizationEnabled(unsigned int busId,
+                                                 bool enabled, int windowSize,
+                                                 int kind, int channel);
+    int busGetVisualizationEnabled(unsigned int busId);
     bool clearDartCallbackRegistrationsForEngine(int64_t engine_id);
     bool requestEngineTeardownForEngine(int64_t engine_id);
     void retireDartCallbacksFinalizer(void *token);
@@ -85,6 +146,18 @@ extern "C"
         dartOnMoreDataIsNeededCallback_t onMoreDataIsNeededCallback,
         dartOnAudioDurationCallback_t onAudioDurationCallback);
 
+    void loadFile(char *completeFileName, bool loadIntoMem, uint64_t counter);
+    enum PlayerErrors loadMem(char *uniqueName, unsigned char *buffer,
+                              int length, int loadIntoMem, unsigned int *hash);
+    void disposeSound(unsigned int soundHash);
+    void disposeAllSound();
+    enum PlayerErrors play(unsigned int soundHash, unsigned int busId,
+                           float volume, float pan, bool paused, bool looping,
+                           double loopingStartAt, double loopingEndAt,
+                           int loopingStartOffsetAt, int loopingEndOffsetAt,
+                           float scale, unsigned int *handle);
+    double getLength(unsigned int soundHash);
+
     // Test-only hooks (SOLOUD_LIFECYCLE_TEST_HOOKS).
     void soloudTestLockInitDeinit();
     void soloudTestUnlockInitDeinit();
@@ -96,6 +169,7 @@ extern "C"
     void soloudTestArmInitBarrier();
     void soloudTestWaitInitBarrierReached();
     void soloudTestReleaseInitBarrier();
+    int soloudTestSoundCount();
 }
 
 namespace
@@ -130,6 +204,12 @@ std::atomic<int> gFileLoadedCalls{0};
 std::atomic<int> gStateChangedCalls{0};
 std::atomic<int> gStreamCallbackCalls{0};
 std::atomic<int> gMixerOutputCalls{0};
+std::atomic<int> gEngineVisualizationPackets{0};
+std::atomic<int> gBusVisualizationPackets{0};
+std::atomic<bool> gHoldNextEngineVisualization{false};
+std::atomic<bool> gHoldingEngineVisualization{false};
+std::atomic<int> gLastFileLoadedError{-1};
+std::atomic<unsigned int> gLastFileLoadedHash{0};
 
 // Stand-ins for the Dart trampolines. Native code owns the pointers it hands
 // over, exactly as the real callables do.
@@ -142,6 +222,8 @@ void onVoiceEnded(unsigned int *handle)
 void onFileLoaded(enum PlayerErrors *error, char *name, unsigned int *hash,
                   uint64_t *counter)
 {
+    gLastFileLoadedError = *error;
+    gLastFileLoadedHash = *hash;
     std::free(error);
     std::free(name);
     std::free(hash);
@@ -155,7 +237,99 @@ void onStateChanged(enum PlayerStateEvents *state)
     ++gStateChangedCalls;
 }
 
-void onMixerOutput(unsigned char *, uint64_t) { ++gMixerOutputCalls; }
+/// Claims and frees each packet, as the Dart listener does: unclaimed
+/// packets fill the bounded pending queue.
+void onMixerOutput(unsigned char *token, uint64_t)
+{
+    ++gMixerOutputCalls;
+    unsigned int captureId = 0;
+    size_t length = 0;
+    nativeFree(takeMixerOutputPacket(token, &captureId, &length));
+}
+
+// Stand-in for the Dart event loop a NativeCallable.listener posts to. The
+// visualization callable only queues its packet; this thread reports it done,
+// later and never on the thread that dispatched it, as Dart does. While held,
+// packets are kept instead, as by an isolate that has fallen behind.
+std::mutex gDartLoopMutex;
+std::condition_variable gDartLoopWake;
+std::vector<std::pair<int32_t, float *>> gDartLoopQueue;
+std::vector<std::pair<int32_t, float *>> gHeldPackets;
+bool gHoldPackets = false;
+bool gDartLoopStop = false;
+
+void runDartLoop()
+{
+    std::unique_lock<std::mutex> lock(gDartLoopMutex);
+    while (true)
+    {
+        gDartLoopWake.wait(lock, []
+                           { return gDartLoopStop || !gDartLoopQueue.empty(); });
+        if (gDartLoopQueue.empty())
+            return;
+        std::vector<std::pair<int32_t, float *>> batch;
+        batch.swap(gDartLoopQueue);
+        if (gHoldPackets)
+        {
+            gHeldPackets.insert(gHeldPackets.end(), batch.begin(), batch.end());
+            continue;
+        }
+        lock.unlock();
+        for (const auto &packet : batch)
+            visualizationPacketDone(packet.second);
+        lock.lock();
+    }
+}
+
+/// Stop or resume reporting packets done. Resuming reports the held ones.
+void holdVisualizationPackets(bool hold)
+{
+    std::vector<std::pair<int32_t, float *>> held;
+    {
+        std::lock_guard<std::mutex> lock(gDartLoopMutex);
+        gHoldPackets = hold;
+        if (!hold)
+            held.swap(gHeldPackets);
+    }
+    for (const auto &packet : held)
+        visualizationPacketDone(packet.second);
+}
+
+/// Packets of the engine output ([bus] false) or of a bus kept unreported.
+int heldPackets(bool bus)
+{
+    std::lock_guard<std::mutex> lock(gDartLoopMutex);
+    int count = 0;
+    for (const auto &packet : gHeldPackets)
+    {
+        if ((packet.first != 0) == bus)
+            ++count;
+    }
+    return count;
+}
+
+/// When armed, holds the next engine-output packet -- and with it the gate,
+/// shared -- long enough for a retirement to queue up behind it.
+void onVisualization(int32_t sourceId, int32_t, float *data, int32_t, int32_t)
+{
+    {
+        std::lock_guard<std::mutex> lock(gDartLoopMutex);
+        gDartLoopQueue.emplace_back(sourceId, data);
+    }
+    gDartLoopWake.notify_one();
+    if (sourceId != 0)
+    {
+        ++gBusVisualizationPackets;
+        return;
+    }
+    ++gEngineVisualizationPackets;
+    bool armed = true;
+    if (gHoldNextEngineVisualization.compare_exchange_strong(armed, false))
+    {
+        gHoldingEngineVisualization = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
 
 void onBuffering(bool, unsigned int, double) { ++gStreamCallbackCalls; }
 void onMetadata(struct AudioMetadataFFI) { ++gStreamCallbackCalls; }
@@ -183,6 +357,108 @@ int mixerOutputDelta()
     const int before = gMixerOutputCalls.load();
     soloudTestInvokeMixerOutput();
     return gMixerOutputCalls.load() - before;
+}
+
+/// Stands in for the VM's Dart_PostInteger: records the packet tokens each
+/// native port is sent (a 0 is a probe, which Dart ignores), and refuses
+/// posts to a closed port, as the VM does once the isolate that owned the
+/// port has ended.
+std::mutex gPortMutex;
+std::map<int64_t, std::vector<int64_t>> gPortMessages;
+std::vector<int64_t> gRefusedMessages;
+std::set<int64_t> gClosedPorts;
+
+bool fakePostInteger(int64_t port, int64_t message)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    if (gClosedPorts.count(port) != 0)
+    {
+        if (message != 0)
+            gRefusedMessages.push_back(message);
+        return false;
+    }
+    if (message != 0)
+        gPortMessages[port].push_back(message);
+    return true;
+}
+
+/// The table NativeApi.initializeApiDLData points to (major version 2).
+struct FakeApiEntry
+{
+    const char *name;
+    void (*function)();
+};
+struct FakeApi
+{
+    int major;
+    int minor;
+    const FakeApiEntry *functions;
+};
+const FakeApiEntry kFakeApiEntries[] = {
+    {"Dart_PostCObject", nullptr},
+    {"Dart_PostInteger", reinterpret_cast<void (*)()>(fakePostInteger)},
+    {nullptr, nullptr},
+};
+FakeApi gFakeApi{2, 5, kFakeApiEntries};
+
+constexpr int64_t kPortA = 0x5150001;
+constexpr int64_t kPortB = 0x5150002;
+constexpr int64_t kPortC = 0x5150003;
+
+void resetPorts()
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    gPortMessages.clear();
+    gRefusedMessages.clear();
+    gClosedPorts.clear();
+}
+
+size_t messagesTo(int64_t port)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    return gPortMessages[port].size();
+}
+
+size_t refusedMessages()
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    return gRefusedMessages.size();
+}
+
+void closePort(int64_t port)
+{
+    std::lock_guard<std::mutex> lock(gPortMutex);
+    gClosedPorts.insert(port);
+}
+
+/// Claims every packet [port] was sent, as the isolate behind it does.
+/// Returns how many held [bytes] bytes of capture [captureId], and sets
+/// [claimed] to how many could be claimed at all.
+size_t claimFromPort(int64_t port, unsigned int captureId, size_t bytes,
+                     size_t &claimed)
+{
+    std::vector<int64_t> messages;
+    {
+        std::lock_guard<std::mutex> lock(gPortMutex);
+        messages.swap(gPortMessages[port]);
+    }
+    size_t matching = 0;
+    claimed = 0;
+    for (int64_t message : messages)
+    {
+        unsigned int id = 0;
+        size_t length = 0;
+        unsigned char *packet = takeMixerOutputPacket(
+            reinterpret_cast<unsigned char *>(static_cast<uintptr_t>(message)),
+            &id, &length);
+        if (packet == nullptr)
+            continue;
+        ++claimed;
+        if (id == captureId && length == bytes)
+            ++matching;
+        nativeFree(packet);
+    }
+    return matching;
 }
 
 /// How many of a real PullBufferStream's four callables one dispatch reached.
@@ -244,11 +520,18 @@ long long millisSince(std::chrono::steady_clock::time_point start)
 void resetGlobalState()
 {
     dispose();
+    holdVisualizationPackets(false);
     gVoiceEndedCalls = 0;
     gFileLoadedCalls = 0;
+    gLastFileLoadedError = -1;
+    gLastFileLoadedHash = 0;
     gStateChangedCalls = 0;
     gStreamCallbackCalls = 0;
     gMixerOutputCalls = 0;
+    gEngineVisualizationPackets = 0;
+    gBusVisualizationPackets = 0;
+    gHoldNextEngineVisualization = false;
+    gHoldingEngineVisualization = false;
 }
 
 bool initEngineAs(int64_t engineId)
@@ -267,6 +550,60 @@ unsigned int createPullStream()
         1024 * 1024, onBuffering, onMetadata, onMoreDataIsNeeded,
         onAudioDuration);
     return error == noError ? hash : 0;
+}
+
+/// A short silent 16-bit PCM WAV file.
+std::vector<unsigned char> makeWavBytes()
+{
+    const uint32_t dataBytes = 44100 * 2 * 2 / 10; // 100 ms, stereo
+    std::vector<unsigned char> wav(44 + dataBytes, 0);
+    auto put32 = [&wav](size_t at, uint32_t v)
+    { std::memcpy(wav.data() + at, &v, 4); };
+    auto put16 = [&wav](size_t at, uint16_t v)
+    { std::memcpy(wav.data() + at, &v, 2); };
+    std::memcpy(wav.data(), "RIFF", 4);
+    put32(4, 36 + dataBytes);
+    std::memcpy(wav.data() + 8, "WAVEfmt ", 8);
+    put32(16, 16);
+    put16(20, 1);
+    put16(22, 2);
+    put32(24, 44100);
+    put32(28, 44100 * 2 * 2);
+    put16(32, 4);
+    put16(34, 16);
+    std::memcpy(wav.data() + 36, "data", 4);
+    put32(40, dataBytes);
+    return wav;
+}
+
+std::string writeWavFile()
+{
+    const char *tmp = std::getenv("TMPDIR");
+    std::string path = std::string(tmp != nullptr ? tmp : "/tmp") +
+                       "/soloud_lifecycle_test_load.wav";
+    const std::vector<unsigned char> wav = makeWavBytes();
+    FILE *f = std::fopen(path.c_str(), "wb");
+    if (f == nullptr)
+        return std::string();
+    std::fwrite(wav.data(), 1, wav.size(), f);
+    std::fclose(f);
+    return path;
+}
+
+/// Start a loadFile() on a worker, as Dart does, and park it inside its decode.
+std::thread startParkedLoad(std::string &path)
+{
+    soloud_test::armBarrier(soloud_test::DeviceBarrier::soundDecodeEntered);
+    std::thread loader([&path] { loadFile(&path[0], false, 1); });
+    soloud_test::waitBarrierReached(
+        soloud_test::DeviceBarrier::soundDecodeEntered);
+    return loader;
+}
+
+void releaseParkedLoad(std::thread &loader)
+{
+    soloud_test::releaseBarrier(soloud_test::DeviceBarrier::soundDecodeEntered);
+    loader.join();
 }
 
 // ---------------------------------------------------------------------------
@@ -598,6 +935,629 @@ void testTeardownDuringActiveMixerCapture()
     EXPECT(dispatched && dispatchesDuringRace > 0,
            "the notification thread must dispatch while the callback is being "
            "republished, or this scenario tests nothing");
+
+    resetGlobalState();
+}
+
+/// The capture ring is fed the mixer's own output: interleaved, at the
+/// engine's channel count and sample rate. MixerOutput has no channel mixer
+/// and no resampler, so a capture asking for another channel count would read
+/// the device buffer with the wrong frame size (past its end, for more
+/// channels), and one at another sample rate would be labelled with a rate
+/// its samples are not at. Such a capture must be refused; the engine's own
+/// format, given explicitly or as -1, still starts.
+void testCaptureRefusesAFormatTheMixDoesNotProduce()
+{
+    std::printf("capture refuses a channel count or rate the mix does not "
+                "produce\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    EXPECT(setMixerOutputCallbackForEngine(onMixerOutput, kEngineA),
+           "the owner should publish its mixer callable");
+
+    struct Case
+    {
+        int sampleRate;
+        int channels;
+        const char *what;
+    };
+    const Case refused[] = {
+        {44100, 8, "more channels than the engine mixes"},
+        {44100, 1, "fewer channels than the engine mixes"},
+        {22050, 2, "another sample rate than the engine's"},
+    };
+    for (const Case &c : refused)
+    {
+        const PlayerErrors error = startMixerCapture(
+            MIXER_OUTPUT_PCM_F32LE, c.sampleRate, c.channels,
+            /*bufferSizeBytes=*/256 * 1024,
+            /*notificationThresholdBytes=*/4096, /*chunkPCMFrames=*/-1);
+        EXPECT(error == invalidParameter,
+               "a capture with %s (%d Hz, %d channels) should be refused, "
+               "got error %d",
+               c.what, c.sampleRate, c.channels, static_cast<int>(error));
+        if (error == noError)
+        {
+            // Let the device feed it, so AddressSanitizer sees what it reads.
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            stopMixerCapture();
+        }
+        EXPECT(isMixerCaptureRunning() == 0,
+               "no capture should be left running (%s)", c.what);
+    }
+
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, 44100, 2, 256 * 1024,
+                             4096, -1) == noError,
+           "a capture in the engine's own format should start");
+    stopMixerCapture();
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, 256 * 1024,
+                             4096, -1) == noError,
+           "a capture following the engine's format (-1) should start");
+    stopMixerCapture();
+
+    resetGlobalState();
+
+    // Without an engine there is no mix to capture, and no format to follow.
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, 256 * 1024,
+                             4096, -1) == backendNotInited,
+           "a capture without an engine should be refused");
+    EXPECT(isMixerCaptureRunning() == 0,
+           "no capture should run without an engine");
+}
+
+/// A NativeCallable belongs to its isolate, and invoking one after that isolate
+/// has ended aborts the VM -- which is what a capture started by a worker
+/// isolate did as soon as the worker returned. A capture started on a port
+/// posts its packets there instead, and the VM refuses a post to a port whose
+/// isolate is gone. Nothing will stop that capture, so the next start does.
+void testCaptureDeliversToTheStartingPort()
+{
+    std::printf("a capture posts to its start's port, and a closed port gives "
+                "the capture up to the next start\n");
+    resetGlobalState();
+    resetPorts();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    constexpr size_t kChunkBytes = 2048 * 2 * sizeof(int16_t);
+
+    unsigned int first = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &first, &gFakeApi, kPortA,
+                                   kEngineA) == noError,
+           "a capture should start on a port");
+    EXPECT(first != 0 && first == getMixerCaptureId(),
+           "the start should report the id of the capture it started");
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }, 3000),
+           "the capture should post its packets to the starting port");
+    size_t claimed = 0;
+    const size_t matching =
+        claimFromPort(kPortA, first, kChunkBytes, claimed);
+    EXPECT(claimed >= 2 && matching == claimed,
+           "every posted token should claim one chunk of the capture "
+           "(%zu of %zu)",
+           matching, claimed);
+
+    // The isolate ends: from now on its port refuses every post.
+    closePort(kPortA);
+    EXPECT(waitFor([] { return refusedMessages() >= 1; }, 3000),
+           "posts to the closed port should be refused");
+    std::vector<int64_t> refused;
+    {
+        std::lock_guard<std::mutex> lock(gPortMutex);
+        refused = gRefusedMessages;
+    }
+    bool discarded = !refused.empty();
+    for (int64_t message : refused)
+    {
+        unsigned int id = 0;
+        unsigned char *packet = takeMixerOutputPacket(
+            reinterpret_cast<unsigned char *>(static_cast<uintptr_t>(message)),
+            &id, nullptr);
+        discarded = discarded && packet == nullptr;
+        nativeFree(packet);
+    }
+    EXPECT(discarded, "a refused packet should be discarded, not kept");
+
+    // Any isolate's next start takes over from the capture nobody can stop.
+    unsigned int second = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &second, &gFakeApi, kPortB,
+                                   kNoEngineId) == noError,
+           "a start should replace the capture whose port refused it");
+    EXPECT(second != 0 && second != first,
+           "the replacement should be a new capture");
+    EXPECT(waitFor([] { return messagesTo(kPortB) >= 1; }, 3000),
+           "the new capture should post to the new port");
+    claimFromPort(kPortB, second, kChunkBytes, claimed);
+
+    // A start right after the port closed, before a packet was due to find
+    // out, asks the port itself.
+    closePort(kPortB);
+    unsigned int third = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &third, &gFakeApi, kPortC,
+                                   kNoEngineId) == noError,
+           "a start should not wait for a packet to find the port closed");
+    EXPECT(third != 0 && third != second,
+           "that replacement should be a new capture too");
+    stopMixerCapture();
+    claimFromPort(kPortC, third, kChunkBytes, claimed);
+
+    resetGlobalState();
+}
+
+/// Only one capture runs at a time. A start that is refused because one is
+/// running must leave that capture's port alone, or the running capture's
+/// packets go to an isolate that did not start it -- one that may end next.
+void testRefusedStartLeavesTheRunningPortAlone()
+{
+    std::printf("a refused start leaves the running capture's port alone\n");
+    resetGlobalState();
+    resetPorts();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    constexpr size_t kChunkBytes = 2048 * 2 * sizeof(int16_t);
+
+    unsigned int id = 0;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &id, &gFakeApi, kPortA,
+                                   kEngineA) == noError,
+           "the first capture should start");
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 1; }, 3000),
+           "the first capture should post to its port");
+
+    unsigned int refusedId = 77;
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, &refusedId, &gFakeApi, kPortB,
+                                   kNoEngineId) == playerAlreadyInited,
+           "a second start should be refused while a capture runs");
+    EXPECT(refusedId == 0, "a refused start should report no capture");
+    size_t claimed = 0;
+    claimFromPort(kPortA, id, kChunkBytes, claimed);
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }, 3000),
+           "the running capture should keep posting to its own port");
+    EXPECT(messagesTo(kPortB) == 0,
+           "the refused start's port should get nothing");
+    stopMixerCapture();
+    claimFromPort(kPortA, id, kChunkBytes, claimed);
+
+    // Refused before anything starts or is published.
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &gFakeApi, kPortB,
+                                   kEngineB) == backendNotInited,
+           "an engine that does not own the live registration cannot start");
+    FakeApi otherLayout{3, 0, kFakeApiEntries};
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &otherLayout, kPortB,
+                                   kEngineA) == invalidParameter,
+           "an API table of another major version should be refused");
+    EXPECT(startMixerCaptureOnPort(MIXER_OUTPUT_PCM_S16LE, -1, -1, 64 * 1024,
+                                   256, 2048, nullptr, &gFakeApi, 0,
+                                   kEngineA) == invalidParameter,
+           "port 0 should be refused");
+    EXPECT(isMixerCaptureRunning() == 0, "none of those should start one");
+    EXPECT(messagesTo(kPortB) == 0, "and none should post anything");
+
+    resetGlobalState();
+}
+
+/// How the stream manager copied a stopped capture's tail: stop, ask for the
+/// ring's unread size, its size and read offset, then copy through the ring
+/// pointer, each a separate call. [meanwhile] runs where another isolate's
+/// start could, between the questions and the copy.
+std::vector<unsigned char> copyTailCallByCall(
+    const std::function<void()> &meanwhile)
+{
+    stopMixerCapture();
+    const int available = getMixerCaptureAvailableBytes();
+    const int size = getMixerCaptureBufferSize();
+    const int read = getMixerCaptureReadOffset();
+    meanwhile();
+    std::vector<unsigned char> tail;
+    if (available <= 0)
+        return tail;
+    const int first = std::min(available, size - read);
+    // copyMixerOutputBuffer() reads the ring pointer when it copies.
+    const unsigned char *ring = getMixerCaptureBufferPointer();
+    tail.insert(tail.end(), ring + read, ring + read + first);
+    ring = getMixerCaptureBufferPointer();
+    tail.insert(tail.end(), ring, ring + (available - first));
+    return tail;
+}
+
+/// The bindings' stop-and-drain, where they have one (it came with
+/// MixerOutput::copyStoppedTail()); the call-by-call copy otherwise.
+template <typename Capture>
+auto stopAndCopyTail(unsigned int captureId,
+                     const std::function<void()> &meanwhile, int)
+    -> decltype(&Capture::copyStoppedTail, std::vector<unsigned char>())
+{
+    size_t chunkBytes = 0;
+    size_t length = 0;
+    unsigned char *bytes =
+        stopMixerCaptureAndDrain(captureId, &chunkBytes, &length);
+    meanwhile();
+    std::vector<unsigned char> tail;
+    if (bytes != nullptr)
+        tail.assign(bytes, bytes + length);
+    nativeFree(bytes);
+    return tail;
+}
+
+template <typename Capture>
+std::vector<unsigned char> stopAndCopyTail(unsigned int,
+                                           const std::function<void()> &meanwhile,
+                                           long)
+{
+    return copyTailCallByCall(meanwhile);
+}
+
+template <typename Capture>
+auto stopSupersededCapture(unsigned int captureId, int)
+    -> decltype(&Capture::copyStoppedTail, bool())
+{
+    size_t chunkBytes = 0;
+    size_t length = 0;
+    nativeFree(stopMixerCaptureAndDrain(captureId, &chunkBytes, &length));
+    return true;
+}
+
+template <typename Capture>
+bool stopSupersededCapture(unsigned int, long)
+{
+    return false;
+}
+
+/// A stopped capture's stream ends with the tail its ring still holds. Copied
+/// call by call after the stop, a start by another isolate in between
+/// replaces the ring, and the copy reads the new capture's bytes. The copy
+/// has to be made before the capture lifecycle lock is released, and a stop
+/// meant for a capture another start has superseded must leave the newer one
+/// running.
+void testStoppedCaptureTailSurvivesARestart()
+{
+    std::printf("a stopped capture's tail survives another isolate's start\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    constexpr int kRingBytes = 64 * 1024;
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1, kRingBytes,
+                             kRingBytes, -1) == noError,
+           "the capture should start");
+    const unsigned int captureId = getMixerCaptureId();
+    // The device mixes silence: this block, mixed last, is what the tail is
+    // checked for.
+    std::vector<float> marker(2 * 256);
+    for (size_t i = 0; i < marker.size(); ++i)
+        marker[i] = 1.0f + static_cast<float>(i);
+    MixerOutput::instance().onAudioData(marker.data(), 256);
+
+    unsigned int newerId = 0;
+    const std::vector<unsigned char> tail = stopAndCopyTail<MixerOutput>(
+        captureId,
+        [&]
+        {
+            EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_F32LE, -1, -1,
+                                     4 * kRingBytes, 4096, -1) == noError,
+                   "another isolate's start should succeed");
+            newerId = getMixerCaptureId();
+        },
+        0);
+    const auto *markerBytes =
+        reinterpret_cast<const unsigned char *>(marker.data());
+    EXPECT(std::search(tail.begin(), tail.end(), markerBytes,
+                       markerBytes + marker.size() * sizeof(float)) !=
+               tail.end(),
+           "the stopped capture's tail should end with its last block, not "
+           "the newer capture's bytes (%zu bytes copied)",
+           tail.size());
+
+    EXPECT(stopSupersededCapture<MixerOutput>(captureId, 0),
+           "a stop should be able to name the capture it is for");
+    EXPECT(isMixerCaptureRunning() == 1 && getMixerCaptureId() == newerId,
+           "a stop for the superseded capture should leave the newer one "
+           "running");
+    stopMixerCapture();
+
+    resetGlobalState();
+}
+
+/// start() and stop() rewrite the capture's WAV header under the capture
+/// lifecycle lock, and another isolate can copy it meanwhile. Under
+/// ThreadSanitizer this reports the race unless the copy takes that lock too.
+void testWavHeaderCopyIsSerializedWithRestarts()
+{
+    std::printf("the WAV header is copied under the capture lifecycle lock\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::atomic<bool> done{false};
+    std::atomic<int> headers{0};
+    std::thread reader(
+        [&]
+        {
+            while (!done.load())
+            {
+                unsigned char *header = getMixerOutputWavHeader();
+                if (header != nullptr)
+                    ++headers;
+                nativeFree(header);
+            }
+        });
+    int restarts = 0;
+    for (int i = 0; i < 40; ++i)
+    {
+        if (startMixerCapture(MIXER_OUTPUT_WAV, -1, -1, 64 * 1024, 4096, -1) ==
+            noError)
+            ++restarts;
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        stopMixerCapture();
+    }
+    done = true;
+    reader.join();
+    EXPECT(restarts == 40, "every WAV capture should start, got %d", restarts);
+    EXPECT(headers.load() > 0,
+           "the reader should have copied headers while captures restarted");
+
+    resetGlobalState();
+}
+
+/// Retirement stops the visualizations, whose single worker thread invokes the
+/// Dart callable through the gate and holds its own lock across each pass over
+/// the enabled visualizations. Stopping them while still holding the gate
+/// exclusively deadlocks as soon as the worker is between two dispatches of
+/// one pass: the worker waits for the gate with its lock held, and stopping
+/// waits for that lock (and then for the worker to exit).
+///
+/// Forced here rather than hoped for: the engine output's visualization is
+/// enabled first, so it is dispatched first in every pass, and its callable is
+/// held until the retirement is queued behind it. When it returns, the bus's
+/// visualization is due in the same pass.
+void testRetirementWhileVisualizationsDispatch()
+{
+    std::printf("retirement while visualizations dispatch cannot deadlock\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    EXPECT(setVisualizationCallbackForEngine(onVisualization, kEngineA),
+           "the owner should publish its visualization callable");
+    EXPECT(setVisualizationEnabled(true, 256, VISUALIZATION_WAVE_AND_FFT,
+                                   VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the engine output's visualization should start");
+    const unsigned int busId = createBus();
+    unsigned int busHandle = 0;
+    EXPECT(busPlayOnEngine(busId, 1.0f, false, &busHandle) == noError,
+           "the bus should play");
+    EXPECT(busSetVisualizationEnabled(busId, true, 256,
+                                      VISUALIZATION_WAVE_AND_FFT,
+                                      VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the bus's visualization should start");
+    EXPECT(waitFor([]
+                   {
+                       return gEngineVisualizationPackets.load() >= 3 &&
+                              gBusVisualizationPackets.load() >= 3;
+                   }),
+           "both visualizations should dispatch (engine %d, bus %d packets)",
+           gEngineVisualizationPackets.load(), gBusVisualizationPackets.load());
+
+    gHoldNextEngineVisualization = true;
+    EXPECT(waitFor([] { return gHoldingEngineVisualization.load(); }),
+           "the engine output's packet should be held");
+
+    // A deadlock here is caught by the watchdog.
+    const auto start = std::chrono::steady_clock::now();
+    EXPECT(clearDartCallbackRegistrationsForEngine(kEngineA),
+           "the owner's retirement should be accepted");
+    const long long elapsedMs = millisSince(start);
+    EXPECT(elapsedMs < 2000, "retirement took %lld ms", elapsedMs);
+
+    EXPECT(getVisualizationEnabled() == 0,
+           "retirement should stop the engine output's visualization");
+    EXPECT(busGetVisualizationEnabled(busId) == 0,
+           "retirement should stop the bus's visualization");
+    const int packets = gEngineVisualizationPackets.load() +
+                        gBusVisualizationPackets.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    EXPECT(gEngineVisualizationPackets.load() +
+                   gBusVisualizationPackets.load() ==
+               packets,
+           "no packet may be dispatched after retirement");
+
+    resetGlobalState();
+}
+
+/// A retirement has to release the gate before it stops the mixer capture and
+/// the visualizations (see testRetirementWhileVisualizationsDispatch), and a
+/// newer registration can be claimed in between and start capturing and
+/// visualizing for itself. The stop must not undo that. Forced by parking the
+/// retirement between releasing the gate and stopping.
+void testRetirementSparesWhatANewerRegistrationStarted()
+{
+    std::printf("a retirement leaves what a newer registration started\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    soloud_test::armBarrier(
+        soloud_test::DeviceBarrier::retiredCaptureStopEntered);
+    std::atomic<bool> retired{false};
+    std::thread retirement(
+        [&retired]
+        { retired = clearDartCallbackRegistrationsForEngine(kEngineA); });
+    soloud_test::waitBarrierReached(
+        soloud_test::DeviceBarrier::retiredCaptureStopEntered);
+
+    registerCallbacksFor(kEngineB);
+    EXPECT(setVisualizationCallbackForEngine(onVisualization, kEngineB),
+           "the new owner should publish its visualization callable");
+    EXPECT(setMixerOutputCallbackForEngine(onMixerOutput, kEngineB),
+           "the new owner should publish its mixer callable");
+    EXPECT(setVisualizationEnabled(true, 256, VISUALIZATION_WAVE_AND_FFT,
+                                   VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the engine output's visualization should start");
+    const unsigned int busId = createBus();
+    unsigned int busHandle = 0;
+    EXPECT(busPlayOnEngine(busId, 1.0f, false, &busHandle) == noError,
+           "the bus should play");
+    EXPECT(busSetVisualizationEnabled(busId, true, 256,
+                                      VISUALIZATION_WAVE_AND_FFT,
+                                      VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the bus's visualization should start");
+    EXPECT(startMixerCapture(MIXER_OUTPUT_PCM_S16LE, 44100, 2,
+                             /*bufferSizeBytes=*/64 * 1024,
+                             /*notificationThresholdBytes=*/256,
+                             /*chunkPCMFrames=*/2048) == noError,
+           "the capture should start");
+
+    soloud_test::releaseBarrier(
+        soloud_test::DeviceBarrier::retiredCaptureStopEntered);
+    retirement.join();
+
+    EXPECT(retired.load(), "engine A's retirement should be accepted");
+    EXPECT(getVisualizationEnabled() == 1,
+           "the engine output's visualization should still be enabled");
+    EXPECT(busGetVisualizationEnabled(busId) == 1,
+           "the bus's visualization should still be enabled");
+    EXPECT(isMixerCaptureRunning() == 1, "the capture should still be running");
+    const int engine = gEngineVisualizationPackets.load();
+    const int bus = gBusVisualizationPackets.load();
+    const int mixer = gMixerOutputCalls.load();
+    EXPECT(waitFor(
+               [&]
+               {
+                   return gEngineVisualizationPackets.load() > engine &&
+                          gBusVisualizationPackets.load() > bus &&
+                          gMixerOutputCalls.load() > mixer;
+               }),
+           "the new owner should keep receiving packets (engine %d, bus %d, "
+           "mixer %d new)",
+           gEngineVisualizationPackets.load() - engine,
+           gBusVisualizationPackets.load() - bus,
+           gMixerOutputCalls.load() - mixer);
+
+    stopMixerCapture();
+    resetGlobalState();
+}
+
+/// A visualization has at most one packet in flight to Dart: nothing more is
+/// sent for it until Dart reports that one done, so an isolate that falls
+/// behind -- a long frame, a paused debugger -- is not buried under a backlog
+/// it then has to chew through. Publishing the callable again abandons the
+/// packets in flight, which a closed callable would never report.
+void testVisualizationSendsOnePacketAtATime()
+{
+    std::printf("a visualization has one packet in flight to Dart at a time\n");
+    resetGlobalState();
+
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+    EXPECT(setVisualizationCallbackForEngine(onVisualization, kEngineA),
+           "the owner should publish its visualization callable");
+    holdVisualizationPackets(true);
+    EXPECT(setVisualizationEnabled(true, 256, VISUALIZATION_WAVE_AND_FFT,
+                                   VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the engine output's visualization should start");
+    const unsigned int busId = createBus();
+    unsigned int busHandle = 0;
+    EXPECT(busPlayOnEngine(busId, 1.0f, false, &busHandle) == noError,
+           "the bus should play");
+    EXPECT(busSetVisualizationEnabled(busId, true, 256,
+                                      VISUALIZATION_WAVE_AND_FFT,
+                                      VISUALIZATION_CHANNEL_MERGED) == noError,
+           "the bus's visualization should start");
+
+    EXPECT(waitFor([] { return heldPackets(false) == 1 && heldPackets(true) == 1; }),
+           "each visualization should send a packet (engine %d, bus %d)",
+           heldPackets(false), heldPackets(true));
+    // Over a dozen dispatch intervals.
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    EXPECT(heldPackets(false) == 1 && heldPackets(true) == 1,
+           "nothing more should be sent before it is reported done (engine %d, "
+           "bus %d)",
+           heldPackets(false), heldPackets(true));
+
+    int engine = gEngineVisualizationPackets.load();
+    int bus = gBusVisualizationPackets.load();
+    holdVisualizationPackets(false);
+    EXPECT(waitFor(
+               [&]
+               {
+                   return gEngineVisualizationPackets.load() >= engine + 3 &&
+                          gBusVisualizationPackets.load() >= bus + 3;
+               }),
+           "packets should flow again once reported done (engine %d, bus %d "
+           "new)",
+           gEngineVisualizationPackets.load() - engine,
+           gBusVisualizationPackets.load() - bus);
+
+    holdVisualizationPackets(true);
+    EXPECT(waitFor([] { return heldPackets(false) == 1 && heldPackets(true) == 1; }),
+           "each visualization should have a packet in flight again");
+    EXPECT(setVisualizationCallbackForEngine(onVisualization, kEngineA),
+           "the owner should publish its callable again");
+    EXPECT(waitFor([] { return heldPackets(false) == 2 && heldPackets(true) == 2; }),
+           "publishing again should abandon the packets in flight (engine %d, "
+           "bus %d)",
+           heldPackets(false), heldPackets(true));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    EXPECT(heldPackets(false) == 2 && heldPackets(true) == 2,
+           "and the new packets should be held back as before (engine %d, bus "
+           "%d)",
+           heldPackets(false), heldPackets(true));
+
+    // Reporting the abandoned packets late is harmless.
+    engine = gEngineVisualizationPackets.load();
+    bus = gBusVisualizationPackets.load();
+    holdVisualizationPackets(false);
+    EXPECT(waitFor(
+               [&]
+               {
+                   return gEngineVisualizationPackets.load() >= engine + 3 &&
+                          gBusVisualizationPackets.load() >= bus + 3;
+               }),
+           "packets should flow once everything is reported done");
 
     resetGlobalState();
 }
@@ -1100,6 +2060,209 @@ void testRetirementNeverWaitsForNativeWork()
     resetGlobalState();
 }
 
+/// A decode can take seconds (an M4A/AAC file is decoded in full even with
+/// LoadMode.disk), and the calls Dart makes synchronously on the UI thread
+/// must not wait for it. Taken to its end, the load still registers.
+void testLoadDecodeDoesNotBlockLifecycleCalls()
+{
+    std::printf("a decode in flight does not block lifecycle calls\n");
+    resetGlobalState();
+
+    std::string path = writeWavFile();
+    if (path.empty() || !initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine and test file should be set up");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::vector<unsigned char> wav = makeWavBytes();
+    unsigned int memHash = 0;
+    EXPECT(loadMem(const_cast<char *>("mem"), wav.data(),
+                   static_cast<int>(wav.size()), 1, &memHash) == noError,
+           "loadMem should succeed");
+
+    std::thread loader = startParkedLoad(path);
+
+    const auto start = std::chrono::steady_clock::now();
+    disposeSound(memHash);
+    unsigned int otherHash = 0;
+    const PlayerErrors memError =
+        loadMem(const_cast<char *>("other"), wav.data(),
+                static_cast<int>(wav.size()), 1, &otherHash);
+    disposeAllSound();
+    const long long elapsed = millisSince(start);
+
+    EXPECT(elapsed < kPlatformThreadBudgetMs,
+           "lifecycle calls took %lldms while a decode was in flight; they "
+           "must not wait for it",
+           elapsed);
+    EXPECT(memError == noError, "loadMem should not be blocked by the decode");
+
+    releaseParkedLoad(loader);
+
+    EXPECT(gFileLoadedCalls.load() == 1, "the parked load should complete");
+    EXPECT(gLastFileLoadedError.load() == noError,
+           "the parked load should register, got error %d",
+           gLastFileLoadedError.load());
+    EXPECT(gLastFileLoadedHash.load() != 0,
+           "the parked load should report a hash");
+    EXPECT(soloudTestSoundCount() == 1,
+           "only the parked load's sound should remain, found %d",
+           soloudTestSoundCount());
+
+    resetGlobalState();
+}
+
+/// A sound decoded for an engine that was torn down while the decode ran
+/// must not land in the engine that replaced it, and its result must not
+/// reach the replacement's callable: a new isolate restarts its load counter,
+/// so a stale result could complete one of its own loads.
+void testTeardownDuringDecodeDropsTheSound()
+{
+    std::printf("a teardown during a decode drops the decoded sound\n");
+    resetGlobalState();
+
+    std::string path = writeWavFile();
+    if (path.empty() || !initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine and test file should be set up");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::thread loader = startParkedLoad(path);
+
+    const auto start = std::chrono::steady_clock::now();
+    dispose();
+    const long long elapsed = millisSince(start);
+    EXPECT(elapsed < 2000,
+           "dispose took %lldms while a decode was in flight", elapsed);
+
+    EXPECT(initEngineAs(kEngineB), "the replacement engine should initialize");
+    registerCallbacksFor(kEngineB);
+
+    releaseParkedLoad(loader);
+
+    EXPECT(gFileLoadedCalls.load() == 0,
+           "the stale result must not reach the replacement's callable");
+    EXPECT(soloudTestSoundCount() == 0,
+           "the stale sound must not land in the replacement engine");
+
+    resetGlobalState();
+}
+
+/// LoadMode.disk M4A goes through NativeStream on platforms with a streaming
+/// backend: loading decodes only a short head, each voice decodes on its own
+/// worker, and disposing the sound or the engine stops the voices without
+/// waiting for those workers, which then exit by themselves.
+void testDiskStreamedM4aNeverBlocksLifecycle()
+{
+#if NATIVE_STREAM_SUPPORTED
+    std::printf("an M4A loaded from disk streams, and disposal never waits on "
+                "its decoders\n");
+    resetGlobalState();
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::string path = "example/assets/audio/sample-AAC.m4a";
+    loadFile(&path[0], false, 1);
+    const unsigned int hash = gLastFileLoadedHash.load();
+    EXPECT(gFileLoadedCalls.load() == 1 && gLastFileLoadedError.load() == noError &&
+               hash != 0,
+           "loading the M4A should succeed (error %d)",
+           gLastFileLoadedError.load());
+    EXPECT(std::fabs(getLength(hash) - 15.0) < 1e-6,
+           "length should come from the container: %f", getLength(hash));
+
+    for (int i = 0; i < 3; i++)
+    {
+        unsigned int handle = 0;
+        EXPECT(play(hash, 0, 1.0f, 0.0f, false, i == 0, 0, 0, -1, -1, 1.0f,
+                    &handle) == noError,
+               "play should succeed");
+    }
+    EXPECT(SoLoud::NativeStream::liveWorkerCount() == 3,
+           "each voice should stream on its own worker, found %d",
+           SoLoud::NativeStream::liveWorkerCount());
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    auto start = std::chrono::steady_clock::now();
+    disposeSound(hash);
+    long long elapsed = millisSince(start);
+    EXPECT(elapsed < kPlatformThreadBudgetMs,
+           "disposeSound took %lldms with streaming voices", elapsed);
+    EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; },
+                     2000),
+           "the disposed sound's workers should exit, %d left",
+           SoLoud::NativeStream::liveWorkerCount());
+
+    // Engine disposal with voices still streaming.
+    loadFile(&path[0], false, 2);
+    unsigned int handle = 0;
+    play(gLastFileLoadedHash.load(), 0, 1.0f, 0.0f, false, true, 0, 0, -1, -1,
+         1.0f, &handle);
+    play(gLastFileLoadedHash.load(), 0, 1.0f, 0.0f, false, false, 0, 0, -1, -1,
+         1.0f, &handle);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    start = std::chrono::steady_clock::now();
+    dispose();
+    elapsed = millisSince(start);
+    EXPECT(elapsed < 2000, "dispose took %lldms with streaming voices", elapsed);
+    EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; },
+                     2000),
+           "workers should exit after dispose, %d left",
+           SoLoud::NativeStream::liveWorkerCount());
+
+    resetGlobalState();
+#endif
+}
+
+/// Stopping a voice dispatches its voice-ended callback synchronously, and
+/// that callback removes the handle from the sound's handle list. Disposing a
+/// sound playing on several voices must not walk that list while the
+/// callbacks shrink it (AddressSanitizer reports the overflow).
+void testDisposeSoundWithSeveralVoices()
+{
+    std::printf("disposing a sound playing on several voices stops them all\n");
+    resetGlobalState();
+    if (!initEngineAs(kEngineA))
+    {
+        EXPECT(false, "the engine should initialize");
+        return;
+    }
+    registerCallbacksFor(kEngineA);
+
+    std::vector<unsigned char> wav = makeWavBytes();
+    unsigned int hash = 0;
+    EXPECT(loadMem(const_cast<char *>("voices"), wav.data(),
+                   static_cast<int>(wav.size()), 1, &hash) == noError,
+           "loadMem should succeed");
+
+    constexpr int kVoices = 4;
+    for (int i = 0; i < kVoices; i++)
+    {
+        unsigned int handle = 0;
+        EXPECT(play(hash, 0, 1.0f, 0.0f, false, true, 0, 0, -1, -1, 1.0f,
+                    &handle) == noError,
+               "play %d should succeed", i);
+    }
+
+    gVoiceEndedCalls = 0;
+    disposeSound(hash);
+
+    EXPECT(gVoiceEndedCalls.load() == kVoices,
+           "every voice should end once, got %d", gVoiceEndedCalls.load());
+    EXPECT(soloudTestSoundCount() == 0,
+           "the sound should be gone, found %d", soloudTestSoundCount());
+
+    resetGlobalState();
+}
+
 } // namespace
 
 int main()
@@ -1123,6 +2286,8 @@ int main()
         return std::getenv("SOLOUD_LIFECYCLE_TEST_ALLOW_NO_DEVICE") ? 0 : 1;
     }
 
+    std::thread dartLoop(runDartLoop);
+
     testHotRestartRetiresEveryCallable();
     testFinalizerRetiresEveryCallable();
     testIosLifecycleHandshake();
@@ -1137,12 +2302,31 @@ int main()
     testMixerCallbackPublicationIsOwnerScoped();
     testStaleWorkerMixerCallbackCannotBeRevived();
     testTeardownDuringActiveMixerCapture();
+    testCaptureRefusesAFormatTheMixDoesNotProduce();
+    testCaptureDeliversToTheStartingPort();
+    testRefusedStartLeavesTheRunningPortAlone();
+    testStoppedCaptureTailSurvivesARestart();
+    testWavHeaderCopyIsSerializedWithRestarts();
+    testRetirementWhileVisualizationsDispatch();
+    testRetirementSparesWhatANewerRegistrationStarted();
+    testVisualizationSendsOnePacketAtATime();
     testCaptureCannotStartAfterTeardownIsDecided();
     testConcurrentCaptureStopsAreSerialized();
     testEngineDestroyDisposesTheNativeEngine();
     testEngineDestroyedDuringInitialization();
     testStaleTeardownCannotDisposeReplacement();
     testRetirementNeverWaitsForNativeWork();
+    testLoadDecodeDoesNotBlockLifecycleCalls();
+    testTeardownDuringDecodeDropsTheSound();
+    testDiskStreamedM4aNeverBlocksLifecycle();
+    testDisposeSoundWithSeveralVoices();
+
+    {
+        std::lock_guard<std::mutex> lock(gDartLoopMutex);
+        gDartLoopStop = true;
+    }
+    gDartLoopWake.notify_one();
+    dartLoop.join();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

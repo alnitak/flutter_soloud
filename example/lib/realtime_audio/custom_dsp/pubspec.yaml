@@ -1,0 +1,38 @@
+name: custom_dsp
+description: Demonstrates custom native and web DSP callbacks for flutter_soloud with Native Assets.
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  sdk: '>=3.11.0 <4.0.0'
+  flutter: '>=3.41.0'
+
+dependencies:
+  code_assets: ^2.0.0
+  ffi: ^2.1.4
+  flutter:
+    sdk: flutter
+  flutter_soloud:
+    path: ../../../../
+  hooks: ^2.2.0
+  native_toolchain_c: ^0.19.4
+
+dev_dependencies:
+  ffigen: ^23.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+ffigen:
+  name: CustomDspBindings
+  description: 'Automatically generated FFI bindings for custom DSP callbacks'
+  output: 'lib/src/custom_dsp.g.dart'
+  headers:
+    entry-points:
+      - 'src/custom_dsp.h'
+    include-directives:
+      - '**custom_dsp.h'
+  ffi-native:
+    asset-id: 'package:custom_dsp/src/custom_dsp.c'

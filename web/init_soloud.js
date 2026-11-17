@@ -1689,7 +1689,7 @@ m="flutter_soloud: loading "+A.l(n)+" WASM build (crossOriginIsolated: "+A.l(f.g
 A.cw(m)
 f.console.log(m)
 s=9
-return A.du(A.fu("assets/packages/flutter_soloud/web//libflutter_soloud_plugin"+(o?"_mt":"")+".js"),$async$br)
+return A.du(A.fu("assets/packages/flutter_soloud/web/libflutter_soloud_plugin"+(o?"_mt":"")+".js"),$async$br)
 case 9:if(f.Module_soloud==null){f=A.cI("Module_soloud not found after loading the glue.")
 throw A.f(f)}s=7
 break

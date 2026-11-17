@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'dart:developer' as dev;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:logging/logging.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Mixing Bus Example - Grouped Audio Control and Routing
 ///
@@ -18,6 +19,8 @@ import 'package:logging/logging.dart';
 ///    to all sounds routed through the bus
 /// 4. **Dynamic routing**: Move live sounds between buses
 ///    at runtime using [Bus.annexSound]
+/// 5. **Visualization**: Get the wave and FFT of what plays through each bus
+///    with [Bus.setVisualizationEnabled] and [Bus.audioVisualizationEvents]
 ///
 /// ## Key Concepts
 ///
@@ -249,6 +252,15 @@ class _BusControlsState extends State<BusControls> {
     });
   }
 
+  /// Shift the bus's pitch while its pitch shift filter is active. A bus's
+  /// filter parameters can be set only while the bus plays, so "play bus"
+  /// calls this again.
+  void _applyPitchShift() {
+    final pitchShift = widget.bus.filters.pitchShiftFilter;
+    if (!pitchShift.isActive || !widget.bus.isActive) return;
+    pitchShift.shift(soundHandle: widget.bus.soundHandle).value = 2.5;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -271,6 +283,7 @@ class _BusControlsState extends State<BusControls> {
               );
             },
           ),
+          BusVisualizer(bus: widget.bus),
           Row(
             mainAxisSize: MainAxisSize.min,
             spacing: 8,
@@ -279,8 +292,11 @@ class _BusControlsState extends State<BusControls> {
                 // Play the bus on the engine.
                 // Like any SoundHandle, a bus must be played on the main
                 // SoLoud engine in order for its output to be audible.
-                onPressed: () =>
-                    widget.bus.playOnEngine(volume: volumeNotifier.value),
+                onPressed: () {
+                  widget.bus.playOnEngine(volume: volumeNotifier.value);
+                  // The bus's filter parameters can be set from now on.
+                  _applyPitchShift();
+                },
                 child: const Text('play bus'),
               ),
               ElevatedButton(
@@ -355,9 +371,7 @@ class _BusControlsState extends State<BusControls> {
                 widget.bus.filters.pitchShiftFilter.deactivate();
               } else {
                 widget.bus.filters.pitchShiftFilter.activate();
-                widget.bus.filters.pitchShiftFilter
-                    .shift(soundHandle: widget.bus.soundHandle)
-                    .value = 2.5;
+                _applyPitchShift();
               }
             },
             child: const Text('pitch shift filter'),
@@ -366,4 +380,114 @@ class _BusControlsState extends State<BusControls> {
       ),
     );
   }
+}
+
+/// Draws the wave and FFT of what plays through [bus], from its
+/// [Bus.audioVisualizationEvents].
+///
+/// The data is taken before the bus's own filters, volume and pan, so the
+/// volume slider doesn't change it. Packets stop while nothing is mixed
+/// through the bus (before "play bus", or while the bus is paused), and the
+/// drawing fades out then.
+class BusVisualizer extends StatefulWidget {
+  const BusVisualizer({required this.bus, super.key});
+
+  final Bus bus;
+
+  @override
+  State<BusVisualizer> createState() => _BusVisualizerState();
+}
+
+class _BusVisualizerState extends State<BusVisualizer> {
+  StreamSubscription<AudioVisualizationData>? subscription;
+  AudioVisualizationData? latest;
+  Timer? staleTimer;
+  bool stale = true;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.bus.setVisualizationEnabled(true);
+    subscription = widget.bus.audioVisualizationEvents.listen((data) {
+      staleTimer?.cancel();
+      staleTimer = Timer(const Duration(milliseconds: 200), () {
+        if (mounted) setState(() => stale = true);
+      });
+      setState(() {
+        latest = data;
+        stale = false;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    staleTimer?.cancel();
+    subscription?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: stale ? 0.3 : 1,
+      child: SizedBox(
+        width: 260,
+        height: 70,
+        child: CustomPaint(painter: _BusVisualizationPainter(latest)),
+      ),
+    );
+  }
+}
+
+class _BusVisualizationPainter extends CustomPainter {
+  _BusVisualizationPainter(this.data);
+
+  final AudioVisualizationData? data;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = Colors.blue.withValues(alpha: 0.08),
+    );
+
+    final fft = data?.fftData;
+    if (fft != null && fft.isNotEmpty) {
+      final barWidth = size.width / fft.length;
+      final paint = Paint()..color = Colors.blue.withValues(alpha: 0.5);
+      for (var i = 0; i < fft.length; i++) {
+        final height = fft[i].clamp(0.0, 1.0) * size.height;
+        canvas.drawRect(
+          Rect.fromLTWH(i * barWidth, size.height - height, barWidth, height),
+          paint,
+        );
+      }
+    }
+
+    final wave = data?.waveData;
+    if (wave != null && wave.length > 1) {
+      final path = Path();
+      for (var i = 0; i < wave.length; i++) {
+        final x = i * size.width / (wave.length - 1);
+        final y = (1 - wave[i].clamp(-1.0, 1.0)) * size.height / 2;
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = Colors.red
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BusVisualizationPainter oldDelegate) =>
+      oldDelegate.data != data;
 }

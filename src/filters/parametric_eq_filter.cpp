@@ -1,9 +1,19 @@
 #include "parametric_eq_filter.h"
+#include "../simd/soloud_simd.h"
 #include "soloud.h"
 #include <algorithm>
-#include <math.h>
+#include <cmath>
+#include <cstring>
 #include <string.h>
 #include <string>
+
+#if defined(SOLOUD_SSE_INTRINSICS)
+#include <emmintrin.h>
+#elif defined(SOLOUD_NEON_INTRINSICS)
+#include <arm_neon.h>
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+#include <wasm_simd128.h>
+#endif
 
 // MSVC fix: Undefine min/max macros that may be defined by Windows.h
 #ifdef min
@@ -12,6 +22,13 @@
 #ifdef max
 #undef max
 #endif
+
+void ParametricEqInstance::setWindowSize(int aWindowSize) {
+  mWinSize = aWindowSize;
+  mWinHalf = aWindowSize >> 1;
+  mWinTwice = aWindowSize << 1;
+  mFFTScale = aWindowSize > 0 ? 1.0f / (float)aWindowSize : 0.0f;
+}
 
 ParametricEqInstance::ParametricEqInstance(ParametricEq *aParent) {
   mParent = aParent;
@@ -26,17 +43,20 @@ ParametricEqInstance::ParametricEqInstance(ParametricEq *aParent) {
     mMixBuffer[i] = nullptr;
   }
 
-  initParams(3 + mParent->mBands);
+  initParams(ParametricEq::NUM_PARAMS);
+
+  // Each instance owns its window size (see setFilterParameter).
+  setWindowSize(mParent->mSTFT_WINDOW_SIZE);
 
   // Initialize FFT setup and allocate buffers
   initFFTBuffers();
 
-  // Initialize band parameters (count, gains, centers, boundaries)
+  // Initialize band parameters (gains, frequencies, Q factors)
   initBandParameters();
 
-  mParam[0] = mParent->mWet; // Reset wet param (index 0)
-  mParam[1] = mParent->mSTFT_WINDOW_SIZE; // Update window size param (index 1)
-  mParam[2] = mParent->mBands; // Update band count param (index 2)
+  mParam[0] = mParent->mWet;              // wet param (index 0)
+  mParam[1] = mWinSize; // window size param (index 1)
+  mParam[2] = mParent->mBands;            // band count param (index 2)
 }
 
 void ParametricEqInstance::comp2MagPhase(float *aFFTBuffer,
@@ -60,40 +80,23 @@ void ParametricEqInstance::magPhase2Comp(float *aFFTBuffer,
 }
 
 void ParametricEqInstance::initBandParameters() {
-  // Copy band count from parent
   mBands = mParent->mBands;
 
-  // Re-initialize parameter arrays to match band count
-  mNumParams = 3 + mBands;
-  mParam[2] = mBands; // Update band count param (index 2)
-
-  // Copy band gains into parameter slots (params[3..3+bands-1])
-  for (int i = 0; i < mBands; i++) {
-    mParam[3 + i] = mParent->mGain[i];
+  // Copy band gains, frequencies, and Q factors into parameter slots
+  for (unsigned int i = 0; i < ParametricEq::MAX_BANDS; i++) {
+    mParam[ParametricEq::BAND_GAIN_OFFSET + i] = mParent->mGain[i];
+    mParam[ParametricEq::BAND_FREQ_OFFSET + i] = mParent->mFreq[i];
+    mParam[ParametricEq::BAND_Q_OFFSET + i] = mParent->mQ[i];
   }
-
-  // Precompute band centers and boundaries (boundaries are midpoints)
-  mBandCenter.resize(mBands);
-  mBandBoundary.resize(mBands + 1);
-  for (int i = 0; i < mBands; i++) {
-    mBandCenter[i] = mParent->mFreq[i];
-  }
-
-  // boundaries: first = 0, last = +inf (will be clamped to Nyquist when used)
-  mBandBoundary[0] = 0.0f;
-  for (int i = 0; i < mBands - 1; i++) {
-    mBandBoundary[i + 1] = 0.5f * (mBandCenter[i] + mBandCenter[i + 1]);
-  }
-  mBandBoundary[mBands] = 1e9f; // effectively infinity for the upper bound
 }
 
 void ParametricEqInstance::initFFTBuffers() {
   // Safety check: ensure window size is valid
   // PFFFT requires power-of-2 sizes, minimum 16
-  if (mParent->mSTFT_WINDOW_SIZE < 16 || mParent->mSTFT_WINDOW_SIZE > 65536) {
-    return;  // Invalid window size, don't reallocate
+  if (mWinSize < 16 || mWinSize > 65536) {
+    return; // Invalid window size, don't reallocate
   }
-  
+
   // Free existing FFT resources if any
   if (mFFTSetup != nullptr) {
     pffft_destroy_setup(mFFTSetup);
@@ -112,9 +115,8 @@ void ParametricEqInstance::initFFTBuffers() {
     mTemp = nullptr;
   }
 
-  // Free and reallocate channel buffers for all possible channels (up to MAX_CHANNELS)
-  // We must iterate up to MAX_CHANNELS, not mParent->mChannels, because filterChannel
-  // can be called with any channel index < MAX_CHANNELS
+  // Free and reallocate channel buffers for all possible channels (up to
+  // MAX_CHANNELS) outside the real-time audio path
   for (int i = 0; i < MAX_CHANNELS; i++) {
     if (mInputBuffer[i] != nullptr) {
       delete[] mInputBuffer[i];
@@ -124,24 +126,48 @@ void ParametricEqInstance::initFFTBuffers() {
       delete[] mMixBuffer[i];
       mMixBuffer[i] = nullptr;
     }
+    mInputBuffer[i] = new float[mWinTwice]();
+    mMixBuffer[i] = new float[mWinTwice]();
     // Reset offsets
-    mInputOffset[i] = mParent->mSTFT_WINDOW_SIZE;
-    mMixOffset[i] = mParent->mSTFT_WINDOW_HALF;
+    mInputOffset[i] = mWinSize;
+    mMixOffset[i] = mWinHalf;
     mReadOffset[i] = 0;
   }
 
-  // Initialize FFT setup for complex transforms
-  mFFTSetup = pffft_new_setup(mParent->mSTFT_WINDOW_SIZE, PFFFT_COMPLEX);
+  // Precompute scaled Hann window table once per window-size change
+  const int winSize = mWinSize;
+  mUseRealFFT = (winSize >= 32);
+  mHannWindow.resize(winSize);
+  const float scale = mFFTScale;
+  for (int i = 0; i < winSize; i++) {
+    mHannWindow[i] =
+        0.5f * (1.0f - cosf((2.0f * (float)M_PI * i) / (float)winSize)) * scale;
+  }
+  const int halfWin = mWinHalf;
+  mLogBinIndex.resize(static_cast<size_t>(halfWin) + 1u);
+  mLogBinIndex[0] = 0.0f;
+  for (int i = 1; i <= halfWin; i++) {
+    mLogBinIndex[static_cast<size_t>(i)] = logf(static_cast<float>(i));
+  }
+  mBinGainTable.assign(
+      mUseRealFFT ? (static_cast<size_t>(halfWin) + 1u)
+                  : static_cast<size_t>(winSize),
+      1.0f);
+  mGainTableDirty = true;
+
+  // Initialize FFT setup: real-to-complex for N >= 32 (half the FFT cost and
+  // zero interleave/de-interleave), complex fallback only if N == 16.
+  mFFTSetup =
+      pffft_new_setup(mWinSize, mUseRealFFT ? PFFFT_REAL : PFFFT_COMPLEX);
 
   // Allocate aligned buffers for FFT
-  mFFTBuffer = (float *)pffft_aligned_malloc(mParent->mSTFT_WINDOW_TWICE *
-                                             sizeof(float));
-  mFFTWork = (float *)pffft_aligned_malloc(mParent->mSTFT_WINDOW_TWICE *
-                                           sizeof(float));
-  mTemp = (float *)pffft_aligned_malloc(mParent->mSTFT_WINDOW_TWICE *
-                                        sizeof(float));
+  const size_t fftFloats =
+      static_cast<size_t>(mUseRealFFT ? mWinSize : mWinTwice);
+  mFFTBuffer = (float *)pffft_aligned_malloc(fftFloats * sizeof(float));
+  mFFTWork = (float *)pffft_aligned_malloc(fftFloats * sizeof(float));
+  mTemp = (float *)pffft_aligned_malloc(fftFloats * sizeof(float));
 
-  mParam[1] = mParent->mSTFT_WINDOW_SIZE; // Update window size param (index 1)
+  mParam[1] = mWinSize; // Update window size param (index 1)
 }
 
 ParametricEqInstance::~ParametricEqInstance() {
@@ -165,9 +191,7 @@ ParametricEqInstance::~ParametricEqInstance() {
     mTemp = nullptr;
   }
 
-  // Free channel buffers for all possible channels (up to MAX_CHANNELS)
-  // We must iterate up to MAX_CHANNELS, not mParent->mChannels, because buffers
-  // may have been allocated for any channel index < MAX_CHANNELS
+  // Free channel buffers
   for (int i = 0; i < MAX_CHANNELS; i++) {
     if (mInputBuffer[i] != nullptr) {
       delete[] mInputBuffer[i];
@@ -185,52 +209,172 @@ void ParametricEqInstance::setFilterParameter(unsigned int aAttributeId,
   if (aAttributeId >= mNumParams)
     return;
 
-  // 0 wet
-  // 1 SFTF_WINDOW_SIZE
-  // 2 nBands
-  // 3..nBands per-band gains
-
   mParamFader[aAttributeId].mActive = 0;
 
   switch (aAttributeId) {
   case 0: // wet
-    // Guard on mParam[0] (the authoritative value read by fftFilterChannel,
-    // getFilterParameter and updateParams): mParent->mWet may be stale
-    // after a fade/oscillation, which never updates the parent.
     if (mParam[0] == aValue)
       return;
-    mParam[0] = aValue; // Update wet param (index 0)
+    mParam[0] = aValue;
     mParent->mWet = aValue;
     break;
-  case 1: // SFTF_WINDOW_SIZE
-    if (mParent->mSTFT_WINDOW_SIZE == (int)aValue)
+
+  case 1: { // STFT_WINDOW_SIZE
+    const int requested = (int)aValue;
+    if (mWinSize == requested)
       return;
-    mParam[1] = (int)aValue; // Update window size param (index 1)
-    mParent->mSTFT_WINDOW_SIZE = (int)aValue;
-    mParent->mSTFT_WINDOW_HALF = mParent->mSTFT_WINDOW_SIZE >> 1;
-    mParent->mSTFT_WINDOW_TWICE = mParent->mSTFT_WINDOW_SIZE << 1;
-    mParent->mFFT_SCALE = 1.0f / (float)mParent->mSTFT_WINDOW_SIZE;
-    // Reinitialize FFT with new window size
+    // PFFFT needs a power of two in [16, 65536]. Reject anything else
+    // before touching the window state, so it always matches the buffers.
+    if (requested < 16 || requested > 65536 ||
+        (requested & (requested - 1)) != 0)
+      return;
+    // Only this instance's buffers are rebuilt, so only this instance takes
+    // the new size. Other instances of the same filter (other voices of the
+    // sound) keep their own, consistent size; the parent's value is just the
+    // default for instances created from now on.
+    setWindowSize(requested);
+    mParam[1] = mWinSize;
+    mParent->mSTFT_WINDOW_SIZE = mWinSize;
+    mParent->mSTFT_WINDOW_HALF = mWinHalf;
+    mParent->mSTFT_WINDOW_TWICE = mWinTwice;
+    mParent->mFFT_SCALE = mFFTScale;
     initFFTBuffers();
     break;
+  }
+
   case 2: // nBands
     if (mParent->mBands == (unsigned int)aValue)
       return;
-    initParams(3 + (int)aValue);
-    // The initParams resets values. Restoring.
     mBands = mParent->mBands = (int)aValue;
-    mParam[0] = mParent->mWet; // Reset wet param (index 0)
-    mParam[1] = mParent->mSTFT_WINDOW_SIZE; // Update window size param (index 1)
-    mParam[2] = mBands; // Update band count param (index 2)
-    // Update parent's band configuration first
+    mParam[2] = mBands;
+    // Update parent's frequencies and Q defaults for the new band count
     mParent->setFreqs((unsigned int)aValue);
-    // Re-initialize band parameters from parent
+    // Refresh band parameters in mParam
     initBandParameters();
     break;
 
-  default: // 3..nBands per-band gains
-    mParam[aAttributeId] = aValue;
+  default:
+    if (aAttributeId >= ParametricEq::BAND_GAIN_OFFSET &&
+        aAttributeId < ParametricEq::BAND_FREQ_OFFSET) {
+      // Band Gain
+      unsigned int idx = aAttributeId - ParametricEq::BAND_GAIN_OFFSET;
+      mParam[aAttributeId] = aValue;
+      if (idx < ParametricEq::MAX_BANDS)
+        mParent->mGain[idx] = aValue;
+    } else if (aAttributeId >= ParametricEq::BAND_FREQ_OFFSET &&
+               aAttributeId < ParametricEq::BAND_Q_OFFSET) {
+      // Band Frequency
+      unsigned int idx = aAttributeId - ParametricEq::BAND_FREQ_OFFSET;
+      mParam[aAttributeId] = aValue;
+      if (idx < ParametricEq::MAX_BANDS)
+        mParent->mFreq[idx] = aValue;
+    } else if (aAttributeId >= ParametricEq::BAND_Q_OFFSET &&
+               aAttributeId < ParametricEq::NUM_PARAMS) {
+      // Band Q
+      unsigned int idx = aAttributeId - ParametricEq::BAND_Q_OFFSET;
+      mParam[aAttributeId] = aValue;
+      if (idx < ParametricEq::MAX_BANDS)
+        mParent->mQ[idx] = aValue;
+    }
     break;
+  }
+
+  mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
+  mGainTableDirty = true;
+}
+
+void ParametricEqInstance::updateBinGainTable(unsigned int aSamples,
+                                              float aSamplerate) {
+  mCachedSampleRate = aSamplerate;
+  mGainTableDirty = false;
+  mParamChanged = 0;
+
+  const unsigned int halfSamples = aSamples / 2;
+  const size_t tableSize =
+      mUseRealFFT ? (static_cast<size_t>(halfSamples) + 1u)
+                  : static_cast<size_t>(aSamples);
+  if (mBinGainTable.size() != tableSize) {
+    mBinGainTable.assign(tableSize, 1.0f);
+  }
+
+  float wet = mParam[0];
+  if (wet <= 0.0f) {
+    mHasActiveBands = false;
+    return;
+  }
+
+  struct ActiveBand {
+    float gainMinusOne;
+    float log_fc;
+    float inv_two_sigma_sq;
+  };
+  ActiveBand activeBands[ParametricEq::MAX_BANDS];
+  int numActiveBands = 0;
+
+  float nyquist = aSamplerate * 0.5f;
+
+  for (int b = 0; b < mBands; b++) {
+    float gain = mParam[ParametricEq::BAND_GAIN_OFFSET + b];
+    if (std::fabs(gain - 1.0f) < 0.001f) {
+      continue;
+    }
+
+    float freq = mParam[ParametricEq::BAND_FREQ_OFFSET + b];
+    if (freq < 10.0f)
+      freq = 10.0f;
+    if (freq > nyquist)
+      freq = nyquist;
+
+    float q = mParam[ParametricEq::BAND_Q_OFFSET + b];
+    if (q < 0.1f)
+      q = 0.1f;
+    if (q > 20.0f)
+      q = 20.0f;
+
+    float inv_two_sigma_sq = 4.16277f * q * q;
+
+    activeBands[numActiveBands].gainMinusOne = gain - 1.0f;
+    activeBands[numActiveBands].log_fc = logf(freq);
+    activeBands[numActiveBands].inv_two_sigma_sq = inv_two_sigma_sq;
+    numActiveBands++;
+  }
+
+  if (numActiveBands == 0) {
+    mHasActiveBands = false;
+    return;
+  }
+
+  mHasActiveBands = true;
+  const float bin_hz = aSamplerate / (float)aSamples;
+  const float log_bin_hz = logf(bin_hz);
+  const bool haveLogTable = (mLogBinIndex.size() > halfSamples);
+  constexpr float kNegInvLn2 = -1.4426950408889634f;
+  const float dry = 1.0f - wet;
+
+  mBinGainTable[0] = 1.0f;
+  for (unsigned int i = 1; i <= halfSamples; i++) {
+    const float log_f = haveLogTable ? (mLogBinIndex[i] + log_bin_hz)
+                                     : logf((float)i * bin_hz);
+    float total_gain = 1.0f;
+
+    for (int b = 0; b < numActiveBands; b++) {
+      float d = log_f - activeBands[b].log_fc;
+      float exponent = d * d * activeBands[b].inv_two_sigma_sq;
+      if (exponent > 9.0f) {
+        continue;
+      }
+      float weight = soloud_simd::fast_exp2(exponent * kNegInvLn2);
+      float band_factor = 1.0f + activeBands[b].gainMinusOne * weight;
+      if (band_factor < 0.0f)
+        band_factor = 0.0f;
+      total_gain *= band_factor;
+    }
+
+    float final_scale = total_gain * wet + dry;
+    mBinGainTable[i] = final_scale;
+    if (!mUseRealFFT && i < halfSamples) {
+      mBinGainTable[aSamples - i] = final_scale;
+    }
   }
 }
 
@@ -238,101 +382,156 @@ void ParametricEqInstance::filterChannel(float *aBuffer, unsigned int aSamples,
                                          float aSamplerate, SoLoud::time aTime,
                                          unsigned int aChannel,
                                          unsigned int aChannels) {
-  // Safety check: ensure parent filter still exists
-  if (mParent == nullptr) {
-    return;  // Parent destroyed, pass through audio unchanged
-  }
-  
-  // Safety check: ensure channel index is within bounds to prevent buffer overflow
-  // MAX_CHANNELS is defined in soloud.h (typically 8)
-  if (aChannel >= MAX_CHANNELS) {
-    // Channel out of range - pass through audio unchanged
+  if (mParent == nullptr || aChannel >= MAX_CHANNELS || mWinTwice <= 0 ||
+      mWinTwice > 131072 || mFFTSetup == nullptr || mFFTBuffer == nullptr ||
+      mTemp == nullptr) {
     return;
   }
-  
-  // Safety check: ensure window size is valid before processing
-  if (mParent->mSTFT_WINDOW_TWICE <= 0 || mParent->mSTFT_WINDOW_TWICE > 131072) {
-    return;  // Invalid window size, pass through audio unchanged
-  }
+
+  soloud_simd::ScopedFlushDenormals flushDenormals;
 
   // Advance parameter fades/oscillations once per audio callback
   if (aChannel == 0) {
     updateParams(aTime);
-  }
-  
-  // Lazy initialization of buffers for this channel
-  if (mInputBuffer[aChannel] == nullptr) {
-    mInputBuffer[aChannel] =
-        new float[mParent->mSTFT_WINDOW_TWICE](); // () initializes to zero
-    mMixBuffer[aChannel] = new float[mParent->mSTFT_WINDOW_TWICE]();
+    if (mParamChanged != 0) {
+      mGainTableDirty = true;
+    }
   }
 
+  if (mInputBuffer[aChannel] == nullptr || mMixBuffer[aChannel] == nullptr) {
+    delete[] mInputBuffer[aChannel];
+    delete[] mMixBuffer[aChannel];
+    mInputBuffer[aChannel] = new float[mWinTwice]();
+    mMixBuffer[aChannel] = new float[mWinTwice]();
+  }
+
+  const int winSize = mWinSize;
+  const int winHalf = mWinHalf;
+  const unsigned int uWinSize = static_cast<unsigned int>(winSize);
+  const unsigned int uWinTwice = static_cast<unsigned int>(mWinTwice);
+  const unsigned int winTwiceMask = uWinTwice - 1u;
+  const float *hannWindow = mHannWindow.data();
+  float *inRing = mInputBuffer[aChannel];
+  float *mixRing = mMixBuffer[aChannel];
+
   unsigned int ofs = 0;
-  unsigned int chofs = 0;
   unsigned int inputofs = mInputOffset[aChannel];
   unsigned int mixofs = mMixOffset[aChannel];
   unsigned int readofs = mReadOffset[aChannel];
 
+  auto overlapAddSpan = [](float *dst, const float *src, const float *win,
+                           unsigned int count, float extraScale) {
+    unsigned int k = 0;
+#if defined(SOLOUD_SIMD_ENABLED)
+    const soloud_simd::f32x4 vScale = soloud_simd::f32x4::splat(extraScale);
+    for (; k + 4 <= count; k += 4) {
+      const soloud_simd::f32x4 s = soloud_simd::f32x4::loadu(src + k);
+      const soloud_simd::f32x4 w = soloud_simd::f32x4::loadu(win + k) * vScale;
+      const soloud_simd::f32x4 cur = soloud_simd::f32x4::loadu(dst + k);
+      soloud_simd::fma(s, w, cur).storeu(dst + k);
+    }
+#endif
+    for (; k < count; ++k) {
+      dst[k] += src[k] * (win[k] * extraScale);
+    }
+  };
+
   while (ofs < aSamples) {
-    int samples = mParent->mSTFT_WINDOW_HALF -
-                  (inputofs & (mParent->mSTFT_WINDOW_HALF - 1));
+    unsigned int samples =
+        static_cast<unsigned int>(winHalf) -
+        (inputofs & static_cast<unsigned int>(winHalf - 1));
     if (ofs + samples > aSamples)
       samples = aSamples - ofs;
-    for (int i = 0; i < samples; i++) {
-      mInputBuffer[aChannel][chofs + ((inputofs + mParent->mSTFT_WINDOW_HALF) &
-                                      (mParent->mSTFT_WINDOW_TWICE - 1))] =
-          aBuffer[ofs + i];
-      mMixBuffer[aChannel][chofs + ((inputofs + mParent->mSTFT_WINDOW_HALF) &
-                                    (mParent->mSTFT_WINDOW_TWICE - 1))] = 0;
-      inputofs++;
-    }
 
-    if ((inputofs & (mParent->mSTFT_WINDOW_HALF - 1)) == 0) {
-      // Copy input to FFT buffer (interleaved real/imag format)
-      for (int i = 0; i < mParent->mSTFT_WINDOW_SIZE; i++) {
-        float sample =
-            mInputBuffer[aChannel]
-                        [chofs + ((inputofs + mParent->mSTFT_WINDOW_TWICE -
-                                   mParent->mSTFT_WINDOW_HALF + i) &
-                                  (mParent->mSTFT_WINDOW_TWICE - 1))];
-        mFFTBuffer[i * 2] = sample;   // Real part
-        mFFTBuffer[i * 2 + 1] = 0.0f; // Imaginary part
+    // Write input span and clear corresponding mix span (at most 1 wrap)
+    const unsigned int writeStart =
+        (inputofs + static_cast<unsigned int>(winHalf)) & winTwiceMask;
+    const unsigned int w1 = std::min(samples, uWinTwice - writeStart);
+    const unsigned int w2 = samples - w1;
+    std::memcpy(inRing + writeStart, aBuffer + ofs, w1 * sizeof(float));
+    std::memset(mixRing + writeStart, 0, w1 * sizeof(float));
+    if (w2 > 0) {
+      std::memcpy(inRing, aBuffer + ofs + w1, w2 * sizeof(float));
+      std::memset(mixRing, 0, w2 * sizeof(float));
+    }
+    inputofs += samples;
+
+    if ((inputofs & static_cast<unsigned int>(winHalf - 1)) == 0) {
+      const unsigned int baseIdx =
+          (inputofs + uWinTwice - static_cast<unsigned int>(winHalf)) &
+          winTwiceMask;
+
+      if (mUseRealFFT) {
+        // Refresh gain table up front so flat/dry EQ can bypass Forward+Inverse
+        // FFT while preserving exact STFT overlap-add latency and phase.
+        const size_t expectedTable =
+            static_cast<size_t>(uWinSize / 2u) + 1u;
+        if (mParam[0] > 0.0f &&
+            (mGainTableDirty || mCachedSampleRate != aSamplerate ||
+             mBinGainTable.size() != expectedTable)) {
+          updateBinGainTable(uWinSize, aSamplerate);
+        }
+
+        const unsigned int r1 = std::min(uWinSize, uWinTwice - baseIdx);
+        const unsigned int r2 = uWinSize - r1;
+        std::memcpy(mFFTBuffer, inRing + baseIdx, r1 * sizeof(float));
+        if (r2 > 0) {
+          std::memcpy(mFFTBuffer + r1, inRing, r2 * sizeof(float));
+        }
+
+        float extraScale = 1.0f;
+        if (mParam[0] > 0.0f && mHasActiveBands) {
+          pffft_transform_ordered(mFFTSetup, mFFTBuffer, mTemp, mFFTWork,
+                                  PFFFT_FORWARD);
+          fftFilterChannel(mTemp, uWinSize, aSamplerate, aTime, aChannel,
+                           aChannels);
+          pffft_transform_ordered(mFFTSetup, mTemp, mFFTBuffer, mFFTWork,
+                                  PFFFT_BACKWARD);
+        } else {
+          // Unprocessed PFFFT_BACKWARD(PFFFT_FORWARD(x)) == winSize * x
+          extraScale = static_cast<float>(winSize);
+        }
+
+        const unsigned int mixStart = mixofs & winTwiceMask;
+        const unsigned int m1 = std::min(uWinSize, uWinTwice - mixStart);
+        const unsigned int m2 = uWinSize - m1;
+        overlapAddSpan(mixRing + mixStart, mFFTBuffer, hannWindow, m1,
+                       extraScale);
+        if (m2 > 0) {
+          overlapAddSpan(mixRing, mFFTBuffer + m1, hannWindow + m1, m2,
+                         extraScale);
+        }
+        mixofs += uWinSize;
+      } else {
+        // Fallback path for N == 16 (PFFFT_COMPLEX)
+        for (int i = 0; i < winSize; i++) {
+          mFFTBuffer[i * 2] =
+              inRing[(baseIdx + static_cast<unsigned int>(i)) & winTwiceMask];
+          mFFTBuffer[i * 2 + 1] = 0.0f;
+        }
+        pffft_transform_ordered(mFFTSetup, mFFTBuffer, mTemp, mFFTWork,
+                                PFFFT_FORWARD);
+        fftFilterChannel(mTemp, uWinSize, aSamplerate, aTime, aChannel,
+                         aChannels);
+        pffft_transform_ordered(mFFTSetup, mTemp, mFFTBuffer, mFFTWork,
+                                PFFFT_BACKWARD);
+        for (int i = 0; i < winSize; i++) {
+          mixRing[mixofs & winTwiceMask] += mFFTBuffer[i * 2] * hannWindow[i];
+          mixofs++;
+        }
       }
-
-      // Forward FFT (ordered output: interleaved complex numbers)
-      pffft_transform_ordered(mFFTSetup, mFFTBuffer, mTemp, mFFTWork,
-                              PFFFT_FORWARD);
-
-      // Apply EQ on the transformed complex bins (process all N complex bins)
-      fftFilterChannel(mTemp, mParent->mSTFT_WINDOW_SIZE, aSamplerate, aTime,
-                       aChannel, aChannels);
-
-      // Inverse FFT (ordered output)
-      pffft_transform_ordered(mFFTSetup, mTemp, mFFTBuffer, mFFTWork,
-                              PFFFT_BACKWARD);
-
-      // Apply scaling and Hann window for overlap-add
-      for (int i = 0; i < mParent->mSTFT_WINDOW_SIZE; i++) {
-        float window =
-            0.5f *
-            (1.0f - cosf((2.0f * M_PI * i) / mParent->mSTFT_WINDOW_SIZE));
-        float sample = mFFTBuffer[i * 2] * mParent->mFFT_SCALE *
-                       window; // Only use real part
-        mMixBuffer[aChannel]
-                  [chofs + (mixofs & (mParent->mSTFT_WINDOW_TWICE - 1))] +=
-            sample;
-        mixofs++;
-      }
-      mixofs -= mParent->mSTFT_WINDOW_HALF;
+      mixofs -= static_cast<unsigned int>(winHalf);
     }
 
-    for (int i = 0; i < samples; i++) {
-      aBuffer[ofs + i] =
-          mMixBuffer[aChannel]
-                    [chofs + (readofs & (mParent->mSTFT_WINDOW_TWICE - 1))];
-      readofs++;
+    // Read output span from mix ring (at most 1 wrap)
+    const unsigned int readStart = readofs & winTwiceMask;
+    const unsigned int out1 = std::min(samples, uWinTwice - readStart);
+    const unsigned int out2 = samples - out1;
+    std::memcpy(aBuffer + ofs, mixRing + readStart, out1 * sizeof(float));
+    if (out2 > 0) {
+      std::memcpy(aBuffer + ofs + out1, mixRing, out2 * sizeof(float));
     }
-
+    readofs += samples;
     ofs += samples;
   }
   mInputOffset[aChannel] = inputofs;
@@ -346,79 +545,87 @@ void ParametricEqInstance::fftFilterChannel(float *aFFTBuffer,
                                             SoLoud::time /*aTime*/,
                                             unsigned int /*aChannel*/,
                                             unsigned int /*aChannels*/) {
-  comp2MagPhase(aFFTBuffer, aSamples);
-  // Triangular interpolation across user-configured bands.
-  // mBandCenter holds band centers, mBandBoundary has midpoints between centers
-  // (size mBands+1)
-  float nyquist = aSamplerate * 0.5f;
-  unsigned int halfSamples = aSamples / 2;
-  float wet = mParam[0];
-
-  for (unsigned int i = 0; i < aSamples; i++) {
-    // For a real signal FFT: bins 0..N/2 are positive frequencies,
-    // bins N/2+1..N-1 are negative frequencies (conjugates).
-    // Map negative frequency bins to their positive counterpart.
-    unsigned int freqBin = (i <= halfSamples) ? i : (aSamples - i);
-    float current_freq = (float)freqBin * aSamplerate / (float)aSamples;
-
-    float gain = 0.0f;
-    float weight_sum = 0.0f;
-
-    for (int b = 0; b < mBands; b++) {
-      float center = mBandCenter[b];
-      float low = mBandBoundary[b];
-      float high = mBandBoundary[b + 1];
-      // clamp upper boundary to nyquist
-      if (high > nyquist)
-        high = nyquist;
-
-      // Asymmetric triangular window: use separate half-widths for left/right
-      float leftHalfwidth = center - low;
-      float rightHalfwidth = high - center;
-      float weight = 0.0f;
-
-      if (current_freq <= center && leftHalfwidth > 0.0f) {
-        // Frequency is on the left side of the triangle
-        float d = center - current_freq;
-        float w = 1.0f - (d / leftHalfwidth);
-        if (w >= 0.0f)                  // Include boundary (w=0)
-          weight = std::max(w, 0.001f); // Ensure minimum weight at boundary
-      } else if (current_freq > center && rightHalfwidth > 0.0f) {
-        // Frequency is on the right side of the triangle
-        float d = current_freq - center;
-        float w = 1.0f - (d / rightHalfwidth);
-        if (w >= 0.0f)                  // Include boundary (w=0)
-          weight = std::max(w, 0.001f); // Ensure minimum weight at boundary
-      } else if (leftHalfwidth <= 0.0f && rightHalfwidth <= 0.0f) {
-        // degenerate: treat only exact center
-        weight = (fabsf(current_freq - center) < 1e-6f) ? 1.0f : 0.0f;
-      }
-
-      float bandGain = mParam[3 + b]; // param index 3..3+mBands-1 -> band gains
-      gain += bandGain * weight;
-      weight_sum += weight;
-    }
-
-    if (weight_sum > 0.0f) {
-      gain /= weight_sum; // normalize so overlapping triangles sum to 1
-    } else {
-      gain = 1.0f; // pass-through: unity gain if no band matches
-    }
-
-    aFFTBuffer[i * 2] *= (gain * wet + (1.0f - wet));
+  if (mParam[0] <= 0.0f) {
+    return;
   }
 
-  magPhase2Comp(aFFTBuffer, aSamples);
+  const unsigned int halfSamples = aSamples / 2;
+  const size_t expectedTable =
+      mUseRealFFT ? (static_cast<size_t>(halfSamples) + 1u)
+                  : static_cast<size_t>(aSamples);
+  if (mGainTableDirty || mCachedSampleRate != aSamplerate ||
+      mBinGainTable.size() != expectedTable) {
+    updateBinGainTable(aSamples, aSamplerate);
+  }
+
+  if (!mHasActiveBands) {
+    return;
+  }
+
+  const float *scale = mBinGainTable.data();
+  if (mUseRealFFT) {
+    // PFFFT_REAL ordered format:
+    //   aFFTBuffer[0] = DC (bin 0), aFFTBuffer[1] = Nyquist (bin N/2),
+    //   aFFTBuffer[2*k], aFFTBuffer[2*k+1] = Re/Im of bin k (1 <= k < N/2).
+    const float dc = aFFTBuffer[0] * scale[0];
+    const float nyquist = aFFTBuffer[1] * scale[halfSamples];
+    unsigned int k = 0;
+#if defined(SOLOUD_SSE_INTRINSICS)
+    for (; k + 4 <= halfSamples; k += 4) {
+      const __m128 s = _mm_loadu_ps(scale + k);
+      const __m128 sLo = _mm_unpacklo_ps(s, s);
+      const __m128 sHi = _mm_unpackhi_ps(s, s);
+      const __m128 c0 = _mm_loadu_ps(aFFTBuffer + k * 2);
+      const __m128 c1 = _mm_loadu_ps(aFFTBuffer + k * 2 + 4);
+      _mm_storeu_ps(aFFTBuffer + k * 2, _mm_mul_ps(c0, sLo));
+      _mm_storeu_ps(aFFTBuffer + k * 2 + 4, _mm_mul_ps(c1, sHi));
+    }
+#elif defined(SOLOUD_NEON_INTRINSICS)
+    for (; k + 4 <= halfSamples; k += 4) {
+      const float32x4_t s = vld1q_f32(scale + k);
+      const float32x4x2_t sDup = vzipq_f32(s, s);
+      const float32x4_t c0 = vld1q_f32(aFFTBuffer + k * 2);
+      const float32x4_t c1 = vld1q_f32(aFFTBuffer + k * 2 + 4);
+      vst1q_f32(aFFTBuffer + k * 2, vmulq_f32(c0, sDup.val[0]));
+      vst1q_f32(aFFTBuffer + k * 2 + 4, vmulq_f32(c1, sDup.val[1]));
+    }
+#elif defined(SOLOUD_WASM_SIMD_INTRINSICS)
+    for (; k + 4 <= halfSamples; k += 4) {
+      const v128_t s = wasm_v128_load(scale + k);
+      const v128_t sLo = wasm_i32x4_shuffle(s, s, 0, 0, 1, 1);
+      const v128_t sHi = wasm_i32x4_shuffle(s, s, 2, 2, 3, 3);
+      const v128_t c0 = wasm_v128_load(aFFTBuffer + k * 2);
+      const v128_t c1 = wasm_v128_load(aFFTBuffer + k * 2 + 4);
+      wasm_v128_store(aFFTBuffer + k * 2, wasm_f32x4_mul(c0, sLo));
+      wasm_v128_store(aFFTBuffer + k * 2 + 4, wasm_f32x4_mul(c1, sHi));
+    }
+#endif
+    if (k == 0) {
+      k = 1;
+    }
+    for (; k < halfSamples; ++k) {
+      const float s = scale[k];
+      aFFTBuffer[k * 2] *= s;
+      aFFTBuffer[k * 2 + 1] *= s;
+    }
+    aFFTBuffer[0] = dc;
+    aFFTBuffer[1] = nyquist;
+    return;
+  }
+
+  for (unsigned int i = 1; i < aSamples; i++) {
+    const float s = scale[i];
+    aFFTBuffer[i * 2] *= s;
+    aFFTBuffer[i * 2 + 1] *= s;
+  }
 }
 
 SoLoud::result ParametricEq::setParam(unsigned int aParamIndex, float aValue) {
-  // Not used. Parameters are read in the ParametricEqInstance and set in the
-  // FilterInstance
   return SoLoud::SO_NO_ERROR;
 }
 
 int ParametricEq::getParamCount() {
-  return 3 + mBands; // wet + SFTF_WINDOW_SIZE + nBands + per-band gains
+  return NUM_PARAMS; // 195
 }
 
 const char *ParametricEq::getParamName(unsigned int aParamIndex) {
@@ -428,58 +635,97 @@ const char *ParametricEq::getParamName(unsigned int aParamIndex) {
     return "Window Size";
   if (aParamIndex == 2)
     return "Bands Count";
+
   static thread_local std::string s;
-  unsigned int band = aParamIndex + 3; // 1-based
-  s = std::string("Band ") + std::to_string(band);
-  return s.c_str();
+  if (aParamIndex >= BAND_GAIN_OFFSET && aParamIndex < BAND_FREQ_OFFSET) {
+    s = "Band " + std::to_string(aParamIndex - BAND_GAIN_OFFSET) + " Gain";
+    return s.c_str();
+  }
+  if (aParamIndex >= BAND_FREQ_OFFSET && aParamIndex < BAND_Q_OFFSET) {
+    s = "Band " + std::to_string(aParamIndex - BAND_FREQ_OFFSET) + " Frequency";
+    return s.c_str();
+  }
+  if (aParamIndex >= BAND_Q_OFFSET && aParamIndex < NUM_PARAMS) {
+    s = "Band " + std::to_string(aParamIndex - BAND_Q_OFFSET) + " Q";
+    return s.c_str();
+  }
+  return "Unknown";
 }
 
 unsigned int ParametricEq::getParamType(unsigned int aParamIndex) {
-  if (aParamIndex == 1)
+  if (aParamIndex == 1 || aParamIndex == 2)
     return INT_PARAM;
   return FLOAT_PARAM;
 }
 
 float ParametricEq::getParamMax(unsigned int aParamIndex) {
   if (aParamIndex == 0)
-    return 1; // wet
+    return 1.0f; // wet
   if (aParamIndex == 1)
-    return 4096; // window size
+    return 4096.0f; // window size
   if (aParamIndex == 2)
-    return 64; // band count
-  return 4.0f;
+    return 64.0f; // band count
+
+  if (aParamIndex >= BAND_GAIN_OFFSET && aParamIndex < BAND_FREQ_OFFSET)
+    return 4.0f; // gain
+  if (aParamIndex >= BAND_FREQ_OFFSET && aParamIndex < BAND_Q_OFFSET)
+    return 24000.0f; // frequency
+  if (aParamIndex >= BAND_Q_OFFSET && aParamIndex < NUM_PARAMS)
+    return 20.0f; // Q
+
+  return 1.0f;
 }
 
 float ParametricEq::getParamMin(unsigned int aParamIndex) {
   if (aParamIndex == 0)
-    return 0; // wet
+    return 0.0f; // wet
   if (aParamIndex == 1)
-    return 32; // window size
+    return 32.0f; // window size
   if (aParamIndex == 2)
-    return 1; // band count
+    return 1.0f; // band count
+
+  if (aParamIndex >= BAND_GAIN_OFFSET && aParamIndex < BAND_FREQ_OFFSET)
+    return 0.0f; // gain
+  if (aParamIndex >= BAND_FREQ_OFFSET && aParamIndex < BAND_Q_OFFSET)
+    return 10.0f; // frequency
+  if (aParamIndex >= BAND_Q_OFFSET && aParamIndex < NUM_PARAMS)
+    return 0.1f; // Q
+
   return 0.0f;
 }
 
 void ParametricEq::setFreqs(unsigned int nBands) {
-  // Clamp band count to reasonable limits to prevent excessive memory allocation
-  // Max 64 bands to prevent memory issues
-  const unsigned int MAX_BANDS = 64;
   mBands = std::max(1U, std::min(nBands, MAX_BANDS));
 
-  // resize vectors
-  mGain.assign(mBands, 1.0f);
-  mFreq.resize(mBands);
+  mGain.assign(MAX_BANDS, 1.0f);
+  mFreq.resize(MAX_BANDS);
+  mQ.resize(MAX_BANDS);
 
-  // default frequency distribution: geometric spacing between 30Hz and 12000Hz
+  // Default frequency distribution: geometric spacing between 30Hz and 12000Hz
   float f0 = 30.0f;
   float f1 = 12000.0f;
+
+  float defaultQ = 1.0f;
+  if (mBands > 1) {
+    float octaves = log2f(f1 / f0) / (float)(mBands - 1);
+    defaultQ = std::max(0.1f, std::min(20.0f, 1.0f / (octaves * 0.693147f)));
+  }
+
   if (mBands == 1) {
     mFreq[0] = 1000.0f;
+    mQ[0] = 1.0f;
   } else {
-    for (int i = 0; i < mBands; i++) {
+    for (unsigned int i = 0; i < mBands; i++) {
       float t = (float)i / (float)(mBands - 1);
       mFreq[i] = f0 * powf(f1 / f0, t);
+      mQ[i] = defaultQ;
     }
+  }
+
+  // Safe defaults for remaining slots
+  for (unsigned int i = mBands; i < MAX_BANDS; i++) {
+    mFreq[i] = 1000.0f;
+    mQ[i] = 1.0f;
   }
 }
 

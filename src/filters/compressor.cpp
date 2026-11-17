@@ -1,9 +1,8 @@
 #include "compressor.h"
+#include "../simd/soloud_simd.h"
 
 #include <algorithm>
 #include <cmath>
-#include <stdio.h>
-#include <iostream>
 
 CompressorInstance::CompressorInstance(Compressor *aParent)
 {
@@ -17,10 +16,16 @@ CompressorInstance::CompressorInstance(Compressor *aParent)
     mParam[Compressor::ATTACK_TIME] = aParent->mAttackTime;
     mParam[Compressor::RELEASE_TIME] = aParent->mReleaseTime;
 
-    attackCoef = expf(-1.0f / (mParam[Compressor::ATTACK_TIME] * 0.001f * mParent->mSamplerate));
-    releaseCoef = expf(-1.0f / (mParam[Compressor::RELEASE_TIME] * 0.001f * mParent->mSamplerate));
+    mLastSamplerate = static_cast<float>(mParent->mSamplerate);
+    attackCoef = expf(-1.0f / fmaxf(mParam[Compressor::ATTACK_TIME] * 0.001f * mLastSamplerate, 1e-6f));
+    releaseCoef = expf(-1.0f / fmaxf(mParam[Compressor::RELEASE_TIME] * 0.001f * mLastSamplerate, 1e-6f));
 
-    mEnvelope.assign(8, 0.0f);
+    // The level detector runs in dB and starts from silence: the floor of
+    // its input, 20 * log10(1e-8). Starting at 0 dBFS made every new voice
+    // duck until the release brought the envelope down.
+    for (unsigned int i = 0; i < MAX_CHANNELS; ++i) {
+        mEnvelope[i] = -160.0f;
+    }
 }
 
 void CompressorInstance::filter(
@@ -31,56 +36,77 @@ void CompressorInstance::filter(
     float aSamplerate,
     SoLoud::time aTime)
 {
+    soloud_simd::ScopedFlushDenormals flushDenormals;
     updateParams(aTime);
 
-    // Convert makeup gain to a linear scale
-    float makeupGainLin = powf(10.0f, mParam[Compressor::MAKEUP_GAIN] / 20.0f);
-
-    if (mEnvelope.size() != aChannels) {
-        mEnvelope.resize(aChannels, 0.0f);
+    const float wet = mParam[Compressor::WET];
+    if (wet <= 0.0f || aChannels == 0 || aSamples == 0) {
+        return;
     }
 
-    for (unsigned int i = 0; i < aSamples; ++i) {
-        for (unsigned int ch = 0; ch < aChannels; ++ch) {
-            float *sample = &aBuffer[i + (size_t)ch * (size_t)aBufferSize];
-            float inputLevel = fabsf(*sample);
+    if (aSamplerate != mLastSamplerate ||
+        (mParamChanged & ((1ULL << Compressor::ATTACK_TIME) |
+                          (1ULL << Compressor::RELEASE_TIME))) != 0) {
+        mLastSamplerate = aSamplerate;
+        attackCoef = expf(-1.0f / fmaxf(mParam[Compressor::ATTACK_TIME] * 0.001f * aSamplerate, 1e-6f));
+        releaseCoef = expf(-1.0f / fmaxf(mParam[Compressor::RELEASE_TIME] * 0.001f * aSamplerate, 1e-6f));
+        mParamChanged &= ~((1ULL << Compressor::ATTACK_TIME) |
+                           (1ULL << Compressor::RELEASE_TIME));
+    }
 
-            // Convert the input level to dB for comparison
-            float inputLevelDb = 20.0f * log10f(fmaxf(inputLevel, 1e-8f));
+    // 10^(dB/20) == 2^(dB / (20 * log10(2))) == 2^(dB * 0.166096404744f)
+    constexpr float kDbToLog2 = 0.1660964047443681f;
+    // 20 * log10(x) == (20 * log10(2)) * log2(x) == 6.020599913279624f * log2(x)
+    constexpr float kLog2ToDb = 6.020599913279624f;
 
-            // Smooth the envelope
-            if (inputLevelDb > mEnvelope[ch]) {
-                mEnvelope[ch] = attackCoef * (mEnvelope[ch] - inputLevelDb) + inputLevelDb;
-            } else {
-                mEnvelope[ch] = releaseCoef * (mEnvelope[ch] - inputLevelDb) + inputLevelDb;
-            }
+    const float makeupGainLin =
+        soloud_simd::fast_exp2(mParam[Compressor::MAKEUP_GAIN] * kDbToLog2);
 
-            // Determine gain reduction in dB
-            float gainReductionDb = 0.0f;
-            float knee = mParam[Compressor::KNEE_WIDTH];
-            if (mEnvelope[ch] > (mParam[Compressor::THRESHOLD] - knee / 2.0f)) {
-                if (knee > 0 && mEnvelope[ch] < (mParam[Compressor::THRESHOLD] + knee / 2.0f)) {
-                    // Soft knee region
-                    float x = mEnvelope[ch] - mParam[Compressor::THRESHOLD] + knee / 2.0f;
-                    gainReductionDb = (1.0f / mParam[Compressor::RATIO] - 1.0f) * (x * x) / (2.0f * knee);
+    const unsigned int channels =
+        aChannels > MAX_CHANNELS ? MAX_CHANNELS : aChannels;
+    const float threshold = mParam[Compressor::THRESHOLD];
+    const float knee = mParam[Compressor::KNEE_WIDTH];
+    const float halfKnee = knee * 0.5f;
+    const float kneeLo = threshold - halfKnee;
+    const float kneeHi = threshold + halfKnee;
+    const float slope = 1.0f / mParam[Compressor::RATIO] - 1.0f;
+    const float softKneeScale = (knee > 0.0f) ? (slope / (2.0f * knee)) : 0.0f;
+    const float dry = 1.0f - wet;
+    const float wetMakeup = wet * makeupGainLin;
+    const float atk = attackCoef;
+    const float rel = releaseCoef;
+
+    for (unsigned int ch = 0; ch < channels; ++ch) {
+        float *channelBuf = aBuffer + (size_t)ch * (size_t)aBufferSize;
+        float env = mEnvelope[ch];
+        for (unsigned int i = 0; i < aSamples; ++i) {
+            const float s = channelBuf[i];
+            const float inputLevel = fabsf(s);
+            const float inputLevelDb =
+                kLog2ToDb * soloud_simd::fast_log2(fmaxf(inputLevel, 1e-8f));
+
+            const float coef = (inputLevelDb > env) ? atk : rel;
+            env = coef * (env - inputLevelDb) + inputLevelDb;
+
+            float gainReductionLin = 1.0f;
+            if (env > kneeLo) {
+                float gainReductionDb;
+                if (knee > 0.0f && env < kneeHi) {
+                    const float x = env - kneeLo;
+                    gainReductionDb = (x * x) * softKneeScale;
                 } else {
-                    // Hard knee
-                    gainReductionDb = (mEnvelope[ch] - mParam[Compressor::THRESHOLD]) * (1.0f / mParam[Compressor::RATIO] - 1.0f);
+                    gainReductionDb = (env - threshold) * slope;
+                }
+                if (gainReductionDb != 0.0f) {
+                    gainReductionLin =
+                        soloud_simd::fast_exp2(gainReductionDb * kDbToLog2);
                 }
             }
 
-            // Convert gain reduction back to linear
-            float gainReductionLin = powf(10.0f, gainReductionDb / 20.0f);
-
-            // Apply gain reduction, makeup gain, and wet/dry mix
-            float compressedSample = *sample * gainReductionLin * makeupGainLin;
-            *sample = mParam[Compressor::WET] * compressedSample +
-                      (1.0f - mParam[Compressor::WET]) * (*sample);
+            channelBuf[i] = s * (dry + wetMakeup * gainReductionLin);
         }
+        mEnvelope[ch] = env;
     }
-
-    // printf("CompressorInstance::filter(%f, %f)\n",
-    //        mParam[Compressor::THRESHOLD], threshold);
 }
 
 void CompressorInstance::setFilterParameter(unsigned int aAttributeId, float aValue)
@@ -137,7 +163,7 @@ void CompressorInstance::setFilterParameter(unsigned int aAttributeId, float aVa
         break;
     }
 
-    mParamChanged |= 1 << aAttributeId;
+    mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
 }
 
 SoLoud::result Compressor::setParam(unsigned int aParamIndex, float aValue)

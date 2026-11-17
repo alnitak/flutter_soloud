@@ -26,7 +26,7 @@ public:
 
   bool canSeekToTime(double seconds) const override;
   uint64_t timeToByteOffset(double seconds) override;
-  void prepareForSeek(uint64_t targetSample) override;
+  void prepareForSeek(uint64_t targetSample, uint64_t byteOffset) override;
   double getDuration() const override;
 
   static bool checkForValidWavHeader(const std::vector<unsigned char> &buffer);

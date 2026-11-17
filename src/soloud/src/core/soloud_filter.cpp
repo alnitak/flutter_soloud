@@ -22,6 +22,8 @@ freely, subject to the following restrictions:
    distribution.
 */
 
+#include <atomic>
+
 #include "soloud.h"
 #include <cstdio>
 
@@ -63,6 +65,9 @@ namespace SoLoud
 	
 	FilterInstance::FilterInstance()
 	{
+		// ###### flutter_soloud local patch (mix checkpoints) ######
+		static std::atomic<unsigned long long> nextInstanceId(1);
+		mInstanceId = nextInstanceId.fetch_add(1, std::memory_order_relaxed);
 		mNumParams = 0;
 		mParamChanged = 0;
 		mParam = 0;
@@ -105,7 +110,7 @@ namespace SoLoud
 		{
 			if (mParamFader[i].mActive > 0)
 			{
-				mParamChanged |= 1 << i;
+				mParamChanged |= 1ULL << (i < 63 ? i : 63);
 				mParam[i] = mParamFader[i].get(aTime);
 			}
 		}
@@ -124,7 +129,7 @@ namespace SoLoud
 
 		mParamFader[aAttributeId].mActive = 0;
 		mParam[aAttributeId] = aValue;
-		mParamChanged |= 1 << aAttributeId;
+		mParamChanged |= 1ULL << (aAttributeId < 63 ? aAttributeId : 63);
 	}
 
 	void FilterInstance::fadeFilterParameter(unsigned int aAttributeId, float aTo, double aTime, double aStartTime)

@@ -1,10 +1,13 @@
 #ifndef NATIVE_AUDIO_DECODER_H
 #define NATIVE_AUDIO_DECODER_H
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
+
+#include "../simd/simd_pcm.h"
 
 struct DecodedAudioData {
     float *samples = nullptr;        // Planar float PCM data (channel 0, channel 1, ...)
@@ -99,11 +102,30 @@ public:
         return -1;
     }
 
+    /// Returns the total byte length of any leading ID3v2 tag(s) in [data, data + size).
+    static inline size_t skipId3Header(const unsigned char *data, size_t size) {
+        if (!data) return 0;
+        size_t offset = 0;
+        while (offset + 10 <= size && std::memcmp(data + offset, "ID3", 3) == 0) {
+            uint32_t tagSize = ((static_cast<uint32_t>(data[offset + 6] & 0x7F) << 21) |
+                                (static_cast<uint32_t>(data[offset + 7] & 0x7F) << 14) |
+                                (static_cast<uint32_t>(data[offset + 8] & 0x7F) << 7) |
+                                static_cast<uint32_t>(data[offset + 9] & 0x7F));
+            size_t total = 10 + tagSize;
+            if ((data[offset + 5] & 0x10) != 0) total += 10; // footer
+            if (offset + total > size) return size;
+            offset += total;
+        }
+        return offset;
+    }
+
     /// Returns true if the buffer header matches any native format supported by this decoder.
     static inline bool isSupportedNativeFormat(const unsigned char *header, size_t headerSize) {
+        if (!header || headerSize == 0) return false;
+        size_t id3Skip = skipId3Header(header, headerSize);
         return isM4aOrMp4(header, headerSize) ||
-               isAacAdts(header, headerSize) ||
-               isAc3OrEac3(header, headerSize);
+               isAacAdts(header + id3Skip, headerSize - id3Skip) ||
+               isAc3OrEac3(header + id3Skip, headerSize - id3Skip);
     }
 
     /// Decode audio from an in-memory buffer into planar 32-bit float PCM.
@@ -117,15 +139,8 @@ public:
     static inline void interleavedToPlanar(const float *interleaved, float *planar,
                                           size_t frameCount, unsigned int channels) {
         if (!interleaved || !planar || channels == 0 || frameCount == 0) return;
-        if (channels == 1) {
-            std::memcpy(planar, interleaved, frameCount * sizeof(float));
-            return;
-        }
-        for (size_t i = 0; i < frameCount; i++) {
-            for (unsigned int c = 0; c < channels; c++) {
-                planar[c * frameCount + i] = interleaved[i * channels + c];
-            }
-        }
+        SoLoud::deinterleaveFloatsToPlanar(
+            interleaved, planar, frameCount, frameCount, channels);
     }
 };
 

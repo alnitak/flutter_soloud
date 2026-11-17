@@ -41,14 +41,20 @@ struct OggSeekIndex {
     }
   }
 
-  void clear() {
+  /// Empty the index. [byteOffset] is the file offset of the next byte the
+  /// decoder will be fed: after a seek that is the seek's offset, so the
+  /// entries indexed from there on stay offsets into the file.
+  void clear(uint64_t byteOffset = 0) {
     entries.clear();
-    bytesConsumed = 0;
+    bytesConsumed = byteOffset;
   }
 
-  /// True when the index covers [targetGranule].
+  /// True when [targetGranule] lies within the indexed pages. After a seek
+  /// the index starts at the seek's page, so a target before it is not
+  /// covered either.
   bool covers(ogg_int64_t targetGranule) const {
-    return !entries.empty() && entries.back().granule >= targetGranule;
+    return !entries.empty() && entries.front().granule <= targetGranule &&
+           targetGranule <= entries.back().granule;
   }
 
   /// Interpolated byte offset for [targetGranule], or 0 when not covered.

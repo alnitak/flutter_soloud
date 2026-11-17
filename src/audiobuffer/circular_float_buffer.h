@@ -48,6 +48,12 @@ public:
   /// Returns the number of floats actually read. The read pointer is advanced.
   size_t read(float *out, size_t count);
 
+  /// Read up to [frames] multi-channel frames directly into [dstPlanar], where
+  /// channel `ch` starts at `dstPlanar + ch * dstChannelStride`, avoiding any
+  /// intermediate interleaved scratch copy. Returns the number of frames read.
+  size_t readPlanar(float *dstPlanar, size_t dstChannelStride, size_t frames,
+                    unsigned int channels);
+
   /// Advance the read pointer by [count] samples. Must not exceed available().
   void advanceRead(size_t count);
 

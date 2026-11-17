@@ -22,6 +22,8 @@ typedef struct
     void* pReadSeekTellUserData;
     ma_format format;           /* Will be either f32 or s16. */
     /*OggVorbis_File**/ void* vf;   /* Typed as void* so we can avoid a dependency on opusfile in the header section. */
+    ma_bool32 vfOpened;
+    ma_bool32 ownsUserData;
 } ma_libvorbis;
 
 MA_API ma_result ma_libvorbis_init(ma_read_proc onRead, ma_seek_proc onSeek, ma_tell_proc onTell, void* pReadSeekTellUserData, const ma_decoding_backend_config* pConfig, const ma_allocation_callbacks* pAllocationCallbacks, ma_libvorbis* pVorbis);

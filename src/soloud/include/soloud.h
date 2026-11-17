@@ -29,6 +29,7 @@ freely, subject to the following restrictions:
 #include <stdlib.h> // rand
 #include <math.h> // sin
 #include <atomic> // std::atomic
+#include <mutex>
 
 #ifdef SOLOUD_NO_ASSERTS
 #define SOLOUD_ASSERT(x)
@@ -70,8 +71,12 @@ freely, subject to the following restrictions:
 #endif
 
 #if !defined(DISABLE_SIMD)
-#if defined(__x86_64__) || defined( _M_X64 ) || defined( __i386 ) || defined( _M_IX86 )
+#if defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+#define SOLOUD_NEON_INTRINSICS
+#elif defined(__x86_64__) || defined( _M_X64 ) || defined( __i386 ) || defined( _M_IX86 )
 #define SOLOUD_SSE_INTRINSICS
+#elif defined(__wasm_simd128__)
+#define SOLOUD_WASM_SIMD_INTRINSICS
 #endif
 #endif
 
@@ -138,7 +143,7 @@ namespace SoLoud
 	{
 	public:
 		float *mData; // aligned pointer
-		unsigned char mActualData[sizeof(float) * 16 + 16];
+		alignas(64) unsigned char mActualData[sizeof(float) * 16 + 64];
 
 		// ctor
 		TinyAlignedFloatBuffer();
@@ -155,6 +160,9 @@ namespace SoLoud
 #include "soloud_checkpoint.h"
 namespace SoLoud
 {
+	// ###### flutter_soloud local patch (render-ahead worker) ######
+	// Render worker thread state (soloud.cpp).
+	struct RenderWorker;
 
 	// Soloud core class.
 	class Soloud
@@ -170,7 +178,8 @@ namespace SoLoud
 		// engine session can still fire while the global miniaudio device is
 		// being re-initialized, and mixing would touch half-initialized or
 		// torn-down engine state (see soloud_miniaudio_audiomixer).
-		volatile unsigned int mEngineReady = 0;
+		// Atomic: written on the API thread, read by the audio threads.
+		std::atomic<unsigned int> mEngineReady{0};
 		// Flag for when we're inside the mutex, used for debugging.
 		bool mInsideAudioThreadMutex;
 		// Called by SoLoud to shut down the back-end. If NULL, not called. Should be set by back-end.
@@ -406,6 +415,9 @@ namespace SoLoud
 		// Estimated output latency in seconds: frames buffered ahead of the
 		// device plus one device period. 0 when the ring is disabled.
 		time getOutputLatency();
+		// Estimated hardware presentation latency in seconds (DAC, OS buffers,
+		// and route delay).
+		time getHardwareOutputLatency();
 		// Start playing a sound at an absolute engine time (see getEngineTime), with sample accuracy. Unlike playClocked there is no anchor and no re-anchor guard, so sounds can be scheduled arbitrarily far in the future. A time in the past plays as soon as possible. Negative volume means to use default.
 		// aLoopStartOffset / aLoopEndOffset: optional exact frame offsets (-1 = inactive / use aLoopPoint/aLoopEndPoint).
 		handle playScheduled(time aEngineTime, AudioSource &aSound, float aVolume = -1.0f, float aPan = 0.0f, unsigned int aBus = 0, float aScale = 1.0f, bool aLooping = false, time aLoopPoint = 0.0, time aLoopEndPoint = 0.0, long long aLoopStartOffset = -1, long long aLoopEndOffset = -1);
@@ -637,9 +649,68 @@ namespace SoLoud
 
 		// ###### flutter_soloud local patch (render-ahead ring) ######
 		// Mix engine quanta into the render-ahead ring until the configured
-		// render-ahead depth is reached (or the ring is full). Called from the
-		// backend device callback when the ring is enabled.
+		// render-ahead depth is reached (or the ring is full). Runs on the
+		// render worker; without one (tests on the null backend), the backend
+		// device callback calls it.
 		void renderRingTopUp_internal();
+		// Mix into the ring until it holds aFrames, but only while the audio
+		// mutex is free: the device callback's fallback when the render
+		// worker fell behind. Never waits for another thread.
+		void renderRingTopUpNoWait_internal(unsigned int aFrames);
+		// Mix one engine quantum and append it to the ring. Audio mutex
+		// held; returns whether the voice-inactive callback is due. Mixes
+		// nothing when the ring has no room for a whole quantum.
+		bool renderRingMixQuantumLocked_internal();
+		// ###### flutter_soloud local patch (device-thread callbacks) ######
+		// Set by renderRingTopUpNoWait_internal() when a quantum it mixed on
+		// the device callback ended voices or made the voice-inactive
+		// callback due: it leaves both to the render worker, which delivers
+		// them in renderRingDeliverDeferred_internal().
+		std::atomic<bool> mRenderRingCallbacksDeferred{false};
+		// Render worker: dispatch the ended voices and call the
+		// voice-inactive callback the device callback left behind, if any.
+		void renderRingDeliverDeferred_internal();
+		// The render worker: a thread that keeps the ring topped up so the
+		// device callback only copies frames out. A device backend sets
+		// mRenderWorkerWanted before init() returns; init() then starts the
+		// worker and deinit() stops it before anything is torn down.
+		bool mRenderWorkerWanted;
+		void startRenderWorker_internal();
+		void stopRenderWorker_internal();
+		bool isRenderWorkerRunning_internal() const;
+		// Device callback: frames were consumed, top the ring up. Does not
+		// block.
+		void wakeRenderWorker_internal();
+		// True when the audio mutex was acquired (same bookkeeping as
+		// lockAudioMutex_internal()).
+		bool tryLockAudioMutex_internal();
+		// The global filters run in the device callback, after the ring
+		// (postProcessRenderRing_internal), under this lock rather than the
+		// audio mutex, which the render worker holds while it mixes. Code
+		// that changes mFilterInstance[] or a global filter's parameters
+		// holds both, audio mutex first.
+		void lockGlobalFilters_internal();
+		void unlockGlobalFilters_internal();
+		// Returns once nothing that may use a filter or plugin pointer read
+		// before the call is still running on an audio thread (mixing,
+		// post-ring global filters). Takes both locks in turn.
+		void audioThreadBarrier_internal();
+		// Final output stage for interleaved frames freshly read from
+		// mRenderRing at the device playhead: apply the global filters
+		// (mFilterInstance), so stateful global filters (PitchShift, Freeverb,
+		// Echo, VST3, etc.) see a strictly continuous stream unaffected by
+		// retroactive re-mix rollbacks, then clip. The ring holds the mix with
+		// global volume applied but *unclipped*, so the chain matches the
+		// direct path (mix -> global filters -> clip) except that global
+		// volume is applied before the global filters instead of after them.
+		void postProcessRenderRing_internal(float *aBuffer, unsigned int aSamples);
+		// Device side of the render-ahead ring, for the backend's device
+		// callback: fills aBuffer with aFrames interleaved frames from the
+		// ring (silence for any underrun) and applies the post-ring stage.
+		// While the render worker runs it only copies, and mixes only if the
+		// worker fell behind and the audio mutex is free; it never waits for
+		// the audio mutex. Returns the frames that came from the ring.
+		unsigned int readRenderRingForDevice_internal(float *aBuffer, unsigned int aFrames);
 
 		// ###### flutter_soloud local patch (mix checkpoints) ######
 		// Snapshot all mix-relevant state at the current quantum boundary
@@ -674,6 +745,13 @@ namespace SoLoud
 		// Engine time of the sample currently reaching the device. Caller
 		// must hold the audio mutex.
 		time playheadTimeLocked_internal();
+#if defined(SOLOUD_RETRO_TEST_HOOKS)
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// Test builds only: called by playheadTimeLocked_internal() before
+		// it reads the ring, so a test can read the ring there as the
+		// device may, which takes no lock.
+		void (*mPlayheadTestHook)(Soloud *aSoloud) = nullptr;
+#endif
 		// Bodies of getScheduledDelaySamples/getClockedDelaySamples with the
 		// audio mutex already held by the caller.
 		unsigned int getScheduledDelaySamplesLocked_internal(time aEngineTime);
@@ -719,6 +797,22 @@ namespace SoLoud
 		void journalBirth_internal(unsigned int aSlot, time aBirthTime);
 		void journalDeath_internal(unsigned int aSlot, unsigned int aPlayIndex);
 		void journalParam_internal(unsigned int aSlot, unsigned int aPlayIndex, int aParam, float aValue, time aTime, time aDuration);
+		// A voice's state changed outside the event journal (loop region,
+		// flags, channel volumes, sample rate, delay, seek, unpause, its
+		// filters or their parameters). A rollback restores checkpointed
+		// state and replays only the journal, so without this it would
+		// silently undo the change for good. A journaled birth that no
+		// quantum has mixed yet takes the voice's current state; every other
+		// checkpoint and birth record covering the voice stops being a
+		// rollback target. Caller must hold the audio mutex.
+		void voiceStateChanged_internal(unsigned int aVoice);
+		// Same for engine-wide state a checkpoint restores (global volume):
+		// no retained checkpoint may be rolled back to.
+		void engineStateChanged_internal();
+		// 3d processing state is owned by the API, not the mix, so rollbacks
+		// keep the live values: re-applies what update3dAudio() derived for
+		// each 3d voice after a restore put older values back.
+		void reapply3dVoices_internal();
 		// Re-apply journal entries with time > aFromTime onto freshly
 		// restored checkpoint state.
 		void replayJournal_internal(time aFromTime);
@@ -766,6 +860,11 @@ namespace SoLoud
 		void update3dVoices_internal(unsigned int *aVoiceList, unsigned int aVoiceCount);
 		// Clip the samples in the buffer
 		void clip_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1);
+		// ###### flutter_soloud local patch (render-ahead ring) ######
+		// The volume ramp of clip_internal() without the clipping, for the
+		// render-ahead ring path, which clips after the global filters in
+		// postProcessRenderRing_internal().
+		void applyGlobalVolume_internal(AlignedFloatBuffer &aBuffer, AlignedFloatBuffer &aDestBuffer, unsigned int aSamples, float aVolume0, float aVolume1);
 		// Remove all non-active voices from group
 		void trimVoiceGroup_internal(handle aVoiceGroupHandle);
 		// Get pointer to the zero-terminated array of voice handles in a voice group
@@ -825,14 +924,45 @@ namespace SoLoud
 		// renderRingTopUp_internal(). Allocated in postinit_internal when the
 		// ring is enabled.
 		AlignedFloatBuffer mRenderRingStaging;
+		// Scratch buffer for de-interleaving frames read from mRenderRing
+		// when applying global filters and clipping post-ring at the playhead.
+		AlignedFloatBuffer mPostRingScratch;
+		// True while renderRingTopUp_internal() is mixing into mRenderRing so
+		// mixVoicesLocked_internal() defers global filters to
+		// postProcessRenderRing_internal().
+		bool mMixingToRenderRing;
+		// Engine time of ring frame 0, so the device callback can time ring
+		// frames without the audio mutex (the mix clock mStreamTime is
+		// guarded by it). Published after every ring append.
+		std::atomic<double> mRenderRingTimeOrigin;
+		// Bit i set while mFilterInstance[i] is non-null; lets the device
+		// callback skip the global filter lock when there are none.
+		std::atomic<unsigned int> mGlobalFilterMask;
+		// See lockGlobalFilters_internal().
+		std::mutex mGlobalFilterMutex;
+		// Created by the first startRenderWorker_internal() and kept until
+		// the engine object is destroyed, so a device callback still running
+		// after stopRenderWorker_internal() never wakes a freed worker.
+		std::atomic<RenderWorker *> mRenderWorker;
 		// ###### flutter_soloud local patch (mix checkpoints) ######
 		// Circular pool of mix-quantum-boundary snapshots for retroactive
 		// re-mixing. Allocated in postinit_internal when the render-ahead
 		// ring is enabled, empty otherwise. All storage is pre-sized at
 		// allocation time and reused in place by capture, so the audio path
-		// performs no allocation (filter/source heap snapshots are the
-		// documented exception; the Phase 2 built-ins return nullptr).
+		// performs no allocation (filter/source heap snapshots are recycled,
+		// see mCheckpointRecycle and the spare pools below).
 		std::vector<MixCheckpoint> mCheckpointPool;
+		// Scratch for captureMixCheckpoint_internal(): the previous voices of
+		// the pool slot being overwritten, whose source and filter snapshots
+		// are offered back to the same voice (captureSourceStateInto,
+		// captureStateInto) instead of being freed and reallocated every
+		// quantum. Reserved like each slot's mVoices, which it is swapped
+		// with.
+		std::vector<CheckpointVoice> mCheckpointRecycle;
+		// Snapshots no checkpoint or journal entry owns any more, kept for
+		// in-place reuse (see SnapshotFreeList).
+		SnapshotFreeList<SourceStateSnapshot> mSourceSnapshotSpares;
+		SnapshotFreeList<FilterStateSnapshot> mFilterSnapshotSpares;
 		// Next pool slot to write (circular).
 		unsigned int mCheckpointWriteIndex;
 		// Monotonic capture counter; together with MixCheckpoint::mSerial it
@@ -863,6 +993,11 @@ namespace SoLoud
 		unsigned long long mRemixStartPos;
 		time mRemixOldStreamTime;
 		time mRemixCheckpointTime;
+		// ###### flutter_soloud local patch (retroactive re-mix) ######
+		// The event time the rollback is placed at: the caller's, moved up to
+		// the playhead retroactiveBegin_internal read. Never before
+		// mRemixCheckpointTime.
+		time mRemixEventTime;
 		// Flags; see Soloud::FLAGS
 		unsigned int mFlags;
 		// Global volume. Applied before clipping.

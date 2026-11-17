@@ -7,6 +7,7 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+    - lib/realtime_audio/custom_dsp/**
 include: package:very_good_analysis/analysis_options.yaml
 linter:
   rules:

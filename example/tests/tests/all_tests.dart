@@ -9,11 +9,13 @@ import 'auto_dispose.dart' as auto_dispose;
 import 'buffer_stream_callbacks.dart' as buffer_stream_callbacks;
 import 'buffer_stream_extended.dart' as buffer_stream_extended;
 import 'buffer_stream_small_mp3.dart' as buffer_stream_small_mp3;
+import 'bus_visualization.dart' as bus_visualization;
 import 'compressor_filter.dart' as compressor_filter;
 import 'create_notes.dart' as create_notes;
 import 'equalizer_filter.dart' as equalizer_filter;
 import 'global_filters.dart' as global_filters;
 import 'handles.dart' as handles;
+import 'hardware_output_latency.dart' as hardware_output_latency;
 import 'hot_restart_lifecycle.dart' as hot_restart_lifecycle;
 import 'join_two_sources.dart' as join_two_sources;
 import 'latency_test.dart' as latency_test;
@@ -23,6 +25,7 @@ import 'looping.dart' as looping;
 import 'max_voices.dart' as max_voices;
 import 'mixer_output_capture.dart' as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
+import 'native_m4a_decoding.dart' as native_m4a_decoding;
 import 'pan.dart' as pan;
 import 'pitch_shifter_filter.dart' as pitch_shifter_filter;
 import 'play_clocked.dart' as play_clocked;
@@ -108,6 +111,10 @@ final List<TestEntry> allTests = [
     run: buffer_stream_small_mp3.testBufferStreamSmallMp3,
   ),
   const TestEntry(
+    name: 'BusVisualization',
+    run: bus_visualization.testBusVisualization,
+  ),
+  const TestEntry(
     name: 'CompressorFilterGlobal',
     run: compressor_filter.testCompressorFilterGlobal,
   ),
@@ -142,6 +149,10 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'Handles',
     run: handles.testHandles,
+  ),
+  const TestEntry(
+    name: 'HardwareOutputLatency',
+    run: hardware_output_latency.testHardwareOutputLatency,
   ),
   const TestEntry(
     name: 'HotRestartLifecycle',
@@ -182,6 +193,10 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'MixingBus',
     run: mixing_bus.testMixingBus,
+  ),
+  const TestEntry(
+    name: 'NativeM4aDecoding',
+    run: native_m4a_decoding.testNativeM4aDecoding,
   ),
   const TestEntry(
     name: 'Pan',

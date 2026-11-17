@@ -100,7 +100,7 @@ SoLoud::result TrackingSourceInstance::seek(SoLoud::time seconds,
                                              float* /*scratch*/,
                                              unsigned int /*scratchSize*/) {
     const auto requestedFrame = static_cast<unsigned int>(
-        std::floor(seconds * mBaseSamplerate));
+        std::floor(seconds * mBaseSamplerate + 0.5));
     offset_ = std::min(requestedFrame, parent_->frameCount);
     mStreamPosition = static_cast<float>(offset_) / mBaseSamplerate;
     ++parent_->seekCount;
@@ -334,6 +334,106 @@ void testLoopStartPastEofStopsAfterNoProgress() {
            "zero-progress loop sought %u times", rig.source.seekCount);
 }
 
+// Regression test for Honky-tonk 4 (22050 Hz, loop 8138..11260):
+// 1. Base AudioSourceInstance::seek (and formerly WavInstance::seek) must not
+//    overwrite Soloud::mScratch (aScratch) during multi-pass resampler blocks
+//    (e.g. 1024-sample mix quantum > SAMPLE_GRANULARITY = 512).
+// 2. Frame 8138 at 22050 Hz (8138.0 / 22050.0 * 22050.0 == 8137.999999999999)
+//    must seek to frame 8138, not truncate to 8137.
+class FallbackSeekSource final : public SoLoud::AudioSource {
+public:
+    class Instance final : public SoLoud::AudioSourceInstance {
+    public:
+        explicit Instance(FallbackSeekSource* parent) : parent_(parent) {}
+
+        unsigned int getAudio(float* buffer, unsigned int samplesToRead,
+                              unsigned int /*bufferSize*/) override {
+            const unsigned int available = parent_->samples.size() -
+                std::min<unsigned int>(offset_, parent_->samples.size());
+            const unsigned int count = std::min(samplesToRead, available);
+            for (unsigned int i = 0; i < count; ++i) {
+                buffer[i] = parent_->samples[offset_ + i];
+            }
+            offset_ += count;
+            return count;
+        }
+
+        bool hasEnded() override {
+            return offset_ >= parent_->samples.size();
+        }
+
+        SoLoud::result rewind() override {
+            offset_ = 0;
+            mStreamPosition = 0;
+            return SoLoud::SO_NO_ERROR;
+        }
+
+    private:
+        FallbackSeekSource* parent_;
+        unsigned int offset_ = 0;
+    };
+
+    explicit FallbackSeekSource(unsigned int frameCount, unsigned int sr)
+        : samples(frameCount, 0.0f) {
+        mBaseSamplerate = static_cast<float>(sr);
+        mChannels = 1;
+        // Put a loud transient (+1.0) in the attack region [0..8137] and a
+        // constant steady value (-0.25) inside the loop region [8138..11259].
+        for (unsigned int i = 0; i < frameCount; ++i) {
+            samples[i] = (i < 8138) ? 1.0f : -0.25f;
+        }
+    }
+
+    SoLoud::AudioSourceInstance* createInstance() override {
+        return new Instance(this);
+    }
+
+    std::vector<float> samples;
+};
+
+void testLoopWrapDoesNotCorruptScratchOrTruncateFrame8138() {
+    std::printf("Test: loop wrap (8138..11260 @ 22050 Hz) preserves scratch and exact frame\n");
+    LoopRig rig(11280, 22050);
+    const SoLoud::handle h = rig.engine.playScheduled(
+        0.0, rig.source, 1.0f, 0.0f, 0, 1.0f, true, 0.0, 0.0, 8138, 11260);
+    EXPECT(h != 0, "playScheduled returned invalid handle");
+    for (int b = 0; b < 30; ++b) {
+        rig.mix(1024);
+    }
+    expectLoopPattern(rig.source.framesRead, 0, 11260, 8138, 11260, 25000);
+
+    // Also verify AudioSourceInstance::seek does not overwrite aScratch mid-mix
+    SoLoud::Soloud engine;
+    EXPECT(engine.init(SoLoud::Soloud::CLIP_ROUNDOFF,
+                       SoLoud::Soloud::NULLDRIVER,
+                       44100, 2048, 1) == SoLoud::SO_NO_ERROR,
+           "engine init failed");
+    FallbackSeekSource src(11280, 22050);
+    const SoLoud::handle h2 = engine.playScheduled(
+        0.0, src, 1.0f, 0.0f, 0, 1.0f, true, 0.0, 0.0, 8138, 11260);
+    EXPECT(h2 != 0, "playScheduled on FallbackSeekSource failed");
+
+    std::vector<float> out(1024, 0.0f);
+    // Advance past the initial attack (8138 frames @ 22050 Hz = 16276 frames @ 44100 Hz = 16 blocks of 1024)
+    for (int b = 0; b < 18; ++b) {
+        engine.mix(out.data(), 1024);
+    }
+    // Over the next 20 blocks (covering multiple loop wraps at 11260 -> 8138),
+    // the output must remain strictly in the steady-state loop (-0.25) and
+    // never spike to +1.0 from attack samples leaking into mScratch.
+    float maxSample = -1.0f;
+    for (int b = 0; b < 20; ++b) {
+        engine.mix(out.data(), 1024);
+        for (float s : out) {
+            maxSample = std::max(maxSample, s);
+        }
+    }
+    EXPECT(maxSample < 0.0f,
+           "attack samples leaked into loop output (maxSample=%f, expected -0.25)",
+           maxSample);
+    engine.deinit();
+}
+
 }  // namespace
 
 int main() {
@@ -349,6 +449,7 @@ int main() {
     testLiveEndPointChangeAppliesAtNextRefill();
     testInaudibleTickUsesTheSameLoopBoundary();
     testLoopStartPastEofStopsAfterNoProgress();
+    testLoopWrapDoesNotCorruptScratchOrTruncateFrame8138();
 
     if (gFailures != 0) {
         std::fprintf(stderr, "\n%d of %d assertions failed.\n",
