@@ -1,7 +1,7 @@
 ---
 name: flutter-soloud-setup
-version: 7
-description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux audio backends ALSA/PulseAudio/JACK, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, shrink binaries by excluding the Xiph libs, enable opt-in desktop VST3 plugin hosting (enable_vst3), set up logging, and enumerate/switch output devices or Linux audio backends. Use when a user asks to install flutter_soloud, initialize SoLoud, set up web/background-audio prerequisites, configure Linux audio backends, reduce binary size, enable VST3 hosting, or switch the audio output device.
+version: 8
+description: Teaches how to add flutter_soloud to a Flutter app, configure each platform (web script tag and COOP/COEP headers, Linux audio backends ALSA/PulseAudio/JACK, Android/iOS/macOS minimum versions), initialize and deinitialize the engine, configure ultra-low-latency playback (renderAheadFrames, devicePeriodFrames, lowLatency: true), shrink binaries by excluding the Xiph libs, enable opt-in desktop VST3 plugin hosting (enable_vst3), set up logging, and enumerate/switch output devices or Linux audio backends. Use when a user asks to install flutter_soloud, initialize SoLoud, configure low-latency playback or audio buffer settings, set up web/background-audio prerequisites, configure Linux audio backends, reduce binary size, enable VST3 hosting, or switch the audio output device.
 ---
 
 # flutter_soloud setup
@@ -59,6 +59,7 @@ Native C/C++ sources are compiled by [Dart build hooks](https://dart.dev/tools/h
 All of these live on the singleton `SoLoud.instance` (`import 'package:flutter_soloud/flutter_soloud.dart'`).
 
 - `Future<void> init({PlaybackDevice? device, bool automaticCleanup = false, int sampleRate = 44100, int bufferSize = 2048, Channels channels = Channels.stereo, bool lowLatency = true, AndroidAAudioAttributes androidAAudioAttributes = AndroidAAudioAttributes.mediaMusic, int? devicePeriodFrames, int? renderAheadFrames, LinuxAudioBackend linuxAudioBackend = LinuxAudioBackend.auto})` — initializes the engine. **Throws on failure** (e.g. `SoLoudCppException`, `SoLoudNoPlaybackDevicesFoundCppException`); it does not return a `PlayerErrors` status, so `await` it in try/catch.
+  - **For ultra-low reactive latency (~11.6 ms at 44.1 kHz):** pass `renderAheadFrames: bufferSize` (e.g. 2048) and `devicePeriodFrames: 512` (with `lowLatency: true`). This activates the native render-ahead ring buffer, allowing `playScheduled(sound, Duration.zero)` and `play()` to retroactively remix sounds directly at the hardware playhead, bypassing buffer-boundary waits. See **flutter-soloud-scheduling**.
 - `void deinit()` / `Future<void> deinitAsync()` — stops the engine and disposes all resources including sounds. `deinit` blocks the calling thread; prefer `deinitAsync` where you can await it.
 - `bool get isInitialized` — synchronous readiness check.
 - `List<PlaybackDevice> listPlaybackDevices()` — **safe to call before `init()`**. Returns `PlaybackDevice(id, isDefault, name)`.

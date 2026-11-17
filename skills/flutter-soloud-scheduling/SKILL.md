@@ -1,17 +1,52 @@
 ---
 name: flutter-soloud-scheduling
-version: 2
-description: Teaches sample-accurate audio scheduling in flutter_soloud with playClocked (sounds anchored to a running "physics time" clock) and playScheduled (absolute engine-time scheduling with sample-accurate auto-stop), plus the clock helpers getEngineTime/getPlayheadTime/getOutputLatency/getHardwareOutputLatency/resetStreamTime and stopScheduled/fadeScheduled. Use when the user asks for a metronome, step sequencer, rhythm game, pre-computed music timeline/score, evenly spaced repeated SFX, or complains that periodic play() calls clump or drift.
+version: 3
+description: Teaches sample-accurate audio scheduling and ultra-low-latency playback in flutter_soloud with playScheduled (absolute engine-time scheduling, sample-accurate auto-stop, and retroactive render-ahead remixing for lowest possible latency) and playClocked (sounds anchored to a running "physics time" clock without buffer-clumping), plus clock helpers getEngineTime/getPlayheadTime/getOutputLatency/getHardwareOutputLatency/resetStreamTime and stopScheduled/fadeScheduled. Use when the user asks for lowest possible latency, ultra-low latency on click/tap/button press, reactive playback with minimal delay, a metronome, step sequencer, rhythm game, pre-computed music timeline/score, evenly spaced repeated SFX, or complains that sounds have latency or periodic play() calls clump or drift.
 ---
 
-# Sample-accurate scheduling
+# Sample-accurate scheduling & Ultra-low latency
 
-Plain `SoLoud.instance.play()` starts a sound at the **next output buffer boundary**: everything launched within the same buffer starts at the exact same sample ("clumps"), and periodic sounds get an irregular rhythm that is a multiple of the buffer size (~46 ms at the default 2048-sample buffer / 44100 Hz). flutter_soloud fixes this with two scheduling APIs. Unlike audioplayers/just_audio, the unit of timing here is the audio clock in samples, not wall-clock timers — you do **not** compensate with `Timer` precision tricks; you pass a `Duration` and the engine places the start sample-accurately.
+Plain `SoLoud.instance.play()` starts a sound at the **next output buffer boundary**: everything launched within the same buffer starts at the exact same sample ("clumps"), and reactive playback waits up to one full buffer size (~46 ms at the default 2048-sample buffer / 44100 Hz). flutter_soloud solves both latency and clumping with two scheduling APIs combined with the native render-ahead ring:
 
-- `playClocked(sound, soundTime, ...)` — you feed your own monotonically increasing "physics time"; the first call anchors it to the audio clock with a built-in ~2-output-buffer lead, subsequent calls are placed relative to that anchor. Best for evenly spaced, open-ended beats driven by your own loop (metronome, machine-gun fire, footsteps).
-- `playScheduled(sound, atTime, {duration, ...})` — absolute time on the **engine's own clock** (`getEngineTime()`), schedulable arbitrarily far ahead; optional `duration` gives a sample-accurate auto-stop. Best for pre-computed timelines: scores, manifests, cutscenes.
+- `playScheduled(sound, atTime, {duration, ...})` — absolute time on the **engine's own clock** (`getEngineTime()`), schedulable arbitrarily far ahead; optional `duration` gives a sample-accurate auto-stop. **For the lowest possible latency on user input (button clicks/keypresses)**, pass `atTime: Duration.zero` (or past engine time) with `renderAheadFrames`: the voice is retroactively remixed into the unconsumed ring buffer at the hardware playhead (~11 ms with `devicePeriodFrames: 512`), bypassing buffer-boundary waits.
+- `playClocked(sound, soundTime, ...)` — you feed your own monotonically increasing "physics time"; the first call anchors it to the audio clock with a built-in ~2-output-buffer lead, subsequent calls are placed relative to that anchor. Best for evenly spaced, rapid repeated clicks/SFX driven by your own loop or rapid user tapping without clumping (metronome, machine-gun fire, footsteps).
 
-## Minimal example
+## Minimal examples
+
+### Lowest possible latency on button click (reactive playback)
+
+```dart
+import 'package:flutter_soloud/flutter_soloud.dart';
+
+Future<void> main() async {
+  // 1. Configure the render-ahead ring for hardware-level latency (~11.6 ms at 44.1 kHz)
+  await SoLoud.instance.init(
+    bufferSize: 2048,
+    renderAheadFrames: 2048, // enables retroactive remixing into the ring buffer
+    devicePeriodFrames: 512, // hardware device period
+  );
+
+  final clickSound = await SoLoud.instance.loadAsset('assets/click.wav');
+
+  // 2. In your button / tap callback:
+  // Passing Duration.zero (or past engine time) plays immediately at the playhead
+  // via retroactive remixing, with the lowest possible latency.
+  SoLoud.instance.playScheduled(clickSound, Duration.zero);
+}
+```
+
+### Rapid repeated clicks/taps with `playClocked` (no clumping)
+
+```dart
+// Rapid button taps or rapid-fire SFX without clumping at buffer boundaries:
+var tapCount = 0;
+void onRapidTap(AudioSource tapSound) {
+  final tapTime = Duration(milliseconds: 50 * tapCount++);
+  SoLoud.instance.playClocked(tapSound, tapTime);
+}
+```
+
+### Metronome with `playClocked`
 
 Metronome with `playClocked` (the canonical pattern, from `example/lib/metronome/metronome.dart`):
 
@@ -32,7 +67,7 @@ Future<void> main() async {
 }
 ```
 
-Pre-computed timeline with `playScheduled`:
+### Pre-computed timeline with `playScheduled`
 
 ```dart
 final anchor = SoLoud.instance.getEngineTime() +
@@ -130,7 +165,11 @@ SoundHandle play3dClocked(
 
 (There is also a `play3dScheduled`, the 3D version of `playScheduled`, and `Bus.playClocked` / `Bus.play3dClocked` / `Bus.playScheduled` on mixing buses.)
 
-**Which one to use:** `play()` for reactive one-shots (UI feedback, gunshots, music) where lowest latency wins; `playClocked` for evenly spaced beats from your own loop — fire-and-forget, no clock queries, the 2-buffer lead absorbs `Timer` jitter; `playScheduled` for pre-planned timelines — arbitrary lookahead and exact stops/fades, at the price of reading `getEngineTime()` and anchoring yourself.
+**Which one to use:**
+- **Lowest possible latency on reactive user input (button clicks, keypresses, instant SFX):** use `playScheduled(sound, Duration.zero)` (or `play()`) with `renderAheadFrames: bufferSize` and `devicePeriodFrames: 512` passed to `init()`. The engine retroactively remixes the sound into the render-ahead ring for ~11 ms hardware-level latency, avoiding buffer-boundary delays.
+- **Rapid repeated clicks/bursts (rapid tapping, machine-gun SFX):** use `playClocked` with an accumulated `physicsTime`. The built-in ~2-buffer lead absorbs timer and UI jitter so sounds are spaced sample-accurately without clumping together at buffer boundaries.
+- **Pre-planned timelines and score playback:** use `playScheduled` with `anchor = getEngineTime() + lead` for sample-accurate scheduling and atomic `duration` auto-stops.
+- **Everyday non-critical reactive sounds:** plain `play()` is fine if ~20–46 ms buffer latency is acceptable.
 
 ## The metronome walkthrough
 
@@ -157,7 +196,7 @@ When `init(renderAheadFrames: >0)` is passed on native platforms, the engine pre
 - **Times must be monotonically increasing for `playClocked`.** Reusing a stale accumulator or starting a new session without `resetStreamTime()` makes ticks fire immediately (past times play ASAP) or triggers a silent re-anchor after a >2 s jump. Always zero your accumulator and call `resetStreamTime()` together.
 - **Dart timers fire late.** Never pass "now" or the timer's fire time as the scheduled time — accumulate ideal times and keep a lead. For `playScheduled`, anchor with ~100–200 ms of lead (`getEngineTime() + 200ms`); a voice can only be delayed, never advanced.
 - **`playClocked` has a ~2 s lookahead limit.** Gaps longer than ~2 s look like a clock jump and cause re-anchoring. For long-range scheduling use `playScheduled`.
-- **Constant ~2-buffer latency with `playClocked`.** Do not use it for sounds that must react to input (keypress → sound); that is what `play()` is for.
+- **Constant ~2-buffer latency with `playClocked`.** `playClocked` introduces a built-in ~2-buffer lead to absorb timing jitter. For isolated single-click reactive feedback where minimum latency is paramount, use `playScheduled(sound, Duration.zero)` with `renderAheadFrames` instead. Use `playClocked` when rapid repeated clicks/beats must be evenly spaced without clumping.
 - **The engine clock only advances while the device is mixing.** `getEngineTime()` freezes when output is stopped; a pending `playScheduled` voice keeps the device running. Scheduling against a stopped device is safe — the voice keeps its exact offset and starts counting down once the device runs.
 - **No `paused` on clocked/scheduled variants.** Models reaching for the audioplayers/just_audio "prepare then resume" pattern should instead pass the time; to cancel a pending scheduled sound, keep the handle and call `stop(handle)`.
 - **No `Future`, no completion callback per call.** These are synchronous fire-and-forget; device-start failures cannot throw — listen to `SoLoud.instance.audioDeviceStartFailures` if that matters.

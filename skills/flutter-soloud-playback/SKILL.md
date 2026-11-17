@@ -1,7 +1,7 @@
 ---
 name: flutter-soloud-playback
-version: 1
-description: Teaches everyday playback control in the flutter_soloud package — play()/playSource, pause/stop/seek, looping regions, play speed, and voice introspection and management. Use when the user asks to play a sound, pause/resume/stop playback, seek or show position, loop a region of a track, change playback speed, or manage concurrent voices with flutter_soloud.
+version: 2
+description: Teaches everyday playback control in the flutter_soloud package — play()/playSource, pause/stop/seek, looping regions, play speed, and voice introspection and management. Use when the user asks to play a sound, pause/resume/stop playback, seek or show position, loop a region of a track, change playback speed, or manage concurrent voices with flutter_soloud. For ultra-low latency reactive playback (lowest possible latency on button click/tap via render-ahead retroactive remixing) or sample-accurate timing (playScheduled, playClocked), see flutter-soloud-scheduling.
 ---
 
 flutter_soloud is not a "player object" API like audioplayers or just_audio. You load audio once into an `AudioSource` (the sample data, kept in RAM or on disk), then start any number of playing instances of it with `play()`. Each instance is a `SoundHandle` — an ephemeral voice that becomes invalid the moment it stops or ends. All control methods (`setPause`, `seek`, `setVolume`, ...) take a `SoundHandle`, not the source.
@@ -185,12 +185,12 @@ SoLoud.instance.destroyVoiceGroup(group);         // does NOT stop the voices in
 - **MP3 + `LoadMode.disk` seek lag.** Seeking a disk-loaded MP3 is slow (the codec must walk frames to find the position). For a music-player-style seek bar, load with `LoadMode.memory` or use a seekable format.
 - **Released buffer streams can't seek.** `seek()` on a stream created with `BufferingType.released` throws `SoLoudBufferStreamWithReleasedBufferTypeCannotBeSeekedCppException`; an unseekable handle throws `SoLoudInvalidParameterException`.
 - **`stopAll()`/`stopAudioSource()` do not free memory.** Sources stay loaded; forgetting `disposeSource()` is the common leak.
-- **`play()` latency is up to one output buffer.** Fine for reactive one-shots; wrong for rhythmic/scheduled playback — that is the sibling skill's territory.
+- **`play()` latency is up to one output buffer (~46 ms at 2048 samples).** Fine for ordinary reactive sounds; if the user asks for the lowest possible latency on click/press or complains about latency, use the render-ahead ring with `playScheduled(sound, Duration.zero)` from **flutter-soloud-scheduling** (configured via `renderAheadFrames` + `devicePeriodFrames: 512`), which achieves ~11 ms hardware latency via retroactive remixing. For rhythmic/scheduled playback, also use **flutter-soloud-scheduling**.
 - **Calling any method before `await SoLoud.instance.init()` finishes** throws `SoLoudNotInitializedException` (or the call is ignored). Re-calling `init()` deinitializes first: all voices stop and all sources unload.
 
 ## More depth
 
-- Sample-accurate timing (`playClocked`, `playScheduled`, `setDelaySamples`, `getEngineTime`): see the sibling skill **flutter-soloud-scheduling**.
+- Ultra-low latency reactive playback & sample-accurate timing (`playScheduled(sound, Duration.zero)`, `playClocked`, render-ahead ring): see the sibling skill **flutter-soloud-scheduling**.
 - Working playback demo with play/pause/seek/loop UI: `example/lib/audio_context/audio_context.dart` in the plugin repo.
 - Full doc page: `docs/audio/playback.mdx` (published at docs.page/alnitak/flutter_soloud).
 
