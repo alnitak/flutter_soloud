@@ -305,6 +305,7 @@ result Wav::loadmp3(MemoryFile *aReader) {
   drmp3_seek_to_pcm_frame(&decoder, 0);
 
   constexpr unsigned int kChunkFrames = 1024;
+  unsigned int decodedSamples = 0;
   if (decoder.channels <= MAX_CHANNELS) {
     float tmp[kChunkFrames * MAX_CHANNELS];
     for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
@@ -318,6 +319,10 @@ result Wav::loadmp3(MemoryFile *aReader) {
       }
       deinterleaveFloatsToPlanar(tmp, mData + i, mSampleCount, blockSize,
                                  mChannels);
+      decodedSamples += got;
+      if (got < blockSize) {
+        break;
+      }
     }
   } else {
     std::vector<float> tmp((size_t)kChunkFrames * decoder.channels);
@@ -336,8 +341,19 @@ result Wav::loadmp3(MemoryFile *aReader) {
               tmp[(size_t)j * decoder.channels + k];
         }
       }
+      decodedSamples += got;
+      if (got < blockSize) {
+        break;
+      }
     }
   }
+  if (decodedSamples < mSampleCount) {
+    for (unsigned int ch = 0; ch < mChannels; ch++) {
+      memset(mData + (size_t)ch * mSampleCount + decodedSamples, 0,
+             sizeof(float) * (mSampleCount - decodedSamples));
+    }
+  }
+  mActualSampleCount = decodedSamples;
   drmp3_uninit(&decoder);
 
   return SO_NO_ERROR;

@@ -182,9 +182,14 @@ mFileHandle(fp)
 		if (aOffset >= 0)
 			mOffset = aOffset;
 		else
-			mOffset = mDataLength + aOffset;
-		if (mOffset > mDataLength-1)
-			mOffset = mDataLength-1;
+		{
+			if (-aOffset > (int)mDataLength)
+				mOffset = 0;
+			else
+				mOffset = mDataLength + aOffset;
+		}
+		if (mOffset > mDataLength)
+			mOffset = mDataLength;
 	}
 
 	unsigned int MemoryFile::pos()

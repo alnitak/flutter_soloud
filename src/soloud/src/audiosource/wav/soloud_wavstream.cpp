@@ -61,8 +61,12 @@ namespace SoLoud
 	drflac_bool32 drflac_seek_func(void* pUserData, int offset, drflac_seek_origin origin)
 	{
 		File *fp = (File*)pUserData;
-		if (origin != DRFLAC_SEEK_SET)
-			offset += fp->pos();
+		if (origin == DRFLAC_SEEK_CUR)
+			offset += (int)fp->pos();
+		else if (origin == DRFLAC_SEEK_END)
+			offset += (int)fp->length();
+		if (offset < 0 || (unsigned int)offset > fp->length())
+			return 0;
 		fp->seek(offset);
 		return 1;
 	}
@@ -70,18 +74,47 @@ namespace SoLoud
 	drmp3_bool32 drmp3_seek_func(void* pUserData, int offset, drmp3_seek_origin origin)
 	{
 		File *fp = (File*)pUserData;
-		if (origin != DRMP3_SEEK_SET)
-			offset += fp->pos();
+		if (origin == DRMP3_SEEK_CUR)
+			offset += (int)fp->pos();
+		else if (origin == DRMP3_SEEK_END)
+			offset += (int)fp->length();
+		if (offset < 0 || (unsigned int)offset > fp->length())
+			return 0;
 		fp->seek(offset);
 		return 1;
 	}
 
-	drmp3_bool32 drwav_seek_func(void* pUserData, int offset, drwav_seek_origin origin)
+	drwav_bool32 drwav_seek_func(void* pUserData, int offset, drwav_seek_origin origin)
 	{
 		File *fp = (File*)pUserData;
-		if (origin != DRWAV_SEEK_SET)
-			offset += fp->pos();
+		if (origin == DRWAV_SEEK_CUR)
+			offset += (int)fp->pos();
+		else if (origin == DRWAV_SEEK_END)
+			offset += (int)fp->length();
+		if (offset < 0 || (unsigned int)offset > fp->length())
+			return 0;
 		fp->seek(offset);
+		return 1;
+	}
+
+	drflac_bool32 drflac_tell_func(void* pUserData, drflac_int64* pCursor)
+	{
+		File *fp = (File*)pUserData;
+		*pCursor = fp->pos();
+		return 1;
+	}
+
+	drmp3_bool32 drmp3_tell_func(void* pUserData, drmp3_int64* pCursor)
+	{
+		File *fp = (File*)pUserData;
+		*pCursor = fp->pos();
+		return 1;
+	}
+
+	drwav_bool32 drwav_tell_func(void* pUserData, drwav_int64* pCursor)
+	{
+		File *fp = (File*)pUserData;
+		*pCursor = fp->pos();
 		return 1;
 	}
 
@@ -127,7 +160,7 @@ namespace SoLoud
 			if (mParent->mFiletype == WAVSTREAM_WAV)
 			{
 				mCodec.mWav = new drwav;
-				if (!drwav_init(mCodec.mWav, drwav_read_func, drwav_seek_func, NULL, (void*)mFile, NULL))
+				if (!drwav_init(mCodec.mWav, drwav_read_func, drwav_seek_func, drwav_tell_func, (void*)mFile, NULL))
 				{
 					delete mCodec.mWav;
 					mCodec.mWav = 0;
@@ -158,7 +191,7 @@ namespace SoLoud
 #endif
 			if (mParent->mFiletype == WAVSTREAM_FLAC)
 			{
-				mCodec.mFlac = drflac_open(drflac_read_func, drflac_seek_func, NULL, (void*)mFile, NULL);
+				mCodec.mFlac = drflac_open(drflac_read_func, drflac_seek_func, drflac_tell_func, (void*)mFile, NULL);
 				if (!mCodec.mFlac)
 				{
 					if (mFile != mParent->mStreamFile)
@@ -170,7 +203,7 @@ namespace SoLoud
 			if (mParent->mFiletype == WAVSTREAM_MP3)
 			{
 				mCodec.mMp3 = new drmp3;
-				if (!drmp3_init(mCodec.mMp3, drmp3_read_func, drmp3_seek_func, NULL, NULL, (void*)mFile, NULL))
+				if (!drmp3_init(mCodec.mMp3, drmp3_read_func, drmp3_seek_func, drmp3_tell_func, NULL, (void*)mFile, NULL))
 				{
 					delete mCodec.mMp3;
 					mCodec.mMp3 = 0;
@@ -310,7 +343,7 @@ namespace SoLoud
 					}
 					if (got < blockSize)
 					{
-						mStreamEnded = mFile->eof() != 0;
+						mStreamEnded = mFile->eof() != 0 || (mCodec.mMp3 && mCodec.mMp3->atEnd != 0);
 						break;
 					}
 				}
@@ -520,7 +553,7 @@ namespace SoLoud
 		fp->seek(0);
 		drwav decoder;
 
-		if (!drwav_init(&decoder, drwav_read_func, drwav_seek_func, NULL, (void*)fp, NULL))
+		if (!drwav_init(&decoder, drwav_read_func, drwav_seek_func, drwav_tell_func, (void*)fp, NULL))
 			return FILE_LOAD_FAILED;
 
 		mChannels = decoder.channels;
@@ -567,7 +600,7 @@ namespace SoLoud
 	result WavStream::loadflac(File * fp)
 	{
 		fp->seek(0);
-		drflac* decoder = drflac_open(drflac_read_func, drflac_seek_func, NULL, (void*)fp, NULL);
+		drflac* decoder = drflac_open(drflac_read_func, drflac_seek_func, drflac_tell_func, (void*)fp, NULL);
 
 		if (decoder == NULL)
 			return FILE_LOAD_FAILED;
@@ -590,7 +623,7 @@ namespace SoLoud
 	{
 		fp->seek(0);
 		drmp3 decoder;
-		if (!drmp3_init(&decoder, drmp3_read_func, drmp3_seek_func, NULL, NULL, (void*)fp, NULL))
+		if (!drmp3_init(&decoder, drmp3_read_func, drmp3_seek_func, drmp3_tell_func, NULL, (void*)fp, NULL))
 			return FILE_LOAD_FAILED;
 
 
