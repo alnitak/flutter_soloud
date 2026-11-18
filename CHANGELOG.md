@@ -1,5 +1,6 @@
-## 5.3.1 (XX Xxx 2026)
+## 5.3.1 (18 Nov 2026)
 - fix: eliminate playback drift between LoadMode.memory and LoadMode.disk, fix seek/tell callbacks in WavStream, and fix MemoryFile::seek boundary clamping. Thanks to @Solido #580
+- fix web: conditionally import dart:isolate in realtime_stream.dart for full Web and WASM compatibility
 
 ## 5.3.0 (13 Nov 2026)
 This version introduces real-time audio generation and processing capabilities to `flutter_soloud`, unlocking low-latency PCM streaming, custom DSP callbacks, and third-party VST3 audio plugin hosting on desktop platforms.
