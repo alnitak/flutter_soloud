@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter_soloud/src/audio_source.dart';
@@ -7,6 +6,8 @@ import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
+import 'package:flutter_soloud/src/realtime_stream_isolate_ffi.dart'
+    if (dart.library.js_interop) 'package:flutter_soloud/src/realtime_stream_isolate_web.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:meta/meta.dart';
@@ -306,7 +307,7 @@ final class RealtimeStreamHandle {
   /// Starts a managed real-time 32-bit float PCM feeder for this stream.
   ///
   /// On native platforms (`!kIsWeb`), when [useIsolate] is `true` (default),
-  /// this automatically spawns a dedicated background Dart [Isolate], attaches
+  /// this automatically spawns a dedicated background Dart `Isolate`, attaches
   /// to the lock-free C++ ring buffer, pre-allocates a zero-GC
   /// [RealtimeNativeBuffer], and runs a watermark refill loop calling [onFeed].
   ///
@@ -350,7 +351,7 @@ final class RealtimeStreamHandle {
   ///   than the duration of `chunkFrames` so the watermark is checked before
   ///   the ring buffer drains.
   /// - [useIsolate]: Whether to run the feeder inside a dedicated background
-  ///   Dart [Isolate] on native platforms (default `true`). Automatically
+  ///   Dart `Isolate` on native platforms (default `true`). Automatically
   ///   ignored on Web (`false`).
   Future<RealtimeStreamFeeder<TState>> startFloat32Feeder<TState>({
     required TState initialState,
@@ -386,7 +387,7 @@ final class RealtimeStreamHandle {
   /// stream.
   ///
   /// On native platforms (`!kIsWeb`), when [useIsolate] is `true` (default),
-  /// this automatically spawns a dedicated background Dart [Isolate], attaches
+  /// this automatically spawns a dedicated background Dart `Isolate`, attaches
   /// to the lock-free C++ ring buffer, pre-allocates a zero-GC
   /// [RealtimeNativeBuffer], and runs a watermark refill loop calling [onFeed]
   /// with a mutable [Int16List] view. On the C++ side, pushed 16-bit integer
@@ -433,7 +434,7 @@ final class RealtimeStreamHandle {
   ///   than the duration of `chunkFrames` so the watermark is checked before
   ///   the ring buffer drains.
   /// - [useIsolate]: Whether to run the feeder inside a dedicated background
-  ///   Dart [Isolate] on native platforms (default `true`). Automatically
+  ///   Dart `Isolate` on native platforms (default `true`). Automatically
   ///   ignored on Web (`false`).
   Future<RealtimeStreamFeeder<TState>> startInt16Feeder<TState>({
     required TState initialState,
@@ -758,7 +759,7 @@ final class RealtimeStreamHandle {
 }
 
 /// Manages automated PCM feeding for a [RealtimeStreamHandle], either inside a
-/// dedicated background Dart [Isolate] (default on native platforms) or on the
+/// dedicated background Dart `Isolate` (default on native platforms) or on the
 /// current isolate's event loop (automatic fallback on Web).
 ///
 /// Created via [RealtimeStreamHandle.startFloat32Feeder] or
@@ -787,7 +788,7 @@ final class RealtimeStreamFeeder<TState> {
   /// The [RealtimeStreamHandle] being fed by this feeder.
   final RealtimeStreamHandle stream;
 
-  /// Whether this feeder is running inside a separate background Dart [Isolate]
+  /// Whether this feeder is running inside a separate background Dart `Isolate`
   /// (`true` on native platforms by default; `false` on Web or when
   /// `useIsolate: false`).
   final bool isUsingIsolate;
@@ -833,7 +834,7 @@ final class RealtimeStreamFeeder<TState> {
   }
 
   /// Stops the feeder, releases its pre-allocated [RealtimeNativeBuffer], and
-  /// terminates the background [Isolate] (if any). Idempotent.
+  /// terminates the background `Isolate` (if any). Idempotent.
   Future<void> dispose() async {
     if (_isDisposed) return;
     _isDisposed = true;
@@ -877,74 +878,29 @@ final class RealtimeStreamFeeder<TState> {
     }
 
     if (useIsolate) {
-      final uiReceivePort = ReceivePort();
-      final handshakeCompleter = Completer<SendPort>();
-      final disposedAckCompleter = Completer<void>();
-
-      final portSub = uiReceivePort.listen((Object? message) {
-        if (message is _FeederHandshakeMsg) {
-          if (!handshakeCompleter.isCompleted) {
-            handshakeCompleter.complete(message.workerSendPort);
-          }
-        } else if (message is _FeederDisposedAckMsg) {
-          if (!disposedAckCompleter.isCompleted) {
-            disposedAckCompleter.complete();
-          }
-        } else {
-          dispatchUiEvent(message);
-        }
-      });
-
-      final initPayload = _FeederIsolateInit<TState>(
-        uiSendPort: uiReceivePort.sendPort,
-        soundHash: stream.soundHash,
-        sampleRate: stream.sampleRate,
-        channels: stream.channels,
-        format: stream.format,
-        bufferFrames: stream.bufferFrames,
-        historyFrames: stream.historyFrames,
-        activeHandle: stream.activeHandle,
+      final isolateCallbacks = await startRealtimeFeederIsolate<TState>(
+        stream: stream,
         initialState: initialState,
         chunkFrames: chunkFrames,
         targetBufferedFrames: targetBufferedFrames,
         tickInterval: tickInterval,
         isInt16: isInt16,
+        dispatchUiEvent: dispatchUiEvent,
         onFeedFloat32: onFeedFloat32,
         onFeedInt16: onFeedInt16,
         onStateUpdate: onStateUpdate,
         onMessage: onMessage,
       );
 
-      final isolate = await Isolate.spawn<_FeederIsolateInit<dynamic>>(
-        _realtimeFeederIsolateMain,
-        initPayload,
-        debugName: 'SoLoudRealtimeFeeder(${stream.soundHash.hash})',
-      );
-
-      final workerSendPort = await handshakeCompleter.future;
-
       return RealtimeStreamFeeder<TState>._(
         stream: stream,
         isUsingIsolate: true,
         events: eventController.stream,
-        onUpdateState: (TState newState) {
-          workerSendPort.send(_FeederStateUpdateMsg<TState>(newState));
-        },
-        onSendMessage: (Object? message) {
-          workerSendPort.send(_FeederCustomMsg(message));
-        },
-        onBindVoice: (SoundHandle? handle) {
-          workerSendPort.send(_FeederBindVoiceMsg(handle));
-        },
+        onUpdateState: isolateCallbacks.onUpdateState,
+        onSendMessage: isolateCallbacks.onSendMessage,
+        onBindVoice: isolateCallbacks.onBindVoice,
         onDispose: () async {
-          workerSendPort.send(const _FeederDisposeMsg());
-          await disposedAckCompleter.future.timeout(
-            const Duration(milliseconds: 100),
-            onTimeout: () {},
-          );
-          isolate.kill(priority: Isolate.immediate);
-          await portSub.cancel();
-          uiReceivePort.close();
+          await isolateCallbacks.onDispose();
           await eventController.close();
         },
       );
@@ -956,7 +912,7 @@ final class RealtimeStreamFeeder<TState> {
 
     final timer = Timer.periodic(
       tickInterval,
-      (_) => _refillBuffer<TState>(
+      (_) => refillRealtimeStreamBuffer<TState>(
         stream: stream,
         nativeBuf: nativeBuf,
         targetBufferedFrames: targetBufferedFrames,
@@ -979,7 +935,7 @@ final class RealtimeStreamFeeder<TState> {
         } else {
           state = newState;
         }
-        _refillBuffer<TState>(
+        refillRealtimeStreamBuffer<TState>(
           stream: stream,
           nativeBuf: nativeBuf,
           targetBufferedFrames: targetBufferedFrames,
@@ -993,7 +949,7 @@ final class RealtimeStreamFeeder<TState> {
       },
       onSendMessage: (Object? message) {
         onMessage?.call(state, message);
-        _refillBuffer<TState>(
+        refillRealtimeStreamBuffer<TState>(
           stream: stream,
           nativeBuf: nativeBuf,
           targetBufferedFrames: targetBufferedFrames,
@@ -1015,204 +971,53 @@ final class RealtimeStreamFeeder<TState> {
       },
     );
   }
+}
 
-  static void _refillBuffer<TState>({
-    required RealtimeStreamHandle stream,
-    required RealtimeNativeBuffer nativeBuf,
-    required int targetBufferedFrames,
-    required int chunkFrames,
-    required bool isInt16,
-    required RealtimeFloat32FeedCallback<TState>? onFeedFloat32,
-    required RealtimeInt16FeedCallback<TState>? onFeedInt16,
-    required TState state,
-    required void Function(Object? event) emitEvent,
-  }) {
-    if (nativeBuf.isDisposed) return;
-    while (stream.availableToRead < targetBufferedFrames &&
-        stream.availableToWrite >= chunkFrames) {
-      final int written;
-      if (isInt16) {
-        written = onFeedInt16!(
-          nativeBuf.int16View,
-          chunkFrames,
-          state,
-          emitEvent,
-        );
-      } else {
-        written = onFeedFloat32!(
-          nativeBuf.float32View,
-          chunkFrames,
-          state,
-          emitEvent,
-        );
-      }
-      if (written <= 0) {
-        break;
-      }
-      final clamped = written > chunkFrames ? chunkFrames : written;
-      if (isInt16) {
-        stream.pushNativeInt16(nativeBuf, clamped);
-      } else {
-        stream.pushNativeFloat32(nativeBuf, clamped);
-      }
-      if (clamped < chunkFrames) {
-        break;
-      }
+/// Fills [stream] from [nativeBuf] until [targetBufferedFrames] are buffered,
+/// there is no more space for a [chunkFrames] write, or the feed callback
+/// signals pause/partial fill.
+@internal
+void refillRealtimeStreamBuffer<TState>({
+  required RealtimeStreamHandle stream,
+  required RealtimeNativeBuffer nativeBuf,
+  required int targetBufferedFrames,
+  required int chunkFrames,
+  required bool isInt16,
+  required RealtimeFloat32FeedCallback<TState>? onFeedFloat32,
+  required RealtimeInt16FeedCallback<TState>? onFeedInt16,
+  required TState state,
+  required void Function(Object? event) emitEvent,
+}) {
+  if (nativeBuf.isDisposed) return;
+  while (stream.availableToRead < targetBufferedFrames &&
+      stream.availableToWrite >= chunkFrames) {
+    final int written;
+    if (isInt16) {
+      written = onFeedInt16!(
+        nativeBuf.int16View,
+        chunkFrames,
+        state,
+        emitEvent,
+      );
+    } else {
+      written = onFeedFloat32!(
+        nativeBuf.float32View,
+        chunkFrames,
+        state,
+        emitEvent,
+      );
+    }
+    if (written <= 0) {
+      break;
+    }
+    final clamped = written > chunkFrames ? chunkFrames : written;
+    if (isInt16) {
+      stream.pushNativeInt16(nativeBuf, clamped);
+    } else {
+      stream.pushNativeFloat32(nativeBuf, clamped);
+    }
+    if (clamped < chunkFrames) {
+      break;
     }
   }
-}
-
-final class _FeederHandshakeMsg {
-  const _FeederHandshakeMsg(this.workerSendPort);
-  final SendPort workerSendPort;
-}
-
-final class _FeederDisposeMsg {
-  const _FeederDisposeMsg();
-}
-
-final class _FeederDisposedAckMsg {
-  const _FeederDisposedAckMsg();
-}
-
-final class _FeederBindVoiceMsg {
-  const _FeederBindVoiceMsg(this.handle);
-  final SoundHandle? handle;
-}
-
-final class _FeederStateUpdateMsg<TState> {
-  const _FeederStateUpdateMsg(this.newState);
-  final TState newState;
-}
-
-final class _FeederCustomMsg {
-  const _FeederCustomMsg(this.message);
-  final Object? message;
-}
-
-final class _FeederIsolateInit<TState> {
-  const _FeederIsolateInit({
-    required this.uiSendPort,
-    required this.soundHash,
-    required this.sampleRate,
-    required this.channels,
-    required this.format,
-    required this.bufferFrames,
-    required this.historyFrames,
-    required this.activeHandle,
-    required this.initialState,
-    required this.chunkFrames,
-    required this.targetBufferedFrames,
-    required this.tickInterval,
-    required this.isInt16,
-    this.onFeedFloat32,
-    this.onFeedInt16,
-    this.onStateUpdate,
-    this.onMessage,
-  });
-
-  final SendPort uiSendPort;
-  final SoundHash soundHash;
-  final int sampleRate;
-  final Channels channels;
-  final BufferType format;
-  final int bufferFrames;
-  final int historyFrames;
-  final SoundHandle? activeHandle;
-  final TState initialState;
-  final int chunkFrames;
-  final int targetBufferedFrames;
-  final Duration tickInterval;
-  final bool isInt16;
-  final RealtimeFloat32FeedCallback<TState>? onFeedFloat32;
-  final RealtimeInt16FeedCallback<TState>? onFeedInt16;
-  final RealtimeStateUpdateCallback<TState>? onStateUpdate;
-  final RealtimeMessageCallback<TState>? onMessage;
-
-  void run() {
-    final stream = RealtimeStreamHandle.fromHash(
-      soundHash: soundHash,
-      sampleRate: sampleRate,
-      channels: channels,
-      format: format,
-      bufferFrames: bufferFrames,
-      historyFrames: historyFrames,
-      activeHandle: activeHandle,
-    );
-    final nativeBuf = RealtimeNativeBuffer(
-      maxFrames: chunkFrames,
-      channels: channels,
-    );
-    var state = initialState;
-
-    final rx = ReceivePort();
-    uiSendPort.send(_FeederHandshakeMsg(rx.sendPort));
-
-    Timer? timer;
-    rx.listen((Object? msg) {
-      if (msg is _FeederDisposeMsg) {
-        timer?.cancel();
-        nativeBuf.dispose();
-        rx.close();
-        uiSendPort.send(const _FeederDisposedAckMsg());
-        return;
-      }
-      if (msg is _FeederBindVoiceMsg) {
-        stream.bindActiveVoice(msg.handle);
-        return;
-      }
-      if (msg is _FeederStateUpdateMsg<TState>) {
-        if (onStateUpdate != null) {
-          onStateUpdate!(state, msg.newState);
-        } else {
-          state = msg.newState;
-        }
-        RealtimeStreamFeeder._refillBuffer<TState>(
-          stream: stream,
-          nativeBuf: nativeBuf,
-          targetBufferedFrames: targetBufferedFrames,
-          chunkFrames: chunkFrames,
-          isInt16: isInt16,
-          onFeedFloat32: onFeedFloat32,
-          onFeedInt16: onFeedInt16,
-          state: state,
-          emitEvent: uiSendPort.send,
-        );
-        return;
-      }
-      if (msg is _FeederCustomMsg) {
-        onMessage?.call(state, msg.message);
-        RealtimeStreamFeeder._refillBuffer<TState>(
-          stream: stream,
-          nativeBuf: nativeBuf,
-          targetBufferedFrames: targetBufferedFrames,
-          chunkFrames: chunkFrames,
-          isInt16: isInt16,
-          onFeedFloat32: onFeedFloat32,
-          onFeedInt16: onFeedInt16,
-          state: state,
-          emitEvent: uiSendPort.send,
-        );
-      }
-    });
-
-    timer = Timer.periodic(
-      tickInterval,
-      (_) => RealtimeStreamFeeder._refillBuffer<TState>(
-        stream: stream,
-        nativeBuf: nativeBuf,
-        targetBufferedFrames: targetBufferedFrames,
-        chunkFrames: chunkFrames,
-        isInt16: isInt16,
-        onFeedFloat32: onFeedFloat32,
-        onFeedInt16: onFeedInt16,
-        state: state,
-        emitEvent: uiSendPort.send,
-      ),
-    );
-  }
-}
-
-void _realtimeFeederIsolateMain(_FeederIsolateInit<dynamic> init) {
-  init.run();
 }
