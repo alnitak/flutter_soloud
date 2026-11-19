@@ -56,7 +56,7 @@ void main() {
       await SoLoud.instance.disposeSource(hello);
     },
     skip:
-        'bug: play() of a speechText() AudioSource segfaults in '
+        'bug E1: play() of a speechText() AudioSource segfaults in '
         'SoLoud::Soloud::play (Player::textToSpeech registers an ActiveSound '
         'with a null `sound`, Player::play dereferences it)',
   );

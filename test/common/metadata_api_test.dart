@@ -215,7 +215,7 @@ void main() {
       expect(m.oggMetadata!.vendor, isNotEmpty);
     },
     skip:
-        'bug: src/audiobuffer/vorbis_stream_decoder.cpp:80 '
+        'bug S8: src/audiobuffer/vorbis_stream_decoder.cpp:80 '
         'VorbisDecoderWrapper::getMetadata() never copies vc.vendor, so '
         'OggMetadata.vendor is always empty for Vorbis (Opus sets it)',
   );

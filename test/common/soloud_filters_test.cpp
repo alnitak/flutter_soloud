@@ -484,7 +484,7 @@ void waveshaperHotInputProbe() {
     std::printf("    probe waveshaper AMOUNT=-0.9: in {1, -1, 1.05, 1.5} -> {%g, %g, %g, %g}\n",
                 b.at(0, 0), b.at(0, 1), b.at(0, 2), b.at(0, 3));
     if (!allFinite(a) || !allFinite(b) || peak(b) > 4.f)
-        std::printf("    KNOWN ISSUE (not failed): WaveShaper with negative AMOUNT yields "
+        std::printf("    KNOWN BUG F2 (not failed): WaveShaper with negative AMOUNT yields "
                     "NaN/huge values for |x| >= 1 "
                     "(src/soloud/src/filter/soloud_waveshaperfilter.cpp: "
                     "wet = (1+k)x / (1+k|x|))\n");
@@ -506,7 +506,7 @@ void biquadAboveNyquistProbe() {
         if (!allFinite(out) || peak(out) > 100.f) anyBad = true;
     }
     if (anyBad)
-        std::printf("    KNOWN ISSUE (not failed): BiquadResonant cutoff above Nyquist is "
+        std::printf("    KNOWN BUG F3 (not failed): BiquadResonant cutoff above Nyquist is "
                     "unstable (src/soloud/src/filter/soloud_biquadresonantfilter.cpp "
                     "calcBQRParams does not clamp FREQUENCY to the sample rate)\n");
 }

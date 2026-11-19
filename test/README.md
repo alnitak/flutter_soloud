@@ -49,7 +49,9 @@ folder names the platform whose code path it covers.
     `OSDEC_STRICT=1` for the OS decoder tests, to make these count as
     failures.
 
-  The bugs found so far are listed in `TEST_PLAN.md`.
+  Every open bug has an ID (`E1`, `S4`, …), and the test that covers it
+  uses the same ID. See `KNOWN_BUGS.md` for the list and for what to do
+  when a bug gets fixed.
 - **Dart tags** (configured in `dart_test.yaml`):
   - `device`: the test starts the real engine, which opens an audio output
     device.
@@ -132,6 +134,24 @@ merged) and, if `genhtml` is installed, an HTML report.
 | Xcode + an iOS simulator runtime | `test/ios/*` |
 | Visual Studio / Build Tools (C++), CMake | `test/windows/*` |
 | `afconvert` (macOS), `lame`, `ffmpeg` (optional) | Extra fixtures. Cases that need them are skipped when they are missing. |
+
+## Design notes
+
+- **Shared native sources.** A source used by several platforms is in
+  `common/`, even when one platform runs it only through a script elsewhere:
+  - `native_stream_test.cpp`: scripts in `common/` and `android/`;
+  - `change_device_test.cpp`: scripts in `macos/`, `linux/` and `windows/`,
+    because it needs an audio device;
+  - `vst3_host_test.cpp`: scripts in `linux/` and `windows/`, plus the thin
+    `macos/vst3_host_test.mm`.
+- **Generated CMake.** The bash scripts in `common/` remain the reference for
+  how a test is built, and `CMakeLists.txt` is generated from them, so the
+  two cannot drift apart. Tests whose scripts chain several runs through
+  temporary files (`simd_fallback`, `pull_mp3_seek`) run their script under
+  ctest and are not run on Windows.
+- **Device-free by default.** Native tests in `common/` use SoLoud's null
+  backend. Tests that need an output device are the Dart tests tagged
+  `device` and `change_device_test`.
 
 ## Example app tests
 

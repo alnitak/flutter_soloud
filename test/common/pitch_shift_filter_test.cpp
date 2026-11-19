@@ -311,7 +311,7 @@ void caseProbes() {
     const float w = inst->getFilterParameter(PitchShift::WET);
     std::printf("    parent setParam(WET, 0.3) -> new instance WET = %g\n", w);
     if (std::fabs(w - 0.3f) > 1e-6f)
-        std::printf("    KNOWN ISSUE (not failed): PitchShiftInstance ignores PitchShift::mWet "
+        std::printf("    KNOWN BUG F4 (not failed): PitchShiftInstance ignores PitchShift::mWet "
                     "(src/filters/pitch_shift_filter.cpp:7-13)\n");
     // 2. SEMITONES allows +-36 but SHIFT is limited to 0.1..3: semitones
     //    above ~19 give a SHIFT above its own maximum.
@@ -321,7 +321,7 @@ void caseProbes() {
     const float s = i2->getFilterParameter(PitchShift::SHIFT);
     std::printf("    SEMITONES 36 -> SHIFT %g (SHIFT max %g)\n", s, f.getParamMax(PitchShift::SHIFT));
     if (s > f.getParamMax(PitchShift::SHIFT))
-        std::printf("    KNOWN ISSUE (not failed): SEMITONES range (+-36) maps outside SHIFT "
+        std::printf("    KNOWN BUG F4 (not failed): SEMITONES range (+-36) maps outside SHIFT "
                     "range (0.1..3) (src/filters/pitch_shift_filter.cpp getParamMax/getParamMin)\n");
     // It must still produce finite audio.
     const Sig out = run(*i2, sine(2, (unsigned)kSr, {440.0}));

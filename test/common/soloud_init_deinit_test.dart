@@ -89,7 +89,7 @@ void main() {
         );
       },
       skip:
-          'bug: native createVoiceGroup() returns -1 from an unsigned '
+          'bug E6: native createVoiceGroup() returns -1 from an unsigned '
           'function when not inited (src/bindings.cpp:3657), which '
           'bindings_player_ffi.dart:1537 reads as the valid handle '
           '4294967295; SoLoud.createVoiceGroup (soloud.dart:4157) has no '

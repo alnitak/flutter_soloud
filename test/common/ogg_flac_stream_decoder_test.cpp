@@ -244,7 +244,7 @@ static void testDetect(const Fixture &fx) {
   // Part of the first page: not enough to detect, so StreamDecoder must ask
   // for more (NoError, nothing consumed), not reject the stream.
   //
-  // KNOWN BUG (src/audiobuffer/stream_decoder.cpp:71): the page scan runs
+  // KNOWN BUG S7 (src/audiobuffer/stream_decoder.cpp:71): the page scan runs
   // only while `scan_offset + 27 < size`, so a buffer that starts with
   // "OggS" but holds fewer than 28 bytes skips the loop and is reported as
   // BUFFER_UNKNOWN, and decode() returns FormatNotSupported. BufferStream
@@ -341,7 +341,7 @@ static void testPartial(const Fixture &fx, const std::vector<float> &oneShot) {
 // audiobuffer.cpp) and drained with the same cap until hasPendingData() is
 // false. Also with the data fed before the end is signalled.
 //
-// KNOWN BUG (src/audiobuffer/ogg_flac_stream_decoder.cpp, the m_drained
+// KNOWN BUG S3 (src/audiobuffer/ogg_flac_stream_decoder.cpp, the m_drained
 // assignment after the decode loop, line 282): when the cap stops the loop after
 // libFLAC has read the last bytes into its bit reader but before it has
 // decoded the final frame, m_read_pos == m_audioData.size() and the data has

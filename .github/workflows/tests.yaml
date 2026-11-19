@@ -20,7 +20,7 @@ concurrency:
 
 env:
   # Native tests that currently fail because of open bugs in src/ (see
-  # TEST_PLAN.md, "Bug trovati"). Remove a name once its bug is fixed.
+  # test/KNOWN_BUGS.md). Remove a name once its bug is fixed.
   KNOWN_FAILING_NATIVE: "pull_mp3_seek_test"
 
 jobs:

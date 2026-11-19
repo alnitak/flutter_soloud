@@ -163,7 +163,7 @@ void main() {
         expect(unique, hasLength(sentences.length));
       },
       skip:
-          'bug: lib/src/enums.dart PlayerErrors._asSentence returns '
+          'bug E9: lib/src/enums.dart PlayerErrors._asSentence returns '
           "'Filter not found!' for filterAlreadyAdded (copy of filterNotFound)",
     );
   });

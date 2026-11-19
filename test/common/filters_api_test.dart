@@ -439,21 +439,21 @@ final List<_Filter> _filters = [
 /// filter starts with.
 const _wrongDefaults = <FilterType, String>{
   FilterType.biquadResonantFilter:
-      'bug: BiquadResonantEnum.resonance.def is 0.1 '
+      'bug F1: BiquadResonantEnum.resonance.def is 0.1 '
       '(lib/src/filters/biquad_resonant_filter.dart:32), the native filter '
       'starts at 2',
   FilterType.flangerFilter:
-      'bug: FlangerEnum defaults delay 1 and freq 0 '
+      'bug F1: FlangerEnum defaults delay 1 and freq 0 '
       '(lib/src/filters/flanger_filter.dart:14), the native filter starts at '
       '0.005 s and 10 Hz; its Dart ranges (delay 0..3, freq -48..48, lines '
       '12-13) do not match the native ones either (0.001..0.1, 0.001..100, '
       'src/soloud/src/filter/soloud_flangerfilter.cpp:252)',
   FilterType.limiterFilter:
-      'bug: Limiter.kneeWidth.def is 2 and Limiter.releaseTime.def is 100 '
+      'bug F1: Limiter.kneeWidth.def is 2 and Limiter.releaseTime.def is 100 '
       '(lib/src/filters/limiter.dart:17), the native limiter starts at 6 and '
       '50 (src/filters/limiter.cpp:388)',
   FilterType.parametricEq:
-      'bug: ParametricEqParam.getDefault reports a band Q of 1 '
+      'bug F1: ParametricEqParam.getDefault reports a band Q of 1 '
       '(lib/src/filters/parametric_eq.dart, getDefault), the native EQ '
       'starts each band at a Q derived from the band count (0.33 for 3 '
       'bands)',

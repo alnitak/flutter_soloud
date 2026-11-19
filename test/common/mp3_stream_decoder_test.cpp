@@ -296,7 +296,7 @@ static void testId3(Asset &a) {
   if (!title.empty()) {
     bool seen = false;
     for (auto &m : o.meta) seen = seen || m.mp3Metadata.title == title;
-    // KNOWN BUG (src/audiobuffer/mp3_stream_decoder.cpp:72, on_meta): frame
+    // KNOWN BUG S6 (src/audiobuffer/mp3_stream_decoder.cpp:72, on_meta): frame
     // parsing starts right after the 10-byte tag header and ignores the
     // extended-header flag (0x40), so a tag with an extended header (such
     // as IveSeenThings.mp3's 12-byte one) reads its size bytes as a frame
@@ -318,7 +318,7 @@ static void testId3(Asset &a) {
 // pieces): StreamDecoder must wait for the rest of the tag and then decode
 // the stream like a small-tag file.
 //
-// KNOWN BUG (src/audiobuffer/stream_decoder.cpp:45, getID3TagSize): while
+// KNOWN BUG S4 (src/audiobuffer/stream_decoder.cpp:45, getID3TagSize): while
 // the tag is incomplete getID3TagSize() returns 0 ("if (offset + total >
 // buffer.size()) break;" with offset 0), so detectAudioFormat() skips the
 // ID3 branch and probes the cover-art bytes as raw audio. Here the AC-3
@@ -353,7 +353,7 @@ static void testLargeId3(Asset &a) {
 
 // A first delivery shorter than one MPEG frame.
 //
-// KNOWN BUG (src/audiobuffer/stream_decoder.cpp, detectAudioFormat, the
+// KNOWN BUG S7 (src/audiobuffer/stream_decoder.cpp, detectAudioFormat, the
 // MP3_STREAM branch at line ~162 and the final `return BUFFER_UNKNOWN`):
 // without an ID3 tag, a buffer that starts with a valid MPEG frame header
 // but does not yet hold the whole frame fails checkForValidFrames() and is
@@ -401,7 +401,7 @@ static void testFragmented(Asset &a) {
 
   // The wrapper on its own, byte by byte from the first byte.
   //
-  // KNOWN BUG (src/audiobuffer/mp3_stream_decoder.cpp:266, the lazy
+  // KNOWN BUG S5 (src/audiobuffer/mp3_stream_decoder.cpp:266, the lazy
   // drmp3_init() in decode()): a failed init (not a whole frame yet) has
   // already advanced m_read_pos through on_read, and nothing rewinds it, so
   // the next attempt starts after the bytes the failed one consumed. Fed in

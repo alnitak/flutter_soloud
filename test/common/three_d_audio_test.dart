@@ -66,7 +66,7 @@ void main() {
         expect(soloud.get3dSoundSpeed(), closeTo(100, 1e-3));
       },
       skip:
-          'bug: every 3D setter/getter export returns early while no sound '
+          'bug E5: every 3D setter/getter export returns early while no sound '
           'is loaded (getSoundsCount() == 0, src/bindings.cpp:4862 and the '
           'following 3D exports), so set3dSoundSpeed and '
           'set3dListener* called before the first load are silently lost '
@@ -134,7 +134,7 @@ void main() {
         expect(out.rms(0), greaterThan(out.rms(1) * 2));
       },
       skip:
-          'bug: Player::set3dListenerUp calls soloud.set3dListenerAt '
+          'bug E4: Player::set3dListenerUp calls soloud.set3dListenerAt '
           '(src/player.cpp:4194), so it overwrites the "at" vector and '
           'leaves "up" unchanged',
     );
@@ -169,7 +169,7 @@ void main() {
     }
 
     const attenuatedTwice =
-        'bug: the 3D attenuation is applied twice, so the level follows the '
+        'bug E2: the 3D attenuation is applied twice, so the level follows the '
         'square of the model: update3dVoices_internal puts it both in '
         'mChannelVolume (src/soloud/src/core/soloud_core_3d.cpp:296) and in '
         'm3dVolume (:301), which updateVoiceVolume_internal multiplies into '
@@ -250,7 +250,7 @@ void main() {
     const c = 343.0;
     const v = 100.0;
     const inverted =
-        'bug: the doppler shift has the wrong sign (an approaching source '
+        'bug E3: the doppler shift has the wrong sign (an approaching source '
         'or listener lowers the pitch): doppler() in '
         'src/soloud/src/core/soloud_core_3d.cpp:144 projects the velocities '
         'on the listener-to-source vector and then uses '

@@ -11,7 +11,7 @@
 //     decoded channel has its RMS within 10% of the input's, its energy
 //     concentrated at that frequency (channel order kept, no crosstalk), and
 //     a waveform correlation above 0.98 with the input (time aligned);
-//   * lfe_slot: documents that 6-channel input is not remapped to Vorbis
+//   * lfe_slot (bug O1): documents that 6-channel input is not remapped to Vorbis
 //     channel order, so input channel 5 is coded as LFE (band-limited) --
 //     suspected bug, see testLfeSlot(); the other channels still roundtrip;
 //   * silence: silent input decodes to (near) silence;

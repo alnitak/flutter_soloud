@@ -407,7 +407,7 @@ void caseVorbis() {
     const ma_result rm = ma_libvorbis_init_memory(data.data(), data.size(), nullptr, nullptr, &fromMem);
     std::printf("    init_memory: result %d\n", rm);
     if (rm != MA_SUCCESS) {
-        std::printf("    KNOWN ISSUE (not failed): ma_libvorbis_init_memory fails: "
+        std::printf("    KNOWN BUG S9 (not failed): ma_libvorbis_init_memory fails: "
                     "ma_memory_stream_read returns size_t (bytes read) but is stored as an "
                     "ma_read_proc returning ma_result, so ma_libvorbis_vf_callback__read treats "
                     "every successful read as an error "

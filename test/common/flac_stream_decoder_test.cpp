@@ -306,7 +306,7 @@ static void testStreamDecoder(const Fixture &fx) {
 
 // Chunked delivery must decode to exactly the samples of a one-shot decode.
 //
-// KNOWN BUG (src/audiobuffer/flac_stream_decoder.cpp, decode loop at lines
+// KNOWN BUG S1/S2 (src/audiobuffer/flac_stream_decoder.cpp, decode loop at lines
 // ~244-310): it does not, for two reasons.
 //  1. libFLAC's FLAC__stream_decoder_process_single() returns *true* when the
 //     read callback aborts while it searches for a frame sync (the state
@@ -341,7 +341,7 @@ static void testPieces(const Fixture &fx) {
     // The first delivery carries the 4-byte magic, as StreamDecoder
     // guarantees (it detects the format on it).
     //
-    // KNOWN BUG (src/audiobuffer/flac_stream_decoder.cpp:168): the guard that
+    // KNOWN BUG S2 (src/audiobuffer/flac_stream_decoder.cpp:168): the guard that
     // waits for the whole header runs only once m_audioData holds 4 bytes. A
     // first decode() with 1-3 bytes reaches libFLAC, whose metadata read
     // aborts; the flush then leaves it searching for a frame sync, so

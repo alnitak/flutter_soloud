@@ -262,7 +262,7 @@ void main() {
         expect(soloud.countAudioSource(tone), 2);
       },
       skip:
-          'bug: Player::countAudioSource returns 0 for every waveform '
+          'bug E8: Player::countAudioSource returns 0 for every waveform '
           '(TYPE_SYNTH) source (src/player.cpp:3568), which the '
           'SoLoud.countAudioSource docs do not mention',
     );
