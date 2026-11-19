@@ -9,7 +9,7 @@ import 'common.dart';
 
 /// AAC-LC M4A fixtures: 2 s each (0.5 s silence, 1 s 1 kHz tone, 0.5 s
 /// silence). Sample-level content is verified natively by
-/// test/android_native_decoder_test.cpp.
+/// test/android/android_native_decoder_test.cpp.
 const _fixtures = [
   'assets/audio/aac_lc_mono_44100.m4a',
   'assets/audio/aac_lc_stereo_48000.m4a',

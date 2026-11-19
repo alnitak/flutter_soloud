@@ -2114,7 +2114,7 @@ extern "C"
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
   /// Test-only entry points, compiled out of every shipping build. See
-  /// `test/engine_lifecycle_test.cpp`.
+  /// `test/common/engine_lifecycle_test.cpp`.
   ///
   /// The interleavings that matter on this path are between a lifecycle hook
   /// running on the platform thread and native work that already holds

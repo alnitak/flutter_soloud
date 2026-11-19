@@ -348,7 +348,7 @@ extern "C"
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
   /// Test-only entry points, compiled out of every shipping build. See
-  /// `test/engine_lifecycle_test.cpp`. Not visible to ffigen.
+  /// `test/common/engine_lifecycle_test.cpp`. Not visible to ffigen.
 
   /// Peak number of deferred idle-timeout workers alive at once.
   FFI_PLUGIN_EXPORT int soloudTestIdleTimeoutWorkerPeak();

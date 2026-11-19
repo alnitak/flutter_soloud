@@ -1,0 +1,129 @@
+name: Tests
+
+# See test/README.md for the layout. CI runners have no audio output device,
+# so Dart tests tagged `device` are excluded and the native suite uses the
+# null backend. Android and iOS tests need a device/simulator and are run by
+# hand (test/android/all.sh, test/ios/all.sh).
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Native tests that currently fail because of open bugs in src/ (see
+  # TEST_PLAN.md, "Bug trovati"). Remove a name once its bug is fixed.
+  KNOWN_FAILING_NATIVE: "pull_mp3_seek_test"
+
+jobs:
+  dart:
+    name: Dart (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libpulse-dev
+      - run: flutter pub get
+      - name: flutter test (no audio device)
+        run: flutter test -x device test/common test/android test/ios test/linux
+
+  web:
+    name: Dart web (${{ matrix.flavor }})
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [js, wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: flutter test --platform chrome
+        shell: bash
+        run: |
+          EXTRA=""
+          [ "${{ matrix.flavor }}" == "wasm" ] && EXTRA="--wasm"
+          flutter test --platform chrome $EXTRA test/web
+
+  native:
+    name: Native (${{ matrix.os }}${{ matrix.sanitize && format(', {0}', matrix.sanitize) || '' }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+          - os: windows-latest
+          - os: ubuntu-latest
+            sanitize: address
+          - os: macos-latest
+            sanitize: thread
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xiph libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libogg-dev libvorbis-dev libopus-dev libflac-dev \
+            libasound2-dev libpulse-dev
+      - name: Xiph libraries (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libogg libvorbis opus flac
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S test -B build/native_tests -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DSOLOUD_TEST_SANITIZE=${{ matrix.sanitize || '' }}
+      - name: Build
+        run: cmake --build build/native_tests --config RelWithDebInfo --parallel 4
+      - name: ctest
+        shell: bash
+        run: |
+          EXCLUDE="$(echo "$KNOWN_FAILING_NATIVE" | tr ' ' '|')"
+          ctest --test-dir build/native_tests -C RelWithDebInfo -j4 \
+            --output-on-failure ${EXCLUDE:+-E "($EXCLUDE)"}
+      - name: Platform-specific native tests (Linux)
+        if: runner.os == 'Linux' && !matrix.sanitize
+        run: ./test/support/run_native_tests.sh test/linux
+      - name: Platform-specific native tests (macOS)
+        if: runner.os == 'macOS' && !matrix.sanitize
+        run: ./test/support/run_native_tests.sh test/macos
+      - name: Platform-specific native tests (Windows)
+        if: runner.os == 'Windows' && !matrix.sanitize
+        shell: pwsh
+        run: ./test/windows/all.ps1 -SkipCMake
+
+  coverage:
+    name: Coverage
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: brew install libogg libvorbis opus flac lcov
+      - run: flutter pub get
+      - run: ./test/support/coverage.sh -- -x device
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/

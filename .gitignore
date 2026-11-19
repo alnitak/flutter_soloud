@@ -57,3 +57,6 @@ AGENTS.md
 .playwright-mcp/
 .ruby-lsp/
 .venv/
+
+# Test coverage reports (test/support/coverage.sh)
+coverage/
