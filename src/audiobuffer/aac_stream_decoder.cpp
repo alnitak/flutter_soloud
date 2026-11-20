@@ -59,8 +59,11 @@ AACDecoderWrapper::AACDecoderWrapper(DetectedType format)
 AACDecoderWrapper::~AACDecoderWrapper() = default;
 
 bool AACDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels) {
-  if (!mImpl) return false;
-  return mImpl->initialize(engineSamplerate, engineChannels);
+  mDecoderReady = mImpl && mImpl->initialize(engineSamplerate, engineChannels);
+  if (mDecoderReady) {
+    mAudioData.clear();
+  }
+  return mDecoderReady;
 }
 
 void AACDecoderWrapper::setIcyMetaInt(int icyMetaInt) {
@@ -137,6 +140,13 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
       mMetadataParsed = true;
       onTrackChange(metadata);
     }
+  }
+
+  if (!mDecoderReady) {
+    // initializeDecoder() failed or was never called: the header metadata
+    // above is all there is, and the input is dropped instead of piling up.
+    mAudioData.clear();
+    return {{}, DecoderError::FailedToCreateDecoder};
   }
 
   auto result = mImpl->decode(mAudioData, samplerate, channels, maxOutputSamples);
