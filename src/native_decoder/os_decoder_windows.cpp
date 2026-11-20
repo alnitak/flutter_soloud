@@ -15,6 +15,11 @@
 #include <string>
 #include <fstream>
 
+#if defined(__MINGW32__)
+// mingw-w64's mfidl.h does not declare it, though libmfplat exports it.
+extern "C" HRESULT WINAPI MFCreateMFByteStreamOnStream(IStream *pStream, IMFByteStream **ppByteStream);
+#endif
+
 #pragma comment(lib, "mfplat.lib")
 #pragma comment(lib, "mfreadwrite.lib")
 #pragma comment(lib, "mfuuid.lib")
