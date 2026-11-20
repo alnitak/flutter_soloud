@@ -9,9 +9,9 @@ enum FlangerEnum {
   delay,
   freq;
 
-  final List<double> _mins = const [0, 0, -48];
-  final List<double> _maxs = const [1, 3, 48];
-  final List<double> _defs = const [1, 1, 0];
+  final List<double> _mins = const [0, 0.001, 0.001];
+  final List<double> _maxs = const [1, 0.1, 100];
+  final List<double> _defs = const [1, 0.005, 10];
 
   double get min => _mins[index];
   double get max => _maxs[index];

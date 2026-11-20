@@ -97,21 +97,39 @@ class ParametricEqParam {
     return 1;
   }
 
-  /// Get default value for a parameter at the given index
-  static double getDefault(int paramIndex) {
+  /// Get default value for a parameter at the given index.
+  ///
+  /// Band frequencies and Q factors depend on the band count: [bands] is the
+  /// number of bands to compute them for (the filter starts with 3). This
+  /// mirrors the native `ParametricEq::setFreqs`: band frequencies are spaced
+  /// geometrically between 30 and 12000 Hz with a Q of [defaultBandQ], and
+  /// slots beyond [bands] default to 1000 Hz with a Q of 1.
+  static double getDefault(int paramIndex, {int bands = 3}) {
     if (paramIndex == wet) return 1;
     if (paramIndex == stftWindowSize) return 1024;
     if (paramIndex == numBands) return 3;
     if (paramIndex >= bandGainOffset && paramIndex < bandFreqOffset) return 1;
+    final nBands = bands.clamp(1, maxBands);
     if (paramIndex >= bandFreqOffset && paramIndex < bandQOffset) {
       final bandIndex = paramIndex - bandFreqOffset;
-      if (bandIndex == 0) return 30;
-      if (bandIndex == 1) return 600;
-      if (bandIndex == 2) return 12000;
-      return 1000;
+      if (nBands == 1 || bandIndex >= nBands) return 1000;
+      return 30 * pow(12000 / 30, bandIndex / (nBands - 1)).toDouble();
     }
-    if (paramIndex >= bandQOffset && paramIndex < maxParams) return 1;
+    if (paramIndex >= bandQOffset && paramIndex < maxParams) {
+      final bandIndex = paramIndex - bandQOffset;
+      if (bandIndex >= nBands) return 1;
+      return defaultBandQ(nBands);
+    }
     return 0;
+  }
+
+  /// The Q factor the native filter gives each of [bands] bands: one that
+  /// makes adjacent bands (spaced geometrically between 30 and 12000 Hz)
+  /// overlap, clamped to 0.1..20, or 1 for a single band.
+  static double defaultBandQ(int bands) {
+    if (bands <= 1) return 1;
+    final octaves = log(12000 / 30) / ln2 / (bands - 1);
+    return (1 / (octaves * 0.693147)).clamp(0.1, 20).toDouble();
   }
 
   /// Get the name of a parameter at the given index
