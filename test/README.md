@@ -43,9 +43,9 @@ folder names the platform whose code path it covers.
   prints a line starting with `SKIPPED:` and exits 0.
 - **Known bugs.** A test that finds a bug in `src/` or `lib/` does not hide
   it, and does not fail the suite either:
-  - Dart tests mark the case `skip: 'bug: <what> (<file>:<line>)'`. Run
+  - Dart tests mark the case `skip: 'bug <ID>: <what> (<file>:<line>)'`. Run
     `flutter test --run-skipped` to see these cases fail.
-  - Native tests print `KNOWN BUG (...)`. Pass `--strict`, or set
+  - Native tests print `KNOWN BUG <ID> (...)`. Pass `--strict`, or set
     `OSDEC_STRICT=1` for the OS decoder tests, to make these count as
     failures.
 

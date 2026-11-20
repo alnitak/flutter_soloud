@@ -11,7 +11,11 @@
 //     the captured audio;
 //   * resampler: a ramp captured at 44.1, 22.05 or 96 kHz and resampled to
 //     48 kHz in device-sized blocks stays a ramp, in every channel (linear
-//     interpolation of a linear signal is exact).
+//     interpolation of a linear signal is exact);
+//   * mapping: mono and stereo use channel mapping family 0 (RFC 7845
+//     section 5.1.1.1) with the right channel count in OpusHead; 3..8
+//     channels (which would need family 1 and the Vorbis channel order) are
+//     rejected by initialize() rather than written with a wrong layout.
 //
 // Build and run from the flutter_soloud repository root with:
 //
@@ -354,12 +358,47 @@ void resamplerKeepsARampARamp()
     }
 }
 
+void channelMapping()
+{
+    std::printf("mapping: OpusHead channel mapping family\n");
+    for (int channels : {1, 2})
+    {
+        OpusOutputEncoder encoder;
+        EXPECT(encoder.initialize(48000, channels), "mapping: initialize %d ch",
+               channels);
+        std::vector<float> pcm(960 * channels, 0.0f);
+        std::vector<uint8_t> stream, out;
+        encoder.encode(pcm.data(), pcm.size(), out);
+        stream.insert(stream.end(), out.begin(), out.end());
+        out.clear();
+        encoder.finalize(out);
+        stream.insert(stream.end(), out.begin(), out.end());
+        const uint8_t tag[8] = {'O', 'p', 'u', 's', 'H', 'e', 'a', 'd'};
+        auto it = std::search(stream.begin(), stream.end(), tag, tag + 8);
+        EXPECT(it != stream.end() && stream.end() - it >= 19,
+               "mapping: %d ch: no OpusHead", channels);
+        if (it == stream.end() || stream.end() - it < 19)
+            continue;
+        EXPECT(it[9] == channels, "mapping: OpusHead channels %d want %d", it[9],
+               channels);
+        EXPECT(it[18] == 0, "mapping: %d ch: mapping family %d want 0", channels,
+               it[18]);
+    }
+    for (int channels = 3; channels <= 8; ++channels)
+    {
+        OpusOutputEncoder encoder;
+        EXPECT(!encoder.initialize(48000, channels),
+               "mapping: %d channels accepted with mapping family 0", channels);
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv)
 {
     const char *only = argc > 1 ? argv[1] : nullptr;
-    const char *const kScenarios[] = {"granule", "preskip", "resampler"};
+    const char *const kScenarios[] = {"granule", "preskip", "resampler",
+                                       "mapping"};
     if (only != nullptr)
     {
         bool known = false;
@@ -380,6 +419,8 @@ int main(int argc, char **argv)
         preSkipAlignsTheDecodedAudio();
     if (wanted("resampler"))
         resamplerKeepsARampARamp();
+    if (wanted("mapping"))
+        channelMapping();
 
     std::printf("\n%d assertions, %d failures\n", gAssertions, gFailures);
     return gFailures == 0 ? 0 : 1;

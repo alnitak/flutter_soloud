@@ -38,6 +38,7 @@ c++ -std=c++17 -O2 -Wall "${SANITIZER[@]}" \
     "${PLATFORM_SRCS[@]}" \
     src/audiobuffer/mp3_stream_decoder.cpp \
     src/audiobuffer/m4a_metadata.cpp \
+    src/native_stream/m4a_gapless.cpp \
     "${PLATFORM_LIBS[@]}"
 
 "$OUT"

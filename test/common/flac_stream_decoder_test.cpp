@@ -16,8 +16,8 @@
 //   pieces          the metadata fed byte by byte (partial metadata blocks)
 //                   then the frames; and the whole file in 512/1000/4099/
 //                   16384-byte pieces (partial frames) must decode to the
-//                   same samples as the one-shot decode (KNOWN BUG for the
-//                   small pieces, see testPieces)
+//                   same samples as the one-shot decode (regression for
+//                   S1/S2, see testPieces)
 //   max-output      maxOutputSamples bounds each call (to one frame of
 //                   overshoot), with the end of data signalled first as
 //                   BufferStream::setDataIsEnded does, and the total is
@@ -305,30 +305,20 @@ static void testStreamDecoder(const Fixture &fx) {
 }
 
 // Chunked delivery must decode to exactly the samples of a one-shot decode.
-//
-// KNOWN BUG S1/S2 (src/audiobuffer/flac_stream_decoder.cpp, decode loop at lines
-// ~244-310): it does not, for two reasons.
-//  1. libFLAC's FLAC__stream_decoder_process_single() returns *true* when the
-//     read callback aborts while it searches for a frame sync (the state
-//     becomes FLAC__STREAM_DECODER_ABORTED). Only the `false` branch (line
-//     ~246) flushes; the `true` branch (line ~275) checks only END_OF_STREAM.
-//     The decoder then stays ABORTED for good: every later decode() spins
-//     the 100000-iteration cap (~5 ms) and returns nothing, and
-//     hasPendingData() stays true after setDataEnded(), so a drain loop
-//     never ends. 512-byte chunks hit it after ~1.5 KB of data.
-//  2. When libFLAC has read the whole buffer into its bit reader but not yet
-//     decoded the last (partial) frame, the cleanup at line ~302 drops the
-//     bytes (m_read_pos >= size). On the next call's ABORT the rollback
-//     target lies before m_streamStartOffset, so m_read_pos goes to 0 and the
-//     flush throws away the frame head: the frame is lost. 1000-byte chunks
-//     lose about a third of the audio.
-// Reproducer: feed the fixture in 512- or 1000-byte pieces (this case).
+// Regression for S1/S2: libFLAC's read can abort while it searches for a frame
+// sync (process_single() then returns true with the state ABORTED), and a
+// frame can span two decode() calls while its head sits in libFLAC's bit
+// reader. The wrapper must roll back to the end of the last decoded frame
+// and resume there, and the drain must end.
 static void testPieces(const Fixture &fx) {
   // Byte-by-byte over the metadata (the wrapper must wait for the whole
-  // header), then the frames in one piece: exercises partial metadata blocks
-  // without the frame-boundary bug above.
-  {
-    std::printf("case: header byte by byte\n");
+  // header), then the frames in one piece. The first delivery carries the
+  // 4-byte magic (as StreamDecoder guarantees: it detects the format on it)
+  // or a single byte (regression for S2: a first delivery of 1-3 bytes must
+  // wait instead of reaching libFLAC).
+  for (size_t firstLen : {(size_t)4, (size_t)1}) {
+    std::printf("case: header byte by byte, first delivery %zu bytes\n",
+                firstLen);
     const size_t hdr = headerLength(fx.file);
     FlacDecoderWrapper w;
     std::vector<AudioMetadata> meta;
@@ -338,22 +328,12 @@ static void testPieces(const Fixture &fx) {
     int sr = 0, ch = 0;
     std::vector<float> pcm;
     bool ok = true;
-    // The first delivery carries the 4-byte magic, as StreamDecoder
-    // guarantees (it detects the format on it).
-    //
-    // KNOWN BUG S2 (src/audiobuffer/flac_stream_decoder.cpp:168): the guard that
-    // waits for the whole header runs only once m_audioData holds 4 bytes. A
-    // first decode() with 1-3 bytes reaches libFLAC, whose metadata read
-    // aborts; the flush then leaves it searching for a frame sync, so
-    // STREAMINFO is never read (format 0/0, no audio ever). Not reachable
-    // through StreamDecoder; reproduce by calling FlacDecoderWrapper::decode
-    // with a 1-byte buffer first.
     {
-      Bytes magic(fx.file.begin(), fx.file.begin() + 4);
-      auto o = w.decode(magic, &sr, &ch);
+      Bytes first(fx.file.begin(), fx.file.begin() + firstLen);
+      auto o = w.decode(first, &sr, &ch);
       ok = o.second == DecoderError::NoError && o.first.empty();
     }
-    for (size_t i = 4; i < hdr; ++i) {
+    for (size_t i = firstLen; i < hdr; ++i) {
       Bytes one{fx.file[i]};
       auto o = w.decode(one, &sr, &ch);
       ok = ok && o.second == DecoderError::NoError && o.first.empty();
@@ -378,16 +358,16 @@ static void testPieces(const Fixture &fx) {
     CHECK(comments, "comments lost");
   }
 
-  for (size_t chunk : {512u, 1000u, 4099u, 16384u}) {
+  for (size_t chunk : {1u, 7u, 100u, 512u, 1000u, 4099u, 16384u}) {
     std::printf("case: pieces of %zu bytes\n", chunk);
     std::vector<AudioMetadata> meta;
     Result r = decodeWrapper(fx.file, chunk, 0, &meta);
     CHECK(!r.error, "error %d", (int)r.firstError);
-    KNOWN_BUG(r.ended, "chunk %zu: hasPendingData() still true after %d "
-                       "drain calls", chunk, kMaxDrainCalls);
-    KNOWN_BUG(r.pcm.size() == fx.pcm.size(),
-              "chunk %zu: %zu samples, want %zu", chunk, r.pcm.size(),
-              fx.pcm.size());
+    CHECK(r.ended, "chunk %zu: hasPendingData() still true after %d "
+                   "drain calls", chunk, kMaxDrainCalls);
+    CHECK(r.pcm.size() == fx.pcm.size(),
+          "chunk %zu: %zu samples, want %zu", chunk, r.pcm.size(),
+          fx.pcm.size());
     if (r.pcm.size() == fx.pcm.size())
       CHECK(matches(r.pcm, fx.pcm, 0, r.pcm.size()), "chunk %zu: mismatch",
             chunk);
@@ -431,8 +411,8 @@ static void testMaxOutput(const Fixture &fx) {
   }
 }
 
-static void testSeek(const Fixture &fx) {
-  std::printf("case: seek\n");
+static void testSeek(const Fixture &fx, size_t chunk) {
+  std::printf("case: seek, data in pieces of %zu bytes\n", chunk);
   const size_t hdr = headerLength(fx.file);
   CHECK(hdr > 0, "header length");
   // Let the wrapper see the header and the first part of the stream.
@@ -464,12 +444,14 @@ static void testSeek(const Fixture &fx) {
   w.prepareForSeek(targetFrame * kChannels, feedFrom);
   Bytes rest(fx.file.begin() + feedFrom, fx.file.end());
   std::vector<float> pcm;
-  // One piece: chunked delivery has its own bug (see testPieces).
-  {
-    auto o = w.decode(rest, &sr, &ch);
-    CHECK(o.second == DecoderError::NoError, "error after seek");
+  bool err = false;
+  for (size_t at = 0; at < rest.size(); at += chunk) {
+    Bytes in(rest.begin() + at, rest.begin() + std::min(rest.size(), at + chunk));
+    auto o = w.decode(in, &sr, &ch);
+    err = err || o.second != DecoderError::NoError;
     pcm.insert(pcm.end(), o.first.begin(), o.first.end());
   }
+  CHECK(!err, "error after seek");
   w.setDataEnded();
   int calls = 0;
   while (w.hasPendingData() && calls++ < kMaxDrainCalls) {
@@ -534,7 +516,8 @@ int main(int argc, char **argv) {
   testStreamDecoder(fx);
   testPieces(fx);
   testMaxOutput(fx);
-  testSeek(fx);
+  testSeek(fx, fx.file.size());
+  testSeek(fx, 700);
   testTruncated(fx);
   std::printf("%d checks, %d failures, %d known bugs\n", gChecks, gFailures,
               gKnownBugs);

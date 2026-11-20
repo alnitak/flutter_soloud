@@ -242,27 +242,32 @@ static void testDetect(const Fixture &fx) {
   CHECK(hasTitle(meta), "comments not reported");
 
   // Part of the first page: not enough to detect, so StreamDecoder must ask
-  // for more (NoError, nothing consumed), not reject the stream.
-  //
-  // KNOWN BUG S7 (src/audiobuffer/stream_decoder.cpp:71): the page scan runs
-  // only while `scan_offset + 27 < size`, so a buffer that starts with
-  // "OggS" but holds fewer than 28 bytes skips the loop and is reported as
-  // BUFFER_UNKNOWN, and decode() returns FormatNotSupported. BufferStream
-  // normally buffers 4 KB first, so only a stream that delivers a short first
-  // chunk through another path is affected.
-  for (size_t n : {(size_t)20, (size_t)27, (size_t)28, (size_t)40}) {
+  // for more (NoError, nothing consumed), not reject the stream. Regression
+  // for S7: a buffer that starts with "OggS" but holds fewer than 28 bytes
+  // used to be reported as BUFFER_UNKNOWN (FormatNotSupported).
+  for (size_t n : {(size_t)4, (size_t)20, (size_t)27, (size_t)28, (size_t)40}) {
     StreamDecoder sd2;
     Bytes head(fx.file.begin(), fx.file.begin() + n);
     auto o2 = sd2.decode(head, &sr, &ch, nullptr);
     const bool waits = o2.second == DecoderError::NoError &&
                        head.size() == n &&
                        sd2.getWrapperType() == BUFFER_UNKNOWN;
-    if (n < 28)
-      KNOWN_BUG(waits, "%zu bytes of the first page: error %d", n,
-                (int)o2.second);
-    else
-      CHECK(waits, "%zu bytes of the first page: error %d", n,
-            (int)o2.second);
+    CHECK(waits, "%zu bytes of the first page: error %d", n, (int)o2.second);
+  }
+  // Data that is not Ogg after the magic is still rejected.
+  {
+    StreamDecoder sd3;
+    // A complete page (one 10-byte segment) of no known codec, then bytes
+    // that are no page.
+    Bytes junk = {'O', 'g', 'g', 'S'};
+    junk.resize(26, 0);
+    junk.push_back(1);  // segment count
+    junk.push_back(10); // segment table
+    junk.resize(junk.size() + 10, 0x55);
+    junk.resize(junk.size() + 100, 0x33);
+    auto o3 = sd3.decode(junk, &sr, &ch, nullptr);
+    CHECK(o3.second == DecoderError::FormatNotSupported,
+          "garbage after OggS: error %d", (int)o3.second);
   }
 }
 
@@ -288,11 +293,9 @@ static void testOneShot(const Fixture &fx) {
   CHECK(info, "STREAMINFO not in reported metadata");
 }
 
-// Partial input must decode exactly as the one-shot decode does. The
-// wrapper shares the decode loop of FlacDecoderWrapper, whose chunking bugs
-// make native FLAC lose frames (see flac_stream_decoder_test.cpp,
-// testPieces); here Ogg hands libFLAC whole packets (whole frames), which
-// keeps clear of them for this fixture.
+// Partial input must decode exactly as the one-shot decode does. Pages and
+// packets are split anywhere; the wrapper hands libFLAC whole packets, and
+// only once all the metadata blocks are there.
 static void testPartial(const Fixture &fx, const std::vector<float> &oneShot) {
   for (size_t chunk : {1u, 7u, 100u, 999u, 4096u}) {
     std::printf("case: partial input, %zu-byte pieces\n", chunk);
@@ -341,12 +344,9 @@ static void testPartial(const Fixture &fx, const std::vector<float> &oneShot) {
 // audiobuffer.cpp) and drained with the same cap until hasPendingData() is
 // false. Also with the data fed before the end is signalled.
 //
-// KNOWN BUG S3 (src/audiobuffer/ogg_flac_stream_decoder.cpp, the m_drained
-// assignment after the decode loop, line 282): when the cap stops the loop after
-// libFLAC has read the last bytes into its bit reader but before it has
-// decoded the final frame, m_read_pos == m_audioData.size() and the data has
-// ended, so m_drained is set and hasPendingData() turns false: the drain
-// stops and the final frame (up to one block) is never returned.
+// Regression for S3: when the cap stopped the loop after libFLAC had read the
+// last bytes into its bit reader but before it had decoded the final frame,
+// the wrapper reported the stream drained and the final frame was lost.
 static void testMaxOutput(const Fixture &fx) {
   for (size_t maxOut : {(size_t)4096 * 4, (size_t)2 * kBlock * kChannels}) {
     for (bool endFirst : {true, false}) {
@@ -371,8 +371,8 @@ static void testMaxOutput(const Fixture &fx) {
       CHECK(!w.hasPendingData(), "did not drain");
       CHECK(maxPerCall <= maxOut + kBlock * kChannels, "a call returned %zu",
             maxPerCall);
-      KNOWN_BUG(pcm.size() == fx.pcm.size(), "%zu samples, want %zu",
-                pcm.size(), fx.pcm.size());
+      CHECK(pcm.size() == fx.pcm.size(), "%zu samples, want %zu",
+            pcm.size(), fx.pcm.size());
       CHECK(matches(pcm, fx.pcm,  std::min(pcm.size(), fx.pcm.size())),
             "output is not a prefix");
     }

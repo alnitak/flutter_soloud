@@ -87,12 +87,22 @@ void testHeAacAdts(const std::string &path) {
         std::cout << "  stream: " << frames << " frames at " << rate << " Hz = " << seconds << " s" << std::endl;
         OSDEC_CHECK(std::fabs(seconds - 15.0) < 0.15, "stream: " << seconds << " s at the reported rate, expected 15");
         if (whole->d.success) {
-            // The stream decoder's AudioConverter outputs the ADTS core rate,
-            // so SBR (everything above ~11 kHz) is dropped while decodeMemory
-            // keeps it.
-            OSDEC_KNOWN_BUG(rate == static_cast<int>(whole->d.sampleRate),
-                            "aac_stream_decoder_apple.mm:234 output rate = ADTS core rate",
-                            "stream reports " << rate << " Hz, decodeMemory " << whole->d.sampleRate << " Hz");
+            // The ADTS header carries the core rate; the stream decoder must
+            // decode the HE-AAC entry of the format list, as ExtAudioFile does.
+            OSDEC_CHECK(rate == static_cast<int>(whole->d.sampleRate),
+                        "stream reports " << rate << " Hz, decodeMemory " << whole->d.sampleRate << " Hz");
+            const size_t streamFrames = pcm.size() / static_cast<size_t>(channels);
+            OSDEC_CHECK(streamFrames == whole->d.sampleCount,
+                        "stream: " << streamFrames << " frames, decodeMemory " << whole->d.sampleCount);
+            if (streamFrames == whole->d.sampleCount && channels == static_cast<int>(whole->d.channels)) {
+                float worst = 0.0f;
+                for (size_t i = 0; i < streamFrames; ++i)
+                    for (int c = 0; c < channels; ++c)
+                        worst = std::max(worst, std::fabs(pcm[i * channels + c] -
+                                                          whole->d.samples[c * whole->d.sampleCount + i]));
+                std::cout << "  stream vs decodeMemory: max diff " << worst << std::endl;
+                OSDEC_CHECK(worst <= 1e-4f, "HE-AAC stream PCM differs from decodeMemory by " << worst);
+            }
         }
     }
 }
@@ -215,12 +225,6 @@ int main(int argc, char **argv) {
     // ExtAudioFile and AudioConverter take slightly different float paths.
     policy.streamTolerance = 1e-5f;
     policy.elementaryFrameSlack = 1024;
-    // Until the stream format is known every chunk is cut back to its first
-    // frame header, which discards the tail of a frame the parser holds.
-    policy.knownBugSmallChunks = "aac_stream_decoder_apple.mm:61 resync drops bytes of a buffered frame";
-    // The last AC-3/E-AC-3 frame of a stream never comes out.
-    policy.knownBugAc3Tail = "aac_stream_decoder_apple.mm:194 the last AC-3 frame is never output after setDataEnded()";
-
     runAll(policy, gDir, gTmp, gTmp);
     testHeAacAdts(heAac);
     testIcyInterleaved();

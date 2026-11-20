@@ -17,7 +17,10 @@
 //               base speed changes the duration;
 //   empty       empty text, whitespace and punctuation only, digits,
 //               non-ASCII bytes: setText succeeds, play does not crash and
-//               the voice ends; NULL text is INVALID_PARAMETER;
+//               the voice ends; NULL text is INVALID_PARAMETER. With --asan
+//               any UBSan diagnostic fails the run (bug O3: long digit runs
+//               overflowed an int; bytes >= 0x80 reached isalpha() & co. as
+//               negative chars);
 //   long        very long text (~100k characters): setText succeeds, the
 //               first seconds render non-silent audio, stop() frees it;
 //   retarget    setText() while the speech is playing stops the old voice,
@@ -199,7 +202,11 @@ void caseEmpty(Engine &e) {
         {"empty", ""},
         {"spaces", "        "},
         {"punctuation", "!!!???...,,,;;;:::---"},
+        // Bug O3 (fixed): digit runs too long for an int used to overflow
+        // (UBSan "signed integer overflow" in tts.cpp); now they are spelled
+        // out. INT_MAX itself still fits.
         {"digits", "0123456789 1234567890123456789"},
+        {"int limits", "2147483647 -2147483647 2147483648 -2147483648 99999999999.5"},
         {"non-ascii bytes", nonAscii},
         {"utf-8", "caf\xc3\xa9 na\xc3\xafve \xe2\x82\xac 100 \xe6\x97\xa5\xe6\x9c\xac"},
         {"control chars", controls},

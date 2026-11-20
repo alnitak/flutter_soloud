@@ -363,13 +363,17 @@ void onHang(int)
 void testLargeStep()
 {
     std::fprintf(stderr, "testLargeStep\n");
+#ifndef _WIN32  // no alarm() on Windows: a hang stops the run (ctest timeout)
     std::signal(SIGALRM, onHang);
     alarm(10);
+#endif
     Case c{"600", 44100, 44100, constant(600.0f), [](int) { return 512u; }};
     c.resampler = SoLoud::Soloud::RESAMPLER_POINT;
     c.frames = 2048;
     const Result r = render(c);
+#ifndef _WIN32
     alarm(0);
+#endif
     const auto [count, first] = countDiffering(c, r);
     EXPECT(count == 0, "speed 600: %ld of %zu samples differ, first at %ld", count,
            r.out.size(), first);

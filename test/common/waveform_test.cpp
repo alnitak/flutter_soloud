@@ -29,9 +29,7 @@
 //   vorbis    (Xiph builds only) the libvorbis backend on its own:
 //             ma_libvorbis_init_file and ma_libvorbis_init_memory open the OGG
 //             asset, report its format and length, and decode the same
-//             frames. A failure of the memory path is reported as a KNOWN
-//             ISSUE, not failed, because readSamples() still decodes the
-//             buffer through miniaudio's fallback.
+//             frames (regression for S9: the memory path always failed).
 //
 // No audio device. Assets: example/assets/audio/* (optional).
 //
@@ -404,14 +402,13 @@ void caseVorbis() {
     CHECK(ch >= 1 && ch <= 8 && sr >= 8000 && len > 0, "file format %u/%u/%llu", ch, sr,
           (unsigned long long)len);
 
+    // Regression for S9: ma_memory_stream_read returned size_t (bytes read)
+    // but was stored as an ma_read_proc returning ma_result, so every
+    // successful read was taken as an error and init_memory always failed.
     const ma_result rm = ma_libvorbis_init_memory(data.data(), data.size(), nullptr, nullptr, &fromMem);
     std::printf("    init_memory: result %d\n", rm);
+    CHECK(rm == MA_SUCCESS, "ma_libvorbis_init_memory: %d", rm);
     if (rm != MA_SUCCESS) {
-        std::printf("    KNOWN BUG S9 (not failed): ma_libvorbis_init_memory fails: "
-                    "ma_memory_stream_read returns size_t (bytes read) but is stored as an "
-                    "ma_read_proc returning ma_result, so ma_libvorbis_vf_callback__read treats "
-                    "every successful read as an error "
-                    "(src/waveform/miniaudio_libvorbis.cpp:261-277, 344, 81-85)\n");
         ma_libvorbis_uninit(&fromFile, nullptr);
         return;
     }

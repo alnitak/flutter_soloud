@@ -7,11 +7,14 @@
 // 24-bit option, so "all bit depths" means checking that 16 is what comes
 // out.
 //
-//   * roundtrip: mono, stereo and 6 channels at 22.05/44.1/48/96 kHz, fed in
+//   * roundtrip: mono, stereo, 6 and 8 channels at 22.05/44.1/48/96 kHz, fed in
 //     uneven chunk sizes; the decoded stream has the right channel count,
 //     rate and 16 bits, exactly as many frames as were encoded, and every
 //     sample equals trunc(clamp(x, -1, 1) * 32767) (lossless, so exact),
-//     including clipping (+-1.5, +-Inf) and NaN -> 0;
+//     including clipping (+-1.5, +-Inf) and NaN -> 0. 8-channel input in
+//     SoLoud's 7.1 order (FL FR C LFE SL SR BL BR) comes out in FLAC's 7.1
+//     order (FL FR C LFE BL BR SL SR): the side and back pairs are swapped
+//     (bug O1); 1, 2 and 6 channels already match and are kept as-is;
 //   * flush: bytes emitted before finalize() decode to fewer frames than
 //     were encoded (the encoder holds back a partial block); finalize()
 //     emits the rest and the full stream decodes completely;
@@ -235,14 +238,22 @@ void roundtrip(int rate, int ch, size_t frames)
     CHECK(d.bps == 16, "%s: bits per sample %u (only 16 is supported)", ctx, d.bps);
     CHECK(d.samples.size() == sig.size(), "%s: decoded %zu samples, encoded %zu", ctx,
           d.samples.size(), sig.size());
+    // FLAC channel c of a frame holds SoLoud channel flacToSoLoud(c).
+    auto flacToSoLoud = [ch](size_t c) -> size_t {
+        static const size_t k71[8] = {0, 1, 2, 3, 6, 7, 4, 5};
+        return ch == 8 ? k71[c] : c;
+    };
     int bad = 0;
     for (size_t i = 0; i < sig.size() && i < d.samples.size() && bad < 5; ++i)
-        if (d.samples[i] != refS16(sig[i]))
+    {
+        const size_t src = (i / ch) * ch + flacToSoLoud(i % ch);
+        if (d.samples[i] != refS16(sig[src]))
         {
             ++bad;
-            CHECK(false, "%s: sample %zu in=%g got %d want %d", ctx, i, sig[i],
-                  d.samples[i], refS16(sig[i]));
+            CHECK(false, "%s: sample %zu in=%g got %d want %d", ctx, i, sig[src],
+                  d.samples[i], refS16(sig[src]));
         }
+    }
     // STREAMINFO cannot be rewritten (no seek callback on a streamed
     // capture), so total_samples stays 0 = "unknown". Documented, not a bug.
     CHECK(d.streamInfoTotal == 0, "%s: STREAMINFO total_samples %llu (expected 0 = unknown)",
@@ -251,7 +262,7 @@ void roundtrip(int rate, int ch, size_t frames)
 
 void testRoundtrip()
 {
-    for (int ch : {1, 2, 6})
+    for (int ch : {1, 2, 6, 8})
         for (int rate : {22050, 44100, 48000, 96000})
             roundtrip(rate, ch, static_cast<size_t>(rate) / 2 + 123);
     roundtrip(44100, 2, 1);     // shorter than one block

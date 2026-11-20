@@ -21,7 +21,7 @@ concurrency:
 env:
   # Native tests that currently fail because of open bugs in src/ (see
   # test/KNOWN_BUGS.md). Remove a name once its bug is fixed.
-  KNOWN_FAILING_NATIVE: "pull_mp3_seek_test"
+  KNOWN_FAILING_NATIVE: ""
 
 jobs:
   dart:

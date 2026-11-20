@@ -48,6 +48,9 @@ if(SOLOUD_TEST_SANITIZE STREQUAL "address")
   else()
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address,undefined)
+    # Leaks inside system libraries, not plugin code (see lsan.supp).
+    set(SOLOUD_TEST_ENV
+      "LSAN_OPTIONS=suppressions=${REPO_ROOT}/test/support/lsan.supp:print_suppressions=0")
   endif()
 elseif(SOLOUD_TEST_SANITIZE STREQUAL "thread")
   add_compile_options(-fsanitize=thread)

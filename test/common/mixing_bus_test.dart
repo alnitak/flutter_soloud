@@ -105,12 +105,6 @@ void main() {
           throwsA(isA<SoLoudBusDisposedDartException>()),
         );
       },
-      skip:
-          'bug E7: deinit() does not dispose the buses (SoLoud._postdeinit, '
-          'lib/src/soloud.dart:1115, leaves Buses().buses as it is), so a '
-          'Bus from the previous engine stays registered and valid and, as '
-          'the new engine reuses the native bus ids, drives (and '
-          'Buses().byId() returns) a bus it never created',
     );
   });
 

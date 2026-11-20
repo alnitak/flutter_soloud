@@ -108,10 +108,10 @@ void testStaThread() {
     OSDEC_CHECK(streamOk, "AACDecoderWrapper::initializeDecoder on an STA thread failed");
 }
 
-// The stream decoder calls CoInitializeEx in initialize() and CoUninitialize
-// in its destructor. Buffer streams are created and destroyed on different
-// threads, so the uninitialize must not land on (and tear down COM for) the
-// destroying thread.
+// Buffer streams are created and destroyed on different threads, so the
+// stream decoder's COM setup must not be undone on (and tear down COM for)
+// the destroying thread: it holds the implicit MTA (CoIncrementMTAUsage)
+// instead of a per-thread CoInitializeEx.
 void testCrossThreadDestroy() {
     std::cout << "[Test] A stream decoder destroyed on another thread leaves that thread's COM alone" << std::endl;
     const HRESULT mainInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);

@@ -17,6 +17,13 @@
 //   * samples: payload values are little-endian int16 equal to
 //     trunc(clamp(x, -1, 1) * 32767), NaN -> 0, at lengths that exercise the
 //     SIMD body and the scalar tail;
+//   * byte_order (bug O2): the header bytes are little-endian whatever the
+//     host order (checked byte by byte against a hand-built header);
+//   * large (bug O2): sizes that do not fit the 32-bit RIFF fields (> 4 GiB,
+//     or where 36 + data size would wrap) write 0xFFFFFFFF in both the RIFF
+//     and the data size fields ("unknown length") instead of a truncated
+//     size; the largest size that fits is written exactly. Tested through
+//     writeHeader() with an explicit size, so no 4 GiB buffer is needed;
 //   * lifecycle: encode before initialize fails; finalize emits nothing;
 //     initialize again resets the counters; encode replaces (does not
 //     append to) its output vector.
@@ -74,16 +81,18 @@ int16_t refS16(float x)
     return static_cast<int16_t>(std::trunc(x * 32767.0f));
 }
 
-// Checks every header field; returns the data size field.
+// Checks every header field; returns the data size field. [riffSize] is the
+// expected RIFF chunk size (36 + dataSize when 0).
 uint32_t checkHeader(const std::vector<uint8_t> &h, int rate, int ch,
-                     uint32_t dataSize, const char *ctx)
+                     uint32_t dataSize, const char *ctx, uint32_t riffSize = 0)
 {
+    if (riffSize == 0) riffSize = 36 + dataSize;
     CHECK(h.size() == 44, "%s: header size %zu", ctx, h.size());
     if (h.size() < 44) return 0;
     const uint8_t *p = h.data();
     CHECK(std::memcmp(p, "RIFF", 4) == 0, "%s: RIFF tag", ctx);
-    CHECK(le32(p + 4) == 36 + dataSize, "%s: chunk size %u want %u", ctx,
-          le32(p + 4), 36 + dataSize);
+    CHECK(le32(p + 4) == riffSize, "%s: chunk size %u want %u", ctx,
+          le32(p + 4), riffSize);
     CHECK(std::memcmp(p + 8, "WAVE", 4) == 0, "%s: WAVE tag", ctx);
     CHECK(std::memcmp(p + 12, "fmt ", 4) == 0, "%s: fmt tag", ctx);
     CHECK(le32(p + 16) == 16, "%s: fmt size %u", ctx, le32(p + 16));
@@ -261,9 +270,8 @@ void testLifecycle()
         CHECK(!enc.encode(nullptr, 4, out), "encode(nullptr) succeeded");
         CHECK(!enc.encode(x, 0, out), "encode of 0 samples succeeded");
 
-        // encode() replaces the output contents (the base-class comment says
-        // "appended"; MixerOutput clears the vector between calls, so this
-        // is only a documentation mismatch).
+        // encode() replaces the output contents, as the base-class comment
+        // documents (bug O2: it used to say "appended").
         out.assign(10, 0xEE);
         CHECK(enc.encode(x, 4, out), "encode");
         CHECK(out.size() == 8, "encode appended instead of replacing (%zu)", out.size());
@@ -292,6 +300,79 @@ void testLifecycle()
     }
 }
 
+void testByteOrder()
+{
+    WavOutputEncoder enc;
+    enc.initialize(0x0102BB80 /* odd rate: every byte differs */, 6);
+    std::vector<uint8_t> h;
+    enc.writeHeader(h, 0x11223344u);
+    const uint32_t rate = 0x0102BB80u, byteRate = rate * 12u, riff = 0x11223344u + 36u;
+    const uint8_t want[44] = {
+        'R', 'I', 'F', 'F',
+        uint8_t(riff), uint8_t(riff >> 8), uint8_t(riff >> 16), uint8_t(riff >> 24),
+        'W', 'A', 'V', 'E', 'f', 'm', 't', ' ',
+        16, 0, 0, 0,  // fmt size
+        1, 0,         // PCM
+        6, 0,         // channels
+        uint8_t(rate), uint8_t(rate >> 8), uint8_t(rate >> 16), uint8_t(rate >> 24),
+        uint8_t(byteRate), uint8_t(byteRate >> 8), uint8_t(byteRate >> 16),
+        uint8_t(byteRate >> 24),
+        12, 0,  // block align
+        16, 0,  // bits
+        'd', 'a', 't', 'a',
+        0x44, 0x33, 0x22, 0x11};
+    CHECK(h.size() == 44, "header size %zu", h.size());
+    for (size_t i = 0; i < 44 && i < h.size(); ++i)
+        CHECK(h[i] == want[i], "header byte %zu: 0x%02x want 0x%02x", i, h[i], want[i]);
+
+    // Payload: int16 little-endian.
+    const float x[2] = {0.5f, -0.25f};
+    std::vector<uint8_t> out;
+    enc.initialize(44100, 2);
+    CHECK(enc.encode(x, 2, out) && out.size() == 4, "encode");
+    if (out.size() == 4)
+    {
+        const int16_t a = refS16(0.5f), b = refS16(-0.25f);
+        CHECK(out[0] == uint8_t(a) && out[1] == uint8_t(uint16_t(a) >> 8) &&
+                  out[2] == uint8_t(b) && out[3] == uint8_t(uint16_t(b) >> 8),
+              "payload not little-endian: %02x %02x %02x %02x", out[0], out[1], out[2],
+              out[3]);
+    }
+}
+
+void testLarge()
+{
+    const int rate = 48000, ch = 2;
+    WavOutputEncoder enc;
+    enc.initialize(rate, ch);
+    std::vector<uint8_t> h;
+
+    // Largest size whose RIFF size (36 + data) still fits: written exactly.
+    const size_t maxFit = 0xFFFFFFFFull - 36;
+    enc.writeHeader(h, maxFit);
+    checkHeader(h, rate, ch, static_cast<uint32_t>(maxFit), "max fit");
+
+    if (sizeof(size_t) < 8)
+    {
+        std::printf("  (32-bit size_t: > 4 GiB sizes cannot be passed)\n");
+        return;
+    }
+    const unsigned long long tooBig[] = {
+        0xFFFFFFFFull - 35,  // RIFF size would wrap
+        0xFFFFFFFFull,       // data size fits, RIFF size does not
+        0x100000000ull,      // exactly 4 GiB: used to wrap to 0
+        0x100000000ull + 1000,
+        5ull * 1024 * 1024 * 1024,
+    };
+    for (unsigned long long n : tooBig)
+    {
+        char ctx[64];
+        std::snprintf(ctx, sizeof ctx, "%llu bytes", n);
+        enc.writeHeader(h, static_cast<size_t>(n));
+        checkHeader(h, rate, ch, 0xFFFFFFFFu, ctx, 0xFFFFFFFFu);
+    }
+}
+
 struct Scenario
 {
     const char *name;
@@ -302,6 +383,8 @@ const Scenario kScenarios[] = {
     {"header", testHeader},
     {"sizes", testSizes},
     {"samples", testSamples},
+    {"byte_order", testByteOrder},
+    {"large", testLarge},
     {"lifecycle", testLifecycle},
 };
 

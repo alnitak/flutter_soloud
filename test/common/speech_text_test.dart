@@ -46,20 +46,13 @@ void main() {
     expect(SoLoud.instance.isValidAudioSource(again), isFalse);
   });
 
-  test(
-    'play() of a speechText source plays it again',
-    () async {
-      final hello = SoLoud.instance.speechText('Hello');
-      final handle = SoLoud.instance.play(hello);
-      expect(SoLoud.instance.getIsValidVoiceHandle(handle), isTrue);
-      await SoLoud.instance.stop(handle);
-      await SoLoud.instance.disposeSource(hello);
-    },
-    skip:
-        'bug E1: play() of a speechText() AudioSource segfaults in '
-        'SoLoud::Soloud::play (Player::textToSpeech registers an ActiveSound '
-        'with a null `sound`, Player::play dereferences it)',
-  );
+  test('play() of a speechText source plays it again', () async {
+    final hello = SoLoud.instance.speechText('Hello');
+    final handle = SoLoud.instance.play(hello);
+    expect(SoLoud.instance.getIsValidVoiceHandle(handle), isTrue);
+    await SoLoud.instance.stop(handle);
+    await SoLoud.instance.disposeSource(hello);
+  });
 
   test('speechText throws before init', () {
     SoLoud.instance.deinit();

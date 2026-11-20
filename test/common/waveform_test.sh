@@ -15,9 +15,7 @@
 # must report noBackend.
 # --asan builds with AddressSanitizer and UndefinedBehaviorSanitizer. A case
 # name (point, average, range, small, errors, file, assets, vorbis) runs only
-# that case. Under --asan, UBSan prints one "load of value ... ma_result"
-# diagnostic from miniaudio_libvorbis.cpp: a known source bug that the
-# vorbis case reports. Works on macOS and Linux.
+# that case. Works on macOS and Linux.
 
 set -e
 

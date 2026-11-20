@@ -44,6 +44,7 @@ c++ -std=c++17 -O2 -Wall -Wextra -pthread ${EXTRA_CXXFLAGS:-} \
     src/audiobuffer/m4a_metadata.cpp \
     src/audiobuffer/aac_stream_decoder.cpp \
     src/native_decoder/*.cpp \
+    src/native_stream/m4a_gapless.cpp \
     "${EXTRA_SRC[@]}" \
     src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp \
     src/mixeroutput/*.cpp \

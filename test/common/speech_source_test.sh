@@ -10,7 +10,8 @@
 #   ./test/common/speech_source_test.sh [--asan] [case]
 #
 # Device: none (SoLoud null driver, mixed by hand). Assets: none.
-# --asan builds with AddressSanitizer and UndefinedBehaviorSanitizer. A case
+# --asan builds with AddressSanitizer and UndefinedBehaviorSanitizer (any
+# UBSan diagnostic aborts the run with a non-zero exit). A case
 # name (basic, duration, replay, params, empty, long, retarget) runs only
 # that case. Works on macOS and Linux.
 
@@ -42,5 +43,10 @@ c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     src/soloud/src/core/*.cpp \
     src/soloud/src/backend/null/soloud_null.cpp \
     "${EXTRA_LIBS[@]}"
+
+if [ ${#SANITIZER[@]} -gt 0 ]; then
+    # Make any UBSan diagnostic (e.g. signed overflow, bug O3) fail the run.
+    export UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1${UBSAN_OPTIONS:+:$UBSAN_OPTIONS}"
+fi
 
 "$OUT" "$@"

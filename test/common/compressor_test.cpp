@@ -19,6 +19,7 @@
 //   channels  each channel has its own envelope;
 //   params    out-of-range values are rejected and leave the parameter
 //             alone; parent setParam() values reach new instances;
+//             getParamCount() is the 7 real parameters;
 //   samplerate attack follows the sample rate passed to filter(), not the
 //             one the filter was constructed with;
 //   sweep     random in-range parameters on noise never produce NaN/Inf.
@@ -324,6 +325,11 @@ void caseParams() {
     std::unique_ptr<SoLoud::FilterInstance> i2(c.createInstance());
     CHECK(i2->getFilterParameter(Compressor::THRESHOLD) == -30.f, "parent threshold not used");
     CHECK(i2->getFilterParameter(Compressor::WET) == 0.25f, "parent wet not used");
+    // One parameter per FILTERATTRIBUTE, no phantom trailing slot (bug F5).
+    CHECK(c.getParamCount() == Compressor::RELEASE_TIME + 1, "getParamCount() = %d, want %d",
+          c.getParamCount(), Compressor::RELEASE_TIME + 1);
+    for (int i = 1; i < c.getParamCount(); i++)
+        CHECK(std::strcmp(c.getParamName(i), "Wet") != 0, "param %d is named 'Wet'", i);
     std::printf("    getParamCount() = %d, names:", c.getParamCount());
     for (int i = 0; i < c.getParamCount(); i++) std::printf(" '%s'", c.getParamName(i));
     std::printf("\n");

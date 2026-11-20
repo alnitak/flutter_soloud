@@ -18,9 +18,9 @@
 //
 //   os_decoder_linux_test <asset dir> <tmp dir> [--expect-ffmpeg|--expect-no-ffmpeg]
 //
-// NOT YET VERIFIED ON LINUX: written on macOS. The FFmpeg path was exercised
-// there against FFmpeg 9 dylibs by building patched copies of the two sources
-// (see the .sh header), which checks the struct offsets for lavf/lavc 63 only.
+// Verified on Linux arm64 against FFmpeg 6.1 (lavf/lavc 60, test/docker), and
+// on macOS against FFmpeg 9 dylibs by building patched copies of the two
+// sources (see the .sh header), which checks the struct offsets for lavc 63.
 
 #include "../support/os_decoder_checks.h"
 
@@ -90,11 +90,12 @@ bool ffmpegLoadable() {
     return ok;
 }
 
-/// Entries of /tmp named soloud_media_* (decodeMemory's temporary files).
+/// Entries of the test's temporary directory (main() points TMPDIR at it)
+/// named soloud_media_* (decodeMemory's temporary files).
 long countSoloudTempFiles() {
     std::error_code ec;
     long n = 0;
-    for (std::filesystem::directory_iterator it("/tmp", ec), end; !ec && it != end; it.increment(ec)) {
+    for (std::filesystem::directory_iterator it(gTmp, ec), end; !ec && it != end; it.increment(ec)) {
         if (it->path().filename().string().rfind("soloud_media_", 0) == 0) ++n;
     }
     return ec ? -1 : n;
@@ -116,7 +117,7 @@ void testWithoutFfmpeg() {
         OSDEC_CHECK(fromMem->d.errorMessage.find("FFmpeg") != std::string::npos,
                     name << ": message does not say FFmpeg is missing: " << fromMem->d.errorMessage);
     }
-    OSDEC_CHECK(countSoloudTempFiles() == tempBefore, "decodeMemory left /tmp/soloud_media_* files behind");
+    OSDEC_CHECK(countSoloudTempFiles() == tempBefore, "decodeMemory left soloud_media_* files behind");
 
     // The stream decoder refuses to initialize, and decode() reports it
     // instead of crashing, for every format.
@@ -137,12 +138,9 @@ void testWithoutFfmpeg() {
         OSDEC_CHECK(samples.empty(), c.name << ": samples without a decoder");
         OSDEC_CHECK(err != DecoderError::NoError, c.name << ": decode() without a decoder reported NoError");
         wrapper.setDataEnded();
-        // decode() returns before consuming its input, which stays queued in
-        // the wrapper, so hasPendingData() never turns false and a
-        // "drain while pending" loop never ends.
-        OSDEC_KNOWN_BUG(!wrapper.hasPendingData(),
-                        "aac_stream_decoder_linux.cpp:246 + aac_stream_decoder.h:24 input kept after a failed init",
-                        c.name << ": pending data without a decoder");
+        // Nothing can be decoded, so nothing is pending: a "drain while
+        // pending" loop must end.
+        OSDEC_CHECK(!wrapper.hasPendingData(), c.name << ": pending data without a decoder");
         if (c.type != DetectedType::BUFFER_EAC3) {
             // Header metadata comes from the wrapper's own parser.
             OSDEC_CHECK(metadata, c.name << ": the track-change callback did not fire from the header");
@@ -187,12 +185,32 @@ void testFirstLoadRace() {
     OSDEC_CHECK(failures == 0, failures << " threads failed to decode/initialize on the first load");
 }
 
+/// decodeMemory writes its temporary file to $TMPDIR, not a hard-coded /tmp.
+void testTmpdirHonored() {
+    std::cout << "[Test] decodeMemory creates its temporary file in $TMPDIR" << std::endl;
+    const auto adts = readFile(joinPath(gDir, "sample-AAC.aac"));
+    const std::string missing = joinPath(gTmp, "no_such_dir");
+    setenv("TMPDIR", missing.c_str(), 1);
+    DecodedAudioData bad = NativeAudioDecoder::decodeMemory(adts.data(), 32768);
+    std::cout << "  TMPDIR=" << missing << ": " << (bad.success ? "decoded" : bad.errorMessage) << std::endl;
+    OSDEC_CHECK(!bad.success && bad.errorMessage.find("no_such_dir") != std::string::npos,
+                "decodeMemory did not try $TMPDIR (" << bad.errorMessage << ")");
+    bad.freeSamples();
+    setenv("TMPDIR", gTmp.c_str(), 1);
+    DecodedAudioData good = NativeAudioDecoder::decodeMemory(adts.data(), 32768);
+    OSDEC_CHECK(good.success, "decodeMemory with TMPDIR=" << gTmp << " failed: " << good.errorMessage);
+    good.freeSamples();
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
     gDir = argc > 1 ? argv[1] : "example/assets/audio";
     gTmp = argc > 2 && argv[2][0] ? argv[2] : "/tmp";
     const std::string expect = argc > 3 ? argv[3] : "";
+    // decodeMemory's temporary files go to $TMPDIR; keep them where the
+    // checks below can count them.
+    setenv("TMPDIR", gTmp.c_str(), 1);
 
     std::string missing;
     if (!haveFixtures(gDir, missing)) {
@@ -225,19 +243,10 @@ int main(int argc, char **argv) {
         // decodeMemory/decodeFile use libavformat's demuxer, the stream
         // decoder libavcodec's parser: same decoder, same samples.
         policy.streamTolerance = 1e-6f;
-        // Seen against FFmpeg 9 with these sources built on macOS: with the
-        // output capped per call (as the buffer stream does) input piles up
-        // in the wrapper, and setDataEnded() drains the codec before it is
-        // decoded, so the tail is lost (122880 of 662528 frames at 4096
-        // samples per call); and the prebuffer pass feeds bytes through the
-        // stateful av_parser once just to count frames, losing 2 frames
-        // even uncapped.
-        policy.knownBugStreaming =
-            "aac_stream_decoder_linux.cpp:389 setDataEnded() drains with input still queued; :286 prebuffer re-parse";
         const long tempBefore = countSoloudTempFiles();
-        // Not a scan of all of /tmp, which other processes write to.
-        runAll(policy, gDir, gTmp, "");
-        OSDEC_CHECK(countSoloudTempFiles() == tempBefore, "decodeMemory left /tmp/soloud_media_* files behind");
+        testTmpdirHonored();
+        runAll(policy, gDir, gTmp, gTmp);
+        OSDEC_CHECK(countSoloudTempFiles() == tempBefore, "decodeMemory left soloud_media_* files behind");
     } else {
         testWithoutFfmpeg();
     }

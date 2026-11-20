@@ -1588,12 +1588,20 @@ void testAc3InMp4(const std::string &path) {
     EXPECT(decoder->format().totalFrames == valid, "length %llu, edit list says %llu",
            (unsigned long long)decoder->format().totalFrames, (unsigned long long)valid);
 
-    // The full decode keeps the delay: stream frame f is full frame f + delay.
+    // The full decode may keep the delay (MediaCodec, and ExtAudioFile where
+    // it reports no priming for AC-3): stream frame f is then full frame
+    // f + delay. ExtAudioFile on recent macOS (seen on 27.2) puts the edit
+    // list into the packet table (256 priming frames) and trims the delay
+    // in both decodes, and the full decode is then no longer than the valid
+    // length.
     DecodedAudioData full = NativeAudioDecoder::decodeFile(path.c_str());
     if (!full.success) {
         std::printf("  (no full decode to compare with: %s)\n", full.errorMessage.c_str());
         return;
     }
+    const uint64_t shift = full.sampleCount >= valid + delay ? delay : 0;
+    std::printf("  full decode: %llu frames, %s the delay\n", (unsigned long long)full.sampleCount,
+                shift ? "keeps" : "already trims");
     const unsigned int channels = full.channels;
     std::vector<float> buf(4096 * channels);
     double worst = 0;
@@ -1601,11 +1609,11 @@ void testAc3InMp4(const std::string &path) {
         decoder->seek(frame);
         long got = decoder->read(buf.data(), 4096);
         EXPECT(got == 4096, "read %ld frames", got);
-        for (long i = 0; i < got && frame + delay + i < full.sampleCount; i++)
-            worst = std::max(worst, double(std::fabs(buf[i * channels] - full.samples[frame + delay + i])));
+        for (long i = 0; i < got && frame + shift + i < full.sampleCount; i++)
+            worst = std::max(worst, double(std::fabs(buf[i * channels] - full.samples[frame + shift + i])));
     }
     full.freeSamples();
-    EXPECT(worst < 1e-3, "PCM differs from the full decode shifted by %llu by %g", (unsigned long long)delay, worst);
+    EXPECT(worst < 1e-3, "PCM differs from the full decode shifted by %llu by %g", (unsigned long long)shift, worst);
 }
 
 #endif // NATIVE_STREAM_SUPPORTED

@@ -640,6 +640,8 @@ inline void runAll(const Policy &policy, const std::string &dir, const std::stri
     testChunkedStreaming(policy, dir, "sample-AC3.ac3", DetectedType::BUFFER_AC3, 4096, 4096);
     testChunkedStreaming(policy, dir, "sample-AC3.ac3", DetectedType::BUFFER_AC3, 500, 0);
     testChunkedStreaming(policy, dir, "sample-EAC3.eac3", DetectedType::BUFFER_EAC3, 4096, 4096);
+    testChunkedStreaming(policy, dir, "sample-EAC3.eac3", DetectedType::BUFFER_EAC3, 333, 0);
+    testChunkedStreaming(policy, dir, "sample-AAC.aac", DetectedType::BUFFER_AAC, 100, 1000);
     testRepeatedCycles(dir, tmpDir, scanDir);
     testConcurrentDecoding(dir);
 }

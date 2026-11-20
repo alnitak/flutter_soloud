@@ -80,21 +80,12 @@ void main() {
       expect(soloud.filters.echoFilter.isActive, isFalse);
     });
 
-    test(
-      'createVoiceGroup throws instead of returning a handle',
-      () {
-        expect(
-          soloud.createVoiceGroup,
-          throwsA(isA<SoLoudCreateVoiceGroupDartException>()),
-        );
-      },
-      skip:
-          'bug E6: native createVoiceGroup() returns -1 from an unsigned '
-          'function when not inited (src/bindings.cpp:3657), which '
-          'bindings_player_ffi.dart:1537 reads as the valid handle '
-          '4294967295; SoLoud.createVoiceGroup (soloud.dart:4157) has no '
-          'isInitialized check',
-    );
+    test('createVoiceGroup throws instead of returning a handle', () {
+      expect(
+        soloud.createVoiceGroup,
+        throwsA(isA<SoLoudCreateVoiceGroupDartException>()),
+      );
+    });
 
     test('deinit is a no-op', () {
       expect(soloud.deinit, returnsNormally);

@@ -16,17 +16,14 @@
 // channel count, and finite samples.
 //
 // A drain that never ends (hasPendingData() still true after 200 decode()
-// calls once the data has ended) is a known bug, counted and reported per
-// detected format as KNOWN BUG; it fails the run only with --strict:
-//  - FLAC and Ogg FLAC: libFLAC left in the ABORTED state by the decode loop
-//    (see flac_stream_decoder_test.cpp, testPieces); through StreamDecoder
-//    this happens for plain truncated FLAC files delivered in pieces.
-//  - MP3 and WAV wrappers fed data they can never initialize from: decode()
-//    keeps returning NoError and hasPendingData() stays true
-//    (mp3_stream_decoder.cpp:266, wav_stream_decoder.cpp:120; see
-//    mp3_stream_decoder_test.cpp).
+// calls once the data has ended) is a failure. For the platform AAC / AC-3
+// decoders it is still a known bug, counted and reported per detected format
+// as KNOWN BUG; it fails the run only with --strict:
 //  - corrupted AC-3 through the Apple AudioToolbox backend
 //    (aac_stream_decoder_apple.mm), e.g. --seed 777 --only 300069.
+// (Regressions for S1 and S5: FLAC/Ogg FLAC left ABORTED by the decode loop,
+// and MP3/WAV wrappers fed data they can never initialize from, used to
+// never drain.)
 //
 // Deterministic: the seed is fixed (override with --seed N), and
 // --only N runs input N alone in-process (for a debugger). --iterations N
@@ -61,9 +58,11 @@
 #include <string>
 #include <vector>
 
+#ifndef _WIN32
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 using Bytes = std::vector<unsigned char>;
 
@@ -325,9 +324,8 @@ static Verdict runWrapper(const Input &in) {
   };
   size_t off = 0, k = 0;
   while (off < in.data.size() && !failed) {
-    // At least 4 bytes per delivery: see the FLAC header guard bug in
-    // flac_stream_decoder_test.cpp (a 1-3 byte first delivery wedges it).
-    const size_t n = std::min(std::max<size_t>(4, in.chunks[k++ % in.chunks.size()]),
+    // Any delivery size, also 1-3 bytes first (regression for S2).
+    const size_t n = std::min(in.chunks[k++ % in.chunks.size()],
                               in.data.size() - off);
     Bytes buf(in.data.begin() + off, in.data.begin() + off + n);
     off += n;
@@ -349,6 +347,14 @@ static Verdict runInput(const Input &in) {
   return in.wrapper >= 0 ? runWrapper(in) : runStream(in);
 }
 
+#ifdef _WIN32
+// No fork() on Windows: run the input in this process. A crash or a hang
+// stops the whole run instead of being reported per input.
+static bool runInChild(const Input &in, Verdict &v, std::string &) {
+  v = runInput(in);
+  return true;
+}
+#else
 // Child protocol: one line "OK <drainEnded> <type> <samples>" or
 // "BAD <problem>" on a pipe.
 static bool runInChild(const Input &in, Verdict &v, std::string &crash) {
@@ -402,6 +408,7 @@ static bool runInChild(const Input &in, Verdict &v, std::string &crash) {
   v.samples = samples;
   return true;
 }
+#endif
 
 static const char *typeName(int t) {
   static const char *names[] = {"unknown", "no-data", "ogg-opus", "ogg-vorbis",
@@ -481,10 +488,15 @@ int main(int argc, char **argv) {
         const std::string key = in.wrapper >= 0
                                     ? std::string(kWrapperNames[in.wrapper]) + " wrapper"
                                     : typeName(v.type);
-        ++knownDrain[key];
-        std::printf("  %s input %ld (%s): hasPendingData() still true after %d drain calls\n",
-                    strict ? "FAIL" : "KNOWN BUG", id, label.c_str(), kMaxDrainCalls);
-        if (strict) ++failures;
+        // Only the platform AAC / AC-3 decoders still have a known drain bug.
+        const bool known = in.wrapper < 0 &&
+                           (v.type == BUFFER_AAC || v.type == BUFFER_AC3 ||
+                            v.type == BUFFER_EAC3);
+        if (known) ++knownDrain[key];
+        std::printf("  %s input %ld (%s, %s): hasPendingData() still true after %d drain calls\n",
+                    (strict || !known) ? "FAIL" : "KNOWN BUG", id, label.c_str(),
+                    key.c_str(), kMaxDrainCalls);
+        if (strict || !known) ++failures;
       } else if (only >= 0) {
         std::printf("  ok: type %s, %zu samples\n", typeName(v.type), v.samples);
       }

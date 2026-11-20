@@ -57,21 +57,12 @@ void main() {
       expect(soloud.get3dSoundSpeed(), closeTo(343, 1e-3));
     });
 
-    test(
-      'is kept when set before any sound is loaded',
-      () async {
-        await soloud.disposeAllSources();
-        soloud.set3dSoundSpeed(100);
-        await loadTestWaveform();
-        expect(soloud.get3dSoundSpeed(), closeTo(100, 1e-3));
-      },
-      skip:
-          'bug E5: every 3D setter/getter export returns early while no sound '
-          'is loaded (getSoundsCount() == 0, src/bindings.cpp:4862 and the '
-          'following 3D exports), so set3dSoundSpeed and '
-          'set3dListener* called before the first load are silently lost '
-          'and get3dSoundSpeed reads 0',
-    );
+    test('is kept when set before any sound is loaded', () async {
+      await soloud.disposeAllSources();
+      soloud.set3dSoundSpeed(100);
+      await loadTestWaveform();
+      expect(soloud.get3dSoundSpeed(), closeTo(100, 1e-3));
+    });
   });
 
   group('panning', () {
@@ -126,18 +117,11 @@ void main() {
       },
     );
 
-    test(
-      'a listener upside down (set3dListenerUp) swaps the sides',
-      () async {
-        soloud.set3dListenerUp(0, -1, 0);
-        final out = await render(5, 0, 0);
-        expect(out.rms(0), greaterThan(out.rms(1) * 2));
-      },
-      skip:
-          'bug E4: Player::set3dListenerUp calls soloud.set3dListenerAt '
-          '(src/player.cpp:4194), so it overwrites the "at" vector and '
-          'leaves "up" unchanged',
-    );
+    test('a listener upside down (set3dListenerUp) swaps the sides', () async {
+      soloud.set3dListenerUp(0, -1, 0);
+      final out = await render(5, 0, 0);
+      expect(out.rms(0), greaterThan(out.rms(1) * 2));
+    });
 
     test('moving the listener past the source swaps the sides', () async {
       soloud.set3dListenerPosition(10, 0, 0);
@@ -167,14 +151,6 @@ void main() {
       );
       return level(out);
     }
-
-    const attenuatedTwice =
-        'bug E2: the 3D attenuation is applied twice, so the level follows the '
-        'square of the model: update3dVoices_internal puts it both in '
-        'mChannelVolume (src/soloud/src/core/soloud_core_3d.cpp:296) and in '
-        'm3dVolume (:301), which updateVoiceVolume_internal multiplies into '
-        'mOverallVolume (soloud_core_voiceops.cpp:201); the mixer uses '
-        'mChannelVolume * mOverallVolume (soloud.cpp:2082)';
 
     test('by default distance does not attenuate', () async {
       final near = level(await render(0, 0, -1));
@@ -206,19 +182,19 @@ void main() {
       final near = await levelAt(1, _inverseDistance);
       final far = await levelAt(4, _inverseDistance);
       expect(far / near, closeTo(1 / 4, 0.03));
-    }, skip: attenuatedTwice);
+    });
 
     test('linear distance: 1 - rolloff * (d - min) / (max - min)', () async {
       final near = await levelAt(1, _linearDistance, max: 11);
       final mid = await levelAt(6, _linearDistance, max: 11);
       expect(mid / near, closeTo(0.5, 0.03));
-    }, skip: attenuatedTwice);
+    });
 
     test('exponential distance: (d / min) ^ -rolloff', () async {
       final near = await levelAt(1, _exponentialDistance, rolloff: 2);
       final far = await levelAt(2, _exponentialDistance, rolloff: 2);
       expect(far / near, closeTo(1 / 4, 0.03));
-    }, skip: attenuatedTwice);
+    });
 
     test('beyond the max distance the level stops falling', () async {
       final atMax = await levelAt(10, _inverseDistance, max: 10);
@@ -249,13 +225,6 @@ void main() {
   group('doppler', () {
     const c = 343.0;
     const v = 100.0;
-    const inverted =
-        'bug E3: the doppler shift has the wrong sign (an approaching source '
-        'or listener lowers the pitch): doppler() in '
-        'src/soloud/src/core/soloud_core_3d.cpp:144 projects the velocities '
-        'on the listener-to-source vector and then uses '
-        '(c - vls) / (c - vss), which is the formula for the '
-        'source-to-listener vector';
 
     // A WAV tone: a waveform keeps its frequency whatever the voice speed
     // (BasicwaveInstance steps its phase by the voice sample rate), so it
@@ -307,18 +276,18 @@ void main() {
 
     test('an approaching source is higher', () async {
       expect(await frequency(sourceTowards: v), closeTo(440 * c / (c - v), 4));
-    }, skip: inverted);
+    });
 
     test('a receding source is lower', () async {
       expect(await frequency(sourceTowards: -v), closeTo(440 * c / (c + v), 4));
-    }, skip: inverted);
+    });
 
     test('an approaching listener hears it higher', () async {
       expect(
         await frequency(listenerTowards: v),
         closeTo(440 * (c + v) / c, 4),
       );
-    }, skip: inverted);
+    });
 
     test('a doppler factor of 0 disables the shift', () async {
       expect(
@@ -330,7 +299,10 @@ void main() {
     test('a slower speed of sound shifts more', () async {
       final fast = await frequency(sourceTowards: -v);
       final slow = await frequency(sourceTowards: -v, soundSpeed: 200);
-      expect((slow - 440).abs(), greaterThan((fast - 440).abs() * 1.5));
+      // Receding at v: 440 * c / (c + v), so the shift is 440 * v / (c + v),
+      // about 1.48 times larger at 200 m/s than at 343 m/s.
+      expect(slow, closeTo(440 * 200 / (200 + v), 4));
+      expect((slow - 440).abs(), greaterThan((fast - 440).abs() * 1.3));
     });
 
     test('a velocity across the line of sight does not shift', () async {

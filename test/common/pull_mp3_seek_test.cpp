@@ -14,6 +14,11 @@
 //     estimated from the duration, also once all the data has been
 //     delivered, not mapped to the table's last entry.
 //
+// The pull stream labels the first sample decoded after a seek with the
+// target time and does not discard any preroll, so the offset a seek
+// requests must be (within a frame or two) that of the MP3 frame holding the
+// target, not dr_mp3's seekPosInBytes, which starts 16 frames earlier.
+//
 // The stream is driven through the exports Dart uses, on a real engine (the
 // null backend), with a buffer of about one second so that the seeks leave
 // it. A feeder answers each request for data from the file, as the Dart side
@@ -113,7 +118,7 @@ void feeder() {
 
 void onVoiceEnded(unsigned int *h) { std::free(h); }
 void onFileLoaded(enum PlayerErrors *e, char *n, unsigned int *h,
-                  unsigned long long *t) {
+                  uint64_t *t) {
     (void)e; (void)n; (void)h; (void)t;
 }
 void onStateChanged(enum PlayerStateEvents *s) { std::free(s); }
@@ -137,8 +142,10 @@ size_t logSize() {
     return gLog.size();
 }
 
-/// The file offset of [seconds] in a seek map of the whole file.
-uint64_t fileOffsetOf(double seconds) {
+/// The file offset of [seconds] in a seek map of the whole file: where
+/// dr_mp3 starts decoding for it. That is DRMP3_SEEK_LEADING_MP3_FRAMES (16)
+/// frames of preroll before the frame that holds the target.
+uint64_t fileOffsetOf(double seconds, uint16_t *prerollFrames = nullptr) {
     drmp3 decoder{};
     const bool opened =
         drmp3_init_memory(&decoder, gFile.data(), gFile.size(), nullptr);
@@ -151,12 +158,30 @@ uint64_t fileOffsetOf(double seconds) {
     EXPECT(ok && count > 0, "the whole-file reference should have a seek map");
     const uint64_t frame = static_cast<uint64_t>(seconds * decoder.sampleRate);
     uint64_t offset = 0;
+    if (prerollFrames) *prerollFrames = 0;
     for (drmp3_uint32 i = 0; ok && i < count; ++i) {
         if (points[i].pcmFrameIndex > frame) break;
         offset = points[i].seekPosInBytes;
+        if (prerollFrames) *prerollFrames = points[i].mp3FramesToDiscard;
     }
     drmp3_uninit(&decoder);
     return offset;
+}
+
+/// The file offset of the MP3 frame that holds [seconds], from the whole
+/// file's seek map: its decoding start moved past the preroll frames. A
+/// pull stream labels the first decoded sample after a seek with the target
+/// time, so this is the offset a seek should request, to within a frame or
+/// two (the decoder keeps a frame of preroll for the bit reservoir).
+uint64_t frameOffsetOf(double seconds) {
+    uint16_t preroll = 0;
+    size_t pos = static_cast<size_t>(fileOffsetOf(seconds, &preroll));
+    for (; preroll > 0 && pos + 4 <= gFile.size(); --preroll) {
+        const size_t bytes = MP3DecoderWrapper::mpegFrameBytes(gFile.data() + pos);
+        if (bytes == 0) break;
+        pos += bytes;
+    }
+    return pos;
 }
 
 unsigned int startStream(const char *path) {
@@ -257,7 +282,7 @@ void seekMapSurvivesASeek() {
 void seekBackUsesTheFileMap(const char *path) {
     std::printf("seek back after a seek (%s)\n", path);
     const unsigned int voice = startStream(path);
-    const uint64_t expected = fileOffsetOf(0.5);
+    const uint64_t expected = frameOffsetOf(0.5);
     for (int pass = 0; pass < 2; ++pass) {
         const uint64_t first = seekAndGetRequest(voice, 6.0f);
         double start = 0, end = 0;
@@ -270,7 +295,7 @@ void seekBackUsesTheFileMap(const char *path) {
         const uint64_t requested = seekAndGetRequestBelow(
             voice, 0.5f, std::max<uint64_t>(first, 32768));
         std::printf("  pass %d: seek(6) requested %llu; seek(0.5) requested "
-                    "%llu, the file map says %llu\n",
+                    "%llu, the file map has its frame at %llu\n",
                     pass, (unsigned long long)first,
                     (unsigned long long)requested,
                     (unsigned long long)expected);
@@ -279,7 +304,7 @@ void seekBackUsesTheFileMap(const char *path) {
         EXPECT(expected != 0 && requested != UINT64_MAX &&
                    distance(requested, expected) <= 4 * kMaxFrameBytes,
                "pass %d: the seek back to 0.5 s requested byte %llu; the file "
-               "map has it at %llu", pass, (unsigned long long)requested,
+               "map has its frame at %llu", pass, (unsigned long long)requested,
                (unsigned long long)expected);
         const bool back = waitFor([&] {
             getPullBufferTimeRange(gHash, &start, &end);
@@ -306,14 +331,18 @@ void seekPastTheTableAfterTheEnd(const char *path) {
     std::printf("  at the end of data: buffered [%.2f, %.2f]\n", start, end);
     EXPECT(atTail, "the stream should play to the end of the data, buffered "
                    "[%.2f, %.2f]", start, end);
-    const uint64_t expected = fileOffsetOf(6.0);
+    // Regression for K1: this used to compare with fileOffsetOf(6.0), the
+    // decoding start 16 preroll frames (~0.4 s) before the target, while the
+    // estimate (96000 for 128 kbps) is the target's own position.
+    const uint64_t expected = frameOffsetOf(6.0);
     const uint64_t requested =
         seekAndGetRequestBelow(voice, 6.0f, gFile.size() / 2 + 32768);
-    std::printf("  seek(6) requested %llu, the file map says %llu\n",
+    std::printf("  seek(6) requested %llu, the file map has its frame at %llu\n",
                 (unsigned long long)requested, (unsigned long long)expected);
     EXPECT(expected != 0 && requested != UINT64_MAX &&
                distance(requested, expected) <= 4 * kMaxFrameBytes,
-           "the seek to 6 s requested byte %llu; the file map has it at %llu",
+           "the seek to 6 s requested byte %llu; the file map has its frame "
+           "at %llu",
            (unsigned long long)requested, (unsigned long long)expected);
     endStream(voice);
 }

@@ -39,6 +39,8 @@ SUFFIX=""
 if [ "${1:-}" == "--asan" ]; then
     SANITIZER=(-fsanitize=address,undefined -fno-omit-frame-pointer -g)
     SUFFIX="_asan"
+    # libvorbisenc's own leak with > 2 channels, see test/support/lsan.supp.
+    export LSAN_OPTIONS="suppressions=$REPO_ROOT/test/support/lsan.supp${LSAN_OPTIONS:+:$LSAN_OPTIONS}"
     shift
 fi
 

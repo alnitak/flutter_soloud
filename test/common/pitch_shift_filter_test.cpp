@@ -17,8 +17,8 @@
 //              work, each channel shifted independently;
 //   params     out-of-range values are rejected; changing SHIFT while
 //              running takes effect;
-//   probes     informational: parameter-range inconsistencies (reported,
-//              never failed).
+//   probes     a new instance takes the parent's WET; the SEMITONES range is
+//              the SHIFT range in semitones and each maps into the other.
 //
 // No audio device and no assets.
 //
@@ -304,28 +304,48 @@ void caseParams() {
 
 void caseProbes() {
     PitchShift f;
-    // 1. The parent's WET is not copied into new instances (the constructor
-    //    copies SHIFT and SEMITONES only, initParams() leaves WET at 1).
+    // 1. The parent's WET is copied into new instances, like SHIFT and
+    //    SEMITONES (bug F4).
     f.setParam(PitchShift::WET, 0.3f);
     std::unique_ptr<SoLoud::FilterInstance> inst(f.createInstance());
     const float w = inst->getFilterParameter(PitchShift::WET);
     std::printf("    parent setParam(WET, 0.3) -> new instance WET = %g\n", w);
-    if (std::fabs(w - 0.3f) > 1e-6f)
-        std::printf("    KNOWN BUG F4 (not failed): PitchShiftInstance ignores PitchShift::mWet "
-                    "(src/filters/pitch_shift_filter.cpp:7-13)\n");
-    // 2. SEMITONES allows +-36 but SHIFT is limited to 0.1..3: semitones
-    //    above ~19 give a SHIFT above its own maximum.
+    CHECK(std::fabs(w - 0.3f) < 1e-6f, "parent WET not used by a new instance (%g)", w);
+    // 2. SEMITONES and SHIFT describe the same value: the SEMITONES range is
+    //    the SHIFT range in semitones, and both ends map into each other
+    //    (bug F4).
     PitchShift fresh; // the instance keeps a pointer to its parent
+    const float sMin = fresh.getParamMin(PitchShift::SHIFT);
+    const float sMax = fresh.getParamMax(PitchShift::SHIFT);
+    const float stMin = fresh.getParamMin(PitchShift::SEMITONES);
+    const float stMax = fresh.getParamMax(PitchShift::SEMITONES);
+    std::printf("    SHIFT %g..%g, SEMITONES %g..%g\n", sMin, sMax, stMin, stMax);
+    CHECK(std::fabs(stMin - 12.f * std::log2(sMin)) < 1e-3f, "SEMITONES min %g", stMin);
+    CHECK(std::fabs(stMax - 12.f * std::log2(sMax)) < 1e-3f, "SEMITONES max %g", stMax);
     std::unique_ptr<SoLoud::FilterInstance> i2(fresh.createInstance());
-    i2->setFilterParameter(PitchShift::SEMITONES, 36.f);
-    const float s = i2->getFilterParameter(PitchShift::SHIFT);
-    std::printf("    SEMITONES 36 -> SHIFT %g (SHIFT max %g)\n", s, f.getParamMax(PitchShift::SHIFT));
-    if (s > f.getParamMax(PitchShift::SHIFT))
-        std::printf("    KNOWN BUG F4 (not failed): SEMITONES range (+-36) maps outside SHIFT "
-                    "range (0.1..3) (src/filters/pitch_shift_filter.cpp getParamMax/getParamMin)\n");
-    // It must still produce finite audio.
+    for (float st : {stMin, stMax}) {
+        i2->setFilterParameter(PitchShift::SEMITONES, st);
+        const float s = i2->getFilterParameter(PitchShift::SHIFT);
+        std::printf("    SEMITONES %g -> SHIFT %g\n", st, s);
+        CHECK(i2->getFilterParameter(PitchShift::SEMITONES) == st, "SEMITONES %g rejected", st);
+        CHECK(s >= sMin && s <= sMax, "SEMITONES %g maps outside SHIFT range (%g)", st, s);
+    }
+    for (float sh : {sMin, sMax}) {
+        i2->setFilterParameter(PitchShift::SHIFT, sh);
+        const float st = i2->getFilterParameter(PitchShift::SEMITONES);
+        CHECK(i2->getFilterParameter(PitchShift::SHIFT) == sh, "SHIFT %g rejected", sh);
+        CHECK(st >= stMin && st <= stMax, "SHIFT %g maps outside SEMITONES range (%g)", sh, st);
+    }
+    // The parent setParam too.
+    CHECK(fresh.setParam(PitchShift::SEMITONES, stMax) == SoLoud::SO_NO_ERROR,
+          "setParam semitones max");
+    CHECK(fresh.mShift <= sMax, "setParam semitones max -> shift %g", fresh.mShift);
+    CHECK(fresh.setParam(PitchShift::SEMITONES, 36.f) == SoLoud::INVALID_PARAMETER,
+          "setParam semitones 36 (shift 8) accepted");
+    // It must still produce finite audio at the extreme.
+    i2->setFilterParameter(PitchShift::SEMITONES, stMax);
     const Sig out = run(*i2, sine(2, (unsigned)kSr, {440.0}));
-    CHECK(allFinite(out), "SEMITONES 36 produced NaN/Inf");
+    CHECK(allFinite(out), "SEMITONES max produced NaN/Inf");
 }
 
 } // namespace

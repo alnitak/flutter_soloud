@@ -253,19 +253,12 @@ void main() {
       expect(soloud.isValidAudioSource(wav), isTrue);
     });
 
-    test(
-      'countAudioSource counts the voices of a waveform',
-      () {
-        soloud
-          ..play(tone)
-          ..play(tone);
-        expect(soloud.countAudioSource(tone), 2);
-      },
-      skip:
-          'bug E8: Player::countAudioSource returns 0 for every waveform '
-          '(TYPE_SYNTH) source (src/player.cpp:3568), which the '
-          'SoLoud.countAudioSource docs do not mention',
-    );
+    test('countAudioSource counts the voices of a waveform', () {
+      soloud
+        ..play(tone)
+        ..play(tone);
+      expect(soloud.countAudioSource(tone), 2);
+    });
 
     test('stopAll stops every voice but keeps the sources', () async {
       soloud

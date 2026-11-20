@@ -185,7 +185,13 @@ void testAacStreamDecoder() {
     decoder.decode(adtsBuf, &sampleRate, &channels);
     assert(aacCallbackFired);
 
+    // After setDataEnded() a decoder may still hold input (Media Foundation
+    // feeds whole frames, after a short prebuffer); pulling drains it.
     decoder.setDataEnded();
+    for (int i = 0; i < 100 && decoder.hasPendingData(); ++i) {
+        std::vector<unsigned char> none;
+        decoder.decode(none, &sampleRate, &channels);
+    }
     assert(!decoder.hasPendingData());
 
     // Test AAC with prepended ID3 tag
@@ -332,12 +338,13 @@ void testAc3StreamDecoder() {
         assert(meta.eac3Metadata.channels == 2);
     });
 
-    // Empty buffer decode returns NoError
+    // Empty buffer decode returns NoError (or, with no AC-3 decoder on the
+    // system, e.g. Windows N, the initialization failure)
     std::vector<unsigned char> emptyBuf;
     int sampleRate = 0;
     int channels = 0;
     auto [decoded, err] = ac3Decoder.decode(emptyBuf, &sampleRate, &channels);
-    assert(err == DecoderError::NoError);
+    assert(err == (initAc3Ok ? DecoderError::NoError : DecoderError::FailedToCreateDecoder));
     assert(decoded.empty());
     assert(!ac3CallbackFired);
 

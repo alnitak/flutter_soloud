@@ -103,7 +103,7 @@ void clearBufferingEvents() {
 
 void onVoiceEnded(unsigned int *h) { std::free(h); }
 void onFileLoaded(enum PlayerErrors *e, char *n, unsigned int *h,
-                  unsigned long long *t) {
+                  uint64_t *t) {
     (void)e; (void)n; (void)h; (void)t;
 }
 void onStateChanged(enum PlayerStateEvents *s) { std::free(s); }

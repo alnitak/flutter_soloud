@@ -206,19 +206,14 @@ void main() {
     expect(m.toString(), contains('Vorbis Info'));
   });
 
-  test(
-    'Ogg Vorbis reports the vendor string',
-    () async {
-      final bytes = asset('sample-vorbis.ogg');
-      if (bytes == null) return markTestSkipped('sample-vorbis.ogg not found');
-      final m = await _firstMetadata(bytes);
-      expect(m.oggMetadata!.vendor, isNotEmpty);
-    },
-    skip:
-        'bug S8: src/audiobuffer/vorbis_stream_decoder.cpp:80 '
-        'VorbisDecoderWrapper::getMetadata() never copies vc.vendor, so '
-        'OggMetadata.vendor is always empty for Vorbis (Opus sets it)',
-  );
+  // Regression for S8: getMetadata() did not copy vc.vendor, so the vendor
+  // was always empty for Vorbis (Opus set it).
+  test('Ogg Vorbis reports the vendor string', () async {
+    final bytes = asset('sample-vorbis.ogg');
+    if (bytes == null) return markTestSkipped('sample-vorbis.ogg not found');
+    final m = await _firstMetadata(bytes);
+    expect(m.oggMetadata!.vendor, isNotEmpty);
+  });
 
   test('Ogg Opus reports vendor, comments and stream info', () async {
     final bytes = asset('sample-OPUS.opus');

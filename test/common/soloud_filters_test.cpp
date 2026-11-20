@@ -464,51 +464,66 @@ void freeverbSemantic(SoLoud::Filter &f) {
     CHECK(allFinite(m) && rms(m, 0, 2000, 22050) > 1e-5, "freeverb mono: no tail");
 }
 
-/// Probes a WaveShaper edge case at the edge of its parameter range: with a
+/// A WaveShaper edge case at the edge of its parameter range: with a
 /// negative AMOUNT, the curve's denominator 1 + k*|x| reaches 0 for
-/// |x| = -1/k, i.e. inside +-1 for AMOUNT = -1 (k = -1) and just outside it
-/// for AMOUNT close to -1. Mixed voices routinely exceed 1.0 before clipping,
-/// so a global WaveShaper can see such input. Reported, not failed.
+/// |x| = -1/k, i.e. at +-1 for AMOUNT = -1 (k = -1) and just outside it for
+/// AMOUNT close to -1. Mixed voices routinely exceed 1.0 before clipping, so a
+/// global WaveShaper can see such input. The output must stay finite, map
+/// +-1 to +-1 and not grow beyond the input (bug F2).
 void waveshaperHotInputProbe() {
     SoLoud::WaveShaperFilter f;
     using W = SoLoud::WaveShaperFilter;
-    Signal in(1, 4);
-    in.at(0, 0) = 1.0f;
-    in.at(0, 1) = -1.0f;
-    in.at(0, 2) = 1.05f;
-    in.at(0, 3) = 1.5f;
-    const Signal a = process(f, in, 44100.f, {{W::AMOUNT, -1.f}}, 4);
-    const Signal b = process(f, in, 44100.f, {{W::AMOUNT, -0.9f}}, 4);
-    std::printf("    probe waveshaper AMOUNT=-1:   in {1, -1, 1.05, 1.5} -> {%g, %g, %g, %g}\n",
-                a.at(0, 0), a.at(0, 1), a.at(0, 2), a.at(0, 3));
-    std::printf("    probe waveshaper AMOUNT=-0.9: in {1, -1, 1.05, 1.5} -> {%g, %g, %g, %g}\n",
-                b.at(0, 0), b.at(0, 1), b.at(0, 2), b.at(0, 3));
-    if (!allFinite(a) || !allFinite(b) || peak(b) > 4.f)
-        std::printf("    KNOWN BUG F2 (not failed): WaveShaper with negative AMOUNT yields "
-                    "NaN/huge values for |x| >= 1 "
-                    "(src/soloud/src/filter/soloud_waveshaperfilter.cpp: "
-                    "wet = (1+k)x / (1+k|x|))\n");
+    const float x[] = {1.0f, -1.0f, 1.05f, 1.5f, -3.0f, 0.5f, 0.0f, 0.99f};
+    const unsigned n = sizeof(x) / sizeof(x[0]);
+    Signal in(1, n);
+    for (unsigned i = 0; i < n; i++) in.at(0, i) = x[i];
+    for (float amount : {-1.f, -0.9f, -0.5f}) {
+        const Signal o = process(f, in, 44100.f, {{W::AMOUNT, amount}}, n);
+        std::printf("    waveshaper AMOUNT=%g: in {1, -1, 1.05, 1.5, -3} -> {%g, %g, %g, %g, %g}\n",
+                    amount, o.at(0, 0), o.at(0, 1), o.at(0, 2), o.at(0, 3), o.at(0, 4));
+        CHECK(allFinite(o), "waveshaper AMOUNT=%g: NaN/Inf output", amount);
+        for (unsigned i = 0; i < n; i++) {
+            CHECK(std::fabs(o.at(0, i)) <= std::fabs(x[i]) + 1e-3f,
+                  "waveshaper AMOUNT=%g: |out(%g)| = %g exceeds the input", amount, x[i],
+                  o.at(0, i));
+            // The curve is odd and sign-preserving.
+            CHECK(o.at(0, i) * x[i] >= 0.f, "waveshaper AMOUNT=%g: sign flipped at %g -> %g",
+                  amount, x[i], o.at(0, i));
+        }
+        CHECK(std::fabs(o.at(0, 0) - 1.f) < 1e-3f && std::fabs(o.at(0, 1) + 1.f) < 1e-3f,
+              "waveshaper AMOUNT=%g: +-1 -> %g, %g (want +-1)", amount, o.at(0, 0), o.at(0, 1));
+    }
+    // A positive AMOUNT keeps soft-saturating hot input (it never had the
+    // problem): 1.5 maps to (1+k)*1.5 / (1+1.5k), between 1 and 1.5.
+    const Signal pos = process(f, in, 44100.f, {{W::AMOUNT, 0.5f}}, n);
+    const float k = 2 * 0.5f / (1 - 0.5f);
+    CHECK(std::fabs(pos.at(0, 3) - (1 + k) * 1.5f / (1 + k * 1.5f)) < 1e-4f,
+          "waveshaper AMOUNT=0.5: 1.5 -> %g", pos.at(0, 3));
 }
 
 /// The biquad's FREQUENCY range (10..8000 Hz) is fixed, but the device sample
-/// rate is not: at 11025 Hz an 8000 Hz cutoff is above Nyquist. Reported, not
-/// failed.
+/// rate is not: at 11025 Hz an 8000 Hz cutoff is above Nyquist. The cutoff
+/// must be kept below Nyquist so the output stays finite and bounded (bug F3).
 void biquadAboveNyquistProbe() {
     SoLoud::BiquadResonantFilter f;
     using B = SoLoud::BiquadResonantFilter;
     const Signal in = makeTestSignal(1, 11025, 11025.f);
-    bool anyBad = false;
     for (int type = 0; type <= 2; type++) {
-        const Signal out = process(f, in, 11025.f, {{B::TYPE, (float)type}, {B::FREQUENCY, 8000.f},
-                                                     {B::RESONANCE, 20.f}});
-        std::printf("    probe biquad type %d, 8000 Hz @ 11025 Hz sr, res 20: finite=%d peak=%g\n",
-                    type, allFinite(out), peak(out));
-        if (!allFinite(out) || peak(out) > 100.f) anyBad = true;
+        for (float freq : {5512.5f, 8000.f}) {
+            const Signal out = process(f, in, 11025.f, {{B::TYPE, (float)type},
+                                                         {B::FREQUENCY, freq},
+                                                         {B::RESONANCE, 20.f}});
+            std::printf("    biquad type %d, %g Hz @ 11025 Hz sr, res 20: finite=%d peak=%g\n",
+                        type, freq, allFinite(out), peak(out));
+            CHECK(allFinite(out) && peak(out) <= 100.f,
+                  "biquad type %d, %g Hz above Nyquist: finite=%d peak=%g", type, freq,
+                  allFinite(out), peak(out));
+        }
     }
-    if (anyBad)
-        std::printf("    KNOWN BUG F3 (not failed): BiquadResonant cutoff above Nyquist is "
-                    "unstable (src/soloud/src/filter/soloud_biquadresonantfilter.cpp "
-                    "calcBQRParams does not clamp FREQUENCY to the sample rate)\n");
+    // The parameter itself keeps the value that was set.
+    std::unique_ptr<SoLoud::FilterInstance> inst(f.createInstance());
+    inst->setFilterParameter(B::FREQUENCY, 8000.f);
+    CHECK(inst->getFilterParameter(B::FREQUENCY) == 8000.f, "biquad FREQUENCY not kept");
 }
 
 } // namespace
@@ -559,7 +574,7 @@ int main(int argc, char **argv) {
     }
     if (!only || std::strcmp(only, "probes") == 0) {
         ran++;
-        std::printf("[probes] parameter-range edge cases (informational)\n");
+        std::printf("[probes] parameter-range edge cases\n");
         waveshaperHotInputProbe();
         biquadAboveNyquistProbe();
     }

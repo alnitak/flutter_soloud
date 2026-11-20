@@ -36,7 +36,9 @@
 #include <iterator>
 #include <string>
 #include <thread>
-#include <unistd.h>
+#include "../support/temp_dir.h"
+
+#include <filesystem>
 #include <vector>
 
 extern "C"
@@ -367,11 +369,8 @@ int main()
         return std::getenv("SOLOUD_LIFECYCLE_TEST_ALLOW_NO_DEVICE") ? 0 : 1;
     }
 
-    const char *tmp = std::getenv("TMPDIR");
-    std::string workTemplate =
-        std::string(tmp != nullptr && *tmp != 0 ? tmp : "/tmp") +
-        "/play_missing_file_XXXXXX";
-    const char *workDir = mkdtemp(&workTemplate[0]);
+    const std::string workDirPath = makeTestTempDir("play_missing_file");
+    const char *workDir = workDirPath.empty() ? nullptr : workDirPath.c_str();
     EXPECT(workDir != nullptr, "a temporary directory should be made");
     if (workDir == nullptr)
     {
@@ -398,7 +397,7 @@ int main()
            "the background voice should still play at the end");
     stop(background);
     disposeSound(backgroundHash);
-    rmdir(workDir);
+    std::filesystem::remove(workDirPath);
 
     EXPECT(getVoiceCount() == 0, "%u voice(s) still alive", getVoiceCount());
     EXPECT(soloudTestSoundCount() == 0, "%d sound(s) still loaded",

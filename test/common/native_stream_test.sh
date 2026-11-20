@@ -23,7 +23,10 @@ fi
 PLATFORM_SOURCES=()
 PLATFORM_LIBS=()
 if [ "$(uname)" == "Darwin" ]; then
-    PLATFORM_SOURCES=(src/native_decoder/os_decoder_apple.mm)
+    # The AAC stream decoder is not used on Apple, but its CMake translation
+    # (test/support/gen_cmake.py) swaps in os_decoder_windows.cpp, which is.
+    PLATFORM_SOURCES=(src/native_decoder/os_decoder_apple.mm src/audiobuffer/aac_stream_decoder.cpp
+                      src/audiobuffer/aac_stream_decoder_apple.mm src/audiobuffer/m4a_metadata.cpp)
     PLATFORM_LIBS=(-framework AudioToolbox -framework CoreFoundation)
 fi
 

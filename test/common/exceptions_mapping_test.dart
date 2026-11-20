@@ -152,20 +152,14 @@ void main() {
       expect(descriptions.toSet(), hasLength(descriptions.length));
     });
 
-    test(
-      'every PlayerErrors has its own human-readable sentence',
-      () {
-        final sentences = [for (final e in PlayerErrors.values) '$e'];
-        final unique = {
-          for (final e in PlayerErrors.values)
-            e.toString().replaceFirst('PlayerErrors.${e.name} ', ''),
-        };
-        expect(unique, hasLength(sentences.length));
-      },
-      skip:
-          'bug E9: lib/src/enums.dart PlayerErrors._asSentence returns '
-          "'Filter not found!' for filterAlreadyAdded (copy of filterNotFound)",
-    );
+    test('every PlayerErrors has its own human-readable sentence', () {
+      final sentences = [for (final e in PlayerErrors.values) '$e'];
+      final unique = {
+        for (final e in PlayerErrors.values)
+          e.toString().replaceFirst('PlayerErrors.${e.name} ', ''),
+      };
+      expect(unique, hasLength(sentences.length));
+    });
   });
 
   group('ReadSamplesErrors -> SoLoudCppException', () {

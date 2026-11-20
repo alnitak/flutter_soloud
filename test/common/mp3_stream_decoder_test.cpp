@@ -296,16 +296,10 @@ static void testId3(Asset &a) {
   if (!title.empty()) {
     bool seen = false;
     for (auto &m : o.meta) seen = seen || m.mp3Metadata.title == title;
-    // KNOWN BUG S6 (src/audiobuffer/mp3_stream_decoder.cpp:72, on_meta): frame
-    // parsing starts right after the 10-byte tag header and ignores the
-    // extended-header flag (0x40), so a tag with an extended header (such
-    // as IveSeenThings.mp3's 12-byte one) reads its size bytes as a frame
-    // id starting with 0, stops, and reports no title/artist/album.
-    if (a.file[5] & 0x40)
-      KNOWN_BUG(seen, "%s: title '%s' not reported (extended header)", a.name,
-                title.c_str());
-    else
-      CHECK(seen, "%s: title '%s' not reported", a.name, title.c_str());
+    // Regression for S6: a tag with an extended header (flag 0x40, such as
+    // IveSeenThings.mp3's 12-byte one) must still report its frames.
+    CHECK(seen, "%s: title '%s' not reported%s", a.name, title.c_str(),
+          (a.file[5] & 0x40) ? " (extended header)" : "");
   }
   bool rate = false;
   for (auto &m : o.meta)
@@ -318,24 +312,20 @@ static void testId3(Asset &a) {
 // pieces): StreamDecoder must wait for the rest of the tag and then decode
 // the stream like a small-tag file.
 //
-// KNOWN BUG S4 (src/audiobuffer/stream_decoder.cpp:45, getID3TagSize): while
-// the tag is incomplete getID3TagSize() returns 0 ("if (offset + total >
-// buffer.size()) break;" with offset 0), so detectAudioFormat() skips the
-// ID3 branch and probes the cover-art bytes as raw audio. Here the AC-3
-// probe at :188 matches inside the JPEG and the stream is created as
-// BUFFER_AC3, which decodes nothing. Any MP3 whose ID3 tag is larger than
-// what BufferStream holds at its first decode (> 4 KB) is affected.
-// Reproducer: 8_bit_mentality.mp3 fed in 32 KB pieces (this case).
+// Regression for S4: while the tag was incomplete, detectAudioFormat() used
+// to skip the ID3 branch and probe the cover-art bytes as raw audio (the AC-3
+// probe matched inside the JPEG). Any MP3 whose ID3 tag is larger than what
+// BufferStream holds at its first decode (> 4 KB) was affected.
 static void testLargeId3(Asset &a) {
   std::printf("case: id3 tag larger than the first deliveries (%s, %zu)\n",
               a.name, id3Size(a.file));
   Out o = decodeStream(a.file, 32 * 1024);
   CHECK(o.ended, "did not drain");
-  KNOWN_BUG(o.error == DecoderError::NoError && o.type == BUFFER_MP3_WITH_ID3,
-            "error %d, detected type %d", (int)o.error, (int)o.type);
-  KNOWN_BUG(o.pcm.size() == a.ref.pcm.size() &&
-                samePcm(o.pcm, a.ref.pcm, o.pcm.size()),
-            "%zu samples, want %zu", o.pcm.size(), a.ref.pcm.size());
+  CHECK(o.error == DecoderError::NoError && o.type == BUFFER_MP3_WITH_ID3,
+        "error %d, detected type %d", (int)o.error, (int)o.type);
+  CHECK(o.pcm.size() == a.ref.pcm.size() &&
+            samePcm(o.pcm, a.ref.pcm, o.pcm.size()),
+        "%zu samples, want %zu", o.pcm.size(), a.ref.pcm.size());
 
   // The same file in one piece (tag complete at detection) works.
   std::printf("case: id3 large tag delivered whole (%s)\n", a.name);
@@ -351,23 +341,18 @@ static void testLargeId3(Asset &a) {
         "mismatch at %zu", bad);
 }
 
-// A first delivery shorter than one MPEG frame.
-//
-// KNOWN BUG S7 (src/audiobuffer/stream_decoder.cpp, detectAudioFormat, the
-// MP3_STREAM branch at line ~162 and the final `return BUFFER_UNKNOWN`):
-// without an ID3 tag, a buffer that starts with a valid MPEG frame header
-// but does not yet hold the whole frame fails checkForValidFrames() and is
-// reported as BUFFER_UNKNOWN, so decode() returns FormatNotSupported instead
-// of waiting (as the ID3 branch does with "payloadSize < 512"). BufferStream
-// hides it by buffering 4 KB first.
+// A first delivery shorter than one MPEG frame must wait for more data.
+// Regression for S7: without an ID3 tag, a buffer that starts with a valid
+// MPEG frame header but does not yet hold the whole frame used to be
+// reported as BUFFER_UNKNOWN (FormatNotSupported).
 static void testShortFirstDelivery(Asset &a) {
   std::printf("case: first delivery shorter than a frame (%s)\n", a.name);
   StreamDecoder sd;
   Bytes first(a.file.begin(), a.file.begin() + 100);
   int sr = 44100, ch = 2;
   auto r = sd.decode(first, &sr, &ch, nullptr);
-  KNOWN_BUG(r.second == DecoderError::NoError && first.size() == 100,
-            "100 bytes: error %d", (int)r.second);
+  CHECK(r.second == DecoderError::NoError && first.size() == 100,
+        "100 bytes: error %d", (int)r.second);
 }
 
 static void testXing(Asset &a) {
@@ -401,25 +386,22 @@ static void testFragmented(Asset &a) {
 
   // The wrapper on its own, byte by byte from the first byte.
   //
-  // KNOWN BUG S5 (src/audiobuffer/mp3_stream_decoder.cpp:266, the lazy
-  // drmp3_init() in decode()): a failed init (not a whole frame yet) has
-  // already advanced m_read_pos through on_read, and nothing rewinds it, so
-  // the next attempt starts after the bytes the failed one consumed. Fed in
-  // pieces smaller than a frame the decoder never initializes, and after
-  // setDataEnded() hasPendingData() stays true forever (mDrained is only
-  // set by the decode loop of an initialized decoder): a drain loop such as
-  // BufferStream's background decode never ends. Fed 100 bytes and then
-  // the rest, the first 100 bytes (the Xing/LAME frame) are skipped.
-  // StreamDecoder hides it: it creates the wrapper only once detection has
-  // seen a whole frame in the buffer it then hands over.
-  std::printf("case: wrapper alone, %s byte by byte\n", a.name);
+  // Regression for S5: a failed lazy drmp3_init() (not a whole frame yet)
+  // used to keep the bytes it had read, so fed in pieces smaller than a
+  // frame the decoder never initialized and, after setDataEnded(),
+  // hasPendingData() stayed true forever. dr_mp3 also skips the bytes of a
+  // frame that is not complete and stops reading for good once a read finds
+  // no data: the wrapper must hand it whole frames only.
   const DetectedType t =
       id3Size(a.file) ? BUFFER_MP3_WITH_ID3 : BUFFER_MP3_STREAM;
-  Out w = decodeWrapper(a.file, 1, t);
-  KNOWN_BUG(w.ended, "did not drain");
-  KNOWN_BUG(w.pcm.size() == a.ref.pcm.size() &&
-                samePcm(w.pcm, a.ref.pcm, w.pcm.size()),
-            "%zu samples, one-shot %zu", w.pcm.size(), a.ref.pcm.size());
+  for (size_t chunk : {(size_t)1, (size_t)333}) {
+    std::printf("case: wrapper alone, %s in %zu-byte pieces\n", a.name, chunk);
+    Out w = decodeWrapper(a.file, chunk, t);
+    CHECK(w.ended, "did not drain");
+    CHECK(w.pcm.size() == a.ref.pcm.size() &&
+              samePcm(w.pcm, a.ref.pcm, w.pcm.size()),
+          "%zu samples, one-shot %zu", w.pcm.size(), a.ref.pcm.size());
+  }
 }
 
 static void testGaplessAsset(Asset &a) {

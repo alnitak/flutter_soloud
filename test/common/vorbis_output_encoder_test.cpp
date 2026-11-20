@@ -11,9 +11,12 @@
 //     decoded channel has its RMS within 10% of the input's, its energy
 //     concentrated at that frequency (channel order kept, no crosstalk), and
 //     a waveform correlation above 0.98 with the input (time aligned);
-//   * lfe_slot (bug O1): documents that 6-channel input is not remapped to Vorbis
-//     channel order, so input channel 5 is coded as LFE (band-limited) --
-//     suspected bug, see testLfeSlot(); the other channels still roundtrip;
+//   * lfe_slot (bug O1, fixed): 6- and 8-channel input in SoLoud order
+//     (FL FR C LFE BL BR / FL FR C LFE SL SR BL BR) is remapped to Vorbis
+//     order (FL C FR BL BR LFE / FL C FR SL SR BL BR LFE): every decoded
+//     Vorbis channel carries the matching SoLoud channel, SoLoud's LFE
+//     (input channel 3) lands in the Vorbis LFE slot, and a high tone in
+//     SoLoud's back-right channel survives (it is no longer band-limited);
 //   * silence: silent input decodes to (near) silence;
 //   * empty: initialize + finalize with no audio is a valid Ogg Vorbis
 //     stream with zero frames;
@@ -191,10 +194,12 @@ double goertzel(const std::vector<float> &x, size_t begin, size_t end, double f,
     return p / (n * n);
 }
 
-// Encodes per-channel sines and checks the decoded stream. The channel
-// [lfeSlot] (if >= 0) is not checked here; its decoded RMS is returned in
-// *lfeRms (see testLfeSlot).
-void roundtrip(int rate, int ch, size_t frames, int lfeSlot = -1, double *lfeRms = nullptr)
+// Encodes per-channel sines and checks the decoded stream. Decoded Vorbis
+// channel v is compared with input channel vorbisToInput[v] (identity when
+// null). The decoded channel [lfeSlot] (if >= 0) is not checked here; its
+// decoded RMS is returned in *lfeRms (see testLfeSlot).
+void roundtrip(int rate, int ch, size_t frames, int lfeSlot = -1, double *lfeRms = nullptr,
+               const int *vorbisToInput = nullptr)
 {
     char ctx[64];
     std::snprintf(ctx, sizeof ctx, "%d Hz %d ch %zu frames", rate, ch, frames);
@@ -237,10 +242,11 @@ void roundtrip(int rate, int ch, size_t frames, int lfeSlot = -1, double *lfeRms
             if (lfeRms) *lfeRms = std::sqrt(sq / (e - b));
             continue;
         }
+        const int in = vorbisToInput ? vorbisToInput[c] : c;
         double sumSq = 0, dot = 0, inSq = 0;
         for (size_t i = b; i < e; ++i)
         {
-            const double y = d.ch[c][i], x = sig[i * ch + c];
+            const double y = d.ch[c][i], x = sig[i * ch + in];
             sumSq += y * y;
             dot += x * y;
             inSq += x * x;
@@ -251,10 +257,12 @@ void roundtrip(int rate, int ch, size_t frames, int lfeSlot = -1, double *lfeRms
               c, rms, wantRms);
         CHECK(corr > 0.98, "%s ch%d: correlation with input %.4f", ctx, c, corr);
 
-        const double own = goertzel(d.ch[c], b, e, channelFreq(c), rate);
+        const double own = goertzel(d.ch[c], b, e, channelFreq(in), rate);
         for (int o = 0; o < ch; ++o)
         {
-            if (o == c || o == lfeSlot) continue;
+            if (o == in) continue;
+            if (lfeSlot >= 0 && o == (vorbisToInput ? vorbisToInput[lfeSlot] : lfeSlot))
+                continue;
             const double other = goertzel(d.ch[c], b, e, channelFreq(o), rate);
             CHECK(other < own * 1e-3, "%s ch%d: %.0f Hz leak %.3g vs own %.3g", ctx, c,
                   channelFreq(o), other, own);
@@ -271,39 +279,44 @@ void testRoundtrip()
     roundtrip(44100, 4, 30000);
 }
 
-// DOCUMENTS CURRENT BEHAVIOUR (suspected bug, see the test report): the
-// encoder copies input channel i into Vorbis channel i with no remapping.
-// SoLoud's 5.1 order is FL FR C LFE BL BR, Vorbis's is FL C FR BL BR LFE, so
-// in a 6-channel capture SoLoud's back-right channel lands in Vorbis's LFE
-// slot, which libvorbis band-limits: a mid/high-frequency tone there is
-// gone after decoding, only low frequencies survive. (Channel labels are
-// also swapped for C/FR and LFE/BL.) With 8 channels libvorbis does not
-// band-limit the last slot, but the 7.1 order differs too
-// (SoLoud FL FR C LFE SL SR BL BR vs Vorbis FL C FR SL SR BL BR LFE).
-// If the encoder starts remapping channels, update this test.
+// Bug O1 (fixed): SoLoud's 5.1 order is FL FR C LFE BL BR and its 7.1 order
+// is FL FR C LFE SL SR BL BR; Vorbis wants FL C FR BL BR LFE and
+// FL C FR SL SR BL BR LFE. The encoder used to copy input channel i into
+// Vorbis channel i, so SoLoud's back-right channel landed in the Vorbis LFE
+// slot, which libvorbis band-limits (5.1): a mid/high tone there was gone.
+// Now each decoded Vorbis channel must carry its SoLoud channel, the LFE
+// input (channel 3) must land in the last Vorbis slot, and a high tone in
+// SoLoud's back-right channel must survive.
 void testLfeSlot()
 {
+    // Input (SoLoud) channel for each decoded Vorbis channel.
+    static const int k51[6] = {0, 2, 1, 4, 5, 3};
+    static const int k71[8] = {0, 2, 1, 4, 5, 6, 7, 3};
     const double inRms = 0.5 / std::sqrt(2.0);
     for (int ch : {6, 8})
     {
-        const int slot = ch - 1;
-        for (double f : {1410.0, 2000.0, 60.0})
+        const int *map = ch == 6 ? k51 : k71;
+        const int vorbisLfe = ch - 1;
+        const int soloudLfe = 3;
+        const int soloudBackRight = ch - 1;
+        for (double lfeFreq : {60.0, 90.0})
         {
             gFreqOverride.assign(ch, 0.0);
-            gFreqOverride[slot] = f;
+            gFreqOverride[soloudLfe] = lfeFreq;
+            // A high tone in SoLoud's back-right channel: it used to be coded
+            // as LFE and filtered out.
+            gFreqOverride[soloudBackRight] = 2000.0;
             double rms = -1;
-            roundtrip(48000, ch, 30000, slot, &rms);
-            std::printf("  %d ch: %.0f Hz in input channel %d -> decoded RMS %.4f (input %.4f)\n",
-                        ch, f, slot, rms, inRms);
-            if (ch == 6 && f > 1000.0)
-                CHECK(rms < 0.05 * inRms,
-                      "6 ch: %.0f Hz in channel 5 survived (RMS %.4f): has the LFE "
-                      "band-limit/channel mapping changed?", f, rms);
-            else if (ch == 6)
-                CHECK(rms > 0.5 * inRms, "6 ch: 60 Hz in channel 5 lost (RMS %.4f)", rms);
-            else
-                CHECK(std::fabs(rms - inRms) < 0.1 * inRms,
-                      "8 ch: %.0f Hz in channel 7 RMS %.4f", f, rms);
+            // All non-LFE channels (including back-right at 2 kHz) are
+            // checked for RMS, correlation and crosstalk inside roundtrip().
+            roundtrip(48000, ch, 30000, vorbisLfe, &rms, map);
+            std::printf("  %d ch: %.0f Hz SoLoud LFE (input 3) -> Vorbis LFE slot %d RMS %.4f "
+                        "(input %.4f)\n", ch, lfeFreq, vorbisLfe, rms, inRms);
+            // libvorbis codes the LFE slot coarsely (5.1 adds ~20% noise),
+            // so only check that the tone is there with roughly its level.
+            CHECK(rms > 0.6 * inRms && rms < 1.4 * inRms,
+                  "%d ch: %.0f Hz LFE tone in Vorbis LFE slot RMS %.4f want %.4f", ch,
+                  lfeFreq, rms, inRms);
         }
     }
     gFreqOverride.clear();

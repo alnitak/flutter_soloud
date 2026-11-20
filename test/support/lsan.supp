@@ -1,0 +1,11 @@
+# LeakSanitizer suppressions for the native tests (ASan builds). Only leaks
+# that happen inside system libraries belong here, each with the reason.
+
+# libvorbisenc leaks 2848 bytes per vorbis_encode_init_vbr() with more than
+# two channels, even when followed by vorbis_info_clear() (reproduced with a
+# minimal program against Ubuntu 24.04's libvorbis 1.3.7).
+leak:vorbis_encode_setup_init
+
+# Libraries FFmpeg pulls in (libaom, librsvg, libvdpau) leak while they
+# initialize during dlopen.
+leak:_dl_catch_exception

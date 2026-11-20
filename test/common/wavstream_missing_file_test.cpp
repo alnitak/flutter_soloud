@@ -43,7 +43,9 @@
 #include <iterator>
 #include <mutex>
 #include <string>
-#include <unistd.h>
+#include "../support/temp_dir.h"
+
+#include <filesystem>
 #include <vector>
 
 namespace
@@ -270,7 +272,9 @@ void checkTruncatedEnds(SoLoud::WavStream &source, SoLoud::WavStream &background
 	for (int i = 0; i < kBlocks; ++i)
 		rig.mix();
 	check(rig.soloud.isValidVoiceHandle(voice), what + ": the voice is playing");
-	check(truncate(path.c_str(), 0) == 0, what + ": the file is truncated");
+	std::error_code truncateError;
+	std::filesystem::resize_file(path, 0, truncateError);
+	check(!truncateError, what + ": the file is truncated");
 	// What the decoder read ahead plays out first: up to 64 KB of an MP3,
 	// 4 s of the sample. The sources are 15 s long.
 	int mixes = 0;
@@ -343,11 +347,8 @@ int main()
 {
 	// Keep the report up to a crash.
 	std::setvbuf(stdout, nullptr, _IOLBF, 0);
-	const char *tmp = std::getenv("TMPDIR");
-	std::string workTemplate =
-		std::string(tmp != nullptr && *tmp != 0 ? tmp : "/tmp") +
-		"/wavstream_missing_file_XXXXXX";
-	const char *workDir = mkdtemp(&workTemplate[0]);
+	const std::string workDirPath = makeTestTempDir("wavstream_missing_file");
+	const char *workDir = workDirPath.empty() ? nullptr : workDirPath.c_str();
 	if (workDir == nullptr)
 	{
 		std::printf("FAIL: no temporary directory\n");
@@ -375,7 +376,7 @@ int main()
 		testFormat(asset, workDir, backgroundSource, reference);
 
 	testDiskFileWithoutFile(workDir);
-	rmdir(workDir);
+	std::filesystem::remove(workDirPath);
 
 	std::printf("%d assertions, %d failures\n", gAssertions, gFailures);
 	return gFailures == 0 ? 0 : 1;

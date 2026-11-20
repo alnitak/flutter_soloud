@@ -14,9 +14,9 @@
 # example/assets/audio. FFmpeg runtime libraries are optional (Debian/Ubuntu:
 # libavformat61 libavcodec61 or similar; no -dev packages): without them run 2
 # is reported as not run. Off Linux prints SKIPPED.
-#   --asan          build with AddressSanitizer and UBSan. Note: the streaming
-#                   decoder currently over-reads its unpadded av_parser input,
-#                   which ASan reports and aborts on (see KNOWN BUG below).
+#   --asan          build with AddressSanitizer and UBSan. Leaks allocated
+#                   by the system libraries while dlopen() initializes them
+#                   (libaom, librsvg, ... pulled in by FFmpeg) are suppressed.
 #   --macos-ffmpeg  on macOS only: build patched copies of the two Linux
 #                   sources (platform guard -> 1, .so.63 names -> the .63.dylib
 #                   files in <lib dir>, default Homebrew's ffmpeg or
@@ -25,7 +25,8 @@
 #                   version without a Linux machine.
 # Known src/ bugs are reported as KNOWN BUG and do not fail the run; set
 # OSDEC_STRICT=1 to count them.
-# Verification: NOT YET VERIFIED ON LINUX. The --macos-ffmpeg mode was run on
+# Verification: verified on Linux arm64 (Ubuntu 24.04 in test/docker, FFmpeg
+# 6.1, lavf/lavc 60), also with --asan. The --macos-ffmpeg mode was run on
 # macOS arm64 against Homebrew FFmpeg 9.0.1 (lavf/lavc 63).
 
 set -e
@@ -90,6 +91,7 @@ if [ -n "$MACOS_FFMPEG" ]; then
         for f in src/$d/*; do [ -e "$PATCHED/$f" ] || ln -s "$REPO_ROOT/$f" "$PATCHED/$f"; done
     done
     ln -s "$REPO_ROOT/src/simd" "$PATCHED/src/simd"
+    ln -s "$REPO_ROOT/src/native_stream" "$PATCHED/src/native_stream"
     # aac_stream_decoder.cpp dispatches to the Apple impl on macOS.
     cat > "$WORK_DIR/route.cpp" <<'ROUTE'
 #include "audiobuffer/aac_stream_decoder.h"
@@ -117,9 +119,13 @@ c++ -std=c++17 -O2 -Wall "${SANITIZER[@]}" \
     "${EXTRA_SRCS[@]}" \
     src/audiobuffer/aac_stream_decoder.cpp \
     src/audiobuffer/m4a_metadata.cpp \
+    src/native_stream/m4a_gapless.cpp \
     "${LIBS[@]}"
 
 mkdir -p "$WORK_DIR/tmp"
+if [ ${#SANITIZER[@]} -gt 0 ]; then
+    export LSAN_OPTIONS="suppressions=$REPO_ROOT/test/support/lsan.supp${LSAN_OPTIONS:+:$LSAN_OPTIONS}"
+fi
 echo "=== pass 1: FFmpeg hidden ==="
 OSDEC_HIDE_FFMPEG=1 "$OUT" example/assets/audio "$WORK_DIR/tmp" --expect-no-ffmpeg
 

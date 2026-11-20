@@ -48,6 +48,9 @@ if(SOLOUD_TEST_SANITIZE STREQUAL "address")
   else()
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
     add_link_options(-fsanitize=address,undefined)
+    # Leaks inside system libraries, not plugin code (see lsan.supp).
+    set(SOLOUD_TEST_ENV
+      "LSAN_OPTIONS=suppressions=${REPO_ROOT}/test/support/lsan.supp:print_suppressions=0")
   endif()
 elseif(SOLOUD_TEST_SANITIZE STREQUAL "thread")
   add_compile_options(-fsanitize=thread)
@@ -1494,6 +1497,7 @@ add_executable(native_decoder_test
   ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder.cpp
   ${REPO_ROOT}/src/audiobuffer/mp3_stream_decoder.cpp
   ${REPO_ROOT}/src/audiobuffer/m4a_metadata.cpp
+  ${REPO_ROOT}/src/native_stream/m4a_gapless.cpp
   ${SOLOUD_AAC_DECODER_SOURCE}
   ${SOLOUD_OS_DECODER_SOURCE}
 )
@@ -1509,6 +1513,8 @@ add_executable(native_stream_test
   ${REPO_ROOT}/src/native_stream/native_stream_decoder_android.cpp
   ${REPO_ROOT}/src/native_stream/native_stream_decoder_apple.cpp
   ${REPO_ROOT}/src/native_stream/native_stream_source.cpp
+  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder.cpp
+  ${REPO_ROOT}/src/audiobuffer/m4a_metadata.cpp
   ${REPO_ROOT}/src/soloud/src/core/soloud.cpp
   ${REPO_ROOT}/src/soloud/src/core/soloud_audiosource.cpp
   ${REPO_ROOT}/src/soloud/src/core/soloud_bus.cpp
@@ -1531,6 +1537,7 @@ add_executable(native_stream_test
   ${REPO_ROOT}/src/soloud/src/core/soloud_queue.cpp
   ${REPO_ROOT}/src/soloud/src/core/soloud_thread.cpp
   ${REPO_ROOT}/src/soloud/src/backend/null/soloud_null.cpp
+  ${SOLOUD_AAC_DECODER_SOURCE}
   ${SOLOUD_OS_DECODER_SOURCE}
 )
 target_compile_definitions(native_stream_test PRIVATE WITH_NULL)
@@ -2181,6 +2188,7 @@ add_executable(realtime_and_custom_dsp_test
   ${REPO_ROOT}/src/native_decoder/os_decoder_linux.cpp
   ${REPO_ROOT}/src/native_decoder/os_decoder_web.cpp
   ${REPO_ROOT}/src/native_decoder/os_decoder_windows.cpp
+  ${REPO_ROOT}/src/native_stream/m4a_gapless.cpp
   ${REPO_ROOT}/src/soloud/src/backend/null/soloud_null.cpp
   ${SOLOUD_AAC_DECODER_SOURCE}
   ${SOLOUD_OS_DECODER_SOURCE}
@@ -2232,6 +2240,7 @@ add_executable(render_ring_device_test
   ${REPO_ROOT}/src/native_decoder/os_decoder_linux.cpp
   ${REPO_ROOT}/src/native_decoder/os_decoder_web.cpp
   ${REPO_ROOT}/src/native_decoder/os_decoder_windows.cpp
+  ${REPO_ROOT}/src/native_stream/m4a_gapless.cpp
   ${REPO_ROOT}/src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp
   ${REPO_ROOT}/src/mixeroutput/flac_output_encoder.cpp
   ${REPO_ROOT}/src/mixeroutput/mixer_output.cpp
@@ -2354,6 +2363,7 @@ add_executable(retroactive_remix_test
   ${REPO_ROOT}/src/native_decoder/os_decoder_linux.cpp
   ${REPO_ROOT}/src/native_decoder/os_decoder_web.cpp
   ${REPO_ROOT}/src/native_decoder/os_decoder_windows.cpp
+  ${REPO_ROOT}/src/native_stream/m4a_gapless.cpp
   ${REPO_ROOT}/src/soloud/src/backend/null/soloud_null.cpp
   ${SOLOUD_AAC_DECODER_SOURCE}
   ${SOLOUD_OS_DECODER_SOURCE}
@@ -2905,3 +2915,9 @@ target_include_directories(wavstream_seek_test PRIVATE ${REPO_ROOT}/src/soloud/i
 target_link_libraries(wavstream_seek_test PRIVATE Threads::Threads ${SOLOUD_PLATFORM_LIBS})
 add_test(NAME wavstream_seek_test COMMAND wavstream_seek_test WORKING_DIRECTORY ${REPO_ROOT})
 set_tests_properties(wavstream_seek_test PROPERTIES LABELS "common" SKIP_REGULAR_EXPRESSION "^SKIPPED: ;\nSKIPPED: " TIMEOUT 900)
+
+# Sanitizer runtime options for every test (see the header).
+if(SOLOUD_TEST_ENV)
+  get_property(_soloud_tests DIRECTORY PROPERTY TESTS)
+  set_tests_properties(${_soloud_tests} PROPERTIES ENVIRONMENT "${SOLOUD_TEST_ENV}")
+endif()

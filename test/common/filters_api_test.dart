@@ -19,6 +19,7 @@ import 'package:flutter_soloud/src/filters/flanger_filter.dart';
 import 'package:flutter_soloud/src/filters/freeverb_filter.dart';
 import 'package:flutter_soloud/src/filters/limiter.dart';
 import 'package:flutter_soloud/src/filters/lofi_filter.dart';
+import 'package:flutter_soloud/src/filters/parametric_eq.dart';
 import 'package:flutter_soloud/src/filters/pitchshift_filter.dart';
 import 'package:flutter_soloud/src/filters/robotize_filter.dart';
 import 'package:flutter_soloud/src/filters/wave_shaper_filter.dart';
@@ -427,37 +428,14 @@ final List<_Filter> _filters = [
         'bandQ(2)',
         0.1,
         20,
-        1,
+        // Derived from the default band count (3): about 0.33.
+        ParametricEqParam.getDefault(ParametricEqParam.bandQ(2)),
         () => _globals.parametricEqFilter.bandQ(2),
         (f, h) => f.parametricEqFilter.bandQ(2, soundHandle: h),
       ),
     ],
   ),
 ];
-
-/// Filters whose Dart `def` metadata disagrees with the value the native
-/// filter starts with.
-const _wrongDefaults = <FilterType, String>{
-  FilterType.biquadResonantFilter:
-      'bug F1: BiquadResonantEnum.resonance.def is 0.1 '
-      '(lib/src/filters/biquad_resonant_filter.dart:32), the native filter '
-      'starts at 2',
-  FilterType.flangerFilter:
-      'bug F1: FlangerEnum defaults delay 1 and freq 0 '
-      '(lib/src/filters/flanger_filter.dart:14), the native filter starts at '
-      '0.005 s and 10 Hz; its Dart ranges (delay 0..3, freq -48..48, lines '
-      '12-13) do not match the native ones either (0.001..0.1, 0.001..100, '
-      'src/soloud/src/filter/soloud_flangerfilter.cpp:252)',
-  FilterType.limiterFilter:
-      'bug F1: Limiter.kneeWidth.def is 2 and Limiter.releaseTime.def is 100 '
-      '(lib/src/filters/limiter.dart:17), the native limiter starts at 6 and '
-      '50 (src/filters/limiter.cpp:388)',
-  FilterType.parametricEq:
-      'bug F1: ParametricEqParam.getDefault reports a band Q of 1 '
-      '(lib/src/filters/parametric_eq.dart, getDefault), the native EQ '
-      'starts each band at a Q derived from the band count (0.33 for 3 '
-      'bands)',
-};
 
 void main() {
   // One engine for the whole file (hundreds of short tests); every test
@@ -534,7 +512,7 @@ void main() {
             expect(p.global().value, closeTo(p.def, 1e-4), reason: p.name);
           }
           f.deactivate();
-        }, skip: _wrongDefaults[filter.type]);
+        });
 
         test('parameters round-trip', () {
           f.activate();
@@ -685,7 +663,7 @@ void main() {
               reason: p.name,
             );
           }
-        }, skip: _wrongDefaults[filter.type]);
+        });
 
         test('parameters round-trip', () {
           f.activate();
@@ -851,6 +829,27 @@ void main() {
       }
       for (var band = 0; band < 3; band++) {
         expect(eq.bandGain(band).value, closeTo(0.5 + band, 1e-4));
+      }
+    });
+
+    test('getDefault matches the native band layout for any band count', () {
+      for (final bands in [1, 2, 3, 8, 64]) {
+        eq.numBands.value = bands.toDouble();
+        for (final band in {0, 1, bands - 1, bands, 63}) {
+          if (band > 63) continue;
+          final freq = ParametricEqParam.bandFreq(band);
+          final q = ParametricEqParam.bandQ(band);
+          expect(
+            eq.bandFreq(band).value,
+            closeTo(ParametricEqParam.getDefault(freq, bands: bands), 1e-2),
+            reason: 'band $band of $bands frequency',
+          );
+          expect(
+            eq.bandQ(band).value,
+            closeTo(ParametricEqParam.getDefault(q, bands: bands), 1e-4),
+            reason: 'band $band of $bands Q',
+          );
+        }
       }
     });
   });

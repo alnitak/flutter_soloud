@@ -38,6 +38,7 @@ c++ -std=c++17 -O2 -Wall -Wextra -pthread \
     src/audiobuffer/m4a_metadata.cpp \
     src/audiobuffer/aac_stream_decoder.cpp \
     src/native_decoder/*.cpp \
+    src/native_stream/m4a_gapless.cpp \
     "${EXTRA_SRC[@]}" \
     src/soloud/src/backend/null/soloud_null.cpp \
     "${EXTRA_LDFLAGS[@]}"
