@@ -1,5 +1,7 @@
 #include "flac_output_encoder.h"
 
+#include <utility>
+
 #include "../simd/simd_pcm.h"
 
 #ifndef NO_XIPH_LIBS
@@ -85,6 +87,18 @@ bool FlacOutputEncoder::encode(const float *input, size_t samples,
     SoLoud::convertFloatsToInt32ScaledClamped(
         input + done, m_inputBuffer.data() + done, chunk, 32767.0f);
     done += chunk;
+  }
+
+  // FLAC's 7.1 order (FLAC format spec, "Channels bits") is
+  // FL FR C LFE BL BR SL SR, SoLoud's is FL FR C LFE SL SR BL BR (see the
+  // speaker positions in soloud.cpp): swap the side and back pairs. Mono,
+  // stereo, quad (FL FR BL BR) and 5.1 (FL FR C LFE BL BR) already match.
+  if (m_channels == 8) {
+    int32_t *p = m_inputBuffer.data();
+    for (size_t frame = 0; frame < frames; ++frame, p += 8) {
+      std::swap(p[4], p[6]);
+      std::swap(p[5], p[7]);
+    }
   }
 
   FLAC__bool ok = FLAC__stream_encoder_process_interleaved(
