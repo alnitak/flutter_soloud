@@ -1117,6 +1117,8 @@ interface class SoLoud {
     // invoke a callback while its owning NativeCallable is being closed.
     _controller.soLoudFFI.disposeNativeCallables();
     _activeSounds.clear();
+    // The native buses died with the engine.
+    Buses().invalidateAll();
 
     // Loads still in flight can no longer receive their file-loaded callback;
     // fail them instead of leaving their futures pending forever.

@@ -37,6 +37,19 @@ class Buses {
     return buses.firstWhere((bus) => bus.busId == id, orElse: orElse);
   }
 
+  /// Invalidate every bus after the engine has been deinitialized.
+  ///
+  /// The native buses are already gone, and the next engine numbers its buses
+  /// from 1 again, so a stale [Bus] must not stay registered nor usable.
+  @internal
+  void invalidateAll() {
+    final stale = List<Bus>.of(buses);
+    buses.clear();
+    for (final bus in stale) {
+      bus._invalidate();
+    }
+  }
+
   /// Hand a visualization packet from native to the bus it belongs to. It is
   /// dropped when that bus has been disposed meanwhile.
   @internal
@@ -147,20 +160,9 @@ class Bus {
     }
   }
 
-  // The equality comparison is based solely on busId which IS final,
-  // so the equality override is safe and correct (!?).
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is Bus && other.busId == busId;
-  }
-
-  // The equality comparison is based solely on busId which IS final,
-  // so the equality override is safe and correct (!?).
-  @override
-  // ignore: avoid_equals_and_hash_code_on_mutable_classes
-  int get hashCode => busId.hashCode;
+  // Equality is identity: there is one Bus object per native bus, and a new
+  // engine reuses the native ids, so a Bus of a previous engine must not
+  // equal the Bus that now has its id.
 
   /// Destroys this bus.
   ///
@@ -176,6 +178,10 @@ class Bus {
     }
     Buses().buses.remove(this);
     SoLoudController().soLoudFFI.destroyBus(busId);
+    _invalidate();
+  }
+
+  void _invalidate() {
     _isValid = false;
     soundHandle = const SoundHandle.error();
     unawaited(_audioVisualizationEventsController.close());
