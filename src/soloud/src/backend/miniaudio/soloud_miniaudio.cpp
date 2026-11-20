@@ -1260,7 +1260,16 @@ namespace SoLoud
             backends[2] = ma_backend_jack;
             backendCount = 3;
         }
+#if defined(MA_ENABLE_ONLY_SPECIFIC_BACKENDS) && !defined(MA_ENABLE_ALSA) && \
+    !defined(MA_ENABLE_PULSEAUDIO) && !defined(MA_ENABLE_JACK)
+        // Built without any of the three (e.g. null backend only, as the
+        // device-free native tests do): let miniaudio pick from what it has.
+        (void)backends;
+        (void)backendCount;
+        return ma_context_init(NULL, 0, &contextConfig, aContext);
+#else
         return ma_context_init(backends, backendCount, &contextConfig, aContext);
+#endif
 #else
         // Other platforms open the device without a context of their own, which
         // makes miniaudio create one with this same default configuration.
