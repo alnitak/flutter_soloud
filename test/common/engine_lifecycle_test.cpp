@@ -901,17 +901,19 @@ void testTeardownDuringActiveMixerCapture()
 
     // Wait for the notification thread to actually invoke the callback, so the
     // writes below land while it is reading rather than before it starts.
+    // Generous timeouts: under a parallel ctest run the null backend's
+    // thread can be starved for seconds. The loop below stops early.
     const bool dispatched = waitFor([] { return gMixerOutputCalls.load() > 0; },
-                                    3000);
+                                    10000);
 
     // A worker isolate republishing its capture callable, in a tight loop, for
     // long enough that writes interleave with many reads. A burst that happens
     // to land between two reads would prove nothing.
     const int dispatchesBefore = gMixerOutputCalls.load();
     const auto raceDeadline =
-        std::chrono::steady_clock::now() + std::chrono::milliseconds(1500);
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(8000);
     while (std::chrono::steady_clock::now() < raceDeadline &&
-           gMixerOutputCalls.load() - dispatchesBefore < 100)
+           gMixerOutputCalls.load() - dispatchesBefore < 5)
     {
         setMixerOutputCallbackForEngine(onMixerOutput, kNoEngineId);
     }

@@ -121,3 +121,32 @@ function Invoke-NativeBuild {
         Remove-Item -Recurse -Force $objDir -ErrorAction SilentlyContinue
     }
 }
+
+# The whole plugin (bindings.cpp down to the miniaudio backend) for Windows,
+# for tests that drive the Dart entry points (initEngine, loadFile, play, ...).
+# Pass to Invoke-NativeBuild with -Defines (Get-PluginDefines) and
+# -Libs (Get-PluginLibs). Mirrors test/docker/windows_native.sh's plugin_lib.
+function Get-PluginSources {
+    return @(
+        'src\pffft\pffft.c',
+        'src\soloud_common.cpp', 'src\bindings.cpp', 'src\player.cpp', 'src\analyzer.cpp',
+        'src\synth\*.cpp', 'src\waveform\waveform.cpp', 'src\waveform\miniaudio_libvorbis.cpp',
+        'src\audiobuffer\*.cpp', 'src\native_stream\*.cpp',
+        'src\native_decoder\native_audio_decoder.cpp', 'src\native_decoder\os_decoder_windows.cpp',
+        'src\filters\*.cpp', 'src\mixeroutput\*.cpp',
+        'src\soloud\src\core\*.cpp', 'src\soloud\src\filter\*.cpp',
+        'src\soloud\src\audiosource\ay\*.cpp', 'src\soloud\src\audiosource\monotone\*.cpp',
+        'src\soloud\src\audiosource\noise\*.cpp', 'src\soloud\src\audiosource\sfxr\*.cpp',
+        'src\soloud\src\audiosource\speech\*.cpp', 'src\soloud\src\audiosource\tedsid\*.cpp',
+        'src\soloud\src\audiosource\vic\*.cpp', 'src\soloud\src\audiosource\vizsn\*.cpp',
+        'src\soloud\src\audiosource\wav\*.cpp',
+        'src\soloud\src\backend\miniaudio\soloud_miniaudio.cpp')
+}
+function Get-PluginDefines { return @('WITH_MINIAUDIO', 'NO_XIPH_LIBS') }
+function Get-PluginIncludes {
+    return @('src\soloud\include', 'src\soloud\src', 'src\pffft', 'src', 'src\native_decoder', 'src\audiobuffer')
+}
+function Get-PluginLibs {
+    return @('mfplat.lib', 'mfreadwrite.lib', 'mfuuid.lib', 'shlwapi.lib', 'ole32.lib', 'oleaut32.lib',
+        'uuid.lib', 'propsys.lib', 'user32.lib', 'advapi32.lib', 'winmm.lib')
+}

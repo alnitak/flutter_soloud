@@ -17,10 +17,9 @@
 //
 // A drain that never ends (hasPendingData() still true after 200 decode()
 // calls once the data has ended) is a failure. For the platform AAC / AC-3
-// decoders it is still a known bug, counted and reported per detected format
-// as KNOWN BUG; it fails the run only with --strict:
-//  - corrupted AC-3 through the Apple AudioToolbox backend
-//    (aac_stream_decoder_apple.mm), e.g. --seed 777 --only 300069.
+// decoders it is counted and reported per detected format as KNOWN BUG and
+// fails the run only with --strict (none is known at the moment; the old
+// corrupted-AC-3 case on Apple, --seed 777 --only 300069, now drains).
 // (Regressions for S1 and S5: FLAC/Ogg FLAC left ABORTED by the decode loop,
 // and MP3/WAV wrappers fed data they can never initialize from, used to
 // never drain.)

@@ -36,4 +36,9 @@ RUN chmod +x /usr/local/bin/start_pulse.sh
 # never clocks, so route it to the PulseAudio null sink.
 RUN printf 'pcm.!default { type pulse }\nctl.!default { type pulse }\n' > /etc/asound.conf
 
+# Xvfb for the VST3 editor test (test/linux/vst3_editor_linux_test.sh).
+# A separate layer so adding it does not rebuild the image above.
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb x11-utils \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /work

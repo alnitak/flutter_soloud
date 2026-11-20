@@ -43,9 +43,10 @@ PLATFORM_SOURCES = {
     "src/audiobuffer/aac_stream_decoder_apple.mm": "${SOLOUD_AAC_DECODER_SOURCE}",
     "src/soloud_miniaudio_objc.mm": "${SOLOUD_APPLE_ONLY_SOURCES}",
 }
-# Tests whose script chains several runs through temporary files: ctest runs
-# the script itself (Unix only).
-SCRIPT_ONLY = {"pull_mp3_seek_test", "simd_fallback_test"}
+# Tests whose script chains several runs through temporary files, or builds
+# against the VST3 SDK outside the repository: ctest runs the script itself
+# (Unix only) instead of building a target.
+SCRIPT_ONLY = {"pull_mp3_seek_test", "simd_fallback_test", "vst3_param_changes_test"}
 XIPH_LIBS = {"ogg", "vorbis", "vorbisenc", "vorbisfile", "opus", "FLAC"}
 
 
@@ -141,7 +142,20 @@ def cm_path(p):
     return "${REPO_ROOT}/" + p
 
 
+def emit_script_test(name, test_dir):
+    script = os.path.basename(test_dir) + "/" + name + ".sh"
+    return [
+        "if(NOT WIN32)",
+        f"  add_test(NAME {name} COMMAND bash ${{REPO_ROOT}}/test/{script} WORKING_DIRECTORY ${{REPO_ROOT}})",
+        f"  set_tests_properties({name} PROPERTIES LABELS \"{os.path.basename(test_dir)};script\" SKIP_REGULAR_EXPRESSION \"^SKIPPED: ;\\nSKIPPED: \" TIMEOUT 900)",
+        "endif()",
+    ]
+
+
 def emit_target(name, link, objects, test_dir, run_args):
+    base = name.split("_scalar")[0]
+    if base in SCRIPT_ONLY:
+        return [] if name.endswith("_scalar") else emit_script_test(name, test_dir)
     out = []
     srcs = []
     platform_vars = []
@@ -194,24 +208,9 @@ def emit_target(name, link, objects, test_dir, run_args):
     out.append(f"{ind}target_link_libraries({name} PRIVATE {' '.join(libs)} ${{SOLOUD_PLATFORM_LIBS}})")
     label = os.path.basename(test_dir)
     args = " ".join(shlex.quote(a) for a in run_args if not a.startswith("/"))
-    script_test = os.path.basename(test_dir) + "/" + name + ".sh"
-    if name.split("_scalar")[0] in SCRIPT_ONLY:
-        if name.endswith("_scalar"):
-            return out_close(out, conds)
-        out.append(f"{ind}if(NOT WIN32)")
-        out.append(f"{ind}  add_test(NAME {name} COMMAND bash ${{REPO_ROOT}}/test/{script_test} WORKING_DIRECTORY ${{REPO_ROOT}})")
-        out.append(f"{ind}  set_tests_properties({name} PROPERTIES LABELS \"{os.path.basename(test_dir)};script\" SKIP_REGULAR_EXPRESSION \"^SKIPPED: ;\\nSKIPPED: \" TIMEOUT 900)")
-        out.append(f"{ind}endif()")
-        return out_close(out, conds)
     out.append(f"{ind}add_test(NAME {name} COMMAND {name} {args} WORKING_DIRECTORY ${{REPO_ROOT}})".replace("  ", " "))
     out.append(f"{ind}set_tests_properties({name} PROPERTIES LABELS \"{label}\" "
                f"SKIP_REGULAR_EXPRESSION \"^SKIPPED: ;\\nSKIPPED: \" TIMEOUT 900)")
-    if conds:
-        out.append("endif()")
-    return out
-
-
-def out_close(out, conds):
     if conds:
         out.append("endif()")
     return out

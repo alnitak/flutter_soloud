@@ -19,8 +19,9 @@ Two kinds of tests live in this repo:
 | `macos/` | macOS-only native tests: CoreAudio, AudioToolbox, the VST3 host, Apple AAC. |
 | `linux/` | Linux-only tests: audio backend selection, FFmpeg decoders, ALSA/PulseAudio. |
 | `windows/` | Windows-only tests (Media Foundation, WASAPI, VST3), as PowerShell scripts. |
-| `web/` | `@TestOn('browser')` Dart tests of the web bindings, against a stand-in module. |
-| `support/` | Shared helpers: generated sounds, mixer capture, mocks, runners, the CMake generator, coverage. |
+| `web/` | `@TestOn('browser')` Dart tests of the web bindings, against a stand-in module; scripts that run `test/common` web tests under special browser setups (MT/ST parity, suspended AudioContext). |
+| `support/` | Shared helpers: generated sounds, mixer capture, custom DSP, mocks, synthetic MP4/Ogg fixtures, the stream decoder harness, the failing allocator, NDK / simulator / engine build helpers, runners, the CMake generator, coverage. |
+| `docker/` | Docker images and runner for Linux, Windows (Wine) and the FFmpeg release matrix. |
 
 A Dart test in `android/`, `ios/` or `linux/` still runs on the host. Its
 folder names the platform whose code path it covers.
@@ -49,7 +50,7 @@ folder names the platform whose code path it covers.
     `OSDEC_STRICT=1` for the OS decoder tests, to make these count as
     failures.
 
-  Every open bug has an ID (`E1`, `S4`, …), and the test that covers it
+  Every open bug has an ID (`A1`, `J5`, …), and the test that covers it
   uses the same ID. See `KNOWN_BUGS.md` for the list and for what to do
   when a bug gets fixed.
 - **Dart tags** (configured in `dart_test.yaml`):
@@ -76,6 +77,8 @@ flutter test --platform chrome test/web       # web, JS
 flutter test --platform chrome --wasm test/web  # web, WASM
 ./test/support/web_tests.sh                   # test/common in Chrome, single-threaded WASM build
 ./test/support/web_tests.sh --wasm            # test/common in Chrome, multi-threaded WASM build
+./test/web/web_mt_st_parity_test.sh           # same measurements on the ST, MT and forced-ST builds
+./test/web/web_suspended_context_test.sh      # Chrome without the autoplay flag
 # Windows: powershell -ExecutionPolicy Bypass -File test\support\web_tests.ps1 [-Wasm]
 ```
 
@@ -89,6 +92,10 @@ isolates, VST3, the device idle lifecycle, checks that read the C/C++
 sources) and `skip: kIsWeb ? ...` for single tests (filters on single
 sounds, which the web does not support).
 
+`test/common/stress_soak_test.dart` runs a randomized 8 s soak by default.
+Set `SOLOUD_STRESS_SECONDS=600` (or `--dart-define=SOLOUD_STRESS_SECONDS=600`
+on the web) for the long run, and `SOLOUD_STRESS_SEED` to replay a seed.
+
 ### Native: per-test scripts (macOS, Linux)
 
 ```bash
@@ -97,6 +104,7 @@ sounds, which the web does not support).
 ./test/linux/all.sh            # test/common + test/linux
 ./test/android/all.sh          # needs adb + a device; scripts take --build-only
 ./test/ios/all.sh              # boots an iOS simulator
+./test/android/android_abi_build_test.sh   # armeabi-v7a, arm64-v8a, x86_64 builds + bounds tests
 NATIVE_TEST_FILTER='decoder' ./test/macos/all.sh -- --asan
 ```
 
@@ -125,6 +133,21 @@ python3 test/support/gen_cmake.py
 The generator runs each script with fake compilers that only record their
 arguments. It then writes one target per test executable, replacing the
 Apple-only sources with the current platform's own sources.
+
+### Docker (Linux, Windows under Wine, FFmpeg releases)
+
+```bash
+./test/docker/run.sh linux   [all|scripts|ctest|asan|tsan|dart|shell]
+./test/docker/run.sh windows [all|ctest|native|shell]
+./test/docker/run.sh ffmpeg  [all|4|5|6|7|8|none] [-- --asan]
+```
+
+The repository is copied into the container, so the host's `build/` and
+`.dart_tool/` are not touched. Logs go to `build/docker/<platform>/`, and
+`REBUILD=1` rebuilds the image. The Windows image is a mingw-w64 build run
+under Wine: an approximation, not a replacement for a real Windows host.
+`ffmpeg` runs the Linux FFmpeg decoder tests against each FFmpeg release
+(`none` = without FFmpeg).
 
 ### Coverage
 
@@ -160,11 +183,17 @@ merged) and, if `genhtml` is installed, an HTML report.
 - **Generated CMake.** The bash scripts in `common/` remain the reference for
   how a test is built, and `CMakeLists.txt` is generated from them, so the
   two cannot drift apart. Tests whose scripts chain several runs through
-  temporary files (`simd_fallback`, `pull_mp3_seek`) run their script under
-  ctest and are not run on Windows.
+  temporary files (`simd_fallback`, `pull_mp3_seek`), or build against the
+  VST3 SDK outside the repository (`vst3_param_changes`), run their script
+  under ctest and are not run on Windows.
 - **Device-free by default.** Native tests in `common/` use SoLoud's null
   backend. Tests that need an output device are the Dart tests tagged
   `device` and `change_device_test`.
+- **Out of memory.** `out_of_memory_test` replaces the global `operator new`
+  with an allocator that fails the Nth allocation
+  (`support/out_of_memory_allocator.h`), to check the exports for leaks,
+  crashes and deadlocks after a failed allocation. `malloc` is not
+  intercepted, so failures inside the C libraries are not covered.
 
 ## Example app tests
 

@@ -1,7 +1,6 @@
 // Robustness tests for the metadata parsers that read lengths straight out of
-// stream data: the M4A box parser (src/audiobuffer/m4a_metadata.cpp), the
-// ID3v2 frame parsers of the MP3 and AAC stream decoders, the OpusTags
-// parser and the FLAC header scanner. Their input is the first bytes of a
+// stream data: the ID3v2 frame parsers of the MP3 and AAC stream decoders,
+// the OpusTags parser and the FLAC header scanner. Their input is the first bytes of a
 // network stream (StreamDecoder::decode, used by buffer and pull streams).
 // Malformed or hostile lengths must make them stop, never read past the data
 // or exhaust the stack, and metadata that arrives in pieces must decode as
@@ -11,10 +10,6 @@
 //
 // Scenarios:
 //   valid          well-formed tags still parse, for every parser below
-//   m4a-nested     4 MiB of nested 'moov' boxes, parsed on a thread with a
-//                  1 MiB stack (the iOS main thread and Android's default)
-//   m4a-wrap       a box size that wraps `offset + size` on a 32-bit size_t
-//   m4a-large-wrap an extended (64-bit) box size of UINT64_MAX
 //   mp3-id3-wrap   an ID3v2.3 frame size that wraps `pos + size` (MP3 stream)
 //   aac-id3-wrap   the same frame in front of an AAC stream
 //   id3-latin1     Latin-1 (and UTF-8) ID3 text comes out as UTF-8, from the
@@ -31,17 +26,19 @@
 //   metadata-defaults      a default-constructed AudioMetadata holds an
 //                  unknown type and zeroed Ogg format fields
 //
-// The *-wrap scenarios other than m4a-large-wrap can only fail with a 32-bit
-// size_t, as in the web build and on armeabi-v7a: run them with --wasm32. On
-// a 64-bit host the sums do not wrap and they pass either way. opus-wrap and
-// the flac-* scenarios need the Xiph libraries, which the --wasm32 build
-// leaves out.
+// The M4A box parser (src/audiobuffer/m4a_metadata.cpp) is platform
+// independent: its cases moved to test/common/m4a_metadata_test.cpp (which
+// also has a --wasm32 build).
+//
+// The *-wrap scenarios can only fail with a 32-bit size_t, as in the web
+// build and on armeabi-v7a: run them with --wasm32. On a 64-bit host the sums
+// do not wrap and they pass either way. opus-wrap and the flac-* scenarios
+// need the Xiph libraries, which the --wasm32 build leaves out.
 //
 // A scenario that can crash runs in a child process, so a crash is reported
 // as a failure of that scenario.
 
 #include "audiobuffer/aac_stream_decoder.h"
-#include "audiobuffer/m4a_metadata.h"
 #include "audiobuffer/mp3_stream_decoder.h"
 #include "audiobuffer/stream_decoder.h"
 
@@ -50,7 +47,6 @@
 #include <FLAC/stream_encoder.h>
 #include <ogg/ogg.h>
 #endif
-#include <pthread.h>
 
 #include <cstdint>
 #include <cstdio>
@@ -101,94 +97,6 @@ static void putText(Bytes &out, const char *text) {
 static Bytes cat(Bytes a, const Bytes &b) {
     a.insert(a.end(), b.begin(), b.end());
     return a;
-}
-
-// ------------------------------------------------------------------ M4A
-static Bytes box(const char *type, const Bytes &payload) {
-    Bytes out;
-    putBe32(out, static_cast<uint32_t>(8 + payload.size()));
-    out.insert(out.end(), type, type + 4);
-    out.insert(out.end(), payload.begin(), payload.end());
-    return out;
-}
-
-static Bytes ftyp() { return box("ftyp", {'M', '4', 'A', ' ', 0, 0, 0, 0}); }
-
-static Bytes m4aWithTitle(const char *title) {
-    Bytes data = {0, 0, 0, 1, 0, 0, 0, 0};
-    putText(data, title);
-    Bytes meta = {0, 0, 0, 0};
-    meta = cat(meta, box("ilst", box("\xa9nam", box("data", data))));
-    return cat(ftyp(), box("moov", box("udta", box("meta", meta))));
-}
-
-struct ParseJob {
-    const Bytes *data;
-    bool found;
-};
-
-static void *parseOnThread(void *arg) {
-    auto *job = static_cast<ParseJob *>(arg);
-    M4aMetadata meta;
-    job->found = parseM4aMetadata(job->data->data(), job->data->size(), meta);
-    return nullptr;
-}
-
-static void runM4aNested() {
-    // ftyp, then a chain of 'moov' boxes, each the only child of the one
-    // before it: one recursive call per 8 bytes of input.
-    const size_t levels = (4u << 20) / 8;
-    Bytes file = ftyp();
-    const size_t base = file.size();
-    file.resize(base + levels * 8);
-    for (size_t i = 0; i < levels; ++i) {
-        const uint32_t size = static_cast<uint32_t>((levels - i) * 8);
-        unsigned char *p = file.data() + base + i * 8;
-        p[0] = (size >> 24) & 0xFF;
-        p[1] = (size >> 16) & 0xFF;
-        p[2] = (size >> 8) & 0xFF;
-        p[3] = size & 0xFF;
-        std::memcpy(p + 4, "moov", 4);
-    }
-
-    ParseJob job{&file, true};
-    pthread_attr_t attr;
-    pthread_attr_init(&attr);
-    pthread_attr_setstacksize(&attr, 1u << 20);
-    pthread_t thread;
-    const bool started =
-        pthread_create(&thread, &attr, parseOnThread, &job) == 0;
-    EXPECT(started, "pthread_create failed");
-    if (started)
-        pthread_join(thread, nullptr);
-    pthread_attr_destroy(&attr);
-    EXPECT(!job.found, "a file of empty containers has no metadata");
-}
-
-static void runM4aWrap() {
-    // ftyp (16 bytes), then a 'moov' that declares 2^32 - 16 bytes. With a
-    // 32-bit size_t, 16 + (2^32 - 16) wraps to 0 and passes the bound check;
-    // inside it a 1 GiB 'free' box moves the read offset far past the data.
-    Bytes file = ftyp();
-    putBe32(file, 0xFFFFFFF0u);
-    putText(file, "moov");
-    putBe32(file, 0x40000000u);
-    putText(file, "free");
-    file.resize(file.size() + 32, 0);
-
-    M4aMetadata meta;
-    EXPECT(!parseM4aMetadata(file.data(), file.size(), meta),
-           "a box larger than the data must stop the parse");
-}
-
-static void runM4aLargeWrap() {
-    // An extended-size box at offset 8 whose 64-bit size would wrap its end.
-    const Bytes file = {0, 0, 0, 8, 'f', 'r', 'e', 'e',
-                        0, 0, 0, 1, 'm', 'o', 'o', 'v',
-                        255, 255, 255, 255, 255, 255, 255, 255};
-    M4aMetadata meta;
-    EXPECT(!parseM4aMetadata(file.data(), file.size(), meta),
-           "an extended box larger than the data must stop the parse");
 }
 
 // ------------------------------------------------------------------ ID3
@@ -572,12 +480,6 @@ static void runFlacTruncatedHeader() {
 static void testValid() {
     std::printf("valid: well-formed tags still parse\n");
     {
-        Bytes file = m4aWithTitle("Box Title");
-        M4aMetadata meta;
-        EXPECT(parseM4aMetadata(file.data(), file.size(), meta), "M4A: no metadata");
-        EXPECT(meta.title == "Box Title", "M4A title '%s'", meta.title.c_str());
-    }
-    {
         Bytes body = latin1Body("Frame Title");
         Bytes tag = id3Tag(static_cast<uint32_t>(body.size()), body);
         AacMetadata meta;
@@ -690,12 +592,6 @@ int main(int argc, char **argv) {
     const auto want = [&](const char *name) { return only.empty() || only == name; };
 
     if (want("valid")) testValid();
-    if (want("m4a-nested"))
-        isolated("m4a-nested", "4 MiB of nested boxes on a 1 MiB stack", runM4aNested);
-    if (want("m4a-wrap"))
-        isolated("m4a-wrap", "a box size that wraps a 32-bit offset", runM4aWrap);
-    if (want("m4a-large-wrap"))
-        isolated("m4a-large-wrap", "an extended box whose end wraps", runM4aLargeWrap);
     if (want("mp3-id3-wrap"))
         isolated("mp3-id3-wrap", "an ID3 frame size that wraps (MP3 stream)", runMp3Id3Wrap);
     if (want("aac-id3-wrap"))
