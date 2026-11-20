@@ -98,6 +98,9 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
   // When mDataEnded is true and decoder is initialized, dr_wav may still have
   // data in its internal buffer that hasn't been decoded yet.
   if (m_read_pos >= audioData.size() && (!isInitialized || !mDataEnded)) {
+    // No data and none will come: a decoder that never initialized is done.
+    if (!isInitialized && mDataEnded)
+      mDrained = true;
     return {{}, DecoderError::NoError};
   }
 
@@ -123,6 +126,13 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
       // Reset the read position so the next decode() call retries from the
       // beginning of the currently buffered data.
       m_read_pos = read_pos_before;
+      if (mDataEnded) {
+        // No more data will come, so the decoder can never initialize: end
+        // the stream, or a drain loop on hasPendingData() never ends.
+        audioData.clear();
+        m_read_pos = 0;
+        mDrained = true;
+      }
       return {{}, DecoderError::NoError};
     }
     isInitialized = true;
@@ -280,4 +290,5 @@ void WavDecoderWrapper::prepareForSeek(uint64_t targetSample,
   m_read_pos = 0;
   audioData.clear();
   mDataEnded = false;
+  mDrained = false;
 }
