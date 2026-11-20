@@ -146,6 +146,10 @@ namespace SoLoud
 		float deltamag = aDeltaPos.mag();
 		if (deltamag == 0)
 			return 1.0f;
+		// flutter_soloud: the caller passes the listener-to-source vector,
+		// but the OpenAL-style formula below wants source-to-listener
+		// (an approaching source/listener must raise the pitch). Flip it.
+		aDeltaPos.neg();
 		float vls = aDeltaPos.dot(aDstVel) / deltamag;
 		float vss = aDeltaPos.dot(aSrcVel) / deltamag;
 		float maxspeed = aSoundSpeed / aFactor;
@@ -291,7 +295,10 @@ namespace SoLoud
 				// Different speaker "focus" calculations to try, if the default "bleeds" too much..
 				//speakervol = (speakervol * speakervol + speakervol) / 2;
 				//speakervol = speakervol * speakervol;
-				v->mChannelVolume[j] = vol * speakervol;
+				// flutter_soloud: upstream stores vol * speakervol here, but vol
+				// also goes into m3dVolume (-> mOverallVolume), and the mixer
+				// multiplies both, so attenuation was applied twice.
+				v->mChannelVolume[j] = speakervol;
 			}
 			for (; j < MAX_CHANNELS; j++)
 			{
