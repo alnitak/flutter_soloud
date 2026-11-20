@@ -1,3 +1,45 @@
+## Unreleased
+Tests were reorganized into `test/common`, `test/<platform>` and `test/support` (see `test/README.md`), with many new native and Dart tests and Docker images for Linux and Windows (Wine). The bugs they found are fixed:
+
+- **Engine and 3D**
+  - `play()` on a `speechText()` source no longer crashes, and each `speechText()` call creates an independent source.
+  - `set3dListenerUp` sets the up vector (it used to set the "at" vector).
+  - 3D distance attenuation is no longer applied twice, and the Doppler shift goes in the right direction (an approaching source sounds higher).
+  - 3D setters called before the first sound is loaded are no longer lost.
+  - `createVoiceGroup()` before `init` throws instead of returning an invalid handle.
+  - `countAudioSource` counts waveform sources.
+  - Fixed the message of `PlayerErrors.filterAlreadyAdded`.
+  - Fixed an out-of-bounds read (a crash on Linux) when an invalid handle, e.g. one never returned by `play()`, is passed to voice functions such as `addVoicesToGroup`.
+  - Fixed undefined behavior when a `Bus` is destroyed while its voices are playing.
+- **Buses (breaking)**: `Bus` equality is now identity (`==`/`hashCode` were removed), and every bus becomes invalid after `deinit()`.
+- **Filters**
+  - Parameter ranges now match the native ranges: biquad frequency max 8000 and resonance max 2; flanger; limiter; pitch shift (shift min 0.1, semitones from -39.86 to 19.02); parametric EQ (`getDefault(paramIndex, {bands})`, `defaultBandQ`).
+  - Fixed the waveshaper output growing without bound with an amount close to -1 and loud input.
+  - The biquad cutoff is clamped below Nyquist.
+  - Pitch shift copies the wet parameter and converts semitones correctly.
+  - The compressor exposes exactly its 7 parameters.
+- **Mixer output encoders**
+  - Vorbis and FLAC: 6- and 8-channel output is in the right channel order.
+  - WAV: the header is always little-endian, and files over 4 GB get valid sizes.
+- **Speech**: fixed undefined behavior on non-ASCII text and on very long digit runs.
+- **Buffer streams (FLAC, Ogg FLAC, MP3, WAV, Vorbis)**
+  - Fixed lost or duplicated audio when data arrives in small chunks.
+  - Incomplete ID3 tags, Ogg pages and MPEG frames now wait for more data.
+  - Seeking in MP3 pull streams is sample-accurate.
+- **AAC/AC-3/E-AC-3 buffer streams**
+  - Fixed audio loss and glitches when the stream is fed in small chunks.
+  - Streams no longer stay pending forever when no system decoder is available.
+  - Apple: the last AC-3/E-AC-3 frame is no longer dropped, and HE-AAC (AAC+) ADTS streams play at full rate with SBR.
+  - Linux:
+    - no longer loses most of the audio when the stream is decoded in small pieces;
+    - fixed missing frames at the start of the stream;
+    - fixed a heap over-read;
+    - FFmpeg is loaded safely from several threads.
+  - Windows: COM is no longer torn down on the thread that frees the decoder. Streams shorter than 3 frames now decode.
+- **Linux decoding**
+  - Decoding from memory honors `TMPDIR`.
+  - M4A files no longer decode a few ms too long with FFmpeg older than 7.1.
+
 ## 5.3.1 (18 Nov 2026)
 - fix: eliminate playback drift between LoadMode.memory and LoadMode.disk, fix seek/tell callbacks in WavStream, and fix MemoryFile::seek boundary clamping. Thanks to @Solido #580
 - fix web: conditionally import dart:isolate in realtime_stream.dart for full Web and WASM compatibility
