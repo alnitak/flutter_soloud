@@ -47,6 +47,12 @@ public:
 
   static bool checkForValidFrames(const std::vector<unsigned char> &buffer);
 
+  /// Size in bytes of the MPEG audio frame whose 4-byte header is at [h]
+  /// (padding included), or 0 when [h] is not a valid header or the frame is
+  /// free format. [pcmFrames], when given, receives the PCM frames per
+  /// channel the frame decodes to.
+  static size_t mpegFrameBytes(const unsigned char *h, int *pcmFrames = nullptr);
+
   drmp3 decoder;
 
 private:
@@ -78,6 +84,13 @@ private:
   bool mDataEnded; // Signals that no more data will be added
   bool mDrained;   // True when decoder has finished draining after mDataEnded
   uint64_t mTotalAudioSizeBytes;
+
+  /// True when the bytes not decoded yet (in dr_mp3's buffer, then in
+  /// audioData) hold whole MPEG frames for at least [pcmFrames] PCM frames,
+  /// plus the header of the frame after them. dr_mp3 (minimp3) skips the
+  /// bytes of a frame that is not complete as garbage, so a new frame is
+  /// decoded only once this holds or the data has ended.
+  bool wholeFramesAvailable(uint64_t pcmFrames) const;
 
   void buildSeekTable();
   double estimateBitrateFromFirstFrame() const;
