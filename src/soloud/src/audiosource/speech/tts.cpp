@@ -5,6 +5,17 @@
 #include "darray.h"
 #include "tts.h"
 
+// flutter_soloud: the <ctype.h> classifiers are undefined for negative
+// arguments other than EOF. Text is UTF-8, so bytes >= 0x80 reach them as a
+// negative `char` where char is signed; pass them as unsigned char.
+static inline int tts_isalpha(char c) { return isalpha((unsigned char)c); }
+static inline int tts_isspace(char c) { return isspace((unsigned char)c); }
+static inline int tts_isdigit(char c) { return isdigit((unsigned char)c); }
+static inline int tts_ispunct(char c) { return ispunct((unsigned char)c); }
+static inline int tts_isupper(char c) { return isupper((unsigned char)c); }
+static inline int tts_islower(char c) { return islower((unsigned char)c); }
+static inline int tts_toupper(char c) { return toupper((unsigned char)c); }
+
 static const char *ASCII[] =
 {
 	"null", "", "", "",
@@ -844,7 +855,7 @@ static int isvowel(int chr)
 
 static int isconsonant(int chr)
 {
-	return (isupper(chr) && !isvowel(chr));
+	return (tts_isupper(chr) && !isvowel(chr));
 }
 
 static int leftmatch(
@@ -872,7 +883,7 @@ static int leftmatch(
 	for (; count > 0; pat--, count--)
 	{
 		/* First check for simple text or space */
-		if (isalpha(*pat) || *pat == '\'' || *pat == ' ')
+		if (tts_isalpha(*pat) || *pat == '\'' || *pat == ' ')
 		{
 			if (*pat != *text)
 			{
@@ -963,7 +974,7 @@ static int rightmatch(
 	for (pat = pattern; *pat != '\0'; pat++)
 	{
 		/* First check for simple text or space */
-		if (isalpha(*pat) || *pat == '\'' || *pat == ' ')
+		if (tts_isalpha(*pat) || *pat == '\'' || *pat == ' ')
 		{
 			if (*pat != *text)
 			{
@@ -1150,7 +1161,7 @@ static void guess_word(darray *arg, char *word)
 
 	do
 	{
-		if (isupper(word[index]))
+		if (tts_isupper(word[index]))
 			type = word[index] - 'A' + 1;
 		else
 			type = 0;
@@ -1173,8 +1184,8 @@ static int NRL(const char *s, int n, darray *phone)
 	{
 		char ch = *s++;
 
-		if (islower(ch))
-			ch = (char)toupper(ch);
+		if (tts_islower(ch))
+			ch = (char)tts_toupper(ch);
 
 		*d++ = ch;
 	}
@@ -1212,13 +1223,13 @@ static int suspect_word(const char *s, int n)
 	{
 		char ch = *s++;
 
-		if (i && last != '-' && isupper(ch))
+		if (i && last != '-' && tts_isupper(ch))
 			seen_upper = 1;
 
-		if (islower(ch))
+		if (tts_islower(ch))
 		{
 			seen_lower = 1;
-			ch = (char)toupper(ch);
+			ch = (char)tts_toupper(ch);
 		}
 
 		if (ch == 'A' || ch == 'E' || ch == 'I' || ch == 'O' || ch == 'U' || ch == 'Y')
@@ -1268,7 +1279,7 @@ int xlate_string(const char *string, darray *phone)
 	const char *s = string;
 	char ch;
 
-	while (isspace(ch = *s))
+	while (tts_isspace(ch = *s))
 		s++;
 
 	while (*s)
@@ -1276,20 +1287,20 @@ int xlate_string(const char *string, darray *phone)
 		ch = *s;
 		const char *word = s;
 
-		if (isalpha(ch))
+		if (tts_isalpha(ch))
 		{
-			while (isalpha(ch = *s) || ((ch == '\'' || ch == '-' || ch == '.') && isalpha(s[1])))
+			while (tts_isalpha(ch = *s) || ((ch == '\'' || ch == '-' || ch == '.') && tts_isalpha(s[1])))
 			{
 				s++;
 			}
 
-			if (!ch || isspace(ch) || ispunct(ch) || (isdigit(ch) && !suspect_word(word, (int)(s - word))))
+			if (!ch || tts_isspace(ch) || tts_ispunct(ch) || (tts_isdigit(ch) && !suspect_word(word, (int)(s - word))))
 			{
 				nph += xlate_word(word, (int)(s - word), phone);
 			}
 			else
 			{
-				while (*s && !isspace(*s) && !ispunct(*s))
+				while (*s && !tts_isspace(*s) && !tts_ispunct(*s))
 				{
 					ch = *s;
 					s++;
@@ -1300,29 +1311,41 @@ int xlate_string(const char *string, darray *phone)
 		}
 		else
 		{
-			if (isdigit(ch) || (ch == '-' && isdigit(s[1])))
+			if (tts_isdigit(ch) || (ch == '-' && tts_isdigit(s[1])))
 			{
 				int sign = (ch == '-') ? -1 : 1;
 				int value = 0;
+				// flutter_soloud: a digit run too long for an int used to
+				// overflow `value` (undefined behaviour); spell it out digit
+				// by digit instead.
+				const char *number = s;
+				int overflow = 0;
 
 				if (sign < 0)
 				{
 					ch = *++s;
 				}
 
-				while (isdigit(ch = *s))
+				while (tts_isdigit(ch = *s))
 				{
-					value = value * 10 + ch - '0';
+					if (value > (0x7FFFFFFF - (ch - '0')) / 10)
+						overflow = 1;
+					else if (!overflow)
+						value = value * 10 + (ch - '0');
 					s++;
 				}
 
-				if (ch == '.' && isdigit(s[1]))
+				if (overflow)
+				{
+					nph += spell_out(number, (int)(s - number), phone);
+				}
+				else if (ch == '.' && tts_isdigit(s[1]))
 				{
 					word = ++s;
 					nph += xlate_cardinal(value * sign, phone);
 					nph += xlate_string("point", phone);
 
-					while (isdigit(ch = *s))
+					while (tts_isdigit(ch = *s))
 					{
 						s++;
 					}
@@ -1349,7 +1372,7 @@ int xlate_string(const char *string, darray *phone)
 				}
 				else
 				{
-					if (ispunct(ch))
+					if (tts_ispunct(ch))
 					{
 						switch (ch)
 						{
@@ -1405,7 +1428,7 @@ int xlate_string(const char *string, darray *phone)
 					}
 					else
 					{
-						while (*s && !isspace(*s))
+						while (*s && !tts_isspace(*s))
 						{
 							ch = *s;
 							s++;
@@ -1416,7 +1439,7 @@ int xlate_string(const char *string, darray *phone)
 				}
 			}
 
-			while (isspace(ch = *s))
+			while (tts_isspace(ch = *s))
 				s++;
 		}
 	}
