@@ -43,6 +43,11 @@ private:
     bool m_dataEnded;
     bool m_drained;
     uint64_t m_streamStartOffset;
+    /// Absolute stream offset of the end of the last block (metadata block or
+    /// frame) libFLAC fully decoded. Bytes from here on may sit undecoded in
+    /// libFLAC's bit reader, so they are kept in m_audioData: when a read
+    /// aborts for lack of data, the read position rolls back here.
+    uint64_t m_decodedUpTo = 0;
 
     std::vector<float> m_decodedPcm;
     int m_channels;
