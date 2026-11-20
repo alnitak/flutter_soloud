@@ -258,7 +258,8 @@ typedef struct {
     size_t currentPos;
 } ma_memory_stream;
 
-static size_t ma_memory_stream_read(void* pUserData, void* pBufferOut, size_t bytesToRead, size_t* pBytesRead)
+/* An ma_read_proc: returns an ma_result and gives the byte count in pBytesRead. */
+static ma_result ma_memory_stream_read(void* pUserData, void* pBufferOut, size_t bytesToRead, size_t* pBytesRead)
 {
     ma_memory_stream* stream = (ma_memory_stream*)pUserData;
     size_t remainingSize = stream->dataSize - stream->currentPos;
@@ -273,7 +274,7 @@ static size_t ma_memory_stream_read(void* pUserData, void* pBufferOut, size_t by
         *pBytesRead = bytesToReadAdjusted;
     }
 
-    return bytesToReadAdjusted;
+    return (bytesToReadAdjusted == 0 && bytesToRead > 0) ? MA_AT_END : MA_SUCCESS;
 }
 
 static ma_result ma_memory_stream_seek(void* pUserData, ma_int64 offset, ma_seek_origin origin)
@@ -341,9 +342,10 @@ MA_API ma_result ma_libvorbis_init_memory(const void* pData, size_t dataSize, co
     pStream->currentPos = 0;
 
     /* Set up the callbacks */
-    pVorbis->onRead = (ma_read_proc)ma_memory_stream_read;
-    pVorbis->onSeek = (ma_seek_proc)ma_memory_stream_seek;
-    pVorbis->onTell = (ma_tell_proc)ma_memory_stream_tell;
+    /* No casts: the compiler checks that the callbacks match the types. */
+    pVorbis->onRead = ma_memory_stream_read;
+    pVorbis->onSeek = ma_memory_stream_seek;
+    pVorbis->onTell = ma_memory_stream_tell;
     pVorbis->pReadSeekTellUserData = pStream;
     pVorbis->ownsUserData = MA_TRUE;
 

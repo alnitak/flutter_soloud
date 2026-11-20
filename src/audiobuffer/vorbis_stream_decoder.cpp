@@ -83,6 +83,8 @@ AudioMetadata VorbisDecoderWrapper::getMetadata() {
     metadata.type = DetectedType::BUFFER_OGG_VORBIS;
 
     metadata.oggMetadata.commentsCount = vc.comments;
+    if (vc.vendor != nullptr)
+        metadata.oggMetadata.vendor = vc.vendor;
 
     metadata.oggMetadata.vorbisInfo.version = vi.version;
     metadata.oggMetadata.vorbisInfo.rate = vi.rate;
