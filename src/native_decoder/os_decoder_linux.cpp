@@ -2,6 +2,7 @@
 
 #include "native_audio_decoder.h"
 #include "../audiobuffer/m4a_metadata.h"
+#include "../native_stream/m4a_gapless.h"
 #include "../audiobuffer/aac_stream_decoder.h"
 #include <dlfcn.h>
 #include <unistd.h>
@@ -258,6 +259,7 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     // Step 1: Probe file header for accurate audio metadata
     int probedSampleRate = 0;
     int probedChannels = 0;
+    bool isMp4 = false;
     FILE *probeFp = fopen(filePath, "rb");
     if (probeFp) {
         unsigned char probeBuf[16384];
@@ -268,6 +270,7 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
             const unsigned char *payload = probeBuf + id3Skip;
             const size_t payloadLen = n - id3Skip;
             if (NativeAudioDecoder::isM4aOrMp4(probeBuf, n)) {
+                isMp4 = true;
                 M4aMetadata m4a;
                 if (parseM4aMetadata(probeBuf, n, m4a)) {
                     if (m4a.sampleRate > 0) probedSampleRate = m4a.sampleRate;
@@ -340,6 +343,19 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
         gFFmpeg.avformat_close_input(&fmtCtx);
         result.errorMessage = "No audio stream found in file";
         return result;
+    }
+
+    // AVStream.time_base and .duration: at offsets 32 and 48 from lavf 59
+    // (FFmpeg 5) through 63 (FFmpeg 9). Read before the context is closed.
+    double audioStreamSeconds = 0.0;
+    if (lavfMajor >= 59) {
+        const uint8_t *st = reinterpret_cast<const uint8_t *>(dummyCtx->streams[audioStreamIndex]);
+        const int tbNum = *reinterpret_cast<const int *>(st + 32);
+        const int tbDen = *reinterpret_cast<const int *>(st + 36);
+        const int64_t duration = *reinterpret_cast<const int64_t *>(st + 48);
+        if (tbNum > 0 && tbDen > 0 && duration > 0) {
+            audioStreamSeconds = static_cast<double>(duration) * tbNum / tbDen;
+        }
     }
 
     if (!codec) {
@@ -612,6 +628,24 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
 
     channels = actualChannels;
     size_t totalFrames = planarChannelData[0].size();
+
+    // libavformat drops the encoder delay that the edit list or iTunSMPB
+    // declares, but before FFmpeg 7.1 the mov demuxer does not discard the
+    // padding at the end (no discard_padding on the last packet), so the
+    // decode runs up to one AAC frame long. Stop at the valid length.
+    if (isMp4) {
+        M4aGaplessInfo gapless;
+        uint64_t delayFrames = 0, validFrames = 0;
+        if (!parseM4aGapless(std::string(filePath), gapless) ||
+            !gapless.resolve(static_cast<double>(sampleRate), delayFrames, validFrames)) {
+            // A damaged container libavformat still opened: its stream
+            // duration (the edit list's, when there is one) is the bound.
+            validFrames = static_cast<uint64_t>(audioStreamSeconds * sampleRate + 0.5);
+        }
+        if (validFrames > 0 && totalFrames > validFrames) {
+            totalFrames = static_cast<size_t>(validFrames);
+        }
+    }
     for (int c = 1; c < channels; c++) {
         if (planarChannelData[c].size() < totalFrames) {
             planarChannelData[c].resize(totalFrames, 0.0f);
@@ -669,20 +703,29 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
         ext = ".eac3";
     }
 
-    char tempPath[128];
-    snprintf(tempPath, sizeof(tempPath), "/tmp/soloud_media_XXXXXX%s", ext);
-    int fd = mkstemps(tempPath, static_cast<int>(std::strlen(ext)));
+    // Honor TMPDIR like mkstemp(3) users are expected to (sandboxes and
+    // read-only roots often have no writable /tmp).
+    std::string tempDir = "/tmp";
+    if (const char *envTmp = std::getenv("TMPDIR")) {
+        if (envTmp[0] != '\0') tempDir = envTmp;
+    }
+    while (tempDir.size() > 1 && tempDir.back() == '/') tempDir.pop_back();
+    std::string pattern = tempDir + "/soloud_media_XXXXXX" + ext;
+    std::vector<char> tempPathBuf(pattern.begin(), pattern.end());
+    tempPathBuf.push_back('\0');
+    int fd = mkstemps(tempPathBuf.data(), static_cast<int>(std::strlen(ext)));
     if (fd < 0) {
         // Fallback to mkstemp if mkstemps fails
-        char fallbackPath[] = "/tmp/soloud_media_XXXXXX";
-        fd = mkstemp(fallbackPath);
+        pattern = tempDir + "/soloud_media_XXXXXX";
+        tempPathBuf.assign(pattern.begin(), pattern.end());
+        tempPathBuf.push_back('\0');
+        fd = mkstemp(tempPathBuf.data());
         if (fd < 0) {
-            result.errorMessage = "Failed to create temporary file for Linux decoding";
+            result.errorMessage = "Failed to create temporary file in " + tempDir + " for Linux decoding";
             return result;
         }
-        std::strncpy(tempPath, fallbackPath, sizeof(tempPath) - 1);
-        tempPath[sizeof(tempPath) - 1] = '\0';
     }
+    const char *tempPath = tempPathBuf.data();
 
     size_t written = write(fd, bytes, length);
     close(fd);
