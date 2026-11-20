@@ -1,6 +1,5 @@
 // Play, pause, seek and position of a voice, with the real engine and a
 // generated sound.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

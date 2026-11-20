@@ -6,7 +6,6 @@
 //
 // A copy runs in the example app (example/tests/tests/asynchronous_deinit.dart)
 // for the web and mobile lifecycles.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

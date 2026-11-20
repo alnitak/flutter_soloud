@@ -1,7 +1,6 @@
 // Per-voice controls with the real engine: volume, pan, relative speed,
 // pause, stop, faders, oscillators, scheduled pause/stop, and what happens
 // with handles that are invalid or whose sound has already ended.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

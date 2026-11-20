@@ -62,6 +62,12 @@ jobs:
           EXTRA=""
           [ "${{ matrix.flavor }}" == "wasm" ] && EXTRA="--wasm"
           flutter test --platform chrome $EXTRA test/web
+      - name: test/common in Chrome, real WASM build
+        shell: bash
+        run: |
+          EXTRA=""
+          [ "${{ matrix.flavor }}" == "wasm" ] && EXTRA="--wasm"
+          ./test/support/web_tests.sh $EXTRA test/common
 
   native:
     name: Native (${{ matrix.os }}${{ matrix.sanitize && format(', {0}', matrix.sanitize) || '' }})

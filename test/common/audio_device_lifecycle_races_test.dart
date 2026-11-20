@@ -4,6 +4,8 @@
 // A copy runs in the example app
 // (example/tests/tests/audio_device_lifecycle_races.dart) for the mobile
 // lifecycles.
+// Not on the web: there the device is always kept running (the idle timeout
+// has no effect), so there is no device lifecycle to race on.
 @TestOn('vm')
 @Tags(['device'])
 library;

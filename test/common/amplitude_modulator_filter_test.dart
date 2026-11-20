@@ -2,7 +2,6 @@
 // as a global filter (with a spectral check of the captured engine output),
 // per sound and on a mixing bus. The DSP itself is covered natively by
 // amplitude_modulator_test.cpp.
-@TestOn('vm')
 @Tags(['device'])
 library;
 
@@ -10,6 +9,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -97,65 +97,79 @@ void main() {
     await SoLoud.instance.disposeSource(sound);
   });
 
-  test('per sound and on a mixing bus: set, get and fade', () async {
-    final sound = await loadTestWaveform(frequency: 1000);
+  test(
+    'per sound and on a mixing bus: set, get and fade',
+    skip: kIsWeb
+        ? 'filters for single sounds are not supported on the web'
+        : null,
+    () async {
+      final sound = await loadTestWaveform(frequency: 1000);
 
-    final filter = sound.filters.amplitudeModulatorFilter..activate();
-    expect(filter.isActive, isTrue);
-    final handle = SoLoud.instance.play(sound, looping: true);
-    filter.frequency(soundHandle: handle).value = 16000;
-    filter.wet(soundHandle: handle).value = 0.5;
-    expect(filter.frequency(soundHandle: handle).value, closeTo(16000, 1e-3));
-    expect(filter.wet(soundHandle: handle).value, closeTo(0.5, 1e-6));
+      final filter = sound.filters.amplitudeModulatorFilter..activate();
+      expect(filter.isActive, isTrue);
+      final handle = SoLoud.instance.play(sound, looping: true);
+      filter.frequency(soundHandle: handle).value = 16000;
+      filter.wet(soundHandle: handle).value = 0.5;
+      expect(filter.frequency(soundHandle: handle).value, closeTo(16000, 1e-3));
+      expect(filter.wet(soundHandle: handle).value, closeTo(0.5, 1e-6));
 
-    filter
-        .frequency(soundHandle: handle)
-        .fadeFilterParameter(to: 200, time: const Duration(milliseconds: 200));
-    expect(
-      await waitUntil(
-        () => (filter.frequency(soundHandle: handle).value - 200).abs() < 1e-2,
-      ),
-      isTrue,
-      reason: 'sound frequency fade did not complete',
-    );
-    filter
-        .wet(soundHandle: handle)
-        .oscillateFilterParameter(
-          from: 0,
-          to: 1,
-          time: const Duration(milliseconds: 200),
-        );
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    expect(filter.wet(soundHandle: handle).value, inInclusiveRange(0, 1));
-    await SoLoud.instance.stop(handle);
-    filter.deactivate();
-    expect(filter.isActive, isFalse);
+      filter
+          .frequency(soundHandle: handle)
+          .fadeFilterParameter(
+            to: 200,
+            time: const Duration(milliseconds: 200),
+          );
+      expect(
+        await waitUntil(
+          () =>
+              (filter.frequency(soundHandle: handle).value - 200).abs() < 1e-2,
+        ),
+        isTrue,
+        reason: 'sound frequency fade did not complete',
+      );
+      filter
+          .wet(soundHandle: handle)
+          .oscillateFilterParameter(
+            from: 0,
+            to: 1,
+            time: const Duration(milliseconds: 200),
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(filter.wet(soundHandle: handle).value, inInclusiveRange(0, 1));
+      await SoLoud.instance.stop(handle);
+      filter.deactivate();
+      expect(filter.isActive, isFalse);
 
-    final bus = SoLoud.instance.createMixingBus(name: 'AM Bus');
-    final busFilter = bus.filters.amplitudeModulatorFilter..activate();
-    expect(busFilter.isActive, isTrue);
-    final busHandle = bus.playOnEngine();
-    bus.play(sound, looping: true);
-    busFilter.frequency(soundHandle: busHandle).value = 16000;
-    expect(
-      busFilter.frequency(soundHandle: busHandle).value,
-      closeTo(16000, 1e-3),
-    );
-    busFilter
-        .wet(soundHandle: busHandle)
-        .fadeFilterParameter(to: 0.25, time: const Duration(milliseconds: 200));
-    expect(
-      await waitUntil(
-        () => (busFilter.wet(soundHandle: busHandle).value - 0.25).abs() < 1e-3,
-      ),
-      isTrue,
-      reason: 'bus wet fade did not complete',
-    );
-    busFilter.deactivate();
-    expect(busFilter.isActive, isFalse);
-    bus.dispose();
-    await SoLoud.instance.disposeSource(sound);
-  });
+      final bus = SoLoud.instance.createMixingBus(name: 'AM Bus');
+      final busFilter = bus.filters.amplitudeModulatorFilter..activate();
+      expect(busFilter.isActive, isTrue);
+      final busHandle = bus.playOnEngine();
+      bus.play(sound, looping: true);
+      busFilter.frequency(soundHandle: busHandle).value = 16000;
+      expect(
+        busFilter.frequency(soundHandle: busHandle).value,
+        closeTo(16000, 1e-3),
+      );
+      busFilter
+          .wet(soundHandle: busHandle)
+          .fadeFilterParameter(
+            to: 0.25,
+            time: const Duration(milliseconds: 200),
+          );
+      expect(
+        await waitUntil(
+          () =>
+              (busFilter.wet(soundHandle: busHandle).value - 0.25).abs() < 1e-3,
+        ),
+        isTrue,
+        reason: 'bus wet fade did not complete',
+      );
+      busFilter.deactivate();
+      expect(busFilter.isActive, isFalse);
+      bus.dispose();
+      await SoLoud.instance.disposeSource(sound);
+    },
+  );
 }
 
 /// Captures the engine output as PCM F32 and returns [frames] frames of the

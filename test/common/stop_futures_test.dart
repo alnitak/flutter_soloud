@@ -1,7 +1,6 @@
 // stop(), scheduleStop() and schedulePause() with the real engine and a
 // generated sound. stop() futures must complete also for a handle that has
 // already ended, without severe logs.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

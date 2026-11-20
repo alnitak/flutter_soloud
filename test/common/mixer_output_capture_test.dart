@@ -4,7 +4,6 @@
 // formats work with a notification threshold. Stopping and isolates are in
 // mixer_output_stop_test.dart, mixer_output_isolate_test.dart and
 // mixer_output_reinit_test.dart.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

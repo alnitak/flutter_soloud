@@ -2,10 +2,10 @@
 // a bus nested in another one (annexing its voice), filters on a bus, and
 // using a bus that has been disposed. Levels are measured on the captured
 // mixer output.
-@TestOn('vm')
 @Tags(['device'])
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/filters/biquad_resonant_filter.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -271,7 +271,10 @@ void main() {
       expect(echo.delay().value, closeTo(0.3, 1e-6));
       echo.delay().value = 0.8;
       expect(echo.delay().value, closeTo(0.8, 1e-6));
-      expect(echo.delay(soundHandle: busHandle).value, closeTo(0.8, 1e-6));
+      // Read through the bus's voice: a single-sound filter, not on the web.
+      if (!kIsWeb) {
+        expect(echo.delay(soundHandle: busHandle).value, closeTo(0.8, 1e-6));
+      }
       // The global echo is a different filter.
       expect(soloud.filters.echoFilter.isActive, isFalse);
     });

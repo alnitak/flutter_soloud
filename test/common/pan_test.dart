@@ -1,6 +1,5 @@
 // Pan controls on a playing voice, with the real engine and a generated
 // sound.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

@@ -2,7 +2,6 @@
 // voice, so the assertions are made on the captured mixer output: the level
 // of each channel for positions, attenuation and listener orientation, and
 // the frequency of a steady tone for the doppler shift.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

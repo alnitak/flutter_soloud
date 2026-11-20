@@ -4,10 +4,10 @@
 // parameter, and the errors for filters that are not active, handles that
 // are not voices, sounds that are gone and attribute indices that do not
 // exist. Then the parametric EQ and custom filter specifics.
-@TestOn('vm')
 @Tags(['device'])
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_soloud/src/filters/amplitude_modulator_filter.dart';
 import 'package:flutter_soloud/src/filters/bassboost_filter.dart';
@@ -629,136 +629,150 @@ void main() {
         });
       });
 
-      group('single sound', () {
-        late AudioSource sound;
-        late FilterBase f;
-        setUp(() async {
-          sound = await loadTestWaveform();
-          f = filter.single(sound.filters);
-        });
+      group(
+        'single sound',
+        skip: kIsWeb
+            ? 'filters for single sounds are not supported on the web'
+            : null,
+        () {
+          late AudioSource sound;
+          late FilterBase f;
+          setUp(() async {
+            sound = await loadTestWaveform();
+            f = filter.single(sound.filters);
+          });
 
-        test('activate and deactivate do not touch the global filter', () {
-          expect(f.isActive, isFalse);
-          f.activate();
-          expect(f.isActive, isTrue);
-          expect(filter.global.isActive, isFalse);
-          f.deactivate();
-          expect(f.isActive, isFalse);
-        });
+          test('activate and deactivate do not touch the global filter', () {
+            expect(f.isActive, isFalse);
+            f.activate();
+            expect(f.isActive, isTrue);
+            expect(filter.global.isActive, isFalse);
+            f.deactivate();
+            expect(f.isActive, isFalse);
+          });
 
-        test('errors for twice and inactive', () {
-          f.activate();
-          expect(f.activate, throwsA(isA<SoLoudFilterAlreadyAddedException>()));
-          f.deactivate();
-          expect(f.deactivate, throwsA(isA<SoLoudFilterNotFoundException>()));
-        });
-
-        test('parameters start at their Dart defaults', () {
-          f.activate();
-          final h = soloud.play(sound);
-          for (final p in filter.params) {
+          test('errors for twice and inactive', () {
+            f.activate();
             expect(
-              p.on(sound.filters, h).value,
-              closeTo(p.def, 1e-4),
-              reason: p.name,
+              f.activate,
+              throwsA(isA<SoLoudFilterAlreadyAddedException>()),
             );
-          }
-        });
+            f.deactivate();
+            expect(f.deactivate, throwsA(isA<SoLoudFilterNotFoundException>()));
+          });
 
-        test('parameters round-trip', () {
-          f.activate();
-          final h = soloud.play(sound);
-          for (final p in filter.params) {
-            p.on(sound.filters, h).value = p.other;
+          test('parameters start at their Dart defaults', () {
+            f.activate();
+            final h = soloud.play(sound);
+            for (final p in filter.params) {
+              expect(
+                p.on(sound.filters, h).value,
+                closeTo(p.def, 1e-4),
+                reason: p.name,
+              );
+            }
+          });
+
+          test('parameters round-trip', () {
+            f.activate();
+            final h = soloud.play(sound);
+            for (final p in filter.params) {
+              p.on(sound.filters, h).value = p.other;
+              expect(
+                p.on(sound.filters, h).value,
+                closeTo(p.other, 1e-3),
+                reason: p.name,
+              );
+            }
+          });
+
+          test('each voice has its own parameters', () {
+            f.activate();
+            final a = soloud.play(sound);
+            final b = soloud.play(sound);
+            final wet = filter.params.first;
+            final initial = wet.on(sound.filters, b).value;
+            wet.on(sound.filters, a).value = 0.25;
+            expect(wet.on(sound.filters, a).value, closeTo(0.25, 1e-4));
+            expect(wet.on(sound.filters, b).value, initial);
+          });
+
+          test('a voice playing when the filter is activated gets it', () {
+            final h = soloud.play(sound);
+            f.activate();
+            expect(filter.params.first.on(sound.filters, h).value, 1);
+          });
+
+          test('fade and oscillate a voice parameter', () async {
+            f.activate();
+            final h = soloud.play(sound);
+            final wet = filter.params.first.on(sound.filters, h)
+              ..fadeFilterParameter(
+                to: 0.3,
+                time: const Duration(milliseconds: 100),
+              );
             expect(
-              p.on(sound.filters, h).value,
-              closeTo(p.other, 1e-3),
-              reason: p.name,
+              await waitUntil(() => (wet.value - 0.3).abs() < 1e-3),
+              isTrue,
             );
-          }
-        });
-
-        test('each voice has its own parameters', () {
-          f.activate();
-          final a = soloud.play(sound);
-          final b = soloud.play(sound);
-          final wet = filter.params.first;
-          final initial = wet.on(sound.filters, b).value;
-          wet.on(sound.filters, a).value = 0.25;
-          expect(wet.on(sound.filters, a).value, closeTo(0.25, 1e-4));
-          expect(wet.on(sound.filters, b).value, initial);
-        });
-
-        test('a voice playing when the filter is activated gets it', () {
-          final h = soloud.play(sound);
-          f.activate();
-          expect(filter.params.first.on(sound.filters, h).value, 1);
-        });
-
-        test('fade and oscillate a voice parameter', () async {
-          f.activate();
-          final h = soloud.play(sound);
-          final wet = filter.params.first.on(sound.filters, h)
-            ..fadeFilterParameter(
-              to: 0.3,
-              time: const Duration(milliseconds: 100),
+            wet.oscillateFilterParameter(
+              from: 0.2,
+              to: 0.8,
+              time: const Duration(milliseconds: 80),
             );
-          expect(await waitUntil(() => (wet.value - 0.3).abs() < 1e-3), isTrue);
-          wet.oscillateFilterParameter(
-            from: 0.2,
-            to: 0.8,
-            time: const Duration(milliseconds: 80),
-          );
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-          final seen = <double>{};
-          for (var i = 0; i < 12; i++) {
-            await Future<void>.delayed(const Duration(milliseconds: 10));
-            final v = wet.value;
-            expect(v, inInclusiveRange(0.2 - 1e-3, 0.8 + 1e-3));
-            seen.add(v);
-          }
-          expect(seen.length, greaterThan(1), reason: 'it oscillates');
-        });
+            await Future<void>.delayed(const Duration(milliseconds: 100));
+            final seen = <double>{};
+            for (var i = 0; i < 12; i++) {
+              await Future<void>.delayed(const Duration(milliseconds: 10));
+              final v = wet.value;
+              expect(v, inInclusiveRange(0.2 - 1e-3, 0.8 + 1e-3));
+              seen.add(v);
+            }
+            expect(seen.length, greaterThan(1), reason: 'it oscillates');
+          });
 
-        test('a parameter of a voice whose sound lacks the filter', () {
-          final h = soloud.play(sound);
-          expect(
-            () => filter.params.first.on(sound.filters, h).value,
-            throwsA(isA<SoLoudFilterNotFoundException>()),
-          );
-        });
+          test('a parameter of a voice whose sound lacks the filter', () {
+            final h = soloud.play(sound);
+            expect(
+              () => filter.params.first.on(sound.filters, h).value,
+              throwsA(isA<SoLoudFilterNotFoundException>()),
+            );
+          });
 
-        test('a handle that is not a voice', () {
-          f.activate();
-          const bogus = SoundHandle(0x0BAD0BAD);
-          final wet = filter.params.first.on(sound.filters, bogus);
-          final notFound = throwsA(
-            isA<SoLoudSoundHandleNotFoundCppException>(),
-          );
-          expect(() => wet.value, notFound);
-          expect(() => wet.value = 0.5, notFound);
-          expect(
-            () => wet.fadeFilterParameter(to: 0, time: Duration.zero),
-            notFound,
-          );
-          expect(
-            () => wet.oscillateFilterParameter(
-              from: 0,
-              to: 1,
-              time: Duration.zero,
-            ),
-            notFound,
-          );
-        });
+          test('a handle that is not a voice', () {
+            f.activate();
+            const bogus = SoundHandle(0x0BAD0BAD);
+            final wet = filter.params.first.on(sound.filters, bogus);
+            final notFound = throwsA(
+              isA<SoLoudSoundHandleNotFoundCppException>(),
+            );
+            expect(() => wet.value, notFound);
+            expect(() => wet.value = 0.5, notFound);
+            expect(
+              () => wet.fadeFilterParameter(to: 0, time: Duration.zero),
+              notFound,
+            );
+            expect(
+              () => wet.oscillateFilterParameter(
+                from: 0,
+                to: 1,
+                time: Duration.zero,
+              ),
+              notFound,
+            );
+          });
 
-        test('a disposed sound', () async {
-          await soloud.disposeSource(sound);
-          final notFound = throwsA(isA<SoLoudSoundHashNotFoundCppException>());
-          expect(f.activate, notFound);
-          expect(f.deactivate, notFound);
-          expect(f.isActive, isFalse);
-        });
-      });
+          test('a disposed sound', () async {
+            await soloud.disposeSource(sound);
+            final notFound = throwsA(
+              isA<SoLoudSoundHashNotFoundCppException>(),
+            );
+            expect(f.activate, notFound);
+            expect(f.deactivate, notFound);
+            expect(f.isActive, isFalse);
+          });
+        },
+      );
     });
   }
 
@@ -915,15 +929,21 @@ void main() {
       expect(() => _globals.customFilter(-1), throwsA(isA<AssertionError>()));
     });
 
-    test('a slot on a single sound', () async {
-      final sound = await loadTestWaveform();
-      final slot = sound.filters.customFilter(0)..activate();
-      expect(slot.isActive, isTrue);
-      expect(_globals.customFilter(0).isActive, isFalse);
-      final h = soloud.play(sound);
-      expect(slot.wet(soundHandle: h).value, closeTo(1, 1e-4));
-      slot.deactivate();
-    });
+    test(
+      'a slot on a single sound',
+      skip: kIsWeb
+          ? 'filters for single sounds are not supported on the web'
+          : null,
+      () async {
+        final sound = await loadTestWaveform();
+        final slot = sound.filters.customFilter(0)..activate();
+        expect(slot.isActive, isTrue);
+        expect(_globals.customFilter(0).isActive, isFalse);
+        final h = soloud.play(sound);
+        expect(slot.wet(soundHandle: h).value, closeTo(1, 1e-4));
+        slot.deactivate();
+      },
+    );
   });
 
   group('before init', () {

@@ -1,6 +1,5 @@
 // Awaited init() followed by a synchronous deinit(), and the sounds deinit()
 // releases, with the real engine and a generated sound.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

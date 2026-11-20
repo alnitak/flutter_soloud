@@ -1,7 +1,6 @@
 // Text to speech with the real engine. speechText() synthesizes the text and
 // starts speaking it right away; the AudioSource it returns has no Dart-side
 // handles.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

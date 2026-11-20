@@ -1,6 +1,5 @@
 // Voice handles of a sound and their end-of-playback events, with the real
 // engine and a generated sound.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

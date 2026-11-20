@@ -1,6 +1,5 @@
 // Waveform controls (type, frequency, scale, detune, super wave) on a playing
 // synthetic waveform, with the real engine.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

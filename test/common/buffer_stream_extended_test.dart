@@ -1,6 +1,5 @@
 // Buffer streams with the real engine: buffer size, reset, time consumed, in
 // the preserved and released buffering modes.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

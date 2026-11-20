@@ -1,3 +1,8 @@
+// Reads the C/C++ sources from the repository, which a browser cannot do;
+// the Dart/C++ agreement it checks does not depend on the platform.
+@TestOn('vm')
+library;
+
 import 'dart:io';
 
 import 'package:flutter_soloud/src/enums.dart';

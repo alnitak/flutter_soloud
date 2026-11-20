@@ -1,7 +1,6 @@
 // Voice groups with the real engine: creation and destruction, operations on
 // the group handle reaching every member, empty groups, and adding handles
 // that are not (or no longer) voices.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

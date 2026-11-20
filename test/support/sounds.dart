@@ -7,8 +7,8 @@
 
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -216,6 +216,8 @@ Future<bool> waitUntil(
 /// only need this; the others can use [setUpEngineTests].
 void prepareEngineHost() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  // In the browser SoLoud.init() does not ask path_provider for anything.
+  if (kIsWeb) return;
   final temp = Directory.systemTemp.createTempSync('soloud_test');
   TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(

@@ -60,3 +60,4 @@ AGENTS.md
 
 # Test coverage reports (test/support/coverage.sh)
 coverage/
+/test/*/assets/

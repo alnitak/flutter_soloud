@@ -1,7 +1,6 @@
 // SoLoud engine lifecycle with the real engine: init, repeated init, invalid
 // parameters, isInitialized, deinit while playing and the
 // SoLoudNotInitializedException thrown by the API before init.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

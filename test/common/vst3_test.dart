@@ -1,3 +1,5 @@
+// VST3 hosting is desktop only.
+@TestOn('vm')
 @Tags(['device'])
 library;
 

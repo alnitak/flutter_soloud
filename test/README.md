@@ -19,7 +19,7 @@ Two kinds of tests live in this repo:
 | `macos/` | macOS-only native tests: CoreAudio, AudioToolbox, the VST3 host, Apple AAC. |
 | `linux/` | Linux-only tests: audio backend selection, FFmpeg decoders, ALSA/PulseAudio. |
 | `windows/` | Windows-only tests (Media Foundation, WASAPI, VST3), as PowerShell scripts. |
-| `web/` | `@TestOn('browser')` Dart tests. |
+| `web/` | `@TestOn('browser')` Dart tests of the web bindings, against a stand-in module. |
 | `support/` | Shared helpers: generated sounds, mixer capture, mocks, runners, the CMake generator, coverage. |
 
 A Dart test in `android/`, `ios/` or `linux/` still runs on the host. Its
@@ -74,7 +74,20 @@ flutter test -x device                        # no audio device (CI)
 flutter test test/common/voice_control_test.dart
 flutter test --platform chrome test/web       # web, JS
 flutter test --platform chrome --wasm test/web  # web, WASM
+./test/support/web_tests.sh                   # test/common in Chrome, single-threaded WASM build
+./test/support/web_tests.sh --wasm            # test/common in Chrome, multi-threaded WASM build
+# Windows: powershell -ExecutionPolicy Bypass -File test\support\web_tests.ps1 [-Wasm]
 ```
+
+`web_tests.sh` runs `test/common` against the real WASM build in `web/`.
+`test/common/flutter_test_config.dart` loads `init_soloud.js` before each
+file; the script makes `web/` reachable from the test pages, passes Chrome
+the autoplay flag (otherwise the AudioContext never runs) and leaves out the
+files that cannot compile for the web (FFI, build hook). Cases that do not
+apply to the web are marked: `@TestOn('vm')` for whole files (FFI and
+isolates, VST3, the device idle lifecycle, checks that read the C/C++
+sources) and `skip: kIsWeb ? ...` for single tests (filters on single
+sounds, which the web does not support).
 
 ### Native: per-test scripts (macOS, Linux)
 

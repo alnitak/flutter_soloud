@@ -1,6 +1,5 @@
 // Max active voices and protected voices, with the real engine and generated
 // sounds.
-@TestOn('vm')
 @Tags(['device'])
 library;
 

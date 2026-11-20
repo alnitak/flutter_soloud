@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_soloud/src/metadata.dart';
 import 'package:test/test.dart';
 
@@ -278,20 +279,26 @@ void main() {
       expect(str, contains('Bitrate: 192000'));
     });
 
-    test('metadata_ffi.h defines metadata structs', () {
-      final header = File('src/audiobuffer/metadata_ffi.h').readAsStringSync();
-      expect(header, contains('struct AacMetadataFFI'));
-      expect(header, contains('struct Ac3MetadataFFI'));
-      expect(header, contains('struct Eac3MetadataFFI'));
-      expect(header, contains('struct M4aMetadataFFI'));
-      expect(header, contains('AacMetadataFFI aacMetadata;'));
-      expect(header, contains('Ac3MetadataFFI ac3Metadata;'));
-      expect(header, contains('Eac3MetadataFFI eac3Metadata;'));
-      expect(header, contains('M4aMetadataFFI m4aMetadata;'));
-      expect(header, contains('char album_artist[MAX_STRING_LENGTH];'));
-      expect(header, contains('char composer[MAX_STRING_LENGTH];'));
-      expect(header, contains('char track[MAX_STRING_LENGTH];'));
-      expect(header, contains('char disc[MAX_STRING_LENGTH];'));
-    });
+    test(
+      'metadata_ffi.h defines metadata structs',
+      skip: kIsWeb ? 'reads the C/C++ sources, VM only' : null,
+      () {
+        final header = File(
+          'src/audiobuffer/metadata_ffi.h',
+        ).readAsStringSync();
+        expect(header, contains('struct AacMetadataFFI'));
+        expect(header, contains('struct Ac3MetadataFFI'));
+        expect(header, contains('struct Eac3MetadataFFI'));
+        expect(header, contains('struct M4aMetadataFFI'));
+        expect(header, contains('AacMetadataFFI aacMetadata;'));
+        expect(header, contains('Ac3MetadataFFI ac3Metadata;'));
+        expect(header, contains('Eac3MetadataFFI eac3Metadata;'));
+        expect(header, contains('M4aMetadataFFI m4aMetadata;'));
+        expect(header, contains('char album_artist[MAX_STRING_LENGTH];'));
+        expect(header, contains('char composer[MAX_STRING_LENGTH];'));
+        expect(header, contains('char track[MAX_STRING_LENGTH];'));
+        expect(header, contains('char disc[MAX_STRING_LENGTH];'));
+      },
+    );
   });
 }

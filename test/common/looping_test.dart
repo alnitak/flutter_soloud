@@ -1,7 +1,6 @@
 // Looping and a bounded [loopingStartAt, loopingEndAt) region on a playing
 // voice, with the real engine and a generated sound. The region validation is
 // unit tested in looping_region_test.dart.
-@TestOn('vm')
 @Tags(['device'])
 library;
 
