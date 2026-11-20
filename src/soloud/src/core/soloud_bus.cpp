@@ -192,6 +192,11 @@ namespace SoLoud
 		mAudioTap = 0;
 	}
 
+	Bus::~Bus()
+	{
+		stop();
+	}
+
 	BusInstance * Bus::createInstance()
 	{
 		// ###### flutter_soloud local patch (per-bus visualization) ######
