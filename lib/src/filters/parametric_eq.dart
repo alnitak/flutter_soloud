@@ -2,12 +2,14 @@
 
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
+import 'package:meta/meta.dart';
+
+const bool _kIsWeb = bool.fromEnvironment('dart.library.js_interop');
 
 /// Parameter indices for the parametric equalizer filter.
 ///
@@ -145,7 +147,7 @@ abstract class _ParametricEqInternal extends FilterBase {
   /// is not active or the value cannot be read.
   @protected
   int getNumBands(SoundHandle? soundHandle) {
-    if (kIsWeb && soundHash != null) {
+    if (_kIsWeb && soundHash != null) {
       // Web doesn't support single sound filters
       return 0;
     }
@@ -282,7 +284,7 @@ class ParametricEqSingle extends _ParametricEqInternal {
   /// active reports the band's default frequency (see
   /// [ParametricEqParam.getDefault]).
   double bandFrequency(int bandIndex, {SoundHandle? soundHandle}) {
-    if (!kIsWeb || soundHash == null) {
+    if (!_kIsWeb || soundHash == null) {
       final ret = SoLoudController().soLoudFFI.getFilterParams(
         handle: soundHandle,
         busId: busId,

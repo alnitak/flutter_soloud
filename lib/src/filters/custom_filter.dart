@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
@@ -9,6 +8,8 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
+
+const bool _kIsWeb = bool.fromEnvironment('dart.library.js_interop');
 
 /// Parameter definition for a [CustomFilterSlot].
 ///
@@ -82,7 +83,7 @@ class CustomFilterParam extends FilterParam {
 
   @override
   double get value {
-    if (kIsWeb && soundHandle != null) {
+    if (_kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     final ret = SoLoudController().soLoudFFI.getCustomFilterParams(
@@ -102,7 +103,7 @@ class CustomFilterParam extends FilterParam {
 
   @override
   set value(double val) {
-    if (kIsWeb && soundHandle != null) {
+    if (_kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     if (val < min || val > max) {
@@ -128,7 +129,7 @@ class CustomFilterParam extends FilterParam {
 
   @override
   void fadeFilterParameter({required double to, required Duration time}) {
-    if (kIsWeb && soundHandle != null) {
+    if (_kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     if (!SoLoud.instance.isInitialized) {
@@ -154,7 +155,7 @@ class CustomFilterParam extends FilterParam {
     required double to,
     required Duration time,
   }) {
-    if (kIsWeb && soundHandle != null) {
+    if (_kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     if (!SoLoud.instance.isInitialized) {
@@ -210,7 +211,7 @@ abstract class CustomFilterSlot extends FilterBase {
 
   @override
   void activate() {
-    if (kIsWeb && soundHash != null) {
+    if (_kIsWeb && soundHash != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     final error = SoLoudController().soLoudFFI.addCustomFilter(
@@ -232,7 +233,7 @@ abstract class CustomFilterSlot extends FilterBase {
   /// cleared: after a later [activate], call [setNativeCallback] again.
   @override
   void deactivate() {
-    if (kIsWeb && soundHash != null) {
+    if (_kIsWeb && soundHash != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     final error = SoLoudController().soLoudFFI.removeCustomFilter(
@@ -272,7 +273,7 @@ abstract class CustomFilterSlot extends FilterBase {
     int userdataAddress = 0,
     String? webJsFunctionName,
   }) {
-    if (kIsWeb && soundHash != null) {
+    if (_kIsWeb && soundHash != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     final error = SoLoudController().soLoudFFI.setCustomFilterCallback(
