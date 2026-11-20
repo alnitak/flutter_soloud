@@ -1164,9 +1164,6 @@ public:
   /// main SoLoud engine
   SoLoud::Soloud soloud;
 
-  /// speech object
-  SoLoud::Speech speech;
-
   /// Global filters
   Filters mFilters;
 

@@ -3653,8 +3653,10 @@ extern "C"
   /// Used to create a new voice group. Returns 0 if not successful.
   FFI_PLUGIN_EXPORT unsigned int createVoiceGroup()
   {
+    // 0 is SoLoud's "no group" value; -1 would wrap to a valid-looking
+    // 0xffffffff handle in this unsigned return.
     if (player.get() == nullptr || !player.get()->isInited())
-      return -1;
+      return 0;
     auto ret = player.get()->createVoiceGroup();
     return ret;
   }
@@ -4867,8 +4869,7 @@ extern "C"
   /// and that the environment is dry air at around 20 degrees Celsius.
   FFI_PLUGIN_EXPORT void set3dSoundSpeed(float speed)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dSoundSpeed(speed);
     player.get()->update3dAudio();
@@ -4877,8 +4878,7 @@ extern "C"
   /// Get the sound speed
   FFI_PLUGIN_EXPORT float get3dSoundSpeed()
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return 0.0f;
     return player.get()->get3dSoundSpeed();
   }
@@ -4890,8 +4890,7 @@ extern "C"
                           float atY, float atZ, float upX, float upY, float upZ,
                           float velocityX, float velocityY, float velocityZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dListenerParameters(posX, posY, posZ, atX, atY, atZ, upX,
                                           upY, upZ, velocityX, velocityY,
@@ -4903,8 +4902,7 @@ extern "C"
   FFI_PLUGIN_EXPORT void set3dListenerPosition(float posX, float posY,
                                                float posZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dListenerPosition(posX, posY, posZ);
     player.get()->update3dAudio();
@@ -4913,8 +4911,7 @@ extern "C"
   /// You can set the "at" vector parameter of the 3d audio listener
   FFI_PLUGIN_EXPORT void set3dListenerAt(float atX, float atY, float atZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dListenerAt(atX, atY, atZ);
     player.get()->update3dAudio();
@@ -4923,8 +4920,7 @@ extern "C"
   /// You can set the "up" vector parameter of the 3d audio listener
   FFI_PLUGIN_EXPORT void set3dListenerUp(float upX, float upY, float upZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dListenerUp(upX, upY, upZ);
     player.get()->update3dAudio();
@@ -4934,8 +4930,7 @@ extern "C"
   FFI_PLUGIN_EXPORT void set3dListenerVelocity(float velocityX, float velocityY,
                                                float velocityZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dListenerVelocity(velocityX, velocityY, velocityZ);
     player.get()->update3dAudio();
@@ -4948,8 +4943,7 @@ extern "C"
                                                float velocityX, float velocityY,
                                                float velocityZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dSourceParameters(handle, posX, posY, posZ, velocityX,
                                         velocityY, velocityZ);
@@ -4960,8 +4954,7 @@ extern "C"
   FFI_PLUGIN_EXPORT void set3dSourcePosition(unsigned int handle, float posX,
                                              float posY, float posZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dSourcePosition(handle, posX, posY, posZ);
     player.get()->update3dAudio();
@@ -4971,8 +4964,7 @@ extern "C"
   FFI_PLUGIN_EXPORT void set3dSourceVelocity(unsigned int handle, float velocityX,
                                              float velocityY, float velocityZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
     player.get()->update3dAudio();
@@ -4984,8 +4976,7 @@ extern "C"
                                                    float minDistance,
                                                    float maxDistance)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
     player.get()->update3dAudio();
@@ -5003,8 +4994,7 @@ extern "C"
                                                 unsigned int attenuationModel,
                                                 float attenuationRolloffFactor)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dSourceAttenuation(handle, attenuationModel,
                                          attenuationRolloffFactor);
@@ -5015,8 +5005,7 @@ extern "C"
   FFI_PLUGIN_EXPORT void set3dSourceDopplerFactor(unsigned int handle,
                                                   float dopplerFactor)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return;
     player.get()->set3dSourceDopplerFactor(handle, dopplerFactor);
     player.get()->update3dAudio();

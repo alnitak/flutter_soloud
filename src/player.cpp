@@ -3388,13 +3388,16 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     if (!mInited.load(std::memory_order_acquire))
         return backendNotInited;
 
-    const SoLoud::result result = speech.setText(textToSpeech.c_str());
+    // Each speech gets its own source, owned by its ActiveSound, so that
+    // play() can replay it and a later speechText() doesn't stop it.
+    auto speech = std::make_unique<SoLoud::Speech>();
+    const SoLoud::result result = speech->setText(textToSpeech.c_str());
     if (result != SoLoud::SO_NO_ERROR)
         return fromSoLoudError(result);
 
     // Speech always begins unpaused, but create it paused until its handle is
     // known and registered.
-    const SoLoud::handle newHandle = soloud.play(speech, -1.0f, 0.0f, true);
+    const SoLoud::handle newHandle = soloud.play(*speech, -1.0f, 0.0f, true);
     // 0 is the invalid-handle sentinel: no voice could be allocated. Don't
     // create any bookkeeping for a sound that is not playing.
     if (newHandle == 0)
@@ -3403,6 +3406,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
         auto activeSpeech = std::make_unique<ActiveSound>();
+        activeSpeech->sound = std::move(speech);
         activeSpeech->completeFileName = std::string("");
         activeSpeech->soundHash = newHandle;
         activeSpeech->soundType = TYPE_TEXT_TO_SPEECH;
@@ -3566,7 +3570,6 @@ int Player::countAudioSource(unsigned int soundHash)
     switch (s->soundType)
     {
     case TYPE_SYNTH:
-        return 0;
     case TYPE_WAV:
     case TYPE_WAVSTREAM:
     case TYPE_BUFFER_STREAM:
@@ -4191,7 +4194,7 @@ void Player::set3dListenerUp(float aUpX,
                              float aUpY,
                              float aUpZ)
 {
-    soloud.set3dListenerAt(aUpX, aUpY, aUpZ);
+    soloud.set3dListenerUp(aUpX, aUpY, aUpZ);
 }
 
 void Player::set3dListenerVelocity(float aVelocityX,

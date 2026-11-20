@@ -1693,7 +1693,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     /// need to convert it to unsigned 32-bit.
     /// A return value of 0 means error.
     final raw = wasmCreateVoiceGroup().toUnsigned(32);
-    if (raw == 0) return SoundHandle(-1);
+    if (raw == 0) return const SoundHandle.error();
     return SoundHandle(raw);
   }
 

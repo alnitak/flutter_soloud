@@ -1534,7 +1534,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   SoundHandle createVoiceGroup() {
     final ret = native.createVoiceGroup();
-    return SoundHandle(ret > 0 ? ret : -1);
+    return ret > 0 ? SoundHandle(ret) : const SoundHandle.error();
   }
 
   @override
