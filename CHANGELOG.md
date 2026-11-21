@@ -20,7 +20,7 @@ A bug-fix release: a new, much larger test suite found many bugs, now fixed.
 ### Fixes
 - **Engine and 3D**: `speechText()` crash on `play()`; `set3dListenerUp`; distance attenuation applied twice; inverted Doppler shift; 3D settings lost before the first sound is loaded; NaN audio with min/max distance 0; `play()` at the voice limit stopping a protected voice.
 - **Filters**: waveshaper output growing without bound, bassboost boosting high frequencies, pitch shift semitones, biquad cutoff above Nyquist.
-- **Streams**: lost, duplicated or glitchy audio when data arrives in small chunks (MP3, FLAC, WAV, Vorbis, Opus, AAC, AC-3); more accurate seeking; chained Ogg streams; ICY metadata; `addAudioDataStream` and `setDataIsEnded` work again from worker isolates; a seek on an Ogg pull stream right after it starts no longer hangs.
+- **Streams**: lost, duplicated or glitchy audio when data arrives in small chunks (MP3, FLAC, WAV, Vorbis, Opus, AAC, AC-3); more accurate seeking; chained Ogg streams; ICY metadata; `addAudioDataStream` and `setDataIsEnded` work again from worker isolates; a seek on an Ogg pull stream right after it starts no longer hangs, and an Ogg pull stream plays to its end when its duration cannot be read from the end of the file (a truncated file, a slow or missing answer).
 - **Decoding**:
   - Apple: HE-AAC plays at full rate, the last AC-3 frame is no longer dropped.
   - Android: AC-3/E-AC-3 in MP4 on devices with Dolby's decoder no longer cuts the start/end or applies the Atmos leveler.

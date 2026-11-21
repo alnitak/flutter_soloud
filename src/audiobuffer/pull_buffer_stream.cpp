@@ -482,6 +482,7 @@ void PullBufferStream::resetProbeState() {
   mDurationProbeTailRangeStart = 0;
   mDurationProbeTailRangeEnd = 0;
   mNextTailOffset = 0;
+  mTailProbeMisses = 0;
   mSeekTableBuildChunks = 0;
   mTailProbeBuffer.clear();
 }
@@ -777,13 +778,14 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
 
     isSequential = (aOffset == 0 || aOffset == mSequentialReadOffset);
 
-    // Once the duration has been found, discard late tail chunks that were
-    // already in flight when the probe finished. They are not needed for
-    // playback and would otherwise be fed to the main decoder out of order.
-    // Sequential data that happens to fall in the tail range (e.g. after a
-    // seek or when normal playback reaches the end of the file) must still be
-    // accepted.
-    if (mDurationProbeState == DurationProbeState::Done &&
+    // Once the duration has been found, or the probe has given up, discard
+    // late tail chunks that were already in flight when the probe finished.
+    // They are not needed for playback and would otherwise be fed to the main
+    // decoder out of order. Sequential data that happens to fall in the tail
+    // range (e.g. after a seek or when normal playback reaches the end of the
+    // file) must still be accepted. (Without a probe the range is empty.)
+    if ((mDurationProbeState == DurationProbeState::Done ||
+         mDurationProbeState == DurationProbeState::None) &&
         aOffset >= mDurationProbeTailRangeStart.load() &&
         aOffset < mDurationProbeTailRangeEnd.load() && !isSequential) {
       lock.unlock();
@@ -797,24 +799,25 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
       effectiveOffset = mSequentialReadOffset;
     }
 
-    // If this chunk falls inside the requested Ogg tail-probe range, do not
-    // store it in the circular buffer; accumulate it in a temporary probe
-    // buffer and discard it once the duration is known.
+    const auto *bytes = static_cast<const unsigned char *>(aData);
+
+    // A chunk inside the requested Ogg tail-probe range that does not
+    // continue the sequential feed is the probe's alone: it is not stored in
+    // the circular buffer, only read for the duration and discarded. One that
+    // does continue the feed is played like any other, wherever it lies, and
+    // read for the duration too if it holds what the probe is waiting for
+    // (below): taking it for the probe's alone would leave the feed waiting
+    // for the same offset without end.
     if (mDurationProbeState == DurationProbeState::TailRequested &&
-        aOffset >= mDurationProbeTailRangeStart.load() &&
+        !isSequential && aOffset >= mDurationProbeTailRangeStart.load() &&
         aOffset < mDurationProbeTailRangeEnd.load()) {
-      const auto *bytes = static_cast<const unsigned char *>(aData);
-      mTailProbeBuffer.insert(mTailProbeBuffer.end(), bytes, bytes + aDataLen);
       mTotalReceivedBytes += aDataLen;
-      if (aOffset == mNextTailOffset.load()) {
-        mNextTailOffset.store(aOffset + aDataLen);
-      }
+      feedTailProbe(bytes, aDataLen, aOffset, /*aProbeOnly*/ true);
       SOLOUD_DEBUG_LOG(
           "[PullBuffer] addAudioData tail probe len=%u offset=%llu "
           "nextTailOffset=%llu\n",
           aDataLen, static_cast<unsigned long long>(aOffset),
           static_cast<unsigned long long>(mNextTailOffset));
-      probeDurationFromOggTail(aOffset);
       // A seek that was waiting for the duration to find its byte offset.
       applyPendingSeek();
       DeferredCallbacks callbacks = takeDeferredCallbacksLocked();
@@ -825,11 +828,17 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
       return PlayerErrors::noError;
     }
 
-    const auto *bytes = static_cast<const unsigned char *>(aData);
     mEncodedBuffer.insert(mEncodedBuffer.end(), bytes, bytes + aDataLen);
     mTotalReceivedBytes += aDataLen;
     if (isSequential && effectiveOffset == mSequentialReadOffset) {
       mSequentialReadOffset += aDataLen;
+    }
+    if (mDurationProbeState == DurationProbeState::TailRequested &&
+        isSequential) {
+      feedTailProbe(bytes, aDataLen, effectiveOffset, /*aProbeOnly*/ false);
+      // A seek that was waiting for the duration to find its byte offset.
+      // It discards this chunk and asks for the data at its target.
+      if (mDurationProbeState == DurationProbeState::Done) applyPendingSeek();
     }
     if (mDurationProbeState == DurationProbeState::BuildingSeekTable) {
       ++mSeekTableBuildChunks;
@@ -954,6 +963,39 @@ static double extractOggDurationFromTail(const std::vector<unsigned char> &tail,
   return -1.0;
 }
 #endif
+
+void PullBufferStream::feedTailProbe(const unsigned char *aData,
+                                     unsigned int aDataLen, uint64_t aOffset,
+                                     bool aProbeOnly) {
+  if (mDurationProbeState != DurationProbeState::TailRequested) return;
+  // The probe reads the tail in order: only the bytes from the offset it is
+  // waiting for are of use. They can start anywhere in a chunk of the
+  // sequential feed.
+  const uint64_t next = mNextTailOffset.load();
+  const uint64_t end = aOffset + aDataLen;
+  if (aOffset <= next && next < end) {
+    mTailProbeBuffer.insert(mTailProbeBuffer.end(), aData + (next - aOffset),
+                            aData + aDataLen);
+    mNextTailOffset.store(end);
+    mTailProbeMisses = 0;
+    probeDurationFromOggTail(aOffset);
+  } else if (aProbeOnly) {
+    // An answer the probe cannot use (a repeated chunk, one out of order).
+    ++mTailProbeMisses;
+  }
+  if (mDurationProbeState != DurationProbeState::TailRequested) return;
+  // The probe must end, or its tail would be asked for, and the chunks in
+  // its range taken for it, for as long as the stream lives: when the whole
+  // tail has arrived without the last page (a truncated file, or not Ogg
+  // data), or the answers keep being of no use, the duration stays unknown
+  // and the stream plays on to the end of its data.
+  if (mNextTailOffset.load() >= mDurationProbeTailRangeEnd.load() ||
+      mTailProbeMisses >= kMaxTailProbeMisses) {
+    mTailProbeBuffer.clear();
+    mTailProbeBuffer.shrink_to_fit();
+    mDurationProbeState = DurationProbeState::None;
+  }
+}
 
 void PullBufferStream::probeDurationFromOggTail(uint64_t aOffset) {
   (void)aOffset;

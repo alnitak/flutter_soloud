@@ -18,6 +18,16 @@
 //   * a seek made meanwhile must be applied once the duration has arrived,
 //     without asking for the same data over and over.
 //
+// The requests that read the end of the file (the tail probe) must not get in
+// the way of the data that is played:
+//
+//   * data that continues the stream is played even when it lies in the range
+//     the probe reads, and the probe reads it too if that is what it waits
+//     for: one chunk serves both, and the stream plays to its end whether the
+//     probe is answered late, never, or by that very chunk;
+//   * a file whose end holds no last page (a truncated one) still plays to
+//     its end, its duration unknown, and nothing is asked for twice.
+//
 // The stream is driven through the exports Dart uses, on a real engine (the
 // null backend), with a buffer of about one second so that both seeks leave
 // it. A feeder answers each request for data from the file, as the Dart side
@@ -39,6 +49,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <fstream>
 #include <functional>
@@ -82,6 +93,11 @@ uint64_t gNextSequential = 0;
 /// How many more chunks the feeder may deliver, or -1 for no limit. At 0 it
 /// delivers nothing and the requests wait, like a network that has stalled.
 std::atomic<int> gDeliveriesLeft{-1};
+/// The length of the chunk the feeder delivers at offset 0, or 0 for the
+/// usual 32768 bytes.
+std::atomic<size_t> gFirstChunkLen{0};
+/// The duration the last settled stream reported: the length of the file.
+double gKnownDuration = 0.0;
 /// Counts the streams, so that a request the feeder took from one stream is
 /// not answered to the next. Changed with gDeliveryMutex held.
 std::atomic<int> gStreamGeneration{0};
@@ -127,8 +143,10 @@ void feeder() {
             continue;
         const uint64_t offset = request.offset;
         if (offset >= gFile.size()) continue; // nothing there to give
-        const size_t len =
-            std::min<size_t>(32768, gFile.size() - static_cast<size_t>(offset));
+        size_t len = 32768;
+        if (offset == 0 && gFirstChunkLen.load() != 0)
+            len = gFirstChunkLen.load();
+        len = std::min<size_t>(len, gFile.size() - static_cast<size_t>(offset));
         {
             std::lock_guard<std::mutex> lock(gMutex);
             gNextSequential = offset + len;
@@ -211,6 +229,7 @@ unsigned int startStream(const char *path, bool settled = true) {
         EXPECT(waitFor([&] { return gDuration.load() > 0.0; }),
                "%s: the stream should find its duration", path);
         getPullBufferTimeRange(gHash, &start, &end);
+        gKnownDuration = gDuration.load();
     }
     std::printf("  %s: buffered [%.2f, %.2f], duration %.2f s, before the "
                 "first seek\n",
@@ -385,6 +404,162 @@ void seekBeforeTheDurationIsKnown(const char *path) {
     endStream(voice);
 }
 
+/// How often the offset the stream asked for most was asked for, and which
+/// offset that is.
+size_t mostRequested(uint64_t *offset = nullptr) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    size_t most = 0;
+    for (uint64_t candidate : gLog) {
+        size_t count = 0;
+        for (uint64_t other : gLog) count += other == candidate;
+        if (count > most) {
+            most = count;
+            if (offset != nullptr) *offset = candidate;
+        }
+    }
+    return most;
+}
+
+/// Waits for [voice] to end, at eight times the speed so that the file takes
+/// a couple of seconds, and returns whether it did. Stops waiting once an
+/// offset has been asked for more than [maxRepeats] times: a stream that asks
+/// for the same data again and again gets nowhere. [bufferedEnd] receives the
+/// latest time the stream had buffered.
+bool playsToTheEnd(unsigned int voice, size_t maxRepeats, double &bufferedEnd) {
+    setRelativePlaySpeed(voice, 8.0f);
+    bufferedEnd = 0.0;
+    waitFor([&] {
+        double start = 0, end = 0;
+        getPullBufferTimeRange(gHash, &start, &end);
+        if (end > bufferedEnd) bufferedEnd = end;
+        return getIsValidVoiceHandle(voice) == 0 ||
+               mostRequested() > maxRepeats;
+    });
+    return getIsValidVoiceHandle(voice) == 0;
+}
+
+/// The checks the scenarios below share: the voice played the whole file and
+/// no offset was asked for more than [maxRepeats] times.
+void expectPlayedToTheEnd(const char *path, unsigned int voice,
+                          size_t maxRepeats) {
+    double bufferedEnd = 0.0;
+    const bool ended = playsToTheEnd(voice, maxRepeats, bufferedEnd);
+    uint64_t repeated = 0;
+    const size_t repeats = mostRequested(&repeated);
+    std::printf("  played to %.2f s of %.2f s, duration reported %.2f s, %zu "
+                "requests, none more than %zu time(s)\n",
+                bufferedEnd, gKnownDuration, gDuration.load(), logSize(),
+                repeats);
+    EXPECT(ended && bufferedEnd > gKnownDuration - 1.0,
+           "%s: the stream should play to its end (%s, buffered up to %.2f s "
+           "of %.2f s)",
+           path, ended ? "ended" : "still playing", bufferedEnd,
+           gKnownDuration);
+    EXPECT(repeats <= maxRepeats,
+           "%s: offset %llu was requested %zu times (at most %zu expected)",
+           path, (unsigned long long)repeated, repeats, maxRepeats);
+}
+
+/// Delivers [len] bytes at [offset] to the current stream, on this thread.
+void deliver(uint64_t offset, size_t len) {
+    std::lock_guard<std::mutex> delivering(gDeliveryMutex);
+    len = std::min<size_t>(len, gFile.size() - static_cast<size_t>(offset));
+    addPullBufferDataStream(gHash, gFile.data() + offset,
+                            static_cast<unsigned int>(len), offset);
+}
+
+/// The data that is played reaches the range of the tail probe while the
+/// probe is still waiting for its answer. The app here downloads the file in
+/// order at its own pace, and its request for the tail is answered late (once
+/// the download has entered the tail range, with [answerLate]) or never. The
+/// chunks of the download continue the stream, so they must be played, and
+/// the stream must reach its end.
+void feedReachesTheTailBeforeTheProbe(const char *path, bool answerLate) {
+    std::printf("the data played reaches the tail before the probe's answer, "
+                "which comes %s (%s)\n", answerLate ? "late" : "never", path);
+    // The feeder answers the first request only: the next one, for the
+    // tail, stays unanswered.
+    gDeliveriesLeft.store(1);
+    const unsigned int voice = startStream(path, /*settled*/ false);
+    const uint64_t tailStart = gFile.size() - 65536;
+    uint64_t probeRequest = UINT64_MAX;
+    EXPECT(waitFor([&] {
+               std::lock_guard<std::mutex> lock(gMutex);
+               for (uint64_t offset : gLog)
+                   if (offset >= tailStart) probeRequest = offset;
+               return probeRequest != UINT64_MAX;
+           }),
+           "%s: the stream should ask for the tail of the file", path);
+
+    setRelativePlaySpeed(voice, 8.0f);
+    size_t chunks = 1;
+    bool answered = false;
+    for (uint64_t cursor = 32768; cursor < gFile.size(); cursor += 32768) {
+        deliver(cursor, 32768);
+        ++chunks;
+        if (answerLate && !answered && cursor + 32768 > tailStart &&
+            probeRequest != UINT64_MAX) {
+            deliver(probeRequest, 32768);
+            answered = true;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    // Every delivery lets the stream ask again, for the tail too while it
+    // has no answer: that many requests for one offset are in order.
+    expectPlayedToTheEnd(path, voice, chunks + 2);
+    EXPECT(gDuration.load() > 0.0,
+           "%s: the last page went by in the data played, so the duration "
+           "should be known", path);
+    endStream(voice);
+    gDeliveriesLeft.store(-1);
+}
+
+/// One chunk that is both the next of the stream and what the tail probe
+/// asked for: the first chunk ends where the tail range starts, so the
+/// stream's next request is for that offset whichever of the two it wants.
+/// The chunk must serve both, without the app sending it twice.
+void oneChunkForTheFeedAndTheProbe(const char *path) {
+    std::printf("one chunk serves the stream and the tail probe (%s)\n", path);
+    gFirstChunkLen.store(gFile.size() - 65536);
+    const unsigned int voice = startStream(path, /*settled*/ false);
+    expectPlayedToTheEnd(path, voice, 1);
+    EXPECT(gDuration.load() > 0.0 &&
+               gDuration.load() > gKnownDuration - 0.1 &&
+               gDuration.load() < gKnownDuration + 0.1,
+           "%s: the probe should find the duration in that chunk (%.2f s, "
+           "the file is %.2f s)",
+           path, gDuration.load(), gKnownDuration);
+    endStream(voice);
+    gFirstChunkLen.store(0);
+}
+
+/// A file cut before its last Ogg page: the tail holds no page that ends the
+/// stream, so the probe cannot find the duration. It must give up, and the
+/// stream must play what there is to its end, asking for each offset once.
+void tailWithoutTheLastPage(const char *path) {
+    std::printf("the tail has no last page (%s)\n", path);
+    const std::vector<unsigned char> whole = gFile;
+    size_t lastPage = gFile.size();
+    for (size_t i = gFile.size() - 4; i > 0; --i) {
+        if (std::memcmp(gFile.data() + i, "OggS", 4) == 0) {
+            lastPage = i;
+            break;
+        }
+    }
+    EXPECT(lastPage < gFile.size() && lastPage > 65536,
+           "%s: the file should end with an Ogg page (found at %zu of %zu)",
+           path, lastPage, gFile.size());
+    gFile.resize(lastPage);
+
+    const unsigned int voice = startStream(path, /*settled*/ false);
+    expectPlayedToTheEnd(path, voice, 1);
+    EXPECT(gDuration.load() <= 0.0,
+           "%s: the duration should stay unknown, got %.2f s", path,
+           gDuration.load());
+    endStream(voice);
+    gFile = whole;
+}
+
 bool loadFile(const char *path) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     ++gAssertions;
@@ -423,6 +598,10 @@ int main(int argc, char **argv) {
         seekBackBeforeTheFirstSeek(path);
         seekBackIntoTheIndexedRange(path);
         seekBeforeTheDurationIsKnown(path);
+        feedReachesTheTailBeforeTheProbe(path, /*answerLate*/ false);
+        feedReachesTheTailBeforeTheProbe(path, /*answerLate*/ true);
+        oneChunkForTheFeedAndTheProbe(path);
+        tailWithoutTheLastPage(path);
     }
 
     gStop.store(true);

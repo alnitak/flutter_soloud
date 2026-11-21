@@ -20,14 +20,8 @@ How each kind of test marks a known bug:
 3. Delete the bug's entry from this file.
 
 Line numbers are approximate. IDs already used and retired: E1–E9, F1–F5,
-O1–O3, S1–S9, K1–K2, P1–P9, A1–A34, B1–B26, C1–C7, H1–H2, J1–J18, L1, L2,
+O1–O3, S1–S9, K1–K2, P1–P9, A1–A35, B1–B26, C1–C7, H1–H2, J1–J18, L1, L2,
 L4, L5, L6, M1–M8.
-
-## Streams
-
-| ID | Bug | Where | Test |
-|---|---|---|---|
-| A35 | Ogg pull stream: while the duration probe waits for the tail of the file, any chunk whose offset is inside the tail range is taken as probe data, even one that continues the sequential feed. If the probe is starved, or its range ends without an EOS page, playback that reaches the tail range requests the same offset forever. Seen only through a pending seek (fixed); the general routing is not. | pull_buffer_stream.cpp addAudioData() (TailRequested) | none yet |
 
 ## Android
 
