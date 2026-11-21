@@ -249,6 +249,9 @@ void testTapIsBeforeBusVolume() {
 
     const SoLoud::handle busHandle = engine.soloud.play(bus, 0.25f);
     playUnpanned(engine, bus, source);
+    // Let the pan ramp of the new voice finish before the tap is attached,
+    // so no captured window holds the ramp.
+    engine.mix(2);
     EXPECT(analyzer.setVisualizationEnabled(true, kWindow, VISUALIZATION_WAVE,
                                             VISUALIZATION_CHANNEL_MERGED,
                                             kChannels) == noError,
