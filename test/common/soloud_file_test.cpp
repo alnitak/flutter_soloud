@@ -276,10 +276,8 @@ static void testMemoryFile() {
       const unsigned int n = m.read(dst.data(), 0xFFFFFFFFu - 5u);
       _exit(n == 90 ? 0 : 3);
     });
-    // Bug A23: MemoryFile::read's bound check overflows (soloud_file.cpp).
-    KNOWN_BUG(ok, "A23 (soloud_file.cpp MemoryFile::read): read(dst, "
-                  "0xFFFFFFFA) at offset 10 of 100 bytes should give the 90 "
-                  "bytes left; the child crashed or read the wrong count");
+    CHECK(ok, "read(dst, 0xFFFFFFFA) at offset 10 of 100 bytes should give "
+              "the 90 bytes left; the child crashed or read the wrong count");
   }
 #endif
 }
@@ -331,14 +329,11 @@ static void testToMem() {
     CHECK(m.openToMem(path.c_str()) == SoLoud::SO_NO_ERROR, "first openToMem");
     const SoLoud::result r = m.openToMem((gDir + "/missing.bin").c_str());
     CHECK(r == SoLoud::FILE_NOT_FOUND, "a missing file: %d", (int)r);
-    // Bug A24: openToMem() frees the data and nulls the pointer before it
-    // opens the file, but on failure keeps the old mDataLength (and
-    // mDataOwned): the MemoryFile claims 100 bytes at a null pointer, and a
-    // read() then memcpy()s from address 0.
+    // The old data is freed before the file is opened: on failure the
+    // MemoryFile must not claim the old length at a null pointer.
     const bool consistent = m.length() == 0 || m.getMemPtr() != nullptr;
-    KNOWN_BUG(consistent, "A24 (soloud_file.cpp MemoryFile::openToMem): after "
-                          "a failed openToMem the file has length %u and data "
-                          "pointer %p", m.length(), (const void *)m.getMemPtr());
+    CHECK(consistent, "after a failed openToMem the file has length %u and "
+                      "data pointer %p", m.length(), (const void *)m.getMemPtr());
     if (consistent) {
       unsigned char buf[8];
       CHECK(m.read(buf, 8) == 0, "and reads nothing");
@@ -349,13 +344,11 @@ static void testToMem() {
     ShortFile src(100, 40);
     MemoryFile m;
     const SoLoud::result r = m.openFileToMem(&src);
-    // Bug A25: openFileToMem() (and openToMem()) ignore what read() returns:
-    // the MemoryFile reports success with the full length, and its last 60
-    // bytes are uninitialized heap memory, decoded as audio by Wav::loadFile.
-    KNOWN_BUG(r != SoLoud::SO_NO_ERROR || m.length() == 40,
-              "A25 (soloud_file.cpp MemoryFile::openFileToMem): a source "
-              "that reads 40 of its 100 bytes gave result %d and length %u",
-              (int)r, m.length());
+    // Only the bytes actually read may be kept: an uninitialized tail would
+    // be decoded as audio by Wav::loadFile.
+    CHECK(r != SoLoud::SO_NO_ERROR || m.length() == 40,
+          "a source that reads 40 of its 100 bytes gave result %d and length "
+          "%u", (int)r, m.length());
   }
 }
 

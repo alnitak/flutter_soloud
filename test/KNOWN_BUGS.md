@@ -26,9 +26,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| A23 | MemoryFile::read bounds check wraps -> memcpy ~4GB (heap overflow) | soloud_file.cpp:161 | soloud_file testMemoryFile |
-| A24 | Failed openToMem frees data but keeps old length -> later read from address 0 | soloud_file.cpp:256-262 | testToMem |
-| A25 | openFileToMem/openToMem ignore short read -> uninitialised tail | soloud_file.cpp:268,286 | testToMem |
 | A26 | Wav rejects FLAC with total-samples 0 (spec: unknown) | soloud_wav.cpp:372 | soloud_wav_load testFlac |
 | A27 | Truncated FLAC zero-padded to header length | soloud_wav.cpp:382 | testTruncated |
 | A28 | After failed Wav reload a voice never ends (sample count not reset) | soloud_wav.cpp:462-466 | testInstanceAndReload |
