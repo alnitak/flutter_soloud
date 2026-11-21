@@ -1911,6 +1911,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void setBufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     SoLoudController().soLoudFFI.setBufferIcyMetaInt(
       sound.soundHash,
       icyMetaInt,
@@ -1919,11 +1922,16 @@ interface class SoLoud {
 
   /// This is now deprecated because setting the icy metadata value
   /// is also for Ogg Flac.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   @Deprecated(
     'Use setBufferIcyMetaInt instead. '
     'This will be removed in a future version.',
   )
   void setMp3BufferIcyMetaInt(AudioSource sound, int icyMetaInt) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     SoLoudController().soLoudFFI.setBufferIcyMetaInt(
       sound.soundHash,
       icyMetaInt,
@@ -4166,7 +4174,12 @@ interface class SoLoud {
   /// voice group.
   ///
   /// [handle] the group handle to destroy.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void destroyVoiceGroup(SoundHandle handle) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     return _controller.soLoudFFI.destroyVoiceGroup(handle);
   }
 
@@ -4176,10 +4189,15 @@ interface class SoLoud {
   /// [voiceGroupHandle] the group handle to add the new [voiceHandles].
   ///
   /// [voiceHandles] voice handle to add to the [voiceGroupHandle].
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void addVoicesToGroup(
     SoundHandle voiceGroupHandle,
     List<SoundHandle> voiceHandles,
   ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     return _controller.soLoudFFI.addVoicesToGroup(
       voiceGroupHandle,
       voiceHandles,
@@ -4192,7 +4210,12 @@ interface class SoLoud {
   /// [handle] the group handle to check.
   ///
   /// Return true if [handle] is a group handle.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool isVoiceGroup(SoundHandle handle) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     return _controller.soLoudFFI.isVoiceGroup(handle);
   }
 
@@ -4203,7 +4226,12 @@ interface class SoLoud {
   /// [handle] group handle to check.
   ///
   /// Return true if the group handle doesn't have any voices.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   bool isVoiceGroupEmpty(SoundHandle handle) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     return _controller.soLoudFFI.isVoiceGroupEmpty(handle);
   }
 
@@ -4902,19 +4930,31 @@ interface class SoLoud {
   /// to work correctly. The default value is 343, which assumes
   /// that your world coordinates are in meters (where 1 unit is 1 meter),
   /// and that the environment is dry air at around 20 degrees Celsius.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dSoundSpeed(double speed) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dSoundSpeed(speed);
   }
 
   /// Gets the speed of sound.
   ///
   /// See [set3dSoundSpeed] for details.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   double get3dSoundSpeed() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     return _controller.soLoudFFI.get3dSoundSpeed();
   }
 
   /// Sets the position, at-vector, up-vector and velocity
   /// parameters of the 3D audio listener with one call.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dListenerParameters(
     double posX,
     double posY,
@@ -4929,6 +4969,9 @@ interface class SoLoud {
     double velocityY,
     double velocityZ,
   ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dListenerParameters(
       posX,
       posY,
@@ -4946,26 +4989,46 @@ interface class SoLoud {
   }
 
   /// Sets the position parameter of the 3D audio listener.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dListenerPosition(double posX, double posY, double posZ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dListenerPosition(posX, posY, posZ);
   }
 
   /// Sets the at-vector (i.e. position) parameter of the 3D audio listener.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dListenerAt(double atX, double atY, double atZ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dListenerAt(atX, atY, atZ);
   }
 
   /// Sets the up-vector parameter of the 3D audio listener.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dListenerUp(double upX, double upY, double upZ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dListenerUp(upX, upY, upZ);
   }
 
   /// Sets the 3D listener's velocity vector.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dListenerVelocity(
     double velocityX,
     double velocityY,
     double velocityZ,
   ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dListenerVelocity(
       velocityX,
       velocityY,
@@ -4977,6 +5040,8 @@ interface class SoLoud {
   /// 3D audio source with one call.
   ///
   /// The sound instance is provided via its [handle].
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dSourceParameters(
     SoundHandle handle,
     double posX,
@@ -4986,6 +5051,9 @@ interface class SoLoud {
     double velocityY,
     double velocityZ,
   ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dSourceParameters(
       handle,
       posX,
@@ -4998,22 +5066,32 @@ interface class SoLoud {
   }
 
   /// Sets the position of a live 3D audio source.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dSourcePosition(
     SoundHandle handle,
     double posX,
     double posY,
     double posZ,
   ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dSourcePosition(handle, posX, posY, posZ);
   }
 
   /// Set the velocity parameter of a live 3D audio source.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dSourceVelocity(
     SoundHandle handle,
     double velocityX,
     double velocityY,
     double velocityZ,
   ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dSourceVelocity(
       handle,
       velocityX,
@@ -5026,11 +5104,16 @@ interface class SoLoud {
   /// of a live 3D audio source.
   ///
   /// Default values are 1 and 1000000.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dSourceMinMaxDistance(
     SoundHandle handle,
     double minDistance,
     double maxDistance,
   ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dSourceMinMaxDistance(
       handle,
       minDistance,
@@ -5050,11 +5133,16 @@ interface class SoLoud {
   /// The default values are NO_ATTENUATION and 1.
   ///
   /// See https://solhsa.com/soloud/concepts3d.html.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dSourceAttenuation(
     SoundHandle handle,
     int attenuationModel,
     double attenuationRolloffFactor,
   ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dSourceAttenuation(
       handle,
       attenuationModel,
@@ -5064,7 +5152,12 @@ interface class SoLoud {
 
   /// Sets the doppler factor of a live 3D audio source.
   /// 0 = disable, 1 = normal, >1 = exaggerated
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     _controller.soLoudFFI.set3dSourceDopplerFactor(handle, dopplerFactor);
   }
 
@@ -5221,7 +5314,12 @@ interface class SoLoud {
   /// Create a new mixing bus.
   ///
   /// [name] optional name of the bus to later identify it.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Bus createMixingBus({String name = ''}) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
     return Bus(name: name);
   }
 

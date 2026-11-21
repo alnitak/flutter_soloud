@@ -137,6 +137,29 @@ final Map<String, _Call> _calls = {
   'setRealtimeStream': (s, _, _) => s.setRealtimeStream(),
   'createCustomAudioSource': (s, _, _) =>
       s.createCustomAudioSource(webJsFunctionName: 'noop'),
+  'setBufferIcyMetaInt': (s, a, _) => s.setBufferIcyMetaInt(a, 16000),
+  'setMp3BufferIcyMetaInt': (s, a, _) => s.setMp3BufferIcyMetaInt(a, 16000),
+  'destroyVoiceGroup': (s, _, h) => s.destroyVoiceGroup(h),
+  'addVoicesToGroup': (s, _, h) => s.addVoicesToGroup(h, [h]),
+  'isVoiceGroup': (s, _, h) => s.isVoiceGroup(h),
+  'isVoiceGroupEmpty': (s, _, h) => s.isVoiceGroupEmpty(h),
+  'createMixingBus': (s, _, _) => s.createMixingBus(),
+  'set3dSoundSpeed': (s, _, _) => s.set3dSoundSpeed(343),
+  'get3dSoundSpeed': (s, _, _) => s.get3dSoundSpeed(),
+  'set3dListenerParameters': (s, _, _) =>
+      s.set3dListenerParameters(0, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0),
+  'set3dListenerPosition': (s, _, _) => s.set3dListenerPosition(0, 0, 0),
+  'set3dListenerAt': (s, _, _) => s.set3dListenerAt(0, 0, -1),
+  'set3dListenerUp': (s, _, _) => s.set3dListenerUp(0, 1, 0),
+  'set3dListenerVelocity': (s, _, _) => s.set3dListenerVelocity(0, 0, 0),
+  'set3dSourceParameters': (s, _, h) =>
+      s.set3dSourceParameters(h, 0, 0, 0, 0, 0, 0),
+  'set3dSourcePosition': (s, _, h) => s.set3dSourcePosition(h, 0, 0, 0),
+  'set3dSourceVelocity': (s, _, h) => s.set3dSourceVelocity(h, 0, 0, 0),
+  'set3dSourceMinMaxDistance': (s, _, h) =>
+      s.set3dSourceMinMaxDistance(h, 1, 10),
+  'set3dSourceAttenuation': (s, _, h) => s.set3dSourceAttenuation(h, 1, 1),
+  'set3dSourceDopplerFactor': (s, _, h) => s.set3dSourceDopplerFactor(h, 1),
 };
 
 /// Members that, by design, do not throw SoLoudNotInitializedException.
@@ -169,57 +192,6 @@ const _exempt = {
   'readSamplesFromMem': 'decodes a buffer without the engine',
   // Throw another exception.
   'createVoiceGroup': 'throws SoLoudCreateVoiceGroupDartException',
-  // No init check: see the J3 and J4 tests.
-  'setBufferIcyMetaInt': 'bug J3',
-  'setMp3BufferIcyMetaInt': 'bug J3',
-  'destroyVoiceGroup': 'bug J4',
-  'addVoicesToGroup': 'bug J4',
-  'isVoiceGroup': 'bug J4',
-  'isVoiceGroupEmpty': 'bug J4',
-  'createMixingBus': 'bug J4',
-  'set3dSoundSpeed': 'bug J4',
-  'get3dSoundSpeed': 'bug J4',
-  'set3dListenerParameters': 'bug J4',
-  'set3dListenerPosition': 'bug J4',
-  'set3dListenerAt': 'bug J4',
-  'set3dListenerUp': 'bug J4',
-  'set3dListenerVelocity': 'bug J4',
-  'set3dSourceParameters': 'bug J4',
-  'set3dSourcePosition': 'bug J4',
-  'set3dSourceVelocity': 'bug J4',
-  'set3dSourceMinMaxDistance': 'bug J4',
-  'set3dSourceAttenuation': 'bug J4',
-  'set3dSourceDopplerFactor': 'bug J4',
-};
-
-/// The members of _exempt without an init check that should have one.
-final Map<String, _Call> _unguarded = {
-  'destroyVoiceGroup': (s, _, h) => s.destroyVoiceGroup(h),
-  'addVoicesToGroup': (s, _, h) => s.addVoicesToGroup(h, [h]),
-  'isVoiceGroup': (s, _, h) => s.isVoiceGroup(h),
-  'isVoiceGroupEmpty': (s, _, h) => s.isVoiceGroupEmpty(h),
-  'createMixingBus': (s, _, _) => s.createMixingBus(),
-  'set3dSoundSpeed': (s, _, _) => s.set3dSoundSpeed(343),
-  'get3dSoundSpeed': (s, _, _) => s.get3dSoundSpeed(),
-  'set3dListenerParameters': (s, _, _) =>
-      s.set3dListenerParameters(0, 0, 0, 0, 0, -1, 0, 1, 0, 0, 0, 0),
-  'set3dListenerPosition': (s, _, _) => s.set3dListenerPosition(0, 0, 0),
-  'set3dListenerAt': (s, _, _) => s.set3dListenerAt(0, 0, -1),
-  'set3dListenerUp': (s, _, _) => s.set3dListenerUp(0, 1, 0),
-  'set3dListenerVelocity': (s, _, _) => s.set3dListenerVelocity(0, 0, 0),
-  'set3dSourceParameters': (s, _, h) =>
-      s.set3dSourceParameters(h, 0, 0, 0, 0, 0, 0),
-  'set3dSourcePosition': (s, _, h) => s.set3dSourcePosition(h, 0, 0, 0),
-  'set3dSourceVelocity': (s, _, h) => s.set3dSourceVelocity(h, 0, 0, 0),
-  'set3dSourceMinMaxDistance': (s, _, h) =>
-      s.set3dSourceMinMaxDistance(h, 1, 10),
-  'set3dSourceAttenuation': (s, _, h) => s.set3dSourceAttenuation(h, 1, 1),
-  'set3dSourceDopplerFactor': (s, _, h) => s.set3dSourceDopplerFactor(h, 1),
-};
-
-final Map<String, _Call> _icy = {
-  'setBufferIcyMetaInt': (s, a, _) => s.setBufferIcyMetaInt(a, 16000),
-  'setMp3BufferIcyMetaInt': (s, a, _) => s.setMp3BufferIcyMetaInt(a, 16000),
 };
 
 // ---------------------------------------------------------------------------
@@ -405,11 +377,7 @@ void main() {
 
     test(
       'members documented to throw SoLoudNotInitializedException check it',
-      skip: kIsWeb
-          ? vmOnly
-          : 'bug J3: setBufferIcyMetaInt is documented to throw '
-                'SoLoudNotInitializedException but has no init check '
-                '(lib/src/soloud.dart:1913)',
+      skip: vmOnly,
       () {
         final wrong = [
           for (final MapEntry(:key, :value) in members.entries)
@@ -432,22 +400,6 @@ void main() {
       });
     }
 
-    test('members without an init check do not crash', () async {
-      for (final MapEntry(key: name, value: call) in {
-        ..._unguarded,
-        ..._icy,
-      }.entries) {
-        try {
-          await Future.sync(() => call(soloud, fakeSound, fakeHandle));
-        } on SoLoudException {
-          // Either throwing or doing nothing is fine here.
-        }
-        expect(soloud.isInitialized, isFalse, reason: name);
-      }
-      expect(soloud.get3dSoundSpeed(), 0);
-      expect(soloud.isVoiceGroup(fakeHandle), isFalse);
-    });
-
     test('exempt members work without the engine', () async {
       expect(soloud.activeSounds, isEmpty);
       expect(soloud.isMixerOutputStreamRunning, isFalse);
@@ -463,35 +415,6 @@ void main() {
       final samples = await soloud.readSamplesFromMem(wavBytes(), 64);
       expect(samples, isNotEmpty);
     });
-
-    test(
-      'ICY metadata setters throw SoLoudNotInitializedException',
-      skip:
-          'bug J3: setBufferIcyMetaInt and setMp3BufferIcyMetaInt are '
-          'documented to throw SoLoudNotInitializedException but ignore the '
-          'engine state (lib/src/soloud.dart:1913, 1926)',
-      () async {
-        for (final MapEntry(key: name, value: call) in _icy.entries) {
-          await _expectNotInitialized(name, call, fakeSound, fakeHandle);
-        }
-      },
-    );
-
-    test(
-      '3D audio, voice group and mixing bus methods throw '
-      'SoLoudNotInitializedException',
-      skip:
-          'bug J4: the 3D audio setters/getters, destroyVoiceGroup, '
-          'addVoicesToGroup, isVoiceGroup(Empty) and createMixingBus do not '
-          'check isInitialized and silently do nothing before init, unlike '
-          'the rest of the API (lib/src/soloud.dart:4169-4210, 4905-5069, '
-          '5224)',
-      () async {
-        for (final MapEntry(key: name, value: call) in _unguarded.entries) {
-          await _expectNotInitialized(name, call, fakeSound, fakeHandle);
-        }
-      },
-    );
   });
 
   group('after deinit', () {
@@ -516,26 +439,6 @@ void main() {
       for (final MapEntry(key: name, value: call) in _calls.entries) {
         await _expectNotInitialized(name, call, sound, handle);
       }
-    });
-
-    test('members without an init check do not crash', () async {
-      await initTestEngine(globalVolume: 0);
-      final sound = await loadTestWaveform();
-      final handle = soloud.play3d(sound, 1, 0, 0, volume: 0);
-      final group = soloud.createVoiceGroup();
-      soloud.deinit();
-      for (final MapEntry(key: name, value: call) in {
-        ..._unguarded,
-        ..._icy,
-      }.entries) {
-        try {
-          await Future.sync(() => call(soloud, sound, handle));
-        } on SoLoudException {
-          // Either throwing or doing nothing is fine here.
-        }
-        expect(soloud.isInitialized, isFalse, reason: name);
-      }
-      expect(soloud.isVoiceGroup(group), isFalse);
     });
   });
 }
