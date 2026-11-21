@@ -100,7 +100,7 @@ No-op when `sfxBus` isn't playing or the handle is no longer valid.
 ## Filters
 
 ```dart
-final lowPass = musicBus.filters.biquadFilter..activate();
+final lowPass = musicBus.filters.biquadResonantFilter..activate();
 // Parameters: methods without arguments; the bus must be playing.
 lowPass.frequency().value = 400;
 lowPass.wet().fadeFilterParameter(

@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-custom-dsp
-version: 2
+version: 3
 description: Teaches how to build, compile, and bind custom synchronous C/C++/Rust audio generators (SoLoudSourceDspCallback_t) and real-time DSP filter effects (SoLoudFilterDspCallback_t) in flutter_soloud using Dart Native Assets (hook/build.dart), manual CMake/Cargo compilation, package:ffigen, and Web dart:js_interop. Use when the user asks to write custom DSP algorithms or effects the built-in filters do not provide (custom distortion, bit crusher, ring modulator, physical-model or chiptune synth, engine/weapon sound generator), custom synthesizers/oscillators in C or Rust, compile native audio callbacks with build hooks, generate FFI bindings with ffigen, or create custom audio sources or custom filter slots (createCustomAudioSource, filters.customFilter).
 ---
 
@@ -209,7 +209,7 @@ Used to process audio in real-time (distortion, saturation, custom biquads, ring
 | `aChannels` | `unsigned int` | Number of audio channels passing through this filter. |
 | `aSamplerate` | `float` | Audio sample rate in Hz. |
 | `aTime` | `double` | Current audio engine time in seconds. |
-| `aParams` | `const float*` | Parameter values: `aParams[0]` is "Wet" ($0.0 \dots 1.0$), `aParams[1..7]` are user parameters from `CustomFilterParamSpec`. |
+| `aParams` | `const float*` | Parameter values: `aParams[0]` is "Wet" ($0.0 \dots 1.0$), `aParams[1..15]` are user parameters from `CustomFilterParamSpec`. |
 | `aParamChangedMask` | `uint64_t` | Bitmask of changed parameters (bit 0 = Wet changed, bit 1 = param 1 changed, etc.). |
 | `aParamCount` | `unsigned int` | Total count of valid parameter entries in `aParams`. Check an index against it before reading; from Dart only indices `0..7` can be set. |
 | `aUserData` | `void*` | Optional state pointer passed into `slot.setNativeCallback(userdataAddress: ...)`. |
@@ -238,7 +238,7 @@ MY_EXPORT void myCustomFilterDspCallback(
     void *aUserData)
 {
     // aParams[0] is always "Wet" (0.0 to 1.0) - SoLoud handles wet/dry bypass automatically.
-    // aParams[1..7] are your user-defined parameters configured via Dart CustomFilterParamSpec.
+    // aParams[1..15] are your user-defined parameters configured via Dart CustomFilterParamSpec.
     float drive = (aParamCount > 1) ? aParams[1] : 2.5f;
 
     // Check if parameter 1 changed since the last buffer:
@@ -395,7 +395,7 @@ void registerWebDspCallbacks() {
     final pOffset = paramsPtr.toDartInt >> 2;
     final Float32List heap = _heapF32.toDart;
 
-    // heap[pOffset] is Wet, heap[pOffset + 1..7] are the user parameters.
+    // heap[pOffset] is Wet, heap[pOffset + 1..15] are the user parameters.
     final drive = numParams.toDartInt > 1 ? heap[pOffset + 1] : 2.5;
 
     for (var ch = 0; ch < chs; ch++) {
@@ -496,7 +496,7 @@ Future<void> startSynth() async {
 ```dart
 Future<void> setupFilter() async {
   final slot0 = SoLoud.instance.filters.customFilter(0)
-    // 1. Configure up to 7 user parameters (index 0 is reserved for 'Wet')
+    // 1. Configure up to 15 user parameters (index 0 is reserved for 'Wet')
     ..configureParameters(const [
       CustomFilterParamSpec(
         name: 'Drive',
@@ -544,7 +544,7 @@ rewrite working code, and do not propose it when the simpler call is enough.
 | An effect bypassed with `deactivate()` and restored with `activate()` | `slot.wet.value = 0` / `1`, or `slot.wet.fadeFilterParameter(to:, time:)` | With `wet` at 0 the engine skips the callback (no CPU); `deactivate()` clears the bound callback, so it must be set again |
 | A parameter stepped from Dart with `Timer.periodic` or animation ticks (`param(1).value = ...` many times per second) | `slot.param(1).fadeFilterParameter(to:, time:)` or `.oscillateFilterParameter(from:, to:, time:)` | The engine ramps the value in the audio thread: no steps ("zipper" noise) and no Dart timer; the callback just reads `aParams[1]` |
 | Filter coefficients (biquad, delay length, tables) recomputed on every block inside the callback | Recompute only when `aParamChangedMask & (1ULL << n)` is set for that parameter | The costly math runs only when a value really changed, not on every audio buffer |
-| Mutexes, globals written from Dart or `malloc` used to pass settings and state to the callback | Up to 7 user parameters via `configureParameters`, plus a pre-allocated struct passed as `userdataAddress` and updated with atomics | Locks and allocations on the audio thread cause dropouts; parameters are delivered lock-free in `aParams` |
+| Mutexes, globals written from Dart or `malloc` used to pass settings and state to the callback | Up to 15 user parameters via `configureParameters`, plus a pre-allocated struct passed as `userdataAddress` and updated with atomics | Locks and allocations on the audio thread cause dropouts; parameters are delivered lock-free in `aParams` |
 | One synth callback with shared state played several times, or `static` oscillator state with polyphonic `play()` calls | `createCustomAudioSource(singleInstance: true)`, or per-voice state created in the `onInstanceCreatedAddress` lifecycle callback | Every playing voice calls the callback once per mix, so shared state advances several times and the pitch/phase goes wrong; `singleInstance` stops the previous voice when the source is played again |
 
 ---
@@ -554,7 +554,7 @@ rewrite working code, and do not propose it when the simpler call is enough.
 - **Web: the filter callback has 11 arguments**, `(bufferPtr, samples, bufferStride, channels, sampleRate, time, paramsPtr, maskLo, maskHi, numParams, userData)`. With the shorter 8-argument form the 8th argument is `maskLo`, not `numParams`.
 - **Web: `webJsFunctionName` needs the single-threaded WASM build** (see Option C). Per-sound slots (`sound.filters.customFilter(i)`) are not available on Web: they throw `SoLoudFilterForSingleSoundOnWebDartException`; use a global or bus slot.
 - **`activate()` before `setNativeCallback`.** `deactivate()` keeps the parameter definitions but clears the callback: bind it again after the next `activate()`.
-- **7 user parameters at most.** `configureParameters` with more than 7 specs throws `ArgumentError`; index 0 is always `Wet`.
+- **15 user parameters at most.** `configureParameters` with more than 15 specs throws `ArgumentError`; index 0 is always `Wet`.
 - **Parameter values must be finite.** `fadeFilterParameter`/`oscillateFilterParameter` throw `ArgumentError` for NaN or infinite values; a NaN or out-of-range `.value` is ignored with a logged warning. Pass `min:`/`max:` to `param()` to get the range check.
 - **A slot counts against the 8 filters of its scope**, shared with the built-in filters active on the same scope (global, bus or sound).
 - **Custom sources and filters need `init()` first**; `createCustomAudioSource` throws `SoLoudNotInitializedException` otherwise.

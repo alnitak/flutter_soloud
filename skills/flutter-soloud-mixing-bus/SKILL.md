@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-mixing-bus
-version: 3
+version: 4
 description: Teaches how to use flutter_soloud mixing buses (Bus/Buses) to route groups of sounds through a shared sub-mix for collective volume, pause, fades and shared filters. Use when the user asks for separate music/SFX/UI/voice volume sliders, a per-category audio mixer or settings screen, ducking music under dialogue, pausing or muting all gameplay sounds for a pause menu, one effect (reverb, low-pass) on a whole category, filters that must work on web, a per-group level meter, or routing playing sounds between categories at runtime in a game or app using flutter_soloud, and when code loops over handles or multiplies per-sound volumes to do any of this.
 ---
 
@@ -82,7 +82,7 @@ Future<void> main() async {
 - `bus.filters` — a `FiltersSingle` scoped to this bus; filters activated
   here apply to all routed sounds only (engine-wide filters live on
   `SoLoud.instance.filters`). Parameters are methods called without
-  arguments: `bus.filters.biquadFilter.frequency().value = 400`,
+  arguments: `bus.filters.biquadResonantFilter.frequency().value = 400`,
   `bus.filters.echoFilter.wet().fadeFilterParameter(to: 0, time: ...)`.
   Bus filters work on web (per-sound filters do not). See skill
   **flutter-soloud-filters**.

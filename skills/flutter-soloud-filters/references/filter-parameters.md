@@ -13,7 +13,7 @@ All filters share `wet` (0–1, default 1): mix between dry and processed signal
 
 ## biquadResonant
 
-Global getter `biquadResonantFilter`; single/bus getter `biquadFilter`.
+Getter `biquadResonantFilter` in every scope (on sounds and buses the old name `biquadFilter` still works but is deprecated).
 Multi-mode filter. `src/soloud` docs: <https://solhsa.com/soloud/biquadfilter.html>
 
 | Param | min | max | def | Notes |
@@ -211,7 +211,7 @@ Up to 8 independent instances (`id` in `0..7`) can be activated on the same scop
 | Param | min | max | def | Notes |
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | `0.0` = hard bypass (callback not invoked); `1.0` = zero-copy in-place; `0 < wet < 1` = automatic dry/wet blend |
-| `param(1)` .. `param(7)` | -1e9 (customizable) | 1e9 (customizable) | 0 (customizable) | Define name, range and default with `configureParameters(List<CustomFilterParamSpec>)` (first spec = parameter 1, at most 7); `param(i, min:, max:)` sets the range checked by `.value` on the Dart side |
+| `param(1)` .. `param(15)` | -1e9 (customizable) | 1e9 (customizable) | 0 (customizable) | Define name, range and default with `configureParameters(List<CustomFilterParamSpec>)` (first spec = parameter 1, at most 7); `param(i, min:, max:)` sets the range checked by `.value` on the Dart side |
 
 `wet` is a getter at global scope and a method at sound/bus scope, like the
 built-in filters; `param(i)` is a method everywhere (sound scope:
