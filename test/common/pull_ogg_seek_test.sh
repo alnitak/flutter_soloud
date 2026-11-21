@@ -10,9 +10,10 @@
 # through a real engine on miniaudio's null backend, so no audio hardware is
 # used.
 #
-#   ./test/common/pull_ogg_seek_test.sh [--asan] [file]
+#   ./test/common/pull_ogg_seek_test.sh [--asan|--tsan] [file]
 #
-# --asan builds with AddressSanitizer and UndefinedBehaviorSanitizer. The
+# --asan builds with AddressSanitizer and UndefinedBehaviorSanitizer, --tsan
+# with ThreadSanitizer. The
 # file defaults to both example/assets/audio/sample-OPUS.opus and
 # example/assets/audio/sample-vorbis.ogg.
 
@@ -26,6 +27,10 @@ OUT="${TMPDIR:-/tmp}/pull_ogg_seek_test"
 if [ "${1:-}" == "--asan" ]; then
     SANITIZER=(-fsanitize=address,undefined -fno-omit-frame-pointer -g -O1)
     OUT="${OUT}_asan"
+    shift
+elif [ "${1:-}" == "--tsan" ]; then
+    SANITIZER=(-fsanitize=thread -g -O1)
+    OUT="${OUT}_tsan"
     shift
 fi
 

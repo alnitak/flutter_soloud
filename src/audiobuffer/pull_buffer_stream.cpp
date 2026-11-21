@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 
 #include "../device_lifecycle_test_hooks.h"
 #include "../soloud_common.h"
@@ -107,7 +108,10 @@ PullBufferStreamInstance::PullBufferStreamInstance(PullBufferStream *aParent)
     : mParent(aParent) {
   if (mParent != nullptr) {
     // Seed the format so the first callbacks use valid values even when the
-    // decode mutex is contended (see getAudio).
+    // decode mutex is contended (see getAudio). A delivery's first decode
+    // sets it under the decode mutex; play() creates the instance before it
+    // takes the audio mutex, so it may wait for that decode here.
+    std::lock_guard<std::mutex> lock(mParent->mDecodeMutex);
     mBaseSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
     mSamplerate = mBaseSamplerate;
     mChannels = mParent->mPCMformat.channels;
@@ -811,6 +815,8 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
           aDataLen, static_cast<unsigned long long>(aOffset),
           static_cast<unsigned long long>(mNextTailOffset));
       probeDurationFromOggTail(aOffset);
+      // A seek that was waiting for the duration to find its byte offset.
+      applyPendingSeek();
       DeferredCallbacks callbacks = takeDeferredCallbacksLocked();
       lock.unlock();
       deliverDeferredCallbacks(callbacks);
@@ -1061,6 +1067,12 @@ void PullBufferStream::decodePendingDataLocked(bool aUnderAudioMutex) {
 
     if (!decoded.empty()) {
       if (!mMetadataReceived.load()) {
+        // A play() of this stream reads the format while it creates the
+        // voice: PullBufferStreamInstance's constructor under the decode
+        // mutex, and SoLoud's AudioSourceInstance::init() under the audio
+        // mutex. It is taken after the decode mutex, as in reset().
+        std::optional<AudioMutexLock> audioLock;
+        if (!aUnderAudioMutex) audioLock.emplace(mThePlayer->soloud);
         if (sampleRate != -1) {
           mPCMformat.sampleRate = static_cast<unsigned int>(sampleRate);
           mBaseSamplerate = static_cast<float>(sampleRate);
@@ -1280,6 +1292,23 @@ bool PullBufferStream::nextDataRequestLocked(uint64_t &aOffset) {
   // is known, mSequentialReadOffset is already set to that offset, so
   // requesting it continues the stream from the seek point.
   if (mPendingSeek.load()) {
+    // A seek whose byte offset is still unknown resolves once the duration
+    // is (see timeToEncodedByteOffsetLocked()), so the tail probe that finds
+    // it comes first. Sequential requests would not get there: the decoder
+    // only indexes what the full buffer lets it decode, and a chunk that
+    // reaches the tail range is taken for the probe's (see addAudioData()),
+    // so the same offset would be asked for again without end.
+    if (mPendingSeekByteOffset == 0 &&
+        mDurationProbeState == DurationProbeState::TailRequested &&
+        mNextTailOffset.load() < mDurationProbeTailRangeEnd.load()) {
+      aOffset = mNextTailOffset.load();
+      mWaitingForData.store(true);
+      SOLOUD_DEBUG_LOG(
+          "[PullBuffer] requestMoreDataIfNeeded tail for pending seek "
+          "offset=%llu\n",
+          static_cast<unsigned long long>(aOffset));
+      return true;
+    }
     aOffset = mSequentialReadOffset;
     mWaitingForData.store(true);
     SOLOUD_DEBUG_LOG(
