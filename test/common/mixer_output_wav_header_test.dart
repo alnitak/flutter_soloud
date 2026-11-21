@@ -245,19 +245,11 @@ void main() {
     );
   });
 
-  test(
-    'a new engine session has no header',
-    () async {
-      await startPlaying();
-      await _capture(MixerOutputFormat.wav);
-      soloud.deinit();
-      await startPlaying();
-      expect(soloud.getMixerOutputWavHeader(), isEmpty);
-    },
-    skip:
-        'bug J7: the header of a WAV capture survives deinit/init and is '
-        'returned in the next engine session, which never captured '
-        '(MixerOutput is a process singleton; m_wavHeader is cleared only '
-        'by the next start, src/mixeroutput/mixer_output.cpp:572, 699)',
-  );
+  test('a new engine session has no header', () async {
+    await startPlaying();
+    await _capture(MixerOutputFormat.wav);
+    soloud.deinit();
+    await startPlaying();
+    expect(soloud.getMixerOutputWavHeader(), isEmpty);
+  });
 }

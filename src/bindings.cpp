@@ -1895,6 +1895,11 @@ extern "C"
       clearDartCallbackPointersLocked();
     }
     stopCaptureThreads();
+    {
+      // The capture's header belongs to this engine session.
+      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+      MixerOutput::instance().clearWavHeader();
+    }
 
     // Nothing is left for a FlutterEngine to own. A detach arriving after this
     // finds no claim and correctly declines to tear anything down; the next
