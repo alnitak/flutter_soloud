@@ -92,8 +92,12 @@ final class FiltersSingle {
   ///
   /// This filter is documented in the SoLoud C++ lib docs web page
   /// [here](https://solhsa.com/soloud/biquadfilter.html)
-  BiquadResonantSingle get biquadFilter =>
+  BiquadResonantSingle get biquadResonantFilter =>
       BiquadResonantSingle(soundHash, busId);
+
+  /// The old name of [biquadResonantFilter].
+  @Deprecated('Use biquadResonantFilter, the same name as the global filter')
+  BiquadResonantSingle get biquadFilter => biquadResonantFilter;
 
   /// The `Echo` filter for this sound.
   ///
@@ -449,7 +453,31 @@ class FilterParam {
     this._attributeId,
     this._min,
     this._max,
-  );
+  ) : _ofSource = false;
+
+  /// A parameter of a filter that belongs to a sound or to a bus
+  /// ([FiltersSingle]): it needs a target, the handle of a voice of the sound
+  /// or the bus, and throws [ArgumentError] when used without one (it would
+  /// otherwise address the global filter of the same type).
+  FilterParam.ofSource(
+    this._soundHandle,
+    this._busId,
+    this._type,
+    this._attributeId,
+    this._min,
+    this._max,
+  ) : _ofSource = true;
+
+  final bool _ofSource;
+
+  /// Throws [ArgumentError] if this parameter belongs to the filter of a
+  /// sound and no voice handle was given.
+  @protected
+  void checkTarget() {
+    if (_ofSource && _soundHandle == null && _busId == null) {
+      throw ArgumentError.notNull('soundHandle');
+    }
+  }
 
   final SoundHandle? _soundHandle;
   final int? _busId;
@@ -480,6 +508,7 @@ class FilterParam {
   /// Throws another [SoLoudCppException] if the value can't be read for a
   /// different reason, for example an invalid voice handle.
   double get value {
+    checkTarget();
     if (kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
@@ -509,6 +538,7 @@ class FilterParam {
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
   set value(double val) {
+    checkTarget();
     if (kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
@@ -553,8 +583,10 @@ class FilterParam {
   /// [FiltersSingle] on the Web platform.
   ///
   /// Throws [ArgumentError] if [to] is NaN or infinite.
-  void fadeFilterParameter({required double to, required Duration time}) =>
-      _type.fadeFilterParameter(_soundHandle, _busId, _attributeId, to, time);
+  void fadeFilterParameter({required double to, required Duration time}) {
+    checkTarget();
+    _type.fadeFilterParameter(_soundHandle, _busId, _attributeId, to, time);
+  }
 
   /// Oscillate a parameter value from [from] value to a new value [to]
   /// in [time] time duration.
@@ -567,14 +599,17 @@ class FilterParam {
     required double from,
     required double to,
     required Duration time,
-  }) => _type.oscillateFilterParameter(
-    _soundHandle,
-    _busId,
-    _attributeId,
-    from,
-    to,
-    time,
-  );
+  }) {
+    checkTarget();
+    _type.oscillateFilterParameter(
+      _soundHandle,
+      _busId,
+      _attributeId,
+      from,
+      to,
+      time,
+    );
+  }
 }
 
 /// The different types of audio filters.

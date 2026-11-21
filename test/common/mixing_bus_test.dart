@@ -300,7 +300,7 @@ void main() {
       final voice = bus.play(high);
       final unfiltered = level(await captureOutput());
 
-      final biquad = bus.filters.biquadFilter..activate();
+      final biquad = bus.filters.biquadResonantFilter..activate();
       biquad.type().value = BiquadResonantEnum.type.min; // low-pass
       biquad.frequency().value = 200;
       final filtered = level(await captureOutput());

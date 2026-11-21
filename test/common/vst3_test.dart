@@ -36,6 +36,18 @@ void main() {
       }
     });
 
+    test('loadEffect rejects the slot of a single sound', () async {
+      final sound = await soloud.loadWaveform(WaveForm.sin, false, 1, 0);
+      addTearDown(() => soloud.disposeSource(sound));
+      expect(
+        () => host.loadEffect(
+          bundlePath: '/nonexistent.vst3',
+          slot: sound.filters.customFilter(0),
+        ),
+        throwsArgumentError,
+      );
+    });
+
     test('Reports standard search paths on desktop', () {
       if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
         expect(host.standardSearchPaths, isNotEmpty);

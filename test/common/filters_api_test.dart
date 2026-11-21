@@ -74,7 +74,7 @@ final List<_Filter> _filters = [
   _Filter(
     FilterType.biquadResonantFilter,
     _globals.biquadResonantFilter,
-    (f) => f.biquadFilter,
+    (f) => f.biquadResonantFilter,
     [
       for (final e in BiquadResonantEnum.values)
         _p(
@@ -91,12 +91,16 @@ final List<_Filter> _filters = [
               _globals.biquadResonantFilter.resonance,
           },
           (f, h) => switch (e) {
-            BiquadResonantEnum.wet => f.biquadFilter.wet(soundHandle: h),
-            BiquadResonantEnum.type => f.biquadFilter.type(soundHandle: h),
-            BiquadResonantEnum.frequency => f.biquadFilter.frequency(
+            BiquadResonantEnum.wet => f.biquadResonantFilter.wet(
               soundHandle: h,
             ),
-            BiquadResonantEnum.resonance => f.biquadFilter.resonance(
+            BiquadResonantEnum.type => f.biquadResonantFilter.type(
+              soundHandle: h,
+            ),
+            BiquadResonantEnum.frequency => f.biquadResonantFilter.frequency(
+              soundHandle: h,
+            ),
+            BiquadResonantEnum.resonance => f.biquadResonantFilter.resonance(
               soundHandle: h,
             ),
           },
@@ -919,10 +923,25 @@ void main() {
       expect(slot.param(1).value, closeTo(0.75, 1e-4));
     });
 
-    test('more than 7 user parameters throw ArgumentError', () {
+    test('15 user parameters can be configured and used', () {
+      final slot = _globals.customFilter(4)
+        ..activate()
+        ..configureParameters([
+          for (var i = 0; i < CustomFilterSlot.maxUserParams; i++)
+            CustomFilterParamSpec(name: 'p$i', min: 0, max: 1, defaultValue: 0),
+        ]);
+      addTearDown(slot.deactivate);
+      slot.param(CustomFilterSlot.maxUserParams, max: 1).value = 0.25;
+      expect(
+        slot.param(CustomFilterSlot.maxUserParams).value,
+        closeTo(0.25, 1e-4),
+      );
+    });
+
+    test('more than 15 user parameters throw ArgumentError', () {
       expect(
         () => _globals.customFilter(4).configureParameters([
-          for (var i = 0; i < 8; i++)
+          for (var i = 0; i < 16; i++)
             CustomFilterParamSpec(name: 'p$i', min: 0, max: 1, defaultValue: 0),
         ]),
         throwsArgumentError,
@@ -949,6 +968,52 @@ void main() {
         slot.deactivate();
       },
     );
+  });
+
+  group('a parameter of a sound without the voice handle', () {
+    test(
+      'throws ArgumentError instead of addressing the global filter',
+      skip: kIsWeb
+          ? 'filters for single sounds are not supported on the web'
+          : null,
+      () async {
+        final sound = await loadTestWaveform();
+        sound.filters.echoFilter.activate();
+        // The global filter of the same type: it must not be touched.
+        _globals.echoFilter.activate();
+        addTearDown(_globals.echoFilter.deactivate);
+        final before = _globals.echoFilter.delay.value;
+        soloud.play(sound);
+
+        final delay = sound.filters.echoFilter.delay();
+        expect(() => delay.value, throwsArgumentError);
+        expect(() => delay.value = 0.2, throwsArgumentError);
+        expect(
+          () => delay.fadeFilterParameter(to: 0.2, time: Duration.zero),
+          throwsArgumentError,
+        );
+        expect(
+          () => delay.oscillateFilterParameter(
+            from: 0.1,
+            to: 0.2,
+            time: const Duration(seconds: 1),
+          ),
+          throwsArgumentError,
+        );
+        final custom = sound.filters.customFilter(0)..activate();
+        expect(() => custom.wet().value, throwsArgumentError);
+        expect(() => custom.param(1).value = 0.5, throwsArgumentError);
+        expect(_globals.echoFilter.delay.value, before);
+      },
+    );
+
+    test('a bus parameter needs no handle', () {
+      final bus = soloud.createMixingBus()..playOnEngine();
+      addTearDown(bus.dispose);
+      final echo = bus.filters.echoFilter..activate();
+      echo.delay().value = 0.2;
+      expect(echo.delay().value, closeTo(0.2, 1e-4));
+    });
   });
 
   group('before init', () {

@@ -16,7 +16,7 @@ import 'package:meta/meta.dart';
 /// Parameter `0` is always reserved for `Wet` (`0.0..1.0`, default `1.0`),
 /// which controls the hardcoded 3-branch dry/wet blending and hard bypass
 /// (`wet == 0.0`) inside the C++ audio thread. User-defined parameters occupy
-/// indices `1..7` ([CustomFilterSlot.maxUserParams]).
+/// indices `1..15` ([CustomFilterSlot.maxUserParams]).
 @experimental
 @immutable
 class CustomFilterParamSpec {
@@ -53,7 +53,7 @@ class CustomFilterParamSpec {
 @experimental
 class CustomFilterParam extends FilterParam {
   /// Creates a parameter handle for custom filter slot [slotIndex] and
-  /// parameter [attributeId] (`0..7`).
+  /// parameter [attributeId] (`0..15`).
   @experimental
   CustomFilterParam(
     this.soundHandle,
@@ -68,9 +68,37 @@ class CustomFilterParam extends FilterParam {
       ),
       assert(
         attributeId >= 0 && attributeId < CustomFilterSlot.maxParams,
-        'attributeId must be in 0..7',
+        'attributeId must be in 0..15',
       ),
       super(soundHandle, busId, FilterType.customFilter, attributeId, min, max);
+
+  /// A parameter of a custom filter slot of a sound or of a bus: it throws
+  /// [ArgumentError] when used without a voice handle or a bus (see
+  /// [FilterParam.ofSource]).
+  @experimental
+  CustomFilterParam.ofSource(
+    this.soundHandle,
+    this.busId,
+    this.slotIndex,
+    int attributeId,
+    double min,
+    double max,
+  ) : assert(
+        slotIndex >= 0 && slotIndex < CustomFilterSlot.maxSlots,
+        'slotIndex must be in 0..7',
+      ),
+      assert(
+        attributeId >= 0 && attributeId < CustomFilterSlot.maxParams,
+        'attributeId must be in 0..15',
+      ),
+      super.ofSource(
+        soundHandle,
+        busId,
+        FilterType.customFilter,
+        attributeId,
+        min,
+        max,
+      );
 
   /// Optional voice handle when targeting a single-sound filter instance.
   final SoundHandle? soundHandle;
@@ -83,6 +111,7 @@ class CustomFilterParam extends FilterParam {
 
   @override
   double get value {
+    checkTarget();
     if (kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
@@ -103,6 +132,7 @@ class CustomFilterParam extends FilterParam {
 
   @override
   set value(double val) {
+    checkTarget();
     if (kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
@@ -129,6 +159,7 @@ class CustomFilterParam extends FilterParam {
 
   @override
   void fadeFilterParameter({required double to, required Duration time}) {
+    checkTarget();
     if (kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
@@ -156,6 +187,7 @@ class CustomFilterParam extends FilterParam {
     required double to,
     required Duration time,
   }) {
+    checkTarget();
     if (kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
@@ -203,11 +235,12 @@ abstract class CustomFilterSlot extends FilterBase {
   /// Maximum number of custom filter slots per scope (`FILTERS_PER_STREAM`).
   static const int maxSlots = 8;
 
-  /// Total number of parameters per custom filter (`Wet` + 7 user parameters).
-  static const int maxParams = 8;
+  /// Total number of parameters per custom filter (`Wet` + 15 user
+  /// parameters), the same as `CustomFilter::kMaxParams` in the native code.
+  static const int maxParams = 16;
 
-  /// Maximum number of user-defined parameters (`param[1]..param[7]`).
-  static const int maxUserParams = 7;
+  /// Maximum number of user-defined parameters (`param[1]..param[15]`).
+  static const int maxUserParams = 15;
 
   /// The slot index (`0..7`) on the target filter chain.
   final int slotIndex;
@@ -318,8 +351,8 @@ abstract class CustomFilterSlot extends FilterBase {
     }
   }
 
-  /// Configures up to [maxUserParams] (7) user parameter definitions (`1..7`)
-  /// on this custom filter slot.
+  /// Configures up to [maxUserParams] (15) user parameter definitions
+  /// (`1..15`) on this custom filter slot.
   ///
   /// Parameter `0` is always `Wet` (`0.0..1.0`, default `1.0`). The first item
   /// in [specs] configures parameter `1`, the second configures parameter `2`,
@@ -331,7 +364,7 @@ abstract class CustomFilterSlot extends FilterBase {
         specs.length,
         'specs.length',
         'A CustomFilterSlot supports at most $maxUserParams user parameters '
-            '(indices 1..7; index 0 is reserved for Wet).',
+            '(indices 1..15; index 0 is reserved for Wet).',
       );
     }
     for (var i = 0; i < specs.length; i++) {
@@ -367,9 +400,9 @@ class CustomFilterSingle extends CustomFilterSlot {
   /// Parameter `0`: Dry/wet mix (`0.0` = hard bypass, `1.0` = 100% wet).
   @experimental
   CustomFilterParam wet({SoundHandle? soundHandle}) =>
-      CustomFilterParam(soundHandle, busId, slotIndex, 0, 0, 1);
+      CustomFilterParam.ofSource(soundHandle, busId, slotIndex, 0, 0, 1);
 
-  /// Accesses parameter [paramIndex] (`0..7`) on this custom filter slot.
+  /// Accesses parameter [paramIndex] (`0..15`) on this custom filter slot.
   ///
   /// Optional [min] and [max] bounds are used for client-side range validation
   /// when setting `.value`.
@@ -379,7 +412,7 @@ class CustomFilterSingle extends CustomFilterSlot {
     SoundHandle? soundHandle,
     double min = -1e9,
     double max = 1e9,
-  }) => CustomFilterParam(
+  }) => CustomFilterParam.ofSource(
     soundHandle,
     busId,
     slotIndex,
@@ -401,7 +434,7 @@ class CustomFilterGlobal extends CustomFilterSlot {
   CustomFilterParam get wet =>
       CustomFilterParam(null, null, slotIndex, 0, 0, 1);
 
-  /// Accesses parameter [paramIndex] (`0..7`) on this global custom filter
+  /// Accesses parameter [paramIndex] (`0..15`) on this global custom filter
   /// slot.
   ///
   /// Optional [min] and [max] bounds are used for client-side range validation

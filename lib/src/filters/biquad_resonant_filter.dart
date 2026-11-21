@@ -57,7 +57,7 @@ abstract class _BiquadResonantInternal extends FilterBase {
 class BiquadResonantSingle extends _BiquadResonantInternal {
   BiquadResonantSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -66,7 +66,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
     BiquadResonantEnum.wet.max,
   );
 
-  FilterParam type({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam type({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -75,7 +75,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
     BiquadResonantEnum.type.max,
   );
 
-  FilterParam frequency({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam frequency({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -84,7 +84,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
     BiquadResonantEnum.frequency.max,
   );
 
-  FilterParam resonance({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam resonance({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

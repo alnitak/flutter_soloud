@@ -214,7 +214,7 @@ class ParametricEqSingle extends _ParametricEqInternal {
   ParametricEqSingle(super.soundHash, super.busId);
 
   /// Get the wet parameter (0-1, default 1)
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -224,17 +224,18 @@ class ParametricEqSingle extends _ParametricEqInternal {
   );
 
   /// Get the STFT window size parameter (32-4096, power of 2, default 1024)
-  FilterParam stftWindowSize({SoundHandle? soundHandle}) => FilterParam(
-    soundHandle,
-    super.busId,
-    filterType,
-    ParametricEqParam.stftWindowSize,
-    ParametricEqParam.getMin(ParametricEqParam.stftWindowSize),
-    ParametricEqParam.getMax(ParametricEqParam.stftWindowSize),
-  );
+  FilterParam stftWindowSize({SoundHandle? soundHandle}) =>
+      FilterParam.ofSource(
+        soundHandle,
+        super.busId,
+        filterType,
+        ParametricEqParam.stftWindowSize,
+        ParametricEqParam.getMin(ParametricEqParam.stftWindowSize),
+        ParametricEqParam.getMax(ParametricEqParam.stftWindowSize),
+      );
 
   /// Get the number of bands parameter (1-64, default 3)
-  FilterParam numBands({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam numBands({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -247,7 +248,7 @@ class ParametricEqSingle extends _ParametricEqInternal {
   /// [bandIndex] should be 0-63
   FilterParam bandGain(int bandIndex, {SoundHandle? soundHandle}) {
     final paramIndex = ParametricEqParam.bandGain(bandIndex);
-    return FilterParam(
+    return FilterParam.ofSource(
       soundHandle,
       super.busId,
       filterType,
@@ -261,7 +262,7 @@ class ParametricEqSingle extends _ParametricEqInternal {
   /// [bandIndex] should be 0-63
   FilterParam bandFreq(int bandIndex, {SoundHandle? soundHandle}) {
     final paramIndex = ParametricEqParam.bandFreq(bandIndex);
-    return FilterParam(
+    return FilterParam.ofSource(
       soundHandle,
       super.busId,
       filterType,
@@ -279,7 +280,7 @@ class ParametricEqSingle extends _ParametricEqInternal {
   /// [bandIndex] should be 0-63
   FilterParam bandQ(int bandIndex, {SoundHandle? soundHandle}) {
     final paramIndex = ParametricEqParam.bandQ(bandIndex);
-    return FilterParam(
+    return FilterParam.ofSource(
       soundHandle,
       super.busId,
       filterType,

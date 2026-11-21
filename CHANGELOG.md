@@ -44,6 +44,10 @@ Tests were reorganized into `test/common`, `test/<platform>` and `test/support` 
   - Volume, pan, play speed, fades, oscillations, `play*()` volume/pan/scale, 3D positions/velocities/parameters, `setFftDecibelRange`, `loadWaveform` scale/detune and filter parameter fades throw `ArgumentError` for NaN or infinite values. A NaN filter parameter value is ignored with a warning, like out-of-range values.
   - `setBufferIcyMetaInt`, the voice group methods, `createMixingBus` and the 3D methods throw `SoLoudNotInitializedException` before `init()`, like the rest of the API.
   - Setting or reading a parameter of a filter that is not active throws `SoLoudFilterNotFoundException`; an invalid parameter index throws `SoLoudInvalidParameterException`.
+  - A parameter of a sound's filter used without `soundHandle` (`sound.filters.echoFilter.wet().value`) throws `ArgumentError`; it used to change the global filter of the same type.
+  - `Vst3Host.loadEffect` throws `ArgumentError` for the filter slot of a single sound (only global and bus slots are supported).
+  - Custom filters expose 15 user parameters (`CustomFilterSlot.maxUserParams`, `param(1)`..`param(15)`), as the native side always supported; it was 7.
+  - `biquadResonantFilter` is now the name of the biquad getter on sounds and buses too; `biquadFilter` is deprecated.
   - The EQ filter is transparent with all bands at 1, and its bands now cover the whole spectrum, so existing EQ settings sound different.
   - Ogg Opus streams with 3 to 8 channels are downmixed to stereo.
   - Linux without FFmpeg: loading AAC/M4A/AC-3 throws `SoLoudAudioFormatNotSupportedCppException` instead of the generic file-load error, like the streaming path.

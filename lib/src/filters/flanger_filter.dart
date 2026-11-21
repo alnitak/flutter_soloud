@@ -37,7 +37,7 @@ abstract class _FlangerInternal extends FilterBase {
 class FlangerSingle extends _FlangerInternal {
   FlangerSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -46,7 +46,7 @@ class FlangerSingle extends _FlangerInternal {
     FlangerEnum.wet.max,
   );
 
-  FilterParam delay({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam delay({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -55,7 +55,7 @@ class FlangerSingle extends _FlangerInternal {
     FlangerEnum.delay.max,
   );
 
-  FilterParam freq({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam freq({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

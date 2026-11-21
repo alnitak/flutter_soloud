@@ -46,7 +46,7 @@ abstract class _LimiterInternal extends FilterBase {
 class LimiterSingle extends _LimiterInternal {
   LimiterSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -55,7 +55,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.wet.max,
   );
 
-  FilterParam threshold({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam threshold({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -64,7 +64,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.threshold.max,
   );
 
-  FilterParam outputCeiling({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam outputCeiling({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -73,7 +73,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.outputCeiling.max,
   );
 
-  FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -82,7 +82,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.kneeWidth.max,
   );
 
-  FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -91,7 +91,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.releaseTime.max,
   );
 
-  FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

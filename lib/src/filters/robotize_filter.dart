@@ -37,7 +37,7 @@ abstract class _RobotizeInternal extends FilterBase {
 class RobotizeSingle extends _RobotizeInternal {
   RobotizeSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -46,7 +46,7 @@ class RobotizeSingle extends _RobotizeInternal {
     RobotizeEnum.wet.max,
   );
 
-  FilterParam frequency({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam frequency({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -55,7 +55,7 @@ class RobotizeSingle extends _RobotizeInternal {
     RobotizeEnum.frequency.max,
   );
 
-  FilterParam waveform({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam waveform({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

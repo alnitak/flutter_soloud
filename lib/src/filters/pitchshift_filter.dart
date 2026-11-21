@@ -40,7 +40,7 @@ abstract class _PitchShiftInternal extends FilterBase {
 class PitchShiftSingle extends _PitchShiftInternal {
   PitchShiftSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -58,7 +58,7 @@ class PitchShiftSingle extends _PitchShiftInternal {
   /// ```dart
   /// semitones = 12 * log(value) / ln2; // 12 * log2(value)
   /// ```
-  FilterParam shift({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam shift({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -76,7 +76,7 @@ class PitchShiftSingle extends _PitchShiftInternal {
   /// ```dart
   /// shift = pow(2, value / 12);
   /// ```
-  FilterParam semitones({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam semitones({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

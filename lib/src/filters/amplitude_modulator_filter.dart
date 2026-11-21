@@ -37,7 +37,7 @@ abstract class _AmplitudeModulatorInternal extends FilterBase {
 class AmplitudeModulatorSingle extends _AmplitudeModulatorInternal {
   AmplitudeModulatorSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -51,7 +51,7 @@ class AmplitudeModulatorSingle extends _AmplitudeModulatorInternal {
   /// Frequencies at or above the Nyquist limit of the sample rate the filter
   /// runs at are clamped just below it while processing; the value set here
   /// is still the one returned when querying the parameter.
-  FilterParam frequency({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam frequency({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -66,7 +66,7 @@ class AmplitudeModulatorSingle extends _AmplitudeModulatorInternal {
   /// 1 = Triangle
   /// 2 = Square
   /// 3 = Saw
-  FilterParam waveform({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam waveform({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
