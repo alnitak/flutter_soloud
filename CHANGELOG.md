@@ -69,6 +69,7 @@ Tests were reorganized into `test/common`, `test/<platform>` and `test/support` 
   - The bitrate reported for M4A/MP4 is correct.
   - Android: `LoadMode.memory` decoding of M4A files with an edit list no longer keeps the AAC end padding.
   - Android: streaming AC-3/E-AC-3 in MP4 (`LoadMode.disk`) on devices with Dolby's decoder (e.g. Samsung Galaxy) no longer cuts off the last ~60 ms or loses the first ~30 ms, plays without the decoder's Dolby Atmos leveler, and no longer starts with ~0.1 s of silence after seeking to the start or looping.
+  - Android: decoding AC-3/E-AC-3 in MP4 into memory (`LoadMode.memory`) on devices with Dolby's decoder no longer cuts off the end, starts at the right frame and plays without the Dolby Atmos leveler, so it matches the streamed decode.
 - **Streams**
   - Ogg Opus: 3 to 8 channel streams no longer decode to noise; seeking resumes exactly at the target and no longer drops the end of the file.
   - Chained Ogg Opus and Vorbis: links are no longer cut short or mixed together, and seeking into a later link works.
