@@ -459,6 +459,9 @@ class FilterParam {
   /// ([FiltersSingle]): it needs a target, the handle of a voice of the sound
   /// or the bus, and throws [ArgumentError] when used without one (it would
   /// otherwise address the global filter of the same type).
+  ///
+  /// Used by the filter classes of this package, not by app code.
+  @internal
   FilterParam.ofSource(
     this._soundHandle,
     this._busId,
@@ -472,6 +475,7 @@ class FilterParam {
 
   /// Throws [ArgumentError] if this parameter belongs to the filter of a
   /// sound and no voice handle was given.
+  @internal
   @protected
   void checkTarget() {
     if (_ofSource && _soundHandle == null && _busId == null) {

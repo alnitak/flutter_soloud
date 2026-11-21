@@ -75,7 +75,9 @@ class CustomFilterParam extends FilterParam {
   /// A parameter of a custom filter slot of a sound or of a bus: it throws
   /// [ArgumentError] when used without a voice handle or a bus (see
   /// [FilterParam.ofSource]).
-  @experimental
+  ///
+  /// Used by [CustomFilterSingle], not by app code.
+  @internal
   CustomFilterParam.ofSource(
     this.soundHandle,
     this.busId,
