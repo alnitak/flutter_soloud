@@ -22,13 +22,16 @@ class MixerOutputEncoder {
   /// Encode a block of interleaved float PCM samples.
   /// [input] interleaved float samples in [-1.0, 1.0].
   /// [samples] total number of samples (frames * channels).
-  /// [output] encoded bytes are appended to this vector.
+  /// [output] is replaced with the bytes encoded by this call (its previous
+  /// contents are discarded, not appended to); it may be empty when the
+  /// encoder is still buffering a partial block.
   /// Returns true on success.
   virtual bool encode(const float *input, size_t samples,
                       std::vector<uint8_t> &output) = 0;
 
   /// Flush any remaining encoded data and finalize the stream.
-  /// [output] encoded bytes are appended to this vector.
+  /// [output] is replaced with the remaining encoded bytes (its previous
+  /// contents are discarded, not appended to).
   /// Returns true on success.
   virtual bool finalize(std::vector<uint8_t> &output) = 0;
 

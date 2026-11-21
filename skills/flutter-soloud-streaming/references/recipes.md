@@ -116,9 +116,29 @@ Useful controls shown in the demo:
 
 ## Procedural PCM generation
 
-Source: `example/lib/buffer_stream/generate.dart`. Generate samples (optionally
-in an isolate — the demo marks the generator `@pragma('vm:entry-point')` and
-passes the `AudioSource` in), push once, end immediately.
+Source: `example/lib/buffer_stream/generate.dart`. Generate samples, push once,
+end immediately. For a long generation, do it off the UI isolate:
+`addAudioDataStream` and `setDataIsEnded` can be called inside `compute()` /
+`Isolate.run` (the demo does), as long as `init()` and `setBufferStream` ran
+in the main isolate. Pass the `AudioSource` to a top-level function; do not
+capture `SoLoud.instance` or other main-isolate objects in the closure.
+
+```dart
+// Top-level: runs in the worker isolate.
+void fillTone(AudioSource sound) {
+  final audioData = Int8List(44100 * 60); // one minute, mono s8
+  for (var i = 0; i < audioData.length; i++) {
+    audioData[i] = (127 * sin(2 * pi * 440 * i / 44100)).toInt();
+  }
+  SoLoud.instance.addAudioDataStream(sound, audioData.buffer.asUint8List());
+  SoLoud.instance.setDataIsEnded(sound);
+}
+
+// Main isolate: create the stream, fill it in the background, play it.
+await compute(fillTone, sound);
+```
+
+The same thing in the main isolate, for short sounds:
 
 ```dart
 import 'dart:math';

@@ -960,7 +960,12 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         // The C++ side passes the offset as a 64-bit integer, which the
         // web target represents as a JS BigInt. Accepting [int] here lets
         // the runtime convert the BigInt to a Dart integer automatically.
-        onMoreDataIsNeeded(offset);
+        _inNativePullCallback++;
+        try {
+          onMoreDataIsNeeded(offset);
+        } finally {
+          _inNativePullCallback--;
+        }
       }
 
       globalThis.setProperty(
@@ -984,6 +989,22 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
         'dartOnAudioDurationCallback_$hash'.toJS,
         webAudioDurationCallback.toJS,
       );
+
+      // For PCM formats the C++ side reports the duration, computed from the
+      // declared size and format, from inside the WASM call above: before
+      // the callback was registered, so it is lost. Report it here, the same
+      // way (src/audiobuffer/pull_buffer_stream.cpp, setup()).
+      final bytesPerSample = switch (format) {
+        _ when format == BufferType.s8.value => 1,
+        _ when format == BufferType.s16le.value => 2,
+        _ when format == BufferType.auto.value => 0,
+        _ => 4,
+      };
+      final bytesPerSecond = sampleRate * channels * bytesPerSample;
+      if (ret.error == PlayerErrors.noError && bytesPerSecond > 0) {
+        final duration = audioSizeBytes / bytesPerSecond;
+        scheduleMicrotask(() => onAudioDuration(duration));
+      }
     }
 
     return ret;
@@ -995,36 +1016,54 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return PlayerErrors.values[result];
   }
 
+  /// Greater than 0 while `onMoreDataIsNeeded` runs from inside a WASM call
+  /// (see [addPullBufferDataStream]).
+  int _inNativePullCallback = 0;
+
+  PlayerErrors _addPullBufferDataStreamNow(
+    int hash,
+    Uint8List audioChunk,
+    int offset,
+  ) {
+    final audioChunkPtr = wasmMalloc(audioChunk.length);
+    try {
+      wasmHeapU8.toDart.setAll(audioChunkPtr, audioChunk);
+      final result = wasmAddPullBufferDataStream(
+        hash,
+        audioChunkPtr,
+        audioChunk.length,
+        wasmBigInt(offset.toString()),
+      );
+      return PlayerErrors.values[result];
+    } finally {
+      wasmFree(audioChunkPtr);
+    }
+  }
+
   @override
   PlayerErrors addPullBufferDataStream(
     int hash,
     Uint8List audioChunk, {
     int offset = 0,
   }) {
-    // On the web, `onMoreDataIsNeeded` can be invoked synchronously from the
-    // audio thread's `onaudioprocess` callback. Calling back into the WASM
-    // module from that same thread re-enters the pull-buffer mutex and
-    // deadlocks. Copy the chunk and defer the native call so it runs after the
-    // audio callback has returned and released the mutex.
+    if (_inNativePullCallback == 0) {
+      return _addPullBufferDataStreamNow(hash, audioChunk, offset);
+    }
+
+    // `onMoreDataIsNeeded` can run synchronously from inside the WASM module
+    // (from the audio callback on the single-threaded build). Calling back
+    // into the module from there would re-enter the mixer and the pull
+    // buffer while they are in use. Copy the chunk and defer the native call
+    // until that call has returned; its result can then only be logged.
     final chunkCopy = Uint8List.fromList(audioChunk);
-
     scheduleMicrotask(() {
-      final audioChunkPtr = wasmMalloc(chunkCopy.length);
-
-      final heapU8 = wasmHeapU8;
-      heapU8.toDart.setAll(audioChunkPtr, chunkCopy);
-
       try {
-        wasmAddPullBufferDataStream(
-          hash,
-          audioChunkPtr,
-          chunkCopy.length,
-          wasmBigInt(offset.toString()),
-        );
+        final error = _addPullBufferDataStreamNow(hash, chunkCopy, offset);
+        if (error != PlayerErrors.noError) {
+          _log.warning('addPullBufferDataStream failed: $error');
+        }
       } on Object catch (e, st) {
         _log.warning('addPullBufferDataStream failed: $e\n$st');
-      } finally {
-        wasmFree(audioChunkPtr);
       }
     });
 
@@ -1693,7 +1732,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     /// need to convert it to unsigned 32-bit.
     /// A return value of 0 means error.
     final raw = wasmCreateVoiceGroup().toUnsigned(32);
-    if (raw == 0) return SoundHandle(-1);
+    if (raw == 0) return const SoundHandle.error();
     return SoundHandle(raw);
   }
 
@@ -2688,6 +2727,31 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return Int16List.view(heapU8.buffer, address, int16Length);
   }
 
+  static bool _warnedJsDspOnMultiThreadedBuild = false;
+
+  /// A JavaScript DSP function (`webJsFunctionName`) is looked up and called
+  /// on the thread that renders the audio. In the multi-threaded WASM build
+  /// that is the AudioWorklet, a separate JavaScript realm where the
+  /// function installed on the page's `globalThis` (and the Dart program
+  /// behind it) does not exist, so the source or filter stays silent. Warn
+  /// once; see the dartdoc of `SoLoud.createCustomAudioSource`.
+  static void _warnJsDspOnMultiThreadedBuild(String caller) {
+    if (_warnedJsDspOnMultiThreadedBuild) return;
+    final build = flutterSoloudBuild;
+    final multiThreaded =
+        build == 'mt' ||
+        (build == 'manual' && (isCrossOriginIsolated ?? false));
+    if (!multiThreaded) return;
+    _warnedJsDspOnMultiThreadedBuild = true;
+    _log.warning(
+      '$caller: JavaScript DSP callbacks (webJsFunctionName) do not run on '
+      'the multi-threaded WASM build, because the audio renders in an '
+      "AudioWorklet where the page's globalThis is not visible. Set "
+      '`self.flutter_soloud_force_single_threaded = true` before loading '
+      'init_soloud.js to use the single-threaded build.',
+    );
+  }
+
   @override
   ({PlayerErrors error, SoundHash soundHash}) createCustomAudioSource({
     required int sampleRate,
@@ -2704,6 +2768,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final hashPtr = wasmMalloc(4);
     var webNamePtr = 0;
     if (webJsFunctionName != null && webJsFunctionName.isNotEmpty) {
+      _warnJsDspOnMultiThreadedBuild('createCustomAudioSource');
       webNamePtr = _allocUtf8CString(webJsFunctionName);
     }
     try {
@@ -2793,6 +2858,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }) {
     var webNamePtr = 0;
     if (webJsFunctionName != null && webJsFunctionName.isNotEmpty) {
+      _warnJsDspOnMultiThreadedBuild('setCustomFilterCallback');
       webNamePtr = _allocUtf8CString(webJsFunctionName);
     }
     try {

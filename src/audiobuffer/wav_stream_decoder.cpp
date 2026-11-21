@@ -4,10 +4,28 @@
 #include <cmath>
 #include <cstring>
 
+namespace {
+// Same as dr_wav's drwav_get_bytes_per_pcm_frame(), which is not exported.
+drwav_uint32 bytesPerPcmFrame(const drwav &wav) {
+  if ((wav.bitsPerSample & 0x7) == 0) {
+    return (wav.bitsPerSample * wav.fmt.channels) >> 3;
+  }
+  return wav.fmt.blockAlign;
+}
+} // namespace
+
 size_t WavDecoderWrapper::on_read(void *pUserData, void *pBufferOut,
                                   size_t bytesToRead) {
   WavDecoderWrapper *decoder = (WavDecoderWrapper *)pUserData;
   size_t bytes_remaining = decoder->audioData.size() - decoder->m_read_pos;
+  // Once the header is parsed, a read that is only partly buffered returns
+  // nothing while more data may come: dr_wav counts the bytes of a short read
+  // as consumed and drops a partial frame, which would shift every later
+  // sample. The read is retried once more data has arrived.
+  if (decoder->isInitialized && !decoder->mDataEnded &&
+      bytes_remaining < bytesToRead) {
+    return 0;
+  }
   size_t bytes_to_copy = MIN(bytesToRead, bytes_remaining);
 
   if (bytes_to_copy > 0) {
@@ -98,6 +116,9 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
   // When mDataEnded is true and decoder is initialized, dr_wav may still have
   // data in its internal buffer that hasn't been decoded yet.
   if (m_read_pos >= audioData.size() && (!isInitialized || !mDataEnded)) {
+    // No data and none will come: a decoder that never initialized is done.
+    if (!isInitialized && mDataEnded)
+      mDrained = true;
     return {{}, DecoderError::NoError};
   }
 
@@ -123,6 +144,13 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
       // Reset the read position so the next decode() call retries from the
       // beginning of the currently buffered data.
       m_read_pos = read_pos_before;
+      if (mDataEnded) {
+        // No more data will come, so the decoder can never initialize: end
+        // the stream, or a drain loop on hasPendingData() never ends.
+        audioData.clear();
+        m_read_pos = 0;
+        mDrained = true;
+      }
       return {{}, DecoderError::NoError};
     }
     isInitialized = true;
@@ -136,16 +164,49 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
                        audioData.begin() + decoder.dataChunkDataPos);
     }
 
-    // If this decode call is part of an out-of-buffer seek, jump to the
-    // target frame before producing samples.
-    if (mPendingSeekTargetSample > 0) {
-      if (decoder.channels > 0) {
-        const drwav_uint64 targetFrame =
-            mPendingSeekTargetSample / decoder.channels;
-        drwav_seek_to_pcm_frame(&decoder, targetFrame);
+    // A "data" chunk size of 0xFFFFFFFF marks a stream of unknown length.
+    // dr_wav replaces it by the number of bytes buffered at init, which would
+    // stop the stream after the first piece: let it read until the data ends.
+    mUnknownLength = false;
+    if (!mDataEnded && decoder.dataChunkDataPos >= 4 &&
+        static_cast<uint64_t>(decoder.dataChunkDataPos) <= audioData.size() &&
+        (decoder.container == drwav_container_riff ||
+         decoder.container == drwav_container_rifx)) {
+      const unsigned char *sz = audioData.data() + decoder.dataChunkDataPos - 4;
+      const uint32_t rawSize =
+          decoder.container == drwav_container_riff
+              ? (uint32_t)sz[0] | ((uint32_t)sz[1] << 8) |
+                    ((uint32_t)sz[2] << 16) | ((uint32_t)sz[3] << 24)
+              : (uint32_t)sz[3] | ((uint32_t)sz[2] << 8) |
+                    ((uint32_t)sz[1] << 16) | ((uint32_t)sz[0] << 24);
+      const drwav_uint32 bpf = bytesPerPcmFrame(decoder);
+      if (rawSize == 0xFFFFFFFF && bpf > 0) {
+        const bool compressed =
+            decoder.translatedFormatTag == DR_WAVE_FORMAT_ADPCM ||
+            decoder.translatedFormatTag == DR_WAVE_FORMAT_DVI_ADPCM;
+        drwav_uint64 size = 0xFFFFFFFFull;
+        if (!compressed) size -= size % bpf;
+        decoder.dataChunkDataSize = size;
+        decoder.bytesRemaining = size;
+        // An upper bound: ADPCM holds at most two frames per byte.
+        decoder.totalPCMFrameCount = compressed ? size * 2 : size / bpf;
+        mUnknownLength = true;
       }
-      mPendingSeekTargetSample = 0;
     }
+
+    // After an out-of-buffer seek the data fed starts at the byte offset
+    // given by timeToByteOffset(), right behind the re-prepended header: the
+    // decoder is already at the target frame. Account for the skipped bytes
+    // so the data chunk still ends where it does in the file.
+    if (mPendingSeekTargetSample > 0 &&
+        mPendingSeekByteOffset > decoder.dataChunkDataPos) {
+      const drwav_uint64 skipped =
+          std::min<drwav_uint64>(decoder.bytesRemaining,
+                                 mPendingSeekByteOffset - decoder.dataChunkDataPos);
+      decoder.bytesRemaining -= skipped;
+    }
+    mPendingSeekTargetSample = 0;
+    mPendingSeekByteOffset = 0;
 
     if (onTrackChange) {
       AudioMetadata metadata;
@@ -171,6 +232,21 @@ WavDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *sampleRate,
     }
 
     int framesToRequest = MAX_FRAMES_PER_RUN / decoder.channels;
+
+    // Request only the whole frames that are buffered (uncompressed formats),
+    // so the read does not wait for a full chunk of input.
+    const drwav_uint32 bytesPerFrame = bytesPerPcmFrame(decoder);
+    if (!mDataEnded && bytesPerFrame > 0 &&
+        decoder.translatedFormatTag != DR_WAVE_FORMAT_ADPCM &&
+        decoder.translatedFormatTag != DR_WAVE_FORMAT_DVI_ADPCM) {
+      const size_t bufferedFrames =
+          (audioData.size() - m_read_pos) / bytesPerFrame;
+      if (bufferedFrames == 0) {
+        break;
+      }
+      framesToRequest =
+          static_cast<int>(std::min<size_t>(framesToRequest, bufferedFrames));
+    }
 
     if (maxOutputSamples > 0) {
       const size_t remainingSamples =
@@ -258,14 +334,13 @@ uint64_t WavDecoderWrapper::timeToByteOffset(double seconds) {
 
 double WavDecoderWrapper::getDuration() const {
   if (!isInitialized || decoder.sampleRate == 0) return -1.0;
-  if (decoder.totalPCMFrameCount == 0) return -1.0;
+  if (decoder.totalPCMFrameCount == 0 || mUnknownLength) return -1.0;
   return static_cast<double>(decoder.totalPCMFrameCount) /
          static_cast<double>(decoder.sampleRate);
 }
 
 void WavDecoderWrapper::prepareForSeek(uint64_t targetSample,
                                        uint64_t byteOffset) {
-  (void)byteOffset; // Offsets come from the header, which is kept.
   if (isInitialized) {
     // Capture the header before uninitializing, if it wasn't already captured
     // during a previous decode() call.
@@ -277,7 +352,9 @@ void WavDecoderWrapper::prepareForSeek(uint64_t targetSample,
     isInitialized = false;
   }
   mPendingSeekTargetSample = targetSample;
+  mPendingSeekByteOffset = byteOffset;
   m_read_pos = 0;
   audioData.clear();
   mDataEnded = false;
+  mDrained = false;
 }

@@ -4,6 +4,8 @@
 #include "../native_decoder/native_audio_decoder.h"
 #include "../simd/simd_pcm.h"
 #include <dlfcn.h>
+#include <atomic>
+#include <mutex>
 #include <vector>
 #include <deque>
 #include <string>
@@ -69,7 +71,11 @@ struct LinuxFFmpegCodecLoader {
     pfn_av_frame_free av_frame_free = nullptr;
     pfn_av_frame_unref av_frame_unref = nullptr;
 
-    bool loaded = false;
+    // Decoders are initialized concurrently, each on its own thread, so the
+    // first ones can race here: publish the symbols only once they are all
+    // resolved.
+    std::atomic<bool> loaded{false};
+    std::mutex initMutex;
 
     static void* tryDlopen(const char* const names[]) {
         for (int i = 0; names[i] != nullptr; i++) {
@@ -80,7 +86,9 @@ struct LinuxFFmpegCodecLoader {
     }
 
     bool init() {
-        if (loaded) return true;
+        if (loaded.load(std::memory_order_acquire)) return true;
+        std::lock_guard<std::mutex> lock(initMutex);
+        if (loaded.load(std::memory_order_relaxed)) return true;
 
         const char* const codecNames[] = {
             "libavcodec.so.63", "libavcodec.so.62", "libavcodec.so.61", "libavcodec.so.60", "libavcodec.so.59", "libavcodec.so.58", "libavcodec.so", nullptr
@@ -117,7 +125,7 @@ struct LinuxFFmpegCodecLoader {
         // avcodec_find_decoder is optional if avcodec_find_decoder_by_name exists
         avcodec_find_decoder = reinterpret_cast<pfn_avcodec_find_decoder>(dlsym(hCodec, "avcodec_find_decoder"));
 
-        loaded = true;
+        loaded.store(true, std::memory_order_release);
         return true;
     }
 };
@@ -259,124 +267,83 @@ public:
             if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
                 if (samplerate && mStreamSampleRate > 0) *samplerate = mStreamSampleRate;
                 if (channels && mStreamChannels > 0) *channels = mStreamChannels;
+                mInputLeft = !buffer.empty();
                 return {std::move(decodedData), DecoderError::NoError};
             }
         }
 
-        // Align to syncword if first frame
-        if (!mFormatInitialized && !buffer.empty()) {
-            if (mFormat == DetectedType::BUFFER_AC3 || mFormat == DetectedType::BUFFER_EAC3) {
-                int syncIdx = NativeAudioDecoder::findAc3Syncword(buffer.data(), buffer.size());
-                if (syncIdx > 0) {
-                    buffer.erase(buffer.begin(), buffer.begin() + syncIdx);
+        // Until the first frame syncword has been seen, hold the bytes back
+        // and drop what comes before it (a stream joined mid-frame). This is
+        // done once: after that every byte goes to the parser, which may be
+        // holding the start of a frame whose rest is in this chunk.
+        if (!mSynced && !buffer.empty()) {
+            mSyncBuffer.insert(mSyncBuffer.end(), buffer.begin(), buffer.end());
+            buffer.clear();
+            const long syncIdx = findSync(mSyncBuffer);
+            if (syncIdx < 0) {
+                // A syncword may straddle this chunk and the next one.
+                constexpr size_t kKeep = 7;
+                if (mSyncBuffer.size() > kKeep) {
+                    mSyncBuffer.erase(mSyncBuffer.begin(), mSyncBuffer.end() - kKeep);
                 }
-            } else if (mFormat == DetectedType::BUFFER_AAC) {
-                if (!NativeAudioDecoder::isAacAdts(buffer.data(), buffer.size())) {
-                    for (size_t i = 0; i + 2 <= buffer.size(); ++i) {
-                        if (NativeAudioDecoder::isAacAdts(buffer.data() + i, buffer.size() - i)) {
-                            buffer.erase(buffer.begin(), buffer.begin() + i);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Optimization: Prebuffering strategy - accumulate parsed packets before starting decode
-        if (mFormatInitialized && !mPrebufferComplete) {
-            // Count available complete frames that can be parsed from buffer
-            size_t frameCount = 0;
-            size_t offset = 0;
-
-            while (offset < buffer.size()) {
-                uint8_t *poutbuf = nullptr;
-                int poutbuf_size = 0;
-                int consumed = gLinuxFFmpeg.av_parser_parse2(
-                    mParser, mCodecCtx,
-                    &poutbuf, &poutbuf_size,
-                    buffer.data() + offset, static_cast<int>(buffer.size() - offset),
-                    0, 0, 0
-                );
-
-                if (poutbuf_size > 0) {
-                    frameCount++;
-                }
-
-                if (consumed <= 0) break;
-                offset += consumed;
-            }
-
-            constexpr size_t kMinPrebufferFrames = 3;
-            if (frameCount >= kMinPrebufferFrames) {
-                mPrebufferComplete = true;
             } else {
-                // Wait for more frames before starting decode
-                return {std::move(decodedData), DecoderError::NoError};
+                mSyncBuffer.erase(mSyncBuffer.begin(), mSyncBuffer.begin() + syncIdx);
+                mSynced = true;
+                buffer.swap(mSyncBuffer);
+                mSyncBuffer.clear();
             }
         }
 
-        // Parse incoming bytes into packets
-        while (!buffer.empty()) {
+        // Parse incoming bytes into packets. av_parser_parse2() may read up
+        // to AV_INPUT_BUFFER_PADDING_SIZE bytes past the end of its input,
+        // which must be there and zeroed.
+        const size_t inputSize = buffer.size();
+        size_t offset = 0;
+        buffer.resize(inputSize + kInputPadding, 0);
+        while (offset < inputSize) {
             uint8_t *poutbuf = nullptr;
             int poutbuf_size = 0;
             int consumed = gLinuxFFmpeg.av_parser_parse2(
                 mParser, mCodecCtx,
                 &poutbuf, &poutbuf_size,
-                buffer.data(), static_cast<int>(buffer.size()),
+                buffer.data() + offset, static_cast<int>(inputSize - offset),
                 0, 0, 0
             );
 
             if (poutbuf_size > 0 && poutbuf) {
-                if (!mFormatInitialized) {
-                    if (mFormat == DetectedType::BUFFER_AAC) {
-                        AacMetadata aac;
-                        if (AACDecoderWrapper::parseAacAdtsMetadata(poutbuf, poutbuf_size, aac)) {
-                            mStreamSampleRate = aac.sampleRate;
-                            mStreamChannels = aac.channels;
-                            mFormatInitialized = true;
-                        }
-                    } else if (mFormat == DetectedType::BUFFER_AC3) {
-                        Ac3Metadata ac3;
-                        if (AACDecoderWrapper::parseAc3Metadata(poutbuf, poutbuf_size, ac3)) {
-                            mStreamSampleRate = ac3.sampleRate;
-                            mStreamChannels = ac3.channels;
-                            mFormatInitialized = true;
-                        }
-                    } else if (mFormat == DetectedType::BUFFER_EAC3) {
-                        Eac3Metadata eac3;
-                        if (AACDecoderWrapper::parseEac3Metadata(poutbuf, poutbuf_size, eac3)) {
-                            mStreamSampleRate = eac3.sampleRate;
-                            mStreamChannels = eac3.channels;
-                            mFormatInitialized = true;
-                        }
-                    }
-                }
-
-                auto dummyPkt = reinterpret_cast<DummyAVPacket*>(mPkt);
-                dummyPkt->data = poutbuf;
-                dummyPkt->size = poutbuf_size;
-
-                int sendRes = gLinuxFFmpeg.avcodec_send_packet(mCodecCtx, mPkt);
-                gLinuxFFmpeg.av_packet_unref(mPkt);
-
-                if (sendRes == 0) {
-                    while (gLinuxFFmpeg.avcodec_receive_frame(mCodecCtx, mFrame) == 0) {
-                        processFrame(mFrame, decodedData, maxOutputSamples);
-                        gLinuxFFmpeg.av_frame_unref(mFrame);
-                    }
-                }
+                sendPacket(poutbuf, poutbuf_size, decodedData, maxOutputSamples);
             }
 
             if (consumed > 0) {
-                buffer.erase(buffer.begin(), buffer.begin() + consumed);
+                offset += static_cast<size_t>(consumed);
             }
 
             if (consumed <= 0 && poutbuf_size <= 0) {
+                // No progress: once the data has ended nothing more will
+                // make these bytes parse.
+                if (mDataEnded) offset = inputSize;
                 break;
             }
 
             if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
                 break;
+            }
+        }
+        buffer.resize(inputSize);
+        buffer.erase(buffer.begin(), buffer.begin() + static_cast<long>(offset));
+        mInputLeft = !buffer.empty();
+
+        // Once the data has ended and every byte has gone through the parser,
+        // flush the parser and the codec. Doing it any earlier (in
+        // setDataEnded(), with input still queued because the output was
+        // capped) would put the codec in draining mode and lose the rest.
+        if (mDataEnded && !mFlushed && buffer.empty()) {
+            flush();
+            if (maxOutputSamples == 0 || decodedData.size() < maxOutputSamples) {
+                size_t toTake = mDecodedRemainder.size();
+                if (maxOutputSamples > 0) toTake = std::min(toTake, maxOutputSamples - decodedData.size());
+                decodedData.insert(decodedData.end(), mDecodedRemainder.begin(), mDecodedRemainder.begin() + toTake);
+                mDecodedRemainder.erase(mDecodedRemainder.begin(), mDecodedRemainder.begin() + toTake);
             }
         }
 
@@ -387,37 +354,16 @@ public:
     }
 
     void setDataEnded() override {
-        if (!mInitialized || !mCodecCtx) return;
-
-        // Flush parser
-        uint8_t *poutbuf = nullptr;
-        int poutbuf_size = 0;
-        if (mParser) {
-            gLinuxFFmpeg.av_parser_parse2(mParser, mCodecCtx, &poutbuf, &poutbuf_size, nullptr, 0, 0, 0, 0);
-            if (poutbuf_size > 0 && poutbuf && mPkt) {
-                auto dummyPkt = reinterpret_cast<DummyAVPacket*>(mPkt);
-                dummyPkt->data = poutbuf;
-                dummyPkt->size = poutbuf_size;
-                gLinuxFFmpeg.avcodec_send_packet(mCodecCtx, mPkt);
-                gLinuxFFmpeg.av_packet_unref(mPkt);
-            }
-        }
-
-        // Flush decoder
-        if (gLinuxFFmpeg.avcodec_send_packet(mCodecCtx, nullptr) == 0 && mFrame) {
-            std::vector<float> flushed;
-            while (gLinuxFFmpeg.avcodec_receive_frame(mCodecCtx, mFrame) == 0) {
-                processFrame(mFrame, flushed, 0);
-                gLinuxFFmpeg.av_frame_unref(mFrame);
-            }
-            if (!flushed.empty()) {
-                mDecodedRemainder.insert(mDecodedRemainder.end(), flushed.begin(), flushed.end());
-            }
-        }
+        if (!mInitialized) return;
+        mDataEnded = true;
+        // With input still queued (the last decode() was capped), the flush
+        // waits until decode() has parsed it: draining the codec now would
+        // lose it.
+        if (!mInputLeft && !mFlushed) flush();
     }
 
     bool hasPendingData() const override {
-        return !mDecodedRemainder.empty();
+        return !mDecodedRemainder.empty() || (mDataEnded && !mFlushed);
     }
 
 private:
@@ -441,8 +387,88 @@ private:
         mInitialized = false;
         mFormatInitialized = false;
         mCodecPreConfigured = false;
-        mPrebufferComplete = false;
+        mDataEnded = false;
+        mFlushed = false;
+        mInputLeft = false;
+        mSynced = false;
+        mSyncBuffer.clear();
         mDecodedRemainder.clear();
+    }
+
+    /// Offset of the first frame syncword in [data], or -1.
+    long findSync(const std::vector<unsigned char> &data) const {
+        if (mFormat == DetectedType::BUFFER_AC3 || mFormat == DetectedType::BUFFER_EAC3) {
+            return NativeAudioDecoder::findAc3Syncword(data.data(), data.size());
+        }
+        for (size_t i = 0; i + 2 <= data.size(); ++i) {
+            if (NativeAudioDecoder::isAacAdts(data.data() + i, data.size() - i)) return static_cast<long>(i);
+        }
+        return -1;
+    }
+
+    /// Decodes one packet from the parser.
+    void sendPacket(uint8_t *data, int size, std::vector<float> &out, size_t maxOutputSamples) {
+        if (!mFormatInitialized) {
+            if (mFormat == DetectedType::BUFFER_AAC) {
+                AacMetadata aac;
+                if (AACDecoderWrapper::parseAacAdtsMetadata(data, size, aac)) {
+                    mStreamSampleRate = aac.sampleRate;
+                    mStreamChannels = aac.channels;
+                    mFormatInitialized = true;
+                }
+            } else if (mFormat == DetectedType::BUFFER_AC3) {
+                Ac3Metadata ac3;
+                if (AACDecoderWrapper::parseAc3Metadata(data, size, ac3)) {
+                    mStreamSampleRate = ac3.sampleRate;
+                    mStreamChannels = ac3.channels;
+                    mFormatInitialized = true;
+                }
+            } else if (mFormat == DetectedType::BUFFER_EAC3) {
+                Eac3Metadata eac3;
+                if (AACDecoderWrapper::parseEac3Metadata(data, size, eac3)) {
+                    mStreamSampleRate = eac3.sampleRate;
+                    mStreamChannels = eac3.channels;
+                    mFormatInitialized = true;
+                }
+            }
+        }
+
+        auto dummyPkt = reinterpret_cast<DummyAVPacket*>(mPkt);
+        dummyPkt->data = data;
+        dummyPkt->size = size;
+
+        int sendRes = gLinuxFFmpeg.avcodec_send_packet(mCodecCtx, mPkt);
+        gLinuxFFmpeg.av_packet_unref(mPkt);
+
+        if (sendRes == 0) {
+            while (gLinuxFFmpeg.avcodec_receive_frame(mCodecCtx, mFrame) == 0) {
+                processFrame(mFrame, out, maxOutputSamples);
+                gLinuxFFmpeg.av_frame_unref(mFrame);
+            }
+        }
+    }
+
+    /// Flushes the parser and the codec into mDecodedRemainder.
+    void flush() {
+        mFlushed = true;
+        if (mParser) {
+            uint8_t *poutbuf = nullptr;
+            int poutbuf_size = 0;
+            gLinuxFFmpeg.av_parser_parse2(mParser, mCodecCtx, &poutbuf, &poutbuf_size, nullptr, 0, 0, 0, 0);
+            if (poutbuf_size > 0 && poutbuf && mPkt) {
+                std::vector<float> last;
+                sendPacket(poutbuf, poutbuf_size, last, 0);
+                mDecodedRemainder.insert(mDecodedRemainder.end(), last.begin(), last.end());
+            }
+        }
+        if (gLinuxFFmpeg.avcodec_send_packet(mCodecCtx, nullptr) == 0 && mFrame) {
+            std::vector<float> flushed;
+            while (gLinuxFFmpeg.avcodec_receive_frame(mCodecCtx, mFrame) == 0) {
+                processFrame(mFrame, flushed, 0);
+                gLinuxFFmpeg.av_frame_unref(mFrame);
+            }
+            mDecodedRemainder.insert(mDecodedRemainder.end(), flushed.begin(), flushed.end());
+        }
     }
 
     void processFrame(AVFrame *f, std::vector<float> &out, size_t maxOutputSamples) {
@@ -618,7 +644,13 @@ private:
     bool mInitialized = false;
     bool mFormatInitialized = false;
     bool mCodecPreConfigured = false;
-    bool mPrebufferComplete = false;
+    bool mDataEnded = false;
+    bool mFlushed = false;
+    bool mInputLeft = false;
+    bool mSynced = false;
+    std::vector<unsigned char> mSyncBuffer;
+    // AV_INPUT_BUFFER_PADDING_SIZE (64 since FFmpeg 4).
+    static constexpr size_t kInputPadding = 64;
     std::deque<float> mDecodedRemainder;
 };
 

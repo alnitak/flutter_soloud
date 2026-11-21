@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 
 #include "../device_lifecycle_test_hooks.h"
@@ -264,9 +265,11 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
     aSeconds = totalLength;
   }
 
+  // Seek to the start of a frame: a time between two frames must not move
+  // the read position into the middle of one, which swaps the channels.
   const size_t targetSample = static_cast<size_t>(
-      std::floor(aSeconds * mParent->mPCMformat.sampleRate *
-                 mParent->mPCMformat.channels));
+      std::floor(aSeconds * mParent->mPCMformat.sampleRate) *
+      mParent->mPCMformat.channels);
 
   bool didInBufferSeek = false;
 
@@ -290,8 +293,8 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
   // to prevent seeking into stale decoded audio.
   const uint64_t logicalStartSamples = mParent->mBufferStartTime > 0.0
       ? static_cast<uint64_t>(std::floor(mParent->mBufferStartTime *
-                                         mParent->mPCMformat.sampleRate *
-                                         mParent->mPCMformat.channels))
+                                         mParent->mPCMformat.sampleRate) *
+                                  mParent->mPCMformat.channels)
       : 0;
   const uint64_t effectiveStart = std::max(bufferedStart, logicalStartSamples);
 
@@ -350,9 +353,18 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
       mParent->mDataIsEnded.store(false);
       mParent->mWaitingForData.store(false);
       mParent->resetDecoderForSeek(targetSample, newOffset);
-      // The buffer was just discarded, so this leaves the seek pending
-      // until data at the target has been decoded.
-      mParent->applyPendingSeek(/*aUnderAudioMutex*/ true);
+      if (mParent->mAudioSizeBytes > 0 &&
+          newOffset >= mParent->mAudioSizeBytes) {
+        // A seek to (or past) the end: there is no data to request at or
+        // past the declared size, so nothing would complete the seek. End
+        // the data instead, so the voice ends.
+        mParent->mPendingSeek.store(false);
+        mParent->mDataIsEnded.store(true);
+      } else {
+        // The buffer was just discarded, so this leaves the seek pending
+        // until data at the target has been decoded.
+        mParent->applyPendingSeek(/*aUnderAudioMutex*/ true);
+      }
     }
   }
 
@@ -498,8 +510,10 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   if (aPlayer == nullptr || aParent == nullptr) {
     return PlayerErrors::nullPointer;
   }
-  if (bufferSizeBytes == 0 || bufferTriggerPosition < 0.0 ||
-      bufferTriggerPosition > 1.0) {
+  // Written so a NaN position fails too. A size past INT32_MAX is a negative
+  // Dart int: allocating it would reserve gigabytes (and abort on the web).
+  if (bufferSizeBytes == 0 || bufferSizeBytes > INT32_MAX ||
+      !(bufferTriggerPosition >= 0.0 && bufferTriggerPosition <= 1.0)) {
     return PlayerErrors::invalidParameter;
   }
   if (sampleRate == 0 || channels == 0) {
@@ -1176,8 +1190,8 @@ void PullBufferStream::applyPendingSeek(bool aUnderAudioMutex) {
     // The offset is now known. Move the play head to the target and reset the
     // decoder so that the next incoming data is decoded from the new offset.
     const uint64_t targetSample = static_cast<uint64_t>(
-        std::floor(mPendingSeekTime * mPCMformat.sampleRate *
-                   mPCMformat.channels));
+        std::floor(mPendingSeekTime * mPCMformat.sampleRate) *
+        mPCMformat.channels);
     resetBufferWindow(targetSample, targetSample, mPendingSeekTime, newOffset,
                       newOffset);
     if (aUnderAudioMutex) {
@@ -1632,10 +1646,11 @@ uint64_t PullBufferStream::timeToEncodedByteOffsetLocked(double seconds) {
     }
     return 0;
   }
-  const double bytesPerSecond = static_cast<double>(mPCMformat.sampleRate) *
-                                static_cast<double>(mPCMformat.channels) *
-                                static_cast<double>(mPCMformat.bytesPerSample);
-  return static_cast<uint64_t>(seconds * bytesPerSecond);
+  // The offset of the frame that starts at or before [seconds]: raw PCM is
+  // framed from the first byte it receives.
+  const uint64_t frame = static_cast<uint64_t>(
+      std::floor(seconds * static_cast<double>(mPCMformat.sampleRate)));
+  return frame * mPCMformat.channels * mPCMformat.bytesPerSample;
 }
 
 AudioMetadataFFI
@@ -1677,34 +1692,22 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
     ffi.detectedType = DetectedTypeFFI::UNKNOWN;
   }
 
-  std::strncpy(ffi.mp3Metadata.title, metadata.mp3Metadata.title.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.artist, metadata.mp3Metadata.artist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.album_artist, metadata.mp3Metadata.albumArtist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.album, metadata.mp3Metadata.album.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.date, metadata.mp3Metadata.date.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.genre, metadata.mp3Metadata.genre.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.composer, metadata.mp3Metadata.composer.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.comment, metadata.mp3Metadata.comment.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.track, metadata.mp3Metadata.track.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.disc, metadata.mp3Metadata.disc.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.stream_url, metadata.mp3Metadata.streamUrl.c_str(),
-               MAX_STRING_LENGTH - 1);
+  copyMetadataString(ffi.mp3Metadata.title, metadata.mp3Metadata.title);
+  copyMetadataString(ffi.mp3Metadata.artist, metadata.mp3Metadata.artist);
+  copyMetadataString(ffi.mp3Metadata.album_artist, metadata.mp3Metadata.albumArtist);
+  copyMetadataString(ffi.mp3Metadata.album, metadata.mp3Metadata.album);
+  copyMetadataString(ffi.mp3Metadata.date, metadata.mp3Metadata.date);
+  copyMetadataString(ffi.mp3Metadata.genre, metadata.mp3Metadata.genre);
+  copyMetadataString(ffi.mp3Metadata.composer, metadata.mp3Metadata.composer);
+  copyMetadataString(ffi.mp3Metadata.comment, metadata.mp3Metadata.comment);
+  copyMetadataString(ffi.mp3Metadata.track, metadata.mp3Metadata.track);
+  copyMetadataString(ffi.mp3Metadata.disc, metadata.mp3Metadata.disc);
+  copyMetadataString(ffi.mp3Metadata.stream_url, metadata.mp3Metadata.streamUrl);
   ffi.mp3Metadata.sample_rate = metadata.mp3Metadata.sampleRate;
   ffi.mp3Metadata.channels = metadata.mp3Metadata.channels;
   ffi.mp3Metadata.bitrate = metadata.mp3Metadata.bitrate;
 
-  std::strncpy(ffi.oggMetadata.vendor, metadata.oggMetadata.vendor.c_str(),
-               MAX_STRING_LENGTH - 1);
+  copyMetadataString(ffi.oggMetadata.vendor, metadata.oggMetadata.vendor);
   ffi.oggMetadata.commentsCount =
       static_cast<int>(std::min(metadata.oggMetadata.comments.size(),
                                 static_cast<size_t>(MAX_COMMENTS)));
@@ -1712,10 +1715,8 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
   int i = 0;
   for (const auto &comment : metadata.oggMetadata.comments) {
     if (i >= MAX_COMMENTS) break;
-    std::strncpy(ffi.oggMetadata.comments[i].key, comment.first.c_str(),
-                 MAX_STRING_LENGTH - 1);
-    std::strncpy(ffi.oggMetadata.comments[i].value, comment.second.c_str(),
-                 MAX_STRING_LENGTH - 1);
+    copyMetadataString(ffi.oggMetadata.comments[i].key, comment.first);
+    copyMetadataString(ffi.oggMetadata.comments[i].value, comment.second);
     ++i;
   }
 
@@ -1756,28 +1757,17 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
       metadata.oggMetadata.flacInfo.total_samples};
 
   // Convert AAC metadata
-  std::strncpy(ffi.aacMetadata.title, metadata.aacMetadata.title.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.artist, metadata.aacMetadata.artist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.album_artist, metadata.aacMetadata.albumArtist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.album, metadata.aacMetadata.album.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.date, metadata.aacMetadata.date.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.genre, metadata.aacMetadata.genre.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.composer, metadata.aacMetadata.composer.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.comment, metadata.aacMetadata.comment.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.track, metadata.aacMetadata.track.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.disc, metadata.aacMetadata.disc.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.stream_url, metadata.aacMetadata.streamUrl.c_str(),
-               MAX_STRING_LENGTH - 1);
+  copyMetadataString(ffi.aacMetadata.title, metadata.aacMetadata.title);
+  copyMetadataString(ffi.aacMetadata.artist, metadata.aacMetadata.artist);
+  copyMetadataString(ffi.aacMetadata.album_artist, metadata.aacMetadata.albumArtist);
+  copyMetadataString(ffi.aacMetadata.album, metadata.aacMetadata.album);
+  copyMetadataString(ffi.aacMetadata.date, metadata.aacMetadata.date);
+  copyMetadataString(ffi.aacMetadata.genre, metadata.aacMetadata.genre);
+  copyMetadataString(ffi.aacMetadata.composer, metadata.aacMetadata.composer);
+  copyMetadataString(ffi.aacMetadata.comment, metadata.aacMetadata.comment);
+  copyMetadataString(ffi.aacMetadata.track, metadata.aacMetadata.track);
+  copyMetadataString(ffi.aacMetadata.disc, metadata.aacMetadata.disc);
+  copyMetadataString(ffi.aacMetadata.stream_url, metadata.aacMetadata.streamUrl);
   ffi.aacMetadata.sample_rate = metadata.aacMetadata.sampleRate;
   ffi.aacMetadata.channels = metadata.aacMetadata.channels;
   std::strncpy(ffi.aacMetadata.profile, metadata.aacMetadata.profile.c_str(),
@@ -1786,26 +1776,16 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
   ffi.aacMetadata.frame_length = metadata.aacMetadata.frameLength;
 
   // Convert M4A metadata
-  std::strncpy(ffi.m4aMetadata.title, metadata.m4aMetadata.title.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.artist, metadata.m4aMetadata.artist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.album_artist, metadata.m4aMetadata.albumArtist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.album, metadata.m4aMetadata.album.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.date, metadata.m4aMetadata.date.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.genre, metadata.m4aMetadata.genre.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.composer, metadata.m4aMetadata.composer.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.comment, metadata.m4aMetadata.comment.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.track, metadata.m4aMetadata.track.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.disc, metadata.m4aMetadata.disc.c_str(),
-               MAX_STRING_LENGTH - 1);
+  copyMetadataString(ffi.m4aMetadata.title, metadata.m4aMetadata.title);
+  copyMetadataString(ffi.m4aMetadata.artist, metadata.m4aMetadata.artist);
+  copyMetadataString(ffi.m4aMetadata.album_artist, metadata.m4aMetadata.albumArtist);
+  copyMetadataString(ffi.m4aMetadata.album, metadata.m4aMetadata.album);
+  copyMetadataString(ffi.m4aMetadata.date, metadata.m4aMetadata.date);
+  copyMetadataString(ffi.m4aMetadata.genre, metadata.m4aMetadata.genre);
+  copyMetadataString(ffi.m4aMetadata.composer, metadata.m4aMetadata.composer);
+  copyMetadataString(ffi.m4aMetadata.comment, metadata.m4aMetadata.comment);
+  copyMetadataString(ffi.m4aMetadata.track, metadata.m4aMetadata.track);
+  copyMetadataString(ffi.m4aMetadata.disc, metadata.m4aMetadata.disc);
   std::strncpy(ffi.m4aMetadata.codec, metadata.m4aMetadata.codec.c_str(),
                sizeof(ffi.m4aMetadata.codec) - 1);
   ffi.m4aMetadata.sample_rate = metadata.m4aMetadata.sampleRate;

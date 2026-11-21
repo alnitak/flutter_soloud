@@ -6,6 +6,8 @@
 
 #ifdef _IS_WIN_
 #include <algorithm>
+#include <stdarg.h>
+#include <stdio.h>
 #endif
 
 #ifdef __EMSCRIPTEN__

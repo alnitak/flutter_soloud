@@ -43,7 +43,7 @@ abstract class _FreeverbInternal extends FilterBase {
 class FreeverbSingle extends _FreeverbInternal {
   FreeverbSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -52,7 +52,7 @@ class FreeverbSingle extends _FreeverbInternal {
     FreeverbEnum.wet.max,
   );
 
-  FilterParam freeze({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam freeze({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -61,7 +61,7 @@ class FreeverbSingle extends _FreeverbInternal {
     FreeverbEnum.freeze.max,
   );
 
-  FilterParam roomSize({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam roomSize({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -70,7 +70,7 @@ class FreeverbSingle extends _FreeverbInternal {
     FreeverbEnum.roomSize.max,
   );
 
-  FilterParam damp({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam damp({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -79,7 +79,7 @@ class FreeverbSingle extends _FreeverbInternal {
     FreeverbEnum.damp.max,
   );
 
-  FilterParam width({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam width({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

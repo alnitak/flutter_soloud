@@ -10,8 +10,10 @@ enum PitchShiftEnum {
   shift,
   semitones;
 
-  final List<double> _mins = const [0, 0, -36];
-  final List<double> _maxs = const [1, 3, 36];
+  // The semitones range is the shift range (0.1..3) expressed in semitones,
+  // 12 * log2(shift), rounded inwards: about -39.86..19.02.
+  final List<double> _mins = const [0, 0.1, -39.863];
+  final List<double> _maxs = const [1, 3, 19.0195];
   final List<double> _defs = const [1, 1, 0];
 
   double get min => _mins[index];
@@ -38,7 +40,7 @@ abstract class _PitchShiftInternal extends FilterBase {
 class PitchShiftSingle extends _PitchShiftInternal {
   PitchShiftSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -48,14 +50,15 @@ class PitchShiftSingle extends _PitchShiftInternal {
   );
 
   /// The shift value of the pitch, where 1.0 means the pitch is not shifted.
+  /// Its range is 0.1..3.
   ///
   /// Note that both the [shift] and [semitones] parameters are acting to modify
   /// the pitch value, but using different scales. Changing this value will
-  /// therefore adjust the [shift] parameter with:
+  /// therefore adjust the [semitones] parameter with:
   /// ```dart
-  /// shift = pow(2., value / 12);
+  /// semitones = 12 * log(value) / ln2; // 12 * log2(value)
   /// ```
-  FilterParam shift({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam shift({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -64,15 +67,16 @@ class PitchShiftSingle extends _PitchShiftInternal {
     PitchShiftEnum.shift.max,
   );
 
-  /// The number of semitones that the pitch is shifted.
+  /// The number of semitones that the pitch is shifted. Its range is the
+  /// [shift] range in semitones, about -39.86..19.02.
   ///
   /// Note that both the [shift] and [semitones] parameters are acting to modify
   /// the pitch value, but using different scales. Changing this value will
-  /// therefore adjust the [semitones] parameter with:
+  /// therefore adjust the [shift] parameter with:
   /// ```dart
-  /// semitones = 12 * log2f(value);
+  /// shift = pow(2, value / 12);
   /// ```
-  FilterParam semitones({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam semitones({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -105,12 +109,13 @@ class PitchShiftGlobal extends _PitchShiftInternal {
   );
 
   /// The shift value of the pitch, where 1.0 means the pitch is not shifted.
+  /// Its range is 0.1..3.
   ///
   /// Note that both the [shift] and [semitones] parameters are acting to modify
   /// the pitch value, but using different scales. Changing this value will
-  /// therefore adjust the [shift] parameter with:
+  /// therefore adjust the [semitones] parameter with:
   /// ```dart
-  /// shift = pow(2., value / 12);
+  /// semitones = 12 * log(value) / ln2; // 12 * log2(value)
   /// ```
   FilterParam get shift => FilterParam(
     null,
@@ -121,13 +126,14 @@ class PitchShiftGlobal extends _PitchShiftInternal {
     PitchShiftEnum.shift.max,
   );
 
-  /// The number of semitones that the pitch is shifted.
+  /// The number of semitones that the pitch is shifted. Its range is the
+  /// [shift] range in semitones, about -39.86..19.02.
   ///
   /// Note that both the [shift] and [semitones] parameters are acting to modify
   /// the pitch value, but using different scales. Changing this value will
-  /// therefore adjust the [semitones] parameter with:
+  /// therefore adjust the [shift] parameter with:
   /// ```dart
-  /// semitones = 12 * log2f(value);
+  /// shift = pow(2, value / 12);
   /// ```
   FilterParam get semitones => FilterParam(
     null,

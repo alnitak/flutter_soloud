@@ -163,7 +163,15 @@ typedef enum SoundType {
 /// WARNING: Keep these in sync with `FilterType` in
 /// `lib/src/filters/filters.dart`. Append new filters at the end only: the
 /// values are passed over the ABI as plain integers.
-typedef enum FilterType {
+///
+/// In C++ the underlying type is fixed, so any integer Dart passes is a
+/// valid value of the type and the exports can range-check it (converting an
+/// out-of-range integer to an enum without a fixed type is undefined).
+typedef enum FilterType
+#ifdef __cplusplus
+    : int
+#endif
+{
   BiquadResonantFilter,
   EchoFilter,
   LofiFilter,

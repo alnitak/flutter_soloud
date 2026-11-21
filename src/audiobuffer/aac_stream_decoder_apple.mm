@@ -4,6 +4,7 @@
 #import <CoreFoundation/CoreFoundation.h>
 #include "aac_stream_decoder.h"
 #include "../native_decoder/native_audio_decoder.h"
+#include <algorithm>
 #include <deque>
 #include <vector>
 #include <iostream>
@@ -56,36 +57,42 @@ public:
          int *channels, size_t maxOutputSamples) override {
     // 1. Parse incoming raw stream bytes first so buffer is never stranded
     if (!buffer.empty() && mAudioFileStream) {
-      // If the parser has not yet initialized the format, ensure the buffer
-      // is aligned to the first frame syncword to prevent parse errors.
-      if (!mFormatInitialized) {
-        if (mFormat == DetectedType::BUFFER_AC3 || mFormat == DetectedType::BUFFER_EAC3) {
-          int syncIdx = NativeAudioDecoder::findAc3Syncword(buffer.data(), buffer.size());
-          if (syncIdx > 0) {
-            buffer.erase(buffer.begin(), buffer.begin() + syncIdx);
+      // Until the first frame syncword has been seen, hold the bytes back and
+      // drop what comes before it (a stream joined mid-frame). This is done
+      // once: after that every byte goes to the parser, which may be holding
+      // the start of a frame whose rest is in this chunk.
+      if (!mSynced) {
+        mSyncBuffer.insert(mSyncBuffer.end(), buffer.begin(), buffer.end());
+        buffer.clear();
+        const long syncIdx = findSync(mSyncBuffer);
+        if (syncIdx < 0) {
+          // A syncword may straddle this chunk and the next one.
+          constexpr size_t kKeep = 7;
+          if (mSyncBuffer.size() > kKeep) {
+            mSyncBuffer.erase(mSyncBuffer.begin(), mSyncBuffer.end() - kKeep);
           }
-        } else if (mFormat == DetectedType::BUFFER_AAC) {
-          if (!NativeAudioDecoder::isAacAdts(buffer.data(), buffer.size())) {
-            for (size_t i = 0; i + 2 <= buffer.size(); ++i) {
-              if (NativeAudioDecoder::isAacAdts(buffer.data() + i, buffer.size() - i)) {
-                buffer.erase(buffer.begin(), buffer.begin() + i);
-                break;
-              }
-            }
-          }
+        } else {
+          mSyncBuffer.erase(mSyncBuffer.begin(), mSyncBuffer.begin() + syncIdx);
+          mSynced = true;
+          buffer.swap(mSyncBuffer);
+          mSyncBuffer.clear();
         }
       }
 
-      OSStatus parseStatus = AudioFileStreamParseBytes(
-          mAudioFileStream,
-          static_cast<UInt32>(buffer.size()),
-          buffer.data(),
-          0
-      );
-      if (parseStatus != noErr) {
-        // Continue trying to parse or process buffered packets
+      if (!buffer.empty()) {
+        // AC-3 / E-AC-3: keep the first frame header, see setDataEnded().
+        if (isAc3Family() && mFirstHeader.size() < kAc3HeaderBytes) {
+          const size_t need = kAc3HeaderBytes - mFirstHeader.size();
+          mFirstHeader.insert(mFirstHeader.end(), buffer.begin(),
+                              buffer.begin() + static_cast<long>(std::min(need, buffer.size())));
+        }
+        if (isAc3Family()) {
+          feedWholeAc3Frames(buffer);
+        } else {
+          AudioFileStreamParseBytes(mAudioFileStream, static_cast<UInt32>(buffer.size()), buffer.data(), 0);
+        }
+        buffer.clear();
       }
-      buffer.clear();
     }
 
     // Optimization: Prebuffering strategy - accumulate packets before starting decode
@@ -192,6 +199,23 @@ public:
   }
 
   void setDataEnded() override {
+    // AudioFileStream emits an AC-3 / E-AC-3 frame only once it has seen the
+    // syncword of the next one, so the last frame would stay inside the
+    // parser. Feed it the header of the first frame as a stand-in for a
+    // next frame: the real last frame comes out, the stand-in is never
+    // completed and so never emitted.
+    if (!mDataEnded && mAudioFileStream && mSynced && isAc3Family()) {
+      // A cut-short last frame, if any.
+      if (!mAc3Pending.empty()) {
+        AudioFileStreamParseBytes(mAudioFileStream, static_cast<UInt32>(mAc3Pending.size()), mAc3Pending.data(), 0);
+        mAc3Pending.clear();
+      }
+    }
+    if (!mDataEnded && mAudioFileStream && mSynced && isAc3Family() &&
+        mFirstHeader.size() >= kAc3HeaderBytes) {
+      AudioFileStreamParseBytes(mAudioFileStream, static_cast<UInt32>(mFirstHeader.size()),
+                                mFirstHeader.data(), 0);
+    }
     mDataEnded = true;
   }
 
@@ -221,6 +245,61 @@ private:
     mMagicCookie.clear();
     mDataEnded = false;
     mDrained = false;
+    mSynced = false;
+    mSyncBuffer.clear();
+    mFirstHeader.clear();
+    mAc3Pending.clear();
+  }
+
+  bool isAc3Family() const {
+    return mFormat == DetectedType::BUFFER_AC3 || mFormat == DetectedType::BUFFER_EAC3;
+  }
+
+  /// Size of the AC-3 or E-AC-3 frame whose syncword is at [data], 0 when
+  /// more bytes are needed to tell, -1 when [data] is not a frame header.
+  static long ac3FrameBytes(const unsigned char *data, size_t size) {
+    constexpr size_t kHeader = 8;
+    if (size < kHeader) return 0;
+    if (!((data[0] == 0x0B && data[1] == 0x77) || (data[0] == 0x77 && data[1] == 0x0B))) return -1;
+    Ac3Metadata ac3;
+    if (AACDecoderWrapper::parseAc3Metadata(data, kHeader, ac3) && ac3.frameSize > 0) return ac3.frameSize;
+    Eac3Metadata eac3;
+    if (AACDecoderWrapper::parseEac3Metadata(data, kHeader, eac3) && eac3.frameSize > 0) return eac3.frameSize;
+    return -1;
+  }
+
+  /// Passes [bytes] to the parser in whole frames, holding back the start of
+  /// a frame whose end has not arrived yet. AudioFileStream corrupts AC-3
+  /// packets (every 64th, when parse calls end mid-frame in small chunks:
+  /// seen with 100..3000-byte chunks on macOS 27), so it is only ever
+  /// given whole frames.
+  void feedWholeAc3Frames(const std::vector<unsigned char> &bytes) {
+    mAc3Pending.insert(mAc3Pending.end(), bytes.begin(), bytes.end());
+    size_t end = 0;
+    while (end < mAc3Pending.size()) {
+      const long frame = ac3FrameBytes(mAc3Pending.data() + end, mAc3Pending.size() - end);
+      if (frame < 0) {
+        // Lost sync (a damaged frame): let the parser resync on its own.
+        end = mAc3Pending.size();
+        break;
+      }
+      if (frame == 0 || end + static_cast<size_t>(frame) > mAc3Pending.size()) break;
+      end += static_cast<size_t>(frame);
+    }
+    if (end == 0) return;
+    AudioFileStreamParseBytes(mAudioFileStream, static_cast<UInt32>(end), mAc3Pending.data(), 0);
+    mAc3Pending.erase(mAc3Pending.begin(), mAc3Pending.begin() + static_cast<long>(end));
+  }
+
+  /// Offset of the first frame syncword in [data], or -1.
+  long findSync(const std::vector<unsigned char> &data) const {
+    if (mFormat == DetectedType::BUFFER_AC3 || mFormat == DetectedType::BUFFER_EAC3) {
+      return NativeAudioDecoder::findAc3Syncword(data.data(), data.size());
+    }
+    for (size_t i = 0; i + 2 <= data.size(); ++i) {
+      if (NativeAudioDecoder::isAacAdts(data.data() + i, data.size() - i)) return static_cast<long>(i);
+    }
+    return -1;
   }
 
   void setupConverter() {
@@ -276,6 +355,29 @@ private:
           &impl->mInputFormat
       );
       if (status == noErr) {
+        // The ADTS header of HE-AAC (implicit SBR signalling) carries the
+        // core rate: kAudioFileStreamProperty_DataFormat says AAC-LC at
+        // 22.05 kHz. The format list also has the HE-AAC entry at the SBR
+        // output rate; decode that, as ExtAudioFile does, or the converter
+        // drops SBR and outputs half the bandwidth at half the rate.
+        UInt32 listSize = 0;
+        Boolean writable = false;
+        if (AudioFileStreamGetPropertyInfo(inAudioFileStream, kAudioFileStreamProperty_FormatList, &listSize,
+                                           &writable) == noErr &&
+            listSize >= sizeof(AudioFormatListItem)) {
+          std::vector<AudioFormatListItem> list(listSize / sizeof(AudioFormatListItem));
+          if (AudioFileStreamGetProperty(inAudioFileStream, kAudioFileStreamProperty_FormatList, &listSize,
+                                         list.data()) == noErr) {
+            UInt32 index = 0;
+            UInt32 indexSize = sizeof(index);
+            if (AudioFormatGetProperty(kAudioFormatProperty_FirstPlayableFormatFromList,
+                                       static_cast<UInt32>(list.size() * sizeof(AudioFormatListItem)), list.data(),
+                                       &indexSize, &index) == noErr &&
+                index < list.size()) {
+              impl->mInputFormat = list[index].mASBD;
+            }
+          }
+        }
         impl->mFormatInitialized = true;
         impl->setupConverter();
       }
@@ -384,6 +486,11 @@ private:
   DetectedType mFormat = DetectedType::BUFFER_AAC;
   bool mDataEnded = false;
   bool mDrained = false;
+  bool mSynced = false;
+  std::vector<unsigned char> mSyncBuffer;
+  static constexpr size_t kAc3HeaderBytes = 16;
+  std::vector<unsigned char> mFirstHeader;
+  std::vector<unsigned char> mAc3Pending;
 };
 
 } // namespace

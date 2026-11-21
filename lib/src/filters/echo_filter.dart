@@ -40,7 +40,7 @@ abstract class _EchoInternal extends FilterBase {
 class EchoSingle extends _EchoInternal {
   EchoSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -49,7 +49,7 @@ class EchoSingle extends _EchoInternal {
     EchoEnum.wet.max,
   );
 
-  FilterParam delay({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam delay({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -58,7 +58,7 @@ class EchoSingle extends _EchoInternal {
     EchoEnum.delay.max,
   );
 
-  FilterParam decay({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam decay({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -67,7 +67,7 @@ class EchoSingle extends _EchoInternal {
     EchoEnum.decay.max,
   );
 
-  FilterParam filter({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam filter({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

@@ -8,6 +8,7 @@
 #include "../native_decoder/native_audio_decoder.h"
 #include "../simd/simd_pcm.h"
 #include <windows.h>
+#include <combaseapi.h>
 #include <mfapi.h>
 #include <mftransform.h>
 #include <mferror.h>
@@ -48,9 +49,17 @@ public:
         mTargetSampleRate = engineSamplerate;
         mTargetChannels = engineChannels;
 
-        HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-        if (SUCCEEDED(hr)) {
-            mCoInitialized = true;
+        // COM must be usable for the MFT on whatever thread initializes,
+        // decodes and destroys this decoder, and those are often different
+        // threads (a buffer stream is made on one, decoded on a worker and
+        // freed on another). CoInitializeEx/CoUninitialize are per thread
+        // and must pair up on the same one; instead keep the process's
+        // implicit MTA alive for our lifetime, which threads without an
+        // apartment of their own then belong to. Its cookie may be released
+        // from any thread.
+        HRESULT hr = CoIncrementMTAUsage(&mMtaCookie);
+        if (FAILED(hr)) {
+            mMtaCookie = nullptr;
         }
 
         hr = MFStartup(MF_VERSION);
@@ -128,6 +137,7 @@ public:
             if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
                 if (samplerate && mStreamSampleRate > 0) *samplerate = mStreamSampleRate;
                 if (channels && mStreamChannels > 0) *channels = mStreamChannels;
+                mInputLeft = !buffer.empty();
                 return {std::move(decodedData), DecoderError::NoError};
             }
         }
@@ -155,6 +165,12 @@ public:
         if (!mFormatConfigured && !buffer.empty()) {
             if (!configureMediaTypes(buffer)) {
                 // Wait for more data to configure types
+                if (mDataEnded) {
+                    // None will come: nothing here can be decoded.
+                    buffer.clear();
+                    mDrained = true;
+                }
+                mInputLeft = !buffer.empty();
                 return {std::move(decodedData), DecoderError::NoError};
             }
         }
@@ -172,10 +188,12 @@ public:
             }
 
             constexpr size_t kMinPrebufferFrames = 3;
-            if (frameCount >= kMinPrebufferFrames) {
+            // Once the data has ended no more frames can arrive.
+            if (frameCount >= kMinPrebufferFrames || mDataEnded) {
                 mPrebufferComplete = true;
             } else {
                 // Wait for more frames before starting decode
+                mInputLeft = !buffer.empty();
                 return {std::move(decodedData), DecoderError::NoError};
             }
         }
@@ -239,6 +257,25 @@ public:
             buffer.erase(buffer.begin(), buffer.begin() + frameLen);
         }
 
+        // After the data has ended a cut-short last frame never completes;
+        // then drain the transform, which setDataEnded() left for now when
+        // input was still queued.
+        if (mDataEnded) {
+            buffer.clear();
+            if (!mDrained) {
+                drain();
+                size_t toTake = mDecodedRemainder.size();
+                if (maxOutputSamples > 0) {
+                    toTake = decodedData.size() < maxOutputSamples
+                                 ? std::min(toTake, maxOutputSamples - decodedData.size())
+                                 : 0;
+                }
+                decodedData.insert(decodedData.end(), mDecodedRemainder.begin(), mDecodedRemainder.begin() + toTake);
+                mDecodedRemainder.erase(mDecodedRemainder.begin(), mDecodedRemainder.begin() + toTake);
+            }
+        }
+        mInputLeft = !buffer.empty();
+
         if (samplerate && mStreamSampleRate > 0) *samplerate = mStreamSampleRate;
         if (channels && mStreamChannels > 0) *channels = mStreamChannels;
 
@@ -247,7 +284,19 @@ public:
 
     void setDataEnded() override {
         if (!mInitialized || !mTransform) return;
+        mDataEnded = true;
+        // Input still queued (held by the prebuffer or not yet fed) must go
+        // in before the drain; decode() drains once it has been fed.
+        if (!mInputLeft && !mDrained) drain();
+    }
 
+    bool hasPendingData() const override {
+        return !mDecodedRemainder.empty() || (mDataEnded && !mDrained);
+    }
+
+private:
+    void drain() {
+        mDrained = true;
         mTransform->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0);
 
         std::vector<float> flushed;
@@ -257,11 +306,6 @@ public:
         }
     }
 
-    bool hasPendingData() const override {
-        return !mDecodedRemainder.empty();
-    }
-
-private:
     void cleanup() {
         if (mTransform) {
             mTransform->Release();
@@ -271,14 +315,17 @@ private:
             MFShutdown();
             mMfStarted = false;
         }
-        if (mCoInitialized) {
-            CoUninitialize();
-            mCoInitialized = false;
+        if (mMtaCookie) {
+            CoDecrementMTAUsage(mMtaCookie);
+            mMtaCookie = nullptr;
         }
         mInitialized = false;
         mFormatConfigured = false;
         mTransformPreConfigured = false;
         mPrebufferComplete = false;
+        mDataEnded = false;
+        mDrained = false;
+        mInputLeft = false;
         mDecodedRemainder.clear();
     }
 
@@ -543,12 +590,15 @@ private:
     int mStreamChannels = 0;
 
     IMFTransform *mTransform = nullptr;
-    bool mCoInitialized = false;
+    CO_MTA_USAGE_COOKIE mMtaCookie = nullptr;
     bool mMfStarted = false;
     bool mInitialized = false;
     bool mFormatConfigured = false;
     bool mTransformPreConfigured = false;
     bool mPrebufferComplete = false;
+    bool mDataEnded = false;
+    bool mDrained = false;
+    bool mInputLeft = false;
     bool mIsFloatOutput = true;
 
     std::deque<float> mDecodedRemainder;

@@ -1,7 +1,7 @@
 ---
 name: flutter-soloud-3d-audio
-version: 1
-description: Teaches positional (3D) audio in flutter_soloud — play3d/play3dClocked/play3dScheduled, listener position/orientation/velocity, per-source attenuation and Doppler, and the per-frame update pattern. Use when the user asks for spatial audio, positional sound effects, distance-based volume falloff, sounds attached to game entities, Doppler effects, or left/right panning based on world position.
+version: 2
+description: Teaches positional (3D) audio in flutter_soloud — play3d/play3dClocked/play3dScheduled, listener position/orientation/velocity, per-source attenuation and Doppler, and the per-frame update pattern. Use when the user asks for spatial audio, positional sound effects, distance-based volume falloff, sounds attached to game entities (enemies, vehicles, gunfire or footsteps at a world position), Doppler effects, or left/right panning based on world position, or when code computes pan and volume by hand from positions.
 ---
 
 flutter_soloud wraps the SoLoud C++ engine's built-in 3D audio. Every voice started with `play3d` has a 3D position and velocity; a single global "listener" (usually your camera or player) hears them. The coordinate system is right-handed (Y up, X right, Z toward the viewer). Unlike audioplayers/just_audio there is no asset "player" object per sound: you get a `SoundHandle` per playing instance and mutate its 3D state through `SoLoud.instance` setters. Also unlike the web Audio API, SoLoud does **not** move anything for you — positions and velocities are snapshots you must update yourself each tick.
@@ -42,11 +42,13 @@ Future<void> main() async {
 
 All methods are on `SoLoud.instance` (singleton), all positions/velocities are `double` in your world units. Playback methods return `SoundHandle` **synchronously** (not a `Future`) — different from the `Future<...>`-returning patterns in other packages.
 
-Playback (all throw `SoLoudNotInitializedException` if you skipped `init`):
+Every 3D method (playback, listener and source setters, sound speed) throws `SoLoudNotInitializedException` before `init()` completes, and `ArgumentError` if a position, velocity, distance, rolloff, Doppler factor, `volume` or `scale` is NaN or infinite.
 
-- `SoundHandle play3d(AudioSource sound, double posX, double posY, double posZ, {double velX = 0, double velY = 0, double velZ = 0, int busId = 0, double volume = 1, bool paused = false, bool looping = false, Duration loopingStartAt = Duration.zero, Duration? loopingEndAt, int? loopingStartOffsetAt, int? loopingEndOffsetAt, double scale = 1})` — one-shot, lowest latency; start is quantized to output-buffer boundaries.
-- `SoundHandle play3dClocked(AudioSource sound, Duration soundTime, double posX, double posY, double posZ, {...})` — pass your app's monotonically increasing "physics time"; the engine spaces rapid-fire sounds sample-accurately so they don't clump at the next buffer boundary. Costs ~2 buffers of latency. Use for machine-gun / rhythmic 3D SFX.
-- `SoundHandle play3dScheduled(AudioSource sound, Duration atTime, double posX, double posY, double posZ, {Duration? duration, ...})` — starts at an absolute engine time (`SoLoud.instance.getEngineTime()`), sample-accurate; `duration` auto-stops it at `atTime + duration`.
+Playback:
+
+- `SoundHandle play3d(AudioSource sound, double posX, double posY, double posZ, {double velX = 0, double velY = 0, double velZ = 0, int busId = 0, double volume = 1, bool paused = false, bool looping = false, Duration loopingStartAt = Duration.zero, Duration? loopingEndAt, int? loopingStartOffsetAt, int? loopingEndOffsetAt, double scale = 1})` — one-shot, lowest latency; start is quantized to output-buffer boundaries. There is no `pan`: the position decides it. With `paused: true` you can set attenuation and distances first, then `setPause(handle, false)`, so the first buffer already has the falloff.
+- `SoundHandle play3dClocked(AudioSource sound, Duration soundTime, double posX, double posY, double posZ, {...})` — pass your app's monotonically increasing "physics time"; the engine spaces rapid-fire sounds sample-accurately so they don't clump at the next buffer boundary. Costs ~2 buffers of latency. No `paused` parameter. Use for machine-gun / footsteps / rhythmic 3D SFX; pattern in **flutter-soloud-scheduling**.
+- `SoundHandle play3dScheduled(AudioSource sound, Duration atTime, double posX, double posY, double posZ, {Duration? duration, ...})` — starts at an absolute engine time (`SoLoud.instance.getEngineTime()`), sample-accurate; `duration` auto-stops it at `atTime + duration`. No `paused` parameter.
 
 Listener (one global listener; default position is `(0,0,0)`):
 
@@ -88,6 +90,23 @@ void update(double dt) {
 }
 ```
 
+## Proactively recommend
+
+When the user's request or existing code matches the left column, propose the
+approach on the right in one or two sentences (what it is and what they gain),
+then apply it if they agree or if they asked you to decide. Do not silently
+rewrite working code, and do not propose it when the simpler call is enough.
+
+| When you see | Recommend | Why |
+|---|---|---|
+| Pan and volume computed by hand from positions every frame (`setPan((x - playerX) / width)`, `setVolume(1 / distance)`) | `play3d(sound, x, y, z)` + `set3dSourceAttenuation` / `set3dSourceMinMaxDistance`, and `set3dListenerParameters` once per frame | The engine computes panning, distance falloff and Doppler from positions; the game code only reports where things are. |
+| `play3d` in use but "everything has the same loudness" or "3D does not work" | `set3dSourceAttenuation(handle, 2, 1)` (linear) and `set3dSourceMinMaxDistance(handle, min, max)` on each voice | The default model is no attenuation and the default max distance is 1000000, so there is panning but no audible falloff. |
+| Repeated positional SFX (an enemy machine gun, NPC footsteps) played with `play3d` from a `Timer` or the game loop | `play3dClocked(sound, idealTime, x, y, z)` with an accumulated ideal time, or `play3dScheduled` for planned times. **flutter-soloud-scheduling** | `play3d` starts at the next output buffer, so close shots clump and the cadence is uneven; the clocked call is sample-accurate. Cost: a constant lead of about two buffers. |
+| A 2D game (side-scroller, top-down) with pixel coordinates that wants positional sound | The same 3D calls with the unused axis at 0, the listener at the camera or player, and min/max distances in pixels | No separate 2D panning code. Distances, positions and `set3dSoundSpeed` share one unit: with pixels, raise the sound speed or leave velocities at 0. |
+| A pass-by effect (cars, projectiles, a siren) faked by changing `setRelativePlaySpeed` by hand | Pass `velX/velY/velZ` (or `set3dSourceVelocity`) and the listener velocity; tune with `set3dSourceDopplerFactor` | The Doppler shift follows the real relative speed: higher when approaching, lower when receding. |
+| Many emitters in the world (torches, NPCs, distant shots) using up the voices | Linear attenuation with a real max distance, `setInaudibleBehavior(handle, false, true)` on one-shots, `setMaxActiveVoiceCount`. **flutter-soloud-playback** | A one-shot that becomes inaudible is stopped and frees its voice; the default pauses it and resumes it when audible, which is right for looping ambience. A voice is inaudible when the falloff brings its volume close to zero: linear attenuation with rolloff 1 does that at the max distance. |
+| The listener or an emitter updated with several calls per frame (`set3dListenerPosition` + `set3dListenerAt` + `set3dListenerVelocity`, or position + velocity) | One `set3dListenerParameters(...)` and one `set3dSourceParameters(handle, ...)` per emitter per frame | Each setter recomputes the 3D state on the native side; one call per object keeps position and velocity consistent and saves native calls. |
+
 ## Traps
 
 - **Default attenuation is `0` (NO_ATTENUATION).** If you `play3d` and never call `set3dSourceAttenuation`, you get left/right panning from position but **no volume falloff with distance** — the #1 "3D doesn't work" report. Pick a model (linear `2` is a good default for games) and set sensible min/max distances (e.g. `1`–`50` for meter-scale worlds; leaving max at the `1000000` default makes falloff imperceptible).
@@ -96,15 +115,17 @@ void update(double dt) {
 - **`at` and `up` must not be parallel** (and should be roughly orthogonal and normalized). If both are e.g. `(0,1,0)` the listener orientation is degenerate and panning/orientation glitches or collapses.
 - **`set3dListenerParameters` takes 12 positional doubles** — no named arguments, and the source setters are positional too. Don't pass named args copied from the web docs; it won't compile.
 - **`play3d` returns `SoundHandle` synchronously.** No `await`. The async part is `init()` and `loadAsset`/`loadFile`.
+- **NaN or infinity throws `ArgumentError`.** Normalizing a zero-length direction (`v / v.length`) gives NaN: guard it before calling the listener or source setters.
 - **Handle lifetime:** once a non-looping sound finishes, its handle is invalid; per-source setters on a dead handle silently do nothing. Track `sound.soundEvents` / `allInstancesFinished` if you reuse handles.
-- **Voice limit:** default max active voices is 16 (`setMaxActiveVoiceCount` to change). At the limit, the oldest instance of the same sound is stolen; if none of that sound is playing, the new play silently produces a handle addressing no voice.
+- **Voice limit:** default max active voices is 16 (`setMaxActiveVoiceCount` to change). At the limit, the oldest unprotected instance of the same sound is stolen; if that sound has no voice to give up, the new play silently produces a handle addressing no voice. See `setProtectVoice` and `setInaudibleBehavior` in **flutter-soloud-playback**.
 - **`play3d` start is buffer-quantized.** Rapidly triggered SFX (gunfire) clump to buffer boundaries — use `play3dClocked` (or `play3dScheduled` with `getEngineTime()`) for sample-accurate spacing.
 - **Doppler scale mismatch:** `set3dSoundSpeed` default 343 assumes meters. If your world is in pixels or generic units, audible Doppler warble at game speeds means your velocities are huge relative to 343 — raise the sound speed or scale down.
 - **Unit consistency:** attenuation distances, listener/source positions, and sound speed all share the same implicit unit. Mixing meters for distances and pixels for positions gives nonsense falloff.
 
 ## More depth
 
-- Working test exercising the full API (listener, source, attenuation, Doppler, sound speed): `example/tests/tests/three_d_audio.dart`. The example app (`example/lib/`) has no dedicated 3D demo screen.
+- Working test exercising the full API (listener, source, attenuation formulas, Doppler, sound speed): `test/common/three_d_audio_test.dart`. The example app (`example/lib/`) has no dedicated 3D demo screen.
+- Doc page: https://docs.page/alnitak/flutter_soloud_docs/advanced/3d_audio.
 - Upstream SoLoud 3D concepts (attenuation models, Doppler math): https://solhsa.com/soloud/concepts3d.html
 
 ## Keeping this skill current

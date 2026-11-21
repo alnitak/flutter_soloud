@@ -1188,6 +1188,10 @@ namespace SoLoud
 
 #if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
     static std::atomic<int> gLinuxAudioBackend{0};
+    // The gLinuxAudioBackend choice the open engine context was created with,
+    // so a failed backend switch can go back to it. Guarded by
+    // gDeviceOperationMutex.
+    static int gLinuxContextBackend = 0;
 #endif
 
     void miniaudio_setLinuxAudioBackend(int aBackend)
@@ -1260,11 +1264,69 @@ namespace SoLoud
             backends[2] = ma_backend_jack;
             backendCount = 3;
         }
+#if defined(MA_ENABLE_ONLY_SPECIFIC_BACKENDS) && !defined(MA_ENABLE_ALSA) && \
+    !defined(MA_ENABLE_PULSEAUDIO) && !defined(MA_ENABLE_JACK)
+        // Built without any of the three (e.g. null backend only, as the
+        // device-free native tests do): let miniaudio pick from what it has.
+        (void)backends;
+        (void)backendCount;
+        return ma_context_init(NULL, 0, &contextConfig, aContext);
+#else
         return ma_context_init(backends, backendCount, &contextConfig, aContext);
+#endif
 #else
         // Other platforms open the device without a context of their own, which
         // makes miniaudio create one with this same default configuration.
         return ma_context_init(NULL, 0, &contextConfig, aContext);
+#endif
+    }
+
+#if defined(MA_HAS_PULSEAUDIO)
+    // miniaudio's PulseAudio backend does not notice the server going away:
+    // the device's pa_context and stream fail, but its data loop keeps
+    // iterating a main loop that no longer has anything to do, the device
+    // stays "started" and no notification is posted, so the clock freezes and
+    // startAudioDevice() sees a running device and does nothing.
+    //
+    // Watch the device's own pa_context instead. When it fails, quit its main
+    // loop: ma_device_data_loop__pulse() returns, the worker thread stops the
+    // device (state "stopped"), and the next start fails on the dead stream,
+    // which makes Player rebuild the device (performAudioDeviceStart()). The
+    // backend's stop fails on the dead stream and so posts no "stopped"
+    // notification itself; post it here.
+    //
+    // Runs on the thread iterating the device's main loop (the worker thread),
+    // like every other pulse callback.
+    static void on_pulse_device_context_state(ma_pa_context *pPulseContext, void *pUserData)
+    {
+        ma_device *pDevice = static_cast<ma_device *>(pUserData);
+        ma_context *pContext = pDevice->pContext;
+        const ma_pa_context_state_t state =
+            ((ma_pa_context_get_state_proc)pContext->pulse.pa_context_get_state)(pPulseContext);
+        if (state != MA_PA_CONTEXT_FAILED)
+            return;
+        soloud_platform_log("miniaudio: lost the connection to the PulseAudio server\n");
+        ((ma_pa_mainloop_quit_proc)pContext->pulse.pa_mainloop_quit)(
+            (ma_pa_mainloop *)pDevice->pulse.pMainLoop, -1);
+        ma_device_notification notification = {};
+        notification.pDevice = pDevice;
+        notification.type = ma_device_notification_type_stopped;
+        on_notification(&notification);
+    }
+#endif
+
+    /// Call after every successful ma_device_init() of gDevice, before it is
+    /// started (nothing iterates its main loop yet).
+    [[maybe_unused]] static void installDeviceLossHooks()
+    {
+#if defined(MA_HAS_PULSEAUDIO)
+        if (gDevice.pContext == nullptr ||
+            gDevice.pContext->backend != ma_backend_pulseaudio ||
+            gDevice.pulse.pPulseContext == nullptr)
+            return;
+        ((ma_pa_context_set_state_callback_proc)gDevice.pContext->pulse.pa_context_set_state_callback)(
+            (ma_pa_context *)gDevice.pulse.pPulseContext,
+            on_pulse_device_context_state, &gDevice);
 #endif
     }
 
@@ -1278,6 +1340,10 @@ namespace SoLoud
     {
         const ma_result result = init_platform_context(&context);
         gEngineContextInitialized = result == MA_SUCCESS;
+#if (defined(__linux__) || defined(__LINUX__)) && !defined(__ANDROID__)
+        if (gEngineContextInitialized)
+            gLinuxContextBackend = gLinuxAudioBackend.load(std::memory_order_acquire);
+#endif
         gAAudioJobThreadLive =
             gEngineContextInitialized && context.backend == ma_backend_aaudio;
 #if defined(MA_HAS_AAUDIO)
@@ -2033,6 +2099,7 @@ namespace SoLoud
             close_engine_context();
             return UNKNOWN_ERROR;
         }
+        installDeviceLossHooks();
         gDeviceInitialized = true;
         aSoloud->postinit_internal(gDevice.sampleRate, postinit_buffer_size(aSoloud, aBuffer, gDevice.playback.internalPeriodSizeInFrames), aFlags, gDevice.playback.channels);
         ma_result startResult = ma_device_start(&gDevice);
@@ -2262,6 +2329,7 @@ namespace SoLoud
             return UNKNOWN_ERROR;
         }
 
+        installDeviceLossHooks();
         gDeviceInitialized.store(true, std::memory_order_release);
         gDeviceStopped.store(true, std::memory_order_release);
         // Leave the replacement device stopped. Player's serialized lifecycle
@@ -2279,6 +2347,11 @@ namespace SoLoud
         if (currentSoloud == nullptr)
             return UNKNOWN_ERROR;
 
+        // The backend the running device uses, to go back to if the new one
+        // cannot be opened.
+        const bool hadContext = gEngineContextInitialized;
+        const int previousBackend = gLinuxContextBackend;
+
         gLinuxAudioBackend.store(aBackend, std::memory_order_release);
 
         DeviceSessionBoundary sessionBoundary(currentSoloud);
@@ -2293,13 +2366,6 @@ namespace SoLoud
         gDeviceStopped.store(true, std::memory_order_release);
 
         close_engine_context();
-
-        // Picks up aBackend, stored in gLinuxAudioBackend above.
-        ma_result ctxRes = open_engine_context();
-        if (ctxRes != MA_SUCCESS) {
-            soloud_platform_log("miniaudio_changeLinuxBackend_impl: ma_context_init failed with error %d\n", ctxRes);
-            return UNKNOWN_ERROR;
-        }
 
         ma_device_config deviceConfig = ma_device_config_init(ma_device_type_playback);
         deviceConfig.playback.pDeviceID = nullptr;
@@ -2320,19 +2386,43 @@ namespace SoLoud
             ? ma_performance_profile_low_latency
             : ma_performance_profile_conservative;
 
-        ma_result devRes = ma_device_init(&context, &deviceConfig, &gDevice);
-        if (devRes != MA_SUCCESS)
+        // Opens the context and the default device on the backend currently
+        // stored in gLinuxAudioBackend.
+        auto openOnStoredBackend = [&](const char *what) -> bool {
+            ma_result ctxRes = open_engine_context();
+            if (ctxRes != MA_SUCCESS) {
+                soloud_platform_log("miniaudio_changeLinuxBackend_impl: %s: ma_context_init failed with error %d\n", what, ctxRes);
+                return false;
+            }
+            ma_result devRes = ma_device_init(&context, &deviceConfig, &gDevice);
+            if (devRes != MA_SUCCESS)
+            {
+                soloud_platform_log(
+                    "miniaudio_changeLinuxBackend_impl: %s: ma_device_init failed with error %d\n",
+                    what, devRes);
+                close_engine_context();
+                return false;
+            }
+            installDeviceLossHooks();
+            gDeviceInitialized.store(true, std::memory_order_release);
+            gDeviceStopped.store(true, std::memory_order_release);
+            return true;
+        };
+
+        if (!openOnStoredBackend("new backend"))
         {
-            soloud_platform_log(
-                "miniaudio_changeLinuxBackend_impl: ma_device_init failed with error %d\n",
-                devRes);
-            close_engine_context();
-            gDeviceInitialized.store(false, std::memory_order_release);
+            // Leave the engine on the device it had: reopen the previous
+            // backend (stopped, like a successful switch; the caller starts
+            // it again when playback needs it) and keep it as the choice.
+            gLinuxAudioBackend.store(previousBackend, std::memory_order_release);
+            if (hadContext && openOnStoredBackend("restoring previous backend"))
+            {
+                const char *restoredName = ma_get_backend_name(context.backend);
+                soloud_platform_log("miniaudio_changeLinuxBackend_impl: switch failed, back on Linux backend: %s\n", restoredName ? restoredName : "unknown");
+            }
             return UNKNOWN_ERROR;
         }
 
-        gDeviceInitialized.store(true, std::memory_order_release);
-        gDeviceStopped.store(true, std::memory_order_release);
         const char *activeBackendName = ma_get_backend_name(context.backend);
         soloud_platform_log("miniaudio_changeLinuxBackend_impl: switched to Linux backend: %s\n", activeBackendName ? activeBackendName : "unknown");
         return 0;

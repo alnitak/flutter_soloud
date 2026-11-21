@@ -5,12 +5,13 @@
 #include "../simd/simd_pcm.h"
 #include <stdexcept>
 #include <cstring>
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
 VorbisDecoderWrapper::VorbisDecoderWrapper()
     : vorbisInitialized(false), headersInitialized(false), syncInitialized(false),
-      streamInitialized(false), headerParsed(false), firstPcmBlock(true), packetCount(0),
+      streamInitialized(false), headerParsed(false), packetCount(0),
       mDataEnded(false), mDrained(false)
 {
 }
@@ -64,10 +65,15 @@ bool VorbisDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCha
     else decodingSamplerate = 96000;
 
     headerParsed = false;
-    firstPcmBlock = true;
     packetCount = 0;
     mDataEnded = false;
     mDrained = false;
+    mLinkStart = 0;
+    mLinkLastGranule = 0;
+    mLinkFrames = 0;
+    mLinkEnd = -1;
+    mTotalSamples = -1;
+    mSeekIndex.clear();
 
     vorbis_info_init(&vi);
     vorbis_comment_init(&vc);
@@ -83,6 +89,8 @@ AudioMetadata VorbisDecoderWrapper::getMetadata() {
     metadata.type = DetectedType::BUFFER_OGG_VORBIS;
 
     metadata.oggMetadata.commentsCount = vc.comments;
+    if (vc.vendor != nullptr)
+        metadata.oggMetadata.vendor = vc.vendor;
 
     metadata.oggMetadata.vorbisInfo.version = vi.version;
     metadata.oggMetadata.vorbisInfo.rate = vi.rate;
@@ -119,8 +127,16 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
     if (maxOutputSamples > 0) {
         decodedData.reserve(maxOutputSamples);
     }
-    ogg_int64_t total_samples = -1;
-    bool eos_seen = false;
+    const auto capped = [&]() {
+        return maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples;
+    };
+    // The format of the samples returned: that of the link they come from.
+    const auto reportFormat = [&]() {
+        if (headerParsed && samplerate && channels) {
+            *samplerate = static_cast<int>(vi.rate);
+            *channels   = static_cast<int>(vi.channels);
+        }
+    };
 
     // Feed any newly arrived data into the Ogg sync buffer. If [buffer] is empty,
     // we still need to process pages that were already buffered by a previous
@@ -135,20 +151,13 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
 
     // First, drain any packets left in [os] from a previous bounded decode pass
     if (streamInitialized) {
-        while (ogg_stream_packetout(&os, &op) == 1) {
+        while (!capped() && ogg_stream_packetout(&os, &op) == 1) {
             decodePacket(&op, decodedData);
-            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
-                if (headerParsed && samplerate && channels) {
-                    *samplerate = static_cast<int>(vi.rate);
-                    *channels   = static_cast<int>(vi.channels);
-                }
-                return {std::move(decodedData), DecoderError::NoError};
-            }
         }
     }
 
     // Process available pages, tracking byte offsets for seeking.
-    while (true) {
+    while (!capped()) {
         long ret = ogg_sync_pageseek(&oy, &og);
         if (ret == 0) {
             if (mDataEnded) {
@@ -165,12 +174,28 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
             continue;
         }
 
-        mSeekIndex.trackPage(ret, og);
+        // Check for a new stream (different serial number) or a BOS page
+        const bool isNewStream = streamInitialized && ogg_page_serialno(&og) != os.serialno;
+        bool isBOS = ogg_page_bos(&og);
 
-        if (ogg_page_eos(&og)) {
-            total_samples = ogg_page_granulepos(&og);
-            mTotalSamples = total_samples;
-            eos_seen = true;
+        if ((isNewStream || isBOS) && streamInitialized) {
+            // The next link starts where this one ends on the timeline.
+            mLinkStart += mLinkLastGranule;
+            mLinkLastGranule = 0;
+        }
+
+        const ogg_int64_t granule = ogg_page_granulepos(&og);
+        mSeekIndex.trackPage(ret, og, granule >= 0 ? mLinkStart + granule : -1);
+        if (granule > mLinkLastGranule) {
+            mLinkLastGranule = granule;
+        }
+
+        // The samples decoded so far belong to the previous link: return
+        // them with its format before this page resets it.
+        bool returnAfterPage = false;
+        if ((isNewStream || isBOS) && !decodedData.empty()) {
+            reportFormat();
+            returnAfterPage = true;
         }
 
         if (!streamInitialized) {
@@ -179,10 +204,6 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
             }
             streamInitialized = true;
         }
-
-        // Check for a new stream (different serial number) or a BOS page
-        const bool isNewStream = ogg_page_serialno(&og) != os.serialno;
-        bool isBOS = ogg_page_bos(&og);
 
         // Reset decoder state for new streams or when we see a BOS page
         if (isNewStream || isBOS) {
@@ -197,90 +218,51 @@ std::pair<std::vector<float>, DecoderError> VorbisDecoderWrapper::decode(std::ve
                 vorbis_info_clear(&vi);
                 vorbis_comment_clear(&vc);
             }
-            
+
             // Initialize for new stream
             vorbis_info_init(&vi);
             vorbis_comment_init(&vc);
-            
+
             if (ogg_stream_init(&os, ogg_page_serialno(&og))) {
                 return {decodedData, DecoderError::FailedToCreateDecoder};
             }
-            
+
             streamInitialized = true;
             headerParsed = false;
-            firstPcmBlock = true;
             packetCount = 0;
+            mLinkFrames = 0;
+            mLinkEnd = -1;
         }
-        
+
+        if (ogg_page_eos(&og) && granule >= 0) {
+            mLinkEnd = granule;
+            mTotalSamples = mLinkStart + granule;
+        }
+
         // Process the page
         if (ogg_stream_pagein(&os, &og) < 0) {
             // Skip corrupted pages
             continue;
         }
-        
+
         // If this is a BOS page, ensure we're ready for header processing
         if (isBOS) {
             headerParsed = false;
-            firstPcmBlock = true;
             packetCount = 0;
         }
 
+        if (returnAfterPage) {
+            // This page's packets are decoded by the next call.
+            return {std::move(decodedData), DecoderError::NoError};
+        }
+
         // Extract packets from page
-        while (ogg_stream_packetout(&os, &op) == 1) {
+        while (!capped() && ogg_stream_packetout(&os, &op) == 1) {
             decodePacket(&op, decodedData);
-            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
-                break;
-            }
-        }
-        if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples) {
-            break;
         }
     }
 
-    if (total_samples != -1 && vi.channels > 0) {
-        size_t total_floats = total_samples * vi.channels;
-        if (decodedData.size() > total_floats) {
-            decodedData.resize(total_floats);
-        }
-    }
-
-    if (firstPcmBlock && !decodedData.empty() && vi.channels > 0 && vi.rate > 0) {
-        firstPcmBlock = false;
-        const size_t fadeInSamples = (size_t)(vi.rate * 0.002); // 2ms soft fade-in
-        const size_t fadeInFloats = std::min(decodedData.size(), fadeInSamples * vi.channels);
-        for (size_t i = 0; i < fadeInFloats; ++i) {
-            float multiplier = (float)(i / vi.channels) / (float)fadeInSamples;
-            decodedData[i] *= multiplier;
-        }
-    }
-
-    if (eos_seen) {
-        const size_t fade_samples = (size_t)(vi.rate * 0.005); // 5ms fade
-        if (fade_samples > 0 && vi.channels > 0) {
-            const size_t fade_floats = fade_samples * vi.channels;
-            if (decodedData.size() >= fade_floats) {
-                size_t start_fade = decodedData.size() - fade_floats;
-                for (size_t i = 0; i < fade_floats; ++i) {
-                    float multiplier = 1.0f - (float)(i / vi.channels) / (float)fade_samples;
-                    decodedData[start_fade + i] *= multiplier;
-                }
-            } else if (!decodedData.empty()) {
-                const size_t totalFrames = decodedData.size() / vi.channels;
-                if (totalFrames > 0) {
-                    for (size_t i = 0; i < decodedData.size(); ++i) {
-                        float multiplier = 1.0f - (float)(i / vi.channels) / (float)totalFrames;
-                        decodedData[i] *= multiplier;
-                    }
-                }
-            }
-        }
-    }
-
-    // Return samplerate/channels to caller (once headers are parsed)
-    if (headerParsed && samplerate && channels) {
-        *samplerate = static_cast<int>(vi.rate);
-        *channels   = static_cast<int>(vi.channels);
-    }
+    reportFormat();
 
     return {std::move(decodedData), DecoderError::NoError};
 }
@@ -362,25 +344,73 @@ void VorbisDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& 
     int samples;
     while ((samples = vorbis_synthesis_pcmout(&vd, &pcm)) > 0) {
         const int chs = vi.channels;
-        if (chs > 0) {
+        // After a seek the position in the link is not known until libvorbis
+        // knows the granule of the samples it returns.
+        if (mLinkFrames < 0 && vd.granulepos >= 0) {
+            mLinkFrames = std::max<ogg_int64_t>(0, vd.granulepos - samples);
+        }
+        // libvorbis trims the last packet to the EOS granule; trim here too
+        // in case it could not (no granule known before the end).
+        int keep = samples;
+        if (mLinkEnd >= 0 && mLinkFrames >= 0 && mLinkFrames + keep > mLinkEnd) {
+            keep = static_cast<int>(std::max<ogg_int64_t>(0, mLinkEnd - mLinkFrames));
+        }
+        if (chs > 0 && keep > 0) {
             const size_t oldSize = out.size();
-            const size_t addFloats = static_cast<size_t>(samples) * static_cast<size_t>(chs);
+            const size_t addFloats = static_cast<size_t>(keep) * static_cast<size_t>(chs);
             out.resize(oldSize + addFloats);
             float *dst = out.data() + oldSize;
             if (chs == 1) {
-                std::memcpy(dst, pcm[0], static_cast<size_t>(samples) * sizeof(float));
+                std::memcpy(dst, pcm[0], static_cast<size_t>(keep) * sizeof(float));
             } else if (chs == 2) {
-                SoLoud::interleaveStereoFloats(pcm[0], pcm[1], dst, static_cast<unsigned int>(samples));
+                SoLoud::interleaveStereoFloats(pcm[0], pcm[1], dst, static_cast<unsigned int>(keep));
             } else {
-                for (int i = 0; i < samples; i++) {
+                for (int i = 0; i < keep; i++) {
                     float *frameDst = dst + static_cast<size_t>(i) * static_cast<size_t>(chs);
                     for (int ch = 0; ch < chs; ch++) {
                         frameDst[ch] = pcm[ch][i];
                     }
                 }
             }
+            applyFades(dst, keep, chs);
         }
         vorbis_synthesis_read(&vd, samples);
+        if (mLinkFrames >= 0) {
+            mLinkFrames += keep;
+        }
+    }
+}
+
+void VorbisDecoderWrapper::applyFades(float *dst, int frames, int chs)
+{
+    // A 2 ms fade-in at the start of each link and a 5 ms fade-out at its
+    // end (once the EOS granule is known), by position in the link, so the
+    // fades do not depend on how decode() calls are cut.
+    if (mLinkFrames < 0 || vi.rate <= 0) {
+        return;
+    }
+    const ogg_int64_t fadeIn = static_cast<ogg_int64_t>(vi.rate * 0.002);
+    const ogg_int64_t fadeOut = static_cast<ogg_int64_t>(vi.rate * 0.005);
+    const ogg_int64_t outStart = mLinkEnd >= 0 ? mLinkEnd - fadeOut : -1;
+    const ogg_int64_t first = mLinkFrames;
+    const ogg_int64_t last = mLinkFrames + frames;
+    if (first < fadeIn || (outStart >= 0 && last > outStart)) {
+        for (int i = 0; i < frames; ++i) {
+            const ogg_int64_t pos = first + i;
+            float m = 1.0f;
+            if (pos < fadeIn) {
+                m = static_cast<float>(pos) / static_cast<float>(fadeIn);
+            }
+            if (outStart >= 0 && pos >= outStart && fadeOut > 0) {
+                m *= 1.0f - static_cast<float>(pos - outStart) / static_cast<float>(fadeOut);
+            }
+            if (m != 1.0f) {
+                float *frame = dst + static_cast<size_t>(i) * static_cast<size_t>(chs);
+                for (int c = 0; c < chs; ++c) {
+                    frame[c] *= m;
+                }
+            }
+        }
     }
 }
 
@@ -389,6 +419,12 @@ void VorbisDecoderWrapper::prepareForSeek(uint64_t targetSample, uint64_t byteOf
     (void)targetSample;
     // Preserve the already-parsed headers and decoder state, but reset the
     // Ogg page-level state so that mid-stream data can be synced again.
+    if (vorbisInitialized) {
+        vorbis_synthesis_restart(&vd);
+    }
+    // The position in the link is known again once libvorbis knows the
+    // granule of the samples it returns.
+    mLinkFrames = -1;
     ogg_sync_clear(&oy);
     ogg_sync_init(&oy);
     if (streamInitialized)
@@ -427,6 +463,7 @@ bool VorbisDecoderWrapper::canSeekToTime(double seconds) const
 {
     if (!headerParsed || seconds <= 0.0)
         return false;
+    // The index holds times from the start of the file (chained links).
     const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
         std::floor(seconds * static_cast<double>(vi.rate)));
     return mSeekIndex.covers(targetGranule);

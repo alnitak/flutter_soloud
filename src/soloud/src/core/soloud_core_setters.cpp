@@ -174,6 +174,8 @@ namespace SoLoud
 			}
 			// ###### flutter_soloud local patch (retroactive re-mix) ######
 			voiceStateChanged_internal(ch);
+			// Protection changes which voices are mixed: re-evaluate.
+			mActiveVoiceDirty = true;
 		FOR_ALL_VOICES_POST
 	}
 

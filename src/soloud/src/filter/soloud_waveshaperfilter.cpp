@@ -49,9 +49,22 @@ namespace SoLoud
 		else
 			k = 2 * mParam[WaveShaperFilter::AMOUNT] / (1 - mParam[1]);
 
+		// flutter_soloud: AMOUNT = -1 gives k = -1, where the curve is 0/0 at
+		// |x| = 1. Keep 1 + k above 0 so the denominator below stays > 0.
+		if (k < -0.999f)
+			k = -0.999f;
+		// flutter_soloud: with a negative AMOUNT (k < 0) the denominator
+		// 1 + k|x| reaches 0 for |x| = -1/k > 1, so the input is shaped
+		// clamped to +-1 and the excess passes through. The curve maps +-1 to
+		// +-1, so this is unchanged for |x| <= 1 and continuous beyond. A
+		// positive AMOUNT keeps the plain curve (it is finite everywhere).
+		const float limit = k < 0 ? 1.0f : 3.402823e38f;
+
 		const float onePlusK = 1.0f + k;
 		const float wetMix = mParam[WaveShaperFilter::WET];
 		const auto vOne = soloud_simd::f32x4::splat(1.0f);
+		const auto vLimit = soloud_simd::f32x4::splat(limit);
+		const auto vMinLimit = soloud_simd::f32x4::splat(-limit);
 		const auto vK = soloud_simd::f32x4::splat(k);
 		const auto vOnePlusK = soloud_simd::f32x4::splat(onePlusK);
 		const auto vWet = soloud_simd::f32x4::splat(wetMix);
@@ -60,16 +73,18 @@ namespace SoLoud
 		for (; i + 4 <= aSamples; i += 4)
 		{
 			const auto dry = soloud_simd::f32x4::loadu(aBuffer + i);
-			const auto num = soloud_simd::mul(vOnePlusK, dry);
-			const auto den = soloud_simd::add(vOne, soloud_simd::mul(vK, soloud_simd::abs(dry)));
-			const auto wet = soloud_simd::div(num, den);
+			const auto x = soloud_simd::clamp(dry, vMinLimit, vLimit);
+			const auto num = soloud_simd::mul(vOnePlusK, x);
+			const auto den = soloud_simd::add(vOne, soloud_simd::mul(vK, soloud_simd::abs(x)));
+			const auto wet = soloud_simd::add(soloud_simd::div(num, den), soloud_simd::sub(dry, x));
 			soloud_simd::add(dry, soloud_simd::mul(soloud_simd::sub(wet, dry), vWet))
 				.storeu(aBuffer + i);
 		}
 		for (; i < aSamples; i++)
 		{
 			const float dry = aBuffer[i];
-			const float wet = onePlusK * dry / (1.0f + k * fabsf(dry));
+			const float x = dry < -limit ? -limit : (dry > limit ? limit : dry);
+			const float wet = onePlusK * x / (1.0f + k * fabsf(x)) + (dry - x);
 			aBuffer[i] = dry + (wet - dry) * wetMix;
 		}
 	}

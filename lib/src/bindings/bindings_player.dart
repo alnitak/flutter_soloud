@@ -464,8 +464,8 @@ abstract class FlutterSoLoud {
   /// metadata of a stream.
   ///
   /// [soundHash] the hash of the stream sound.
-  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
-  /// is the most used value.
+  /// [icyMetaInt] the icy metadata integer value (16000 is a common value).
+  /// There is no default: nothing is stripped until a value > 0 is set.
   @mustBeOverridden
   PlayerErrors setBufferIcyMetaInt(SoundHash soundHash, int icyMetaInt);
 

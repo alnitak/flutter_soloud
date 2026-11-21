@@ -6,13 +6,14 @@ Verified against `lib/src/mixing_bus.dart` and `lib/src/soloud.dart`.
 
 ```dart
 final all = Buses().buses;                    // List<Bus>, live buses only
-final sfx = Buses().byName('SFX');            // throws StateError if missing
+final sfx = Buses().byName('SFX');            // Bus?; throws StateError if missing
 final sfx2 = Buses().byName('SFX', orElse: () => fallbackBus);
 final b = Buses().byId(1);                    // same lookup semantics
 ```
 
-Buses are added on construction and removed by `dispose()`. Bus equality is by
-`busId`.
+Buses are added on construction and removed by `dispose()`; `deinit()` removes
+and invalidates all of them. Bus equality is identity (one `Bus` object per
+native bus); ids start again from 1 after a new `init()`.
 
 ## Bus lifecycle
 
@@ -25,7 +26,25 @@ bus.dispose();     // stops ALL sounds routed through the bus
 ```
 
 `playOnEngine` again on the same bus stops the earlier bus voice — a bus can
-only play once at a time.
+only play once at a time. Until `playOnEngine` the play variants below throw
+`SoLoudFailedToStartPlaybackCppException`.
+
+The bus handle takes the ordinary voice calls:
+
+```dart
+final h = bus.soundHandle!;
+SoLoud.instance.setVolume(h, 0.5);                                  // slider
+SoLoud.instance.fadeVolume(h, 0.3, const Duration(milliseconds: 300)); // duck
+SoLoud.instance.setPause(h, true);                                  // freeze the group
+```
+
+Nesting:
+
+```dart
+final game = SoLoud.instance.createMixingBus(name: 'Game')..playOnEngine();
+final sfx = SoLoud.instance.createMixingBus(name: 'SFX');
+game.annexSound(sfx.playOnEngine()); // sfx now plays through game
+```
 
 ## Play variants (all synchronous, all return SoundHandle)
 
@@ -76,6 +95,23 @@ final handle = SoLoud.instance.play(someSound); // started on the engine
 sfxBus.annexSound(handle); // now plays through sfxBus
 ```
 
+No-op when `sfxBus` isn't playing or the handle is no longer valid.
+
+## Filters
+
+```dart
+final lowPass = musicBus.filters.biquadResonantFilter..activate();
+// Parameters: methods without arguments; the bus must be playing.
+lowPass.frequency().value = 400;
+lowPass.wet().fadeFilterParameter(
+  to: 0,
+  time: const Duration(milliseconds: 300),
+);
+lowPass.deactivate();
+```
+
+At most 8 filters per bus. Details in **flutter-soloud-filters**.
+
 ## Channels and metering
 
 ```dart
@@ -91,44 +127,67 @@ bus.audioVisualizationEvents.listen((data) {
 
 ## Exceptions
 
+- `SoLoudNotInitializedException` — `createMixingBus()` before `init()`.
 - `SoLoudBusDisposedDartException` — any `Bus` method after `dispose()`
-  (including a second `dispose()`).
-- `SoLoudBackendNotInitedException` — `playOnEngine()` before engine init.
-- `SoLoudBusIdNotFoundCppException` — bus unknown to the C++ side.
+  (including a second `dispose()`) or after `deinit()`.
+- `SoLoudBusIdNotFoundCppException` — bus unknown to the C++ side: filters of
+  a disposed bus, `SoLoud.instance.play(sound, busId: ...)` with its id.
 - `SoLoudFailedToStartPlaybackCppException` — engine couldn't create the bus
-  voice.
+  voice, or a sound was played onto a bus that isn't playing.
+- `SoLoudSoundHandleNotFoundCppException` — a bus filter parameter used
+  before `playOnEngine()`.
+- `ArgumentError` — NaN or infinite `volume`/`pan`/`scale` in a play method.
 
 ## AudioManager pattern (music/SFX/voice + ducking)
 
 ```dart
 class AudioManager {
-  late final Bus musicBus;
-  late final Bus sfxBus;
-  late final Bus voiceBus;
+  late Bus musicBus;
+  late Bus sfxBus;
+  late Bus voiceBus;
+  final _sources = <String, AudioSource>{};
 
+  /// Call again after every SoLoud.instance.init(): deinit() invalidates
+  /// the buses and unloads the sources.
   Future<void> init() async {
     await SoLoud.instance.init();
-    musicBus = SoLoud.instance.createMixingBus(name: 'Music');
-    sfxBus = SoLoud.instance.createMixingBus(name: 'SFX');
-    voiceBus = SoLoud.instance.createMixingBus(name: 'Voice');
-    musicBus.playOnEngine(volume: 0.7);
-    sfxBus.playOnEngine();
-    voiceBus.playOnEngine(volume: 0.9);
+    _sources.clear();
+    musicBus = SoLoud.instance.createMixingBus(name: 'Music')
+      ..playOnEngine(volume: 0.7);
+    sfxBus = SoLoud.instance.createMixingBus(name: 'SFX')..playOnEngine();
+    voiceBus = SoLoud.instance.createMixingBus(name: 'Voice')
+      ..playOnEngine(volume: 0.9);
   }
 
-  Future<void> playMusic(String asset) async {
-    final music = await SoLoud.instance.loadAsset(asset);
-    musicBus.play(music, looping: true);
+  /// Load each asset once, play it many times.
+  Future<AudioSource> _load(String asset) async =>
+      _sources[asset] ??= await SoLoud.instance.loadAsset(asset);
+
+  Future<SoundHandle> playMusic(String asset) async {
+    final handle = musicBus.play(await _load(asset), looping: true);
+    SoLoud.instance.setProtectVoice(handle, true);
+    return handle;
   }
 
-  Future<void> playSfx(String asset) async {
-    sfxBus.play(await SoLoud.instance.loadAsset(asset));
-  }
+  Future<SoundHandle> playSfx(String asset) async =>
+      sfxBus.play(await _load(asset));
 
-  void duckMusic() =>
-      SoLoud.instance.setVolume(musicBus.soundHandle!, 0.3);
-  void restoreMusic() =>
-      SoLoud.instance.setVolume(musicBus.soundHandle!, 0.7);
+  void setMusicVolume(double v) =>
+      SoLoud.instance.setVolume(musicBus.soundHandle!, v);
+
+  void duckMusic() => SoLoud.instance.fadeVolume(
+    musicBus.soundHandle!,
+    0.3,
+    const Duration(milliseconds: 300),
+  );
+  void restoreMusic() => SoLoud.instance.fadeVolume(
+    musicBus.soundHandle!,
+    0.7,
+    const Duration(milliseconds: 500),
+  );
+
+  void pauseGame({required bool paused}) =>
+      SoLoud.instance.setPause(sfxBus.soundHandle!, paused);
 
   void dispose() {
     musicBus.dispose();
@@ -137,3 +196,6 @@ class AudioManager {
   }
 }
 ```
+
+For latency-sensitive effects preload the sources (`_load`) at startup so
+`playSfx` does not wait for a decode on the first shot.

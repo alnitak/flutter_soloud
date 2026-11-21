@@ -1,3 +1,35 @@
+## 5.4.0 (XX Xxx 2026)
+A bug-fix release: a new, much larger test suite found many bugs, now fixed.
+
+### Behaviour changes
+- `Bus` equality is now identity (`==`/`hashCode` removed), and every bus becomes invalid after `deinit()`.
+- Setters (volume, pan, speed, fades, oscillations, 3D, `play*()` arguments, filter parameter fades, ...) throw `ArgumentError` for NaN or infinite values.
+- Voice groups, `createMixingBus`, the 3D methods and `setBufferIcyMetaInt` throw `SoLoudNotInitializedException` before `init()`, like the rest of the API.
+- Filters:
+  - Using a parameter of a filter that is not active throws `SoLoudFilterNotFoundException`; an invalid parameter index throws `SoLoudInvalidParameterException`.
+  - A sound's filter parameter used without `soundHandle` throws `ArgumentError` (it used to change the global filter).
+  - Parameter ranges now match the native ones (biquad, flanger, limiter, pitch shift, parametric EQ).
+  - EQ: transparent with all bands at 1, and the bands cover the whole spectrum, so existing EQ settings sound different.
+  - Custom filters expose 15 user parameters (it was 7).
+  - `biquadFilter` is deprecated: use `biquadResonantFilter`.
+- `Vst3Host.loadEffect` only supports global and bus slots, and throws `ArgumentError` for a single sound's slot.
+- Ogg Opus streams with 3 to 8 channels are downmixed to stereo.
+- Linux without FFmpeg: loading AAC/M4A/AC-3 throws `SoLoudAudioFormatNotSupportedCppException`.
+- Web: custom sources and filters with `webJsFunctionName` work only with the single-threaded WASM build; `loadMem`/`loadUrl` of undecodable data throw `SoLoudFileLoadFailedException`, and `addPullBufferDataStream` throws on errors.
+
+### Fixes
+- **Engine and 3D**: `speechText()` crash on `play()`; `set3dListenerUp`; distance attenuation applied twice; inverted Doppler shift; 3D settings lost before the first sound is loaded; NaN audio with min/max distance 0; `play()` at the voice limit stopping a protected voice.
+- **Filters**: waveshaper output growing without bound, bassboost boosting high frequencies, pitch shift semitones, biquad cutoff above Nyquist.
+- **Streams**: lost, duplicated or glitchy audio when data arrives in small chunks (MP3, FLAC, WAV, Vorbis, Opus, AAC, AC-3); more accurate seeking; chained Ogg streams; ICY metadata; `addAudioDataStream` and `setDataIsEnded` work again from worker isolates.
+- **Decoding**:
+  - Apple: HE-AAC plays at full rate, the last AC-3 frame is no longer dropped.
+  - Android: AC-3/E-AC-3 in MP4 on devices with Dolby's decoder no longer cuts the start/end or applies the Atmos leveler.
+  - Linux: crashes and wrong lengths with FFmpeg 4.4/5.x fixed; decoding from memory honors `TMPDIR`.
+  - FLAC files without a total length load; M4A bitrate is correct.
+- **Recording (mixer output)**: correct channel order for 6/8-channel Vorbis and FLAC; valid WAV files over 4 GB.
+- **Linux devices**: a failed backend switch keeps the previous backend; the device recovers when PulseAudio comes back; the VST3 editor's close button works.
+- **Robustness**: invalid arguments and out-of-memory no longer crash the app, and several crashes, deadlocks and data races are fixed.
+
 ## 5.3.1 (18 Nov 2026)
 - fix: eliminate playback drift between LoadMode.memory and LoadMode.disk, fix seek/tell callbacks in WavStream, and fix MemoryFile::seek boundary clamping. Thanks to @Solido #580
 - fix web: conditionally import dart:isolate in realtime_stream.dart for full Web and WASM compatibility

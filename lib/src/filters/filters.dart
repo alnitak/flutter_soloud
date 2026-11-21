@@ -18,6 +18,7 @@ import 'package:flutter_soloud/src/filters/parametric_eq.dart';
 import 'package:flutter_soloud/src/filters/pitchshift_filter.dart';
 import 'package:flutter_soloud/src/filters/robotize_filter.dart';
 import 'package:flutter_soloud/src/filters/wave_shaper_filter.dart';
+import 'package:flutter_soloud/src/helpers/argument_checks.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -91,8 +92,12 @@ final class FiltersSingle {
   ///
   /// This filter is documented in the SoLoud C++ lib docs web page
   /// [here](https://solhsa.com/soloud/biquadfilter.html)
-  BiquadResonantSingle get biquadFilter =>
+  BiquadResonantSingle get biquadResonantFilter =>
       BiquadResonantSingle(soundHash, busId);
+
+  /// The old name of [biquadResonantFilter].
+  @Deprecated('Use biquadResonantFilter, the same name as the global filter')
+  BiquadResonantSingle get biquadFilter => biquadResonantFilter;
 
   /// The `Echo` filter for this sound.
   ///
@@ -154,8 +159,10 @@ final class FiltersSingle {
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
   ///
-  /// - `attackTime`: The attack time in milliseconds. Determines how quickly
-  /// the gain reduction recovers after a signal peaks above the threshold.
+  /// - `attackTime`: The attack time in milliseconds (0.1 to 200, default 1).
+  /// It is the look-ahead window over which the gain reduction ramps in
+  /// before a peak above the threshold, and it delays the signal by the same
+  /// time.
   ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
@@ -213,10 +220,12 @@ final class FiltersSingle {
 
   /// The `Amplitude Modulator` filter for this sound.
   ///
-  /// Bipolar amplitude modulation (ring modulation) with a sine carrier. At
-  /// full wet the output is `input * sin(2π * frequency * t)`: there is no DC
-  /// bias on the carrier, so a sine input at `f1` produces components at
-  /// `frequency - f1` and `frequency + f1` instead of a tremolo.
+  /// Bipolar amplitude modulation (ring modulation) with a carrier of
+  /// selectable `waveform` (sine by default). At full wet the output is
+  /// `input * carrier(t)`, which is `input * sin(2π * frequency * t)` for the
+  /// sine: there is no DC bias on the carrier, so with the sine carrier a sine
+  /// input at `f1` produces components at `frequency - f1` and
+  /// `frequency + f1` instead of a tremolo.
   ///
   /// **Parameters**:
   /// - `wet`: Wet/dry mix ratio, 1.0 means fully modulated, 0.0 means fully
@@ -225,6 +234,9 @@ final class FiltersSingle {
   /// - `frequency`: The carrier frequency in Hz (0.1 to 20000, default 440).
   /// Requests at or above the Nyquist limit of the active sample rate are
   /// clamped just below it while processing.
+  ///
+  /// - `waveform`: The carrier waveform: 0 = sine (default), 1 = triangle,
+  /// 2 = square, 3 = saw.
   ///
   /// This filter is not part of SoLoud C++ lib and the source code can be found
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/amplitude_modulator_filter.cpp)
@@ -329,6 +341,11 @@ final class FiltersGlobal {
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
   ///
+  /// - `attackTime`: The attack time in milliseconds (0.1 to 200, default 1).
+  /// It is the look-ahead window over which the gain reduction ramps in
+  /// before a peak above the threshold, and it delays the signal by the same
+  /// time.
+  ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
   ///
@@ -384,10 +401,12 @@ final class FiltersGlobal {
 
   /// The `Amplitude Modulator` filter used globally.
   ///
-  /// Bipolar amplitude modulation (ring modulation) with a sine carrier. At
-  /// full wet the output is `input * sin(2π * frequency * t)`: there is no DC
-  /// bias on the carrier, so a sine input at `f1` produces components at
-  /// `frequency - f1` and `frequency + f1` instead of a tremolo.
+  /// Bipolar amplitude modulation (ring modulation) with a carrier of
+  /// selectable `waveform` (sine by default). At full wet the output is
+  /// `input * carrier(t)`, which is `input * sin(2π * frequency * t)` for the
+  /// sine: there is no DC bias on the carrier, so with the sine carrier a sine
+  /// input at `f1` produces components at `frequency - f1` and
+  /// `frequency + f1` instead of a tremolo.
   ///
   /// **Parameters**:
   /// - `wet`: Wet/dry mix ratio, 1.0 means fully modulated, 0.0 means fully
@@ -396,6 +415,9 @@ final class FiltersGlobal {
   /// - `frequency`: The carrier frequency in Hz (0.1 to 20000, default 440).
   /// Requests at or above the Nyquist limit of the active sample rate are
   /// clamped just below it while processing.
+  ///
+  /// - `waveform`: The carrier waveform: 0 = sine (default), 1 = triangle,
+  /// 2 = square, 3 = saw.
   ///
   /// This filter is not part of SoLoud C++ lib and the source code can be found
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/amplitude_modulator_filter.cpp)
@@ -431,7 +453,35 @@ class FilterParam {
     this._attributeId,
     this._min,
     this._max,
-  );
+  ) : _ofSource = false;
+
+  /// A parameter of a filter that belongs to a sound or to a bus
+  /// ([FiltersSingle]): it needs a target, the handle of a voice of the sound
+  /// or the bus, and throws [ArgumentError] when used without one (it would
+  /// otherwise address the global filter of the same type).
+  ///
+  /// Used by the filter classes of this package, not by app code.
+  @internal
+  FilterParam.ofSource(
+    this._soundHandle,
+    this._busId,
+    this._type,
+    this._attributeId,
+    this._min,
+    this._max,
+  ) : _ofSource = true;
+
+  final bool _ofSource;
+
+  /// Throws [ArgumentError] if this parameter belongs to the filter of a
+  /// sound and no voice handle was given.
+  @internal
+  @protected
+  void checkTarget() {
+    if (_ofSource && _soundHandle == null && _busId == null) {
+      throw ArgumentError.notNull('soundHandle');
+    }
+  }
 
   final SoundHandle? _soundHandle;
   final int? _busId;
@@ -456,9 +506,13 @@ class FilterParam {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
-  /// Throws [SoLoudCppException] if the value can't be read, for example
-  /// because the filter is not active.
+  /// Throws [SoLoudFilterNotFoundException] if the filter is not active.
+  /// Throws [SoLoudInvalidParameterException] if the parameter index is not
+  /// valid for the filter.
+  /// Throws another [SoLoudCppException] if the value can't be read for a
+  /// different reason, for example an invalid voice handle.
   double get value {
+    checkTarget();
     if (kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
@@ -482,13 +536,17 @@ class FilterParam {
 
   /// Set the parameter value.
   ///
+  /// A value outside [min]..[max], or NaN, is not applied: a warning is
+  /// logged and the parameter keeps its value.
+  ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
   set value(double val) {
+    checkTarget();
     if (kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
-    if (val < _min || val > _max) {
+    if (val.isNaN || val < _min || val > _max) {
       Logger(
         'flutter_soloud.${_type.name}Filter',
       ).warning(() => 'value [$val] out of accepted range [$_min, $_max]');
@@ -527,26 +585,35 @@ class FilterParam {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
-  void fadeFilterParameter({required double to, required Duration time}) =>
-      _type.fadeFilterParameter(_soundHandle, _busId, _attributeId, to, time);
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
+  void fadeFilterParameter({required double to, required Duration time}) {
+    checkTarget();
+    _type.fadeFilterParameter(_soundHandle, _busId, _attributeId, to, time);
+  }
 
   /// Oscillate a parameter value from [from] value to a new value [to]
   /// in [time] time duration.
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillateFilterParameter({
     required double from,
     required double to,
     required Duration time,
-  }) => _type.oscillateFilterParameter(
-    _soundHandle,
-    _busId,
-    _attributeId,
-    from,
-    to,
-    time,
-  );
+  }) {
+    checkTarget();
+    _type.oscillateFilterParameter(
+      _soundHandle,
+      _busId,
+      _attributeId,
+      from,
+      to,
+      time,
+    );
+  }
 }
 
 /// The different types of audio filters.
@@ -695,6 +762,8 @@ enum FilterType {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// a filter for a single sound on the Web platform.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   @internal
   void fadeFilterParameter(
     SoundHandle? soundHandle,
@@ -709,6 +778,7 @@ enum FilterType {
     if (!SoLoud.instance.isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     final error = SoLoudController().soLoudFFI.fadeFilterParameter(
       this,
       attributeId,
@@ -730,6 +800,8 @@ enum FilterType {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// a filter for a single sound on the Web platform.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   @internal
   void oscillateFilterParameter(
     SoundHandle? soundHandle,
@@ -745,6 +817,8 @@ enum FilterType {
     if (!SoLoud.instance.isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(from, 'from');
+    checkFinite(to, 'to');
     final error = SoLoudController().soLoudFFI.oscillateFilterParameter(
       this,
       attributeId,

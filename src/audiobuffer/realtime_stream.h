@@ -93,6 +93,11 @@ public:
   /// Maximum number of gap/reset markers that can be pending at once.
   static constexpr size_t kMaxTimelineMarkers = 256;
 
+  /// Upper bound of the ring (buffer capacity plus history), in frames:
+  /// 2^24 frames are about 5.8 minutes at 48 kHz, far more than a realtime
+  /// feed buffers. init() refuses a larger ring.
+  static constexpr size_t kMaxRingFrames = size_t(1) << 24;
+
   RealtimeStream();
   ~RealtimeStream() override;
 

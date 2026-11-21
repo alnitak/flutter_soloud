@@ -59,8 +59,11 @@ AACDecoderWrapper::AACDecoderWrapper(DetectedType format)
 AACDecoderWrapper::~AACDecoderWrapper() = default;
 
 bool AACDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChannels) {
-  if (!mImpl) return false;
-  return mImpl->initialize(engineSamplerate, engineChannels);
+  mDecoderReady = mImpl && mImpl->initialize(engineSamplerate, engineChannels);
+  if (mDecoderReady) {
+    mAudioData.clear();
+  }
+  return mDecoderReady;
 }
 
 void AACDecoderWrapper::setIcyMetaInt(int icyMetaInt) {
@@ -137,6 +140,13 @@ AACDecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
       mMetadataParsed = true;
       onTrackChange(metadata);
     }
+  }
+
+  if (!mDecoderReady) {
+    // initializeDecoder() failed or was never called: the header metadata
+    // above is all there is, and the input is dropped instead of piling up.
+    mAudioData.clear();
+    return {{}, DecoderError::FailedToCreateDecoder};
   }
 
   auto result = mImpl->decode(mAudioData, samplerate, channels, maxOutputSamples);
@@ -498,16 +508,7 @@ bool AACDecoderWrapper::parseId3Tags(const unsigned char *data, size_t size, Aac
     } else if (std::strcmp(frame_id, "COMM") == 0) {
       // COMM frame: 1 byte encoding, 3 bytes language, short description, comment text
       if (frame_size > 4) {
-        size_t text_start = pos + 4;
-        while (text_start < pos + frame_size && data[text_start] != 0) {
-          text_start++;
-        }
-        if (text_start < pos + frame_size) text_start++; // Skip null terminator
-        if (text_start < pos + frame_size) {
-          out.comment = std::string(
-              reinterpret_cast<const char *>(data + text_start),
-              (pos + frame_size) - text_start);
-        }
+        out.comment = id3CommentToUtf8(data + pos, frame_size);
       }
     }
 

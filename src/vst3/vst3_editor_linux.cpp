@@ -854,7 +854,11 @@ private:
       while (guiSymbols().XCheckTypedWindowEvent(sSharedDisplay, sSharedWindow,
                                                  33 /* ClientMessage */,
                                                  eventBuf)) {
-        unsigned long data0 = eventBuf[8];
+        // XClientMessageEvent: type, serial, send_event, display, window,
+        // message_type, format, then data.l[0]. Each field before data takes
+        // one long-sized slot (int + padding on LP64), so data.l[0] is
+        // eventBuf[7] on both LP64 and ILP32.
+        unsigned long data0 = eventBuf[7];
         if (data0 == sSharedWmDelete) {
           self->mEventTimerId = 0;
           self->close();

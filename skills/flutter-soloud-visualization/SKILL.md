@@ -1,14 +1,14 @@
 ---
 name: flutter-soloud-visualization
-version: 2
-description: Teaches flutter_soloud's two visualization paths — live FFT/wave data via setVisualizationEnabled + the audioVisualizationEvents stream (of the engine output, or of one mixing bus via Bus.setVisualizationEnabled), and offline waveform extraction via readSamplesFromFile/readSamplesFromMem (plus getApproximateVolume / Bus.getChannelVolume for VU meters). Use when the user asks for a spectrum/waveform visualizer, audio-reactive UI, VU/level meter, a per-group (music/SFX) visualizer, or a static waveform preview of an audio file.
+version: 3
+description: Teaches flutter_soloud's two visualization paths — live FFT/wave data via setVisualizationEnabled + the audioVisualizationEvents stream (of the engine output, or of one mixing bus via Bus.setVisualizationEnabled), and offline waveform extraction via readSamplesFromFile/readSamplesFromMem (plus getApproximateVolume / Bus.getChannelVolume for VU meters). Use when the user asks for a spectrum analyzer, equalizer bars, oscilloscope/waveform display, audio-reactive UI or game visuals (pulsing to the music), a VU/level meter, a per-group (music/SFX) visualizer, or a static waveform preview or seek bar of an audio file, and when code computes levels or an FFT in Dart from decoded samples or fakes the bars with random values.
 ---
 
 # Visualization in flutter_soloud
 
 flutter_soloud has two unrelated ways to get drawable sample data out of the SoLoud engine:
 
-1. **Live visualization** — the engine emits `AudioVisualizationData` packets (waveform and/or FFT magnitudes of the *mixed output*, or of what plays through one mixing bus) on a broadcast stream, at mixer rate. For real-time spectrum/waveform widgets.
+1. **Live visualization** — the engine emits `AudioVisualizationData` packets (waveform and/or FFT magnitudes of the *mixed output*, or of what plays through one mixing bus) on a broadcast stream, as new audio is mixed. For real-time spectrum/waveform widgets.
 2. **Offline waveform reading** — `readSamplesFromFile` / `readSamplesFromMem` decode an audio file in a background isolate and return a fixed number of equally-spaced samples. For static waveform previews (SoundCloud-style).
 
 Pick the right one. The live stream cannot give you the waveform of a not-yet-played file; the offline readers cannot follow playback.
@@ -17,6 +17,7 @@ Pick the right one. The live stream cannot give you the waveform of a not-yet-pl
 
 ```dart
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -116,13 +117,14 @@ All on `SoLoud.instance` (singleton), imported from `package:flutter_soloud/flut
 
 ### Live
 
-- `void setVisualizationEnabled(bool enabled, {int windowSize = 256, VisualizationKind kind = VisualizationKind.waveAndFft, int channel = VisualizationChannel.merged})` — turns the analyzer on/off. Must be called after `init()`; throws `SoLoudNotInitializedException` otherwise, `SoLoudCppException` on bad params.
-- `Stream<AudioVisualizationData> get audioVisualizationEvents` — broadcast stream; emits one packet per mixer buffer while enabled.
+- `void setVisualizationEnabled(bool enabled, {int windowSize = 256, VisualizationKind kind = VisualizationKind.waveAndFft, int channel = VisualizationChannel.merged})` — turns the analyzer on/off. Must be called after `init()`; throws `SoLoudNotInitializedException` otherwise, `SoLoudCppException` on bad params (window size, or a channel index not below the `channels` given to `init`). `bool getVisualizationEnabled()` reads the state.
+- `Stream<AudioVisualizationData> get audioVisualizationEvents` — broadcast stream; emits packets while enabled **and while audio is being output** (see Traps).
 - `AudioVisualizationData` — `channelCount`, `wave` (`List<Float32List>`, one per channel, length `windowSize`, values `[-1.0, 1.0]`), `fft` (`List<Float32List>`, one per channel, length `windowSize / 2`, magnitudes `[0.0, 1.0]`). Either list is **empty** if its kind is disabled. `waveData` / `fftData` are nullable convenience getters for `wave.first` / `fft.first`.
 - `VisualizationKind` — real enum: `wave`, `fft`, `waveAndFft`.
 - `VisualizationChannel` — **not an enum**, an `abstract final class` of int constants: `merged = -1` (downmix to mono), `all = -2` (per-channel lists), or pass any 0-based channel index (`0` = left). There is no `VisualizationChannel.values`; don't switch over it.
-- `void setFftSmoothing(double smooth)` — exponential decay on falling FFT bins, `0.0`–`1.0`. Rise is never smoothed. Shared by the engine output and every bus, like `setFftDecibelRange`.
-- `double getApproximateVolume(int channel)` — peak of the latest analyzed window per *output* channel (speaker). **Needs `setVisualizationEnabled(true)`**, reads 0 otherwise. Poll it on a `Timer` for a VU meter. Returns 0 for invalid channels.
+- `void setFftSmoothing(double smooth)` — exponential decay on falling FFT bins, `0.0`–`1.0` (clamped; 0 = none). Rise is never smoothed. Shared by the engine output and every bus.
+- `void setFftDecibelRange(double minDecibels, double maxDecibels)` — the dB range mapped to FFT magnitudes 0..1, as in the Web Audio `AnalyserNode` (default −100..−30; current values in `SoLoud.instance.minDecibels`/`maxDecibels`). Raise `maxDecibels` if loud music pins the bars at 1. Throws `ArgumentError` for NaN/infinite values or `min >= max`. Shared by the engine output and every bus.
+- `double getApproximateVolume(int channel)` — peak of the latest analyzed window per *output* channel (speaker). **Needs `setVisualizationEnabled(true)`**, reads 0 otherwise. Poll it on a `Ticker`/`Timer` for a VU meter. Returns 0 for invalid channels; holds its last value while the output device is stopped.
 
 ### Per mixing bus
 
@@ -140,10 +142,13 @@ final left = musicBus.getChannelVolume(0); // peak, like getApproximateVolume
 - `bus.setVisualizationEnabled(bool enabled, {windowSize, kind, channel})`, `bus.getVisualizationEnabled()`, `bus.audioVisualizationEvents` — same options and packets as the engine-wide ones. Throws `SoLoudCppException` on bad params or before `init()`.
 - The data is **pre-bus-filter, pre-bus-volume, pre-bus-pan**: what is mixed *into* the bus. To visualize after the bus's filters, play it through an outer bus and visualize that one.
 - **Nothing is emitted while nothing is mixed through the bus**: before `playOnEngine()`, while the bus (or an outer bus) is paused or stopped, or the device is stopped. A playing bus with no sound in it emits **silent** packets — that is how to tell "silence" from "not playing".
-- A bus mixes at 44100 Hz whatever the engine rate: FFT bin `k` is at `k * 44100 / windowSize` Hz.
+- A bus mixes at the engine's sample rate (`SoLoud.instance.sampleRate`): FFT bin `k` is centered at `k * sampleRate / windowSize` Hz, as for the engine output.
+- The audio is captured when it is mixed: with `init(renderAheadFrames:)` the bus packets lead what is heard by up to that many frames.
 - The visualization belongs to the bus: it survives `stopAll()` and replaying the bus, and ends on `bus.setVisualizationEnabled(false)`, `bus.dispose()` (which also closes the stream) or `deinit()`.
 
 ### Offline
+
+Both are also on `SoLoudIsolate.instance` (experimental), for calling from a worker isolate.
 
 - `Future<Float32List> readSamplesFromFile(String completeFileName, int numSamplesNeeded, {double startTime = 0, double endTime = -1, bool average = false})` — native platforms only.
 - `Future<Float32List> readSamplesFromMem(Uint8List buffer, int numSamplesNeeded, {double startTime = 0, double endTime = -1, bool average = false})` — everywhere; `buffer` is the encoded file bytes (mp3/wav/flac/ogg, from assets, `File.readAsBytes()`, or a network fetch).
@@ -156,18 +161,37 @@ final left = musicBus.getChannelVolume(0); // peak, like getApproximateVolume
 - `getApproximateVolume` is per **output channel**, not per voice — for a per-group level meter use a bus and `bus.getChannelVolume`.
 - The offline readers don't require `init()` and don't need the sound loaded via `loadMem`/`loadAsset` first — they decode independently (asset bytes via `rootBundle.load` are fine).
 
+## Proactively recommend
+
+When the user's request or existing code matches the left column, propose the
+approach on the right in one or two sentences (what it is and what they gain),
+then apply it if they agree or if they asked you to decide. Do not silently
+rewrite working code, and do not propose it when the simpler call is enough.
+
+| When you see | Recommend | Why |
+|---|---|---|
+| Spectrum bars, a pulsing background or other audio-reactive visuals faked with random or looping animations, or an FFT computed in Dart on PCM | `setVisualizationEnabled(true, kind: VisualizationKind.fft)` + `audioVisualizationEvents` | The FFT runs natively off the UI isolate and follows what is really playing; Dart only paints. Packets stop while nothing is output, so decay the bars yourself. |
+| A VU/level meter computed from decoded samples, from `readSamplesFrom*`, or from the wave packet in Dart | `getApproximateVolume(channel)` polled per frame (visualization must be enabled); per category `bus.getChannelVolume(channel)` (**flutter-soloud-mixing-bus**) | The peak per output channel is already computed by the engine: one cheap synchronous call, no sample processing in Dart. |
+| The default `waveAndFft` and a large `windowSize` while only bars (or only the wave) are drawn | `kind: VisualizationKind.fft` or `.wave`, the smallest window that gives enough bars (bins = `windowSize / 2`), `VisualizationChannel.merged` unless per-channel is shown | The unused kind is not computed or copied to Dart, and smaller windows mean smaller packets and a snappier response. |
+| A visualizer that should follow only the music but jumps on every sound effect | Play the music through a `Bus` and use `bus.setVisualizationEnabled(true)` + `bus.audioVisualizationEvents` (**flutter-soloud-mixing-bus**) | The bus analyzer sees only what is routed through it. It is taken before the bus volume and filters, so it keeps moving when the bus is turned down. |
+| `setState` on every packet rebuilding a large widget subtree, or stream packets queued in a list | Keep only the latest packet in a `ValueNotifier` and give it to the `CustomPainter` as its `repaint` listenable (`super(repaint: notifier)`), with the `CustomPaint` inside a `RepaintBoundary` | Packets can arrive many times per second; only the painter repaints instead of rebuilding and laying out the screen. |
+| Falling bars smoothed by hand in Dart (lerp per frame), or bars that barely move / are stuck at the top | `setFftSmoothing(0.0..1.0)` for the decay, `setFftDecibelRange(min, max)` for the sensitivity | Both are applied natively to every packet; no per-bin loops in the UI isolate. They are shared by the engine output and all buses. |
+| A static waveform (track preview, seek bar, audio message bubble) built by playing the file, or by decoding all of it into Dart and downsampling | `readSamplesFromMem(bytes, widthInPixels, average: true)` (or `readSamplesFromFile` on native), computed once and cached per file | Decoding runs natively in a background isolate (on web it is synchronous) and returns only as many values as you draw; needs neither `init()` nor a loaded `AudioSource`. |
+
 ## Traps
 
 - **Silent stream.** `audioVisualizationEvents` emits nothing until `setVisualizationEnabled(true)` is called, and calling it before `init()` completes throws. If your painter stays black, check enablement and init order first.
-- **`windowSize` must be a power of two in 128–8192.** Anything else fails with `SoLoudCppException`, not an assertion. FFT bin count is `windowSize / 2`, wave length is `windowSize` — don't assume they're equal.
+- **Packets come only from new audio.** When nothing plays, the output device is stopped after an idle period (about 500 ms by default, see `setAudioDeviceIdleTimeout`) and the stream goes quiet: the last packet is *not* followed by silent ones, and `getApproximateVolume` holds its last value. Make the UI decay on its own (e.g. a `Ticker` that lowers the bars when no packet arrived), or reset it when playback stops.
+- **`windowSize` must be a power of two in 128–8192.** Anything else fails with `SoLoudCppException`, not an assertion, and leaves the visualization as it was. FFT bin count is `windowSize / 2`, wave length is `windowSize` — don't assume they're equal.
 - **Empty lists by kind.** With `kind: VisualizationKind.fft`, `data.wave` is empty and `data.waveData` is `null` — null-check the convenience getters.
-- **Every event is a fresh copy.** The binding copies native memory into new `Float32List`s per packet (`Float32List.fromList`), so retaining an event is safe and cheap to reason about — but don't hold a queue of them unbounded. Note: older docs mention `wavePointer`/`fftPointer` getters on `AudioVisualizationData`; they do not exist in this version of the package.
-- **Event rate is tied to `bufferSize`, not frames.** With the default `bufferSize: 2048` at 44.1 kHz you get ~21 packets/s; the example uses `init(bufferSize: 1024)` (~43/s) for smoother visuals. Don't do heavy layout per event; a `CustomPainter` repaint is fine.
-- **`deinit()` disables visualization** (and `deinit()` is called when `init()` re-initializes). Re-enable after re-init.
-- **`readSamplesFromFile` throws/is unavailable on Web** — gate on `kIsWeb` and use `readSamplesFromMem` with the file bytes. On Web, `readSamplesFromMem` runs synchronously (no real isolate) and can jank the UI for large files.
+- **Every event is a fresh copy.** The binding copies native memory into new `Float32List`s per packet, so retaining an event is safe — but don't hold a queue of them unbounded. Note: older docs mention `wavePointer`/`fftPointer` getters on `AudioVisualizationData`; they do not exist in this version of the package.
+- **Event rate is not the frame rate.** On native a worker analyzes the latest window about every 12 ms, and only when new audio arrived; new audio arrives per mix buffer, so a large `bufferSize` lowers the rate (the example uses `init(bufferSize: 1024)` instead of the default 2048 for smoother visuals). Don't do heavy layout per event; a `CustomPainter` repaint is fine.
+- **`deinit()` disables visualization** (and `deinit()` is called when `init()` re-initializes). Re-enable after re-init; bus visualizations are gone with their buses.
+- **`setFftDecibelRange`** throws `ArgumentError` for NaN/infinite values and for `minDecibels >= maxDecibels`; `setFftSmoothing` and both ranges are global, not per bus.
+- **`readSamplesFromFile` is unavailable on Web** — gate on `kIsWeb` and use `readSamplesFromMem` with the file bytes. On Web, `readSamplesFromMem` runs synchronously (no real isolate) and can jank the UI for large files.
 - **Returned length ≠ `numSamplesNeeded`.** The list is shorter if `endTime` overshoots the file duration. Size your painter from `data.length`, never from the requested count.
 - **Asserts on time range:** `startTime >= 0` and `endTime > startTime` (unless `-1`). Passing a `Duration` won't compile — convert with `duration.inMilliseconds / 1000`.
-- **Per-channel indexing is by mixer output channels.** With `channel: VisualizationChannel.all`, `data.wave[0]` is left, `[1]` is right — the number of entries equals the engine's `Channels` setting at `init()`, not the file's channel count.
+- **Per-channel indexing is by mixer output channels.** With `channel: VisualizationChannel.all`, `data.wave[0]` is left, `[1]` is right — the number of entries equals the engine's `Channels` setting at `init()` (for a bus, its `setChannels`), not the file's channel count.
 
 ## More depth
 

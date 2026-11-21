@@ -21,6 +21,8 @@ public:
   void setDataEnded() override;
 
   bool hasPendingData() const override {
+    // Without a working decoder the queued input can never be decoded.
+    if (!mDecoderReady) return false;
     return (!mAudioData.empty()) || (mImpl ? mImpl->hasPendingData() : false);
   }
 
@@ -49,6 +51,7 @@ private:
   std::unique_ptr<Impl> mImpl;
   DetectedType mFormat;
   bool mMetadataParsed = false;
+  bool mDecoderReady = false;
   int mIcyMetaInt = 0;
   size_t mTotalBytesSeen = 0;
   IcyStripState mIcy;

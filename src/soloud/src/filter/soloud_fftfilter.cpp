@@ -48,6 +48,93 @@ namespace SoLoud
 #define	STFT_WINDOW_HALF (STFT_WINDOW_SIZE / 2)
 #define STFT_WINDOW_TWICE (STFT_WINDOW_SIZE * 2)
 
+	// ###### flutter_soloud local patch (real FFT) ######
+	// FFT::fft(a, n) is a complex FFT of n / 2 interleaved (re, im) points.
+	// The window holds STFT_WINDOW_SIZE real samples, so it is transformed as
+	// a complex signal of half the length (even samples real, odd samples
+	// imaginary) and then split into the spectrum of the real signal.
+	// realFft leaves bins 0 .. STFT_WINDOW_HALF - 1 interleaved in aBuffer,
+	// bin 0 being (DC, 0), and returns the (real) Nyquist bin in aNyquist.
+	// realIfft is its inverse (the imaginary part of bin 0 is ignored).
+	// Both use the e^(-i...) forward convention of FFT::fft.
+	struct RealFftTwiddles
+	{
+		// e^(-2 pi i k / STFT_WINDOW_SIZE), k = 0 .. STFT_WINDOW_HALF - 1
+		float mCos[STFT_WINDOW_HALF], mSin[STFT_WINDOW_HALF];
+		RealFftTwiddles()
+		{
+			for (int k = 0; k < STFT_WINDOW_HALF; k++)
+			{
+				const double a = -2.0 * M_PI * (double)k / (double)STFT_WINDOW_SIZE;
+				mCos[k] = (float)cos(a);
+				mSin[k] = (float)sin(a);
+			}
+		}
+	};
+
+	static const RealFftTwiddles &realFftTwiddles()
+	{
+		static const RealFftTwiddles t;
+		return t;
+	}
+
+	static void realFft(float *aBuffer, float &aNyquist)
+	{
+		const RealFftTwiddles &tw = realFftTwiddles();
+		const int M = STFT_WINDOW_HALF;
+		FFT::fft(aBuffer, STFT_WINDOW_SIZE);
+		float out[STFT_WINDOW_SIZE];
+		for (int k = 0; k < M; k++)
+		{
+			const int j = (M - k) & (M - 1);
+			const float zr = aBuffer[2 * k], zi = aBuffer[2 * k + 1];
+			const float cr = aBuffer[2 * j], ci = -aBuffer[2 * j + 1]; // conj(Z[M - k])
+			// E = (Z + conj) / 2, O = (Z - conj) / 2i
+			const float er = 0.5f * (zr + cr), ei = 0.5f * (zi + ci);
+			const float or_ = 0.5f * (zi - ci), oi = -0.5f * (zr - cr);
+			const float wr = tw.mCos[k], wi = tw.mSin[k];
+			out[2 * k] = er + wr * or_ - wi * oi;
+			out[2 * k + 1] = ei + wr * oi + wi * or_;
+			if (k == 0)
+			{
+				aNyquist = er - or_;
+				out[1] = 0;
+			}
+		}
+		memcpy(aBuffer, out, sizeof(out));
+	}
+
+	static void realIfft(float *aBuffer, float aNyquist)
+	{
+		const RealFftTwiddles &tw = realFftTwiddles();
+		const int M = STFT_WINDOW_HALF;
+		float out[STFT_WINDOW_SIZE];
+		for (int k = 0; k < M; k++)
+		{
+			float xr = aBuffer[2 * k], xi = k == 0 ? 0.0f : aBuffer[2 * k + 1];
+			float cr, ci; // conj(X[M - k])
+			if (k == 0)
+			{
+				cr = aNyquist;
+				ci = 0;
+			}
+			else
+			{
+				cr = aBuffer[2 * (M - k)];
+				ci = -aBuffer[2 * (M - k) + 1];
+			}
+			// E = (X + conj) / 2, O = (X - conj) * W^-k / 2, Z = E + i O
+			const float er = 0.5f * (xr + cr), ei = 0.5f * (xi + ci);
+			const float dr = 0.5f * (xr - cr), di = 0.5f * (xi - ci);
+			const float wr = tw.mCos[k], wi = -tw.mSin[k]; // W^-k
+			const float or_ = dr * wr - di * wi, oi = dr * wi + di * wr;
+			out[2 * k] = er - oi;
+			out[2 * k + 1] = ei + or_;
+		}
+		memcpy(aBuffer, out, sizeof(out));
+		FFT::ifft(aBuffer, STFT_WINDOW_SIZE);
+	}
+
 	void FFTFilterInstance::init()
 	{
 		mInputBuffer = 0;
@@ -132,12 +219,13 @@ namespace SoLoud
 					mTemp[i] = mInputBuffer[chofs + ((inputofs + STFT_WINDOW_TWICE - STFT_WINDOW_HALF + i) & (STFT_WINDOW_TWICE - 1))];
 				}
 				
-				FFT::fft(mTemp, STFT_WINDOW_SIZE);
+				float nyquist = 0;
+				realFft(mTemp, nyquist);
 
 				// do magic
 				fftFilterChannel(mTemp, STFT_WINDOW_HALF, aSamplerate, aTime, aChannel, aChannels);
 
-				FFT::ifft(mTemp, STFT_WINDOW_SIZE);
+				realIfft(mTemp, nyquist);
 				
 				for (i = 0; i < STFT_WINDOW_SIZE; i++)
 				{

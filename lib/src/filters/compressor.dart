@@ -49,7 +49,7 @@ abstract class _CompressorInternal extends FilterBase {
 class CompressorSingle extends _CompressorInternal {
   CompressorSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -58,7 +58,7 @@ class CompressorSingle extends _CompressorInternal {
     Compressor.wet.max,
   );
 
-  FilterParam threshold({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam threshold({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -67,7 +67,7 @@ class CompressorSingle extends _CompressorInternal {
     Compressor.threshold.max,
   );
 
-  FilterParam makeupGain({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam makeupGain({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -76,7 +76,7 @@ class CompressorSingle extends _CompressorInternal {
     Compressor.makeupGain.max,
   );
 
-  FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -85,7 +85,7 @@ class CompressorSingle extends _CompressorInternal {
     Compressor.kneeWidth.max,
   );
 
-  FilterParam ratio({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam ratio({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -94,7 +94,7 @@ class CompressorSingle extends _CompressorInternal {
     Compressor.ratio.max,
   );
 
-  FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -103,7 +103,7 @@ class CompressorSingle extends _CompressorInternal {
     Compressor.attackTime.max,
   );
 
-  FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

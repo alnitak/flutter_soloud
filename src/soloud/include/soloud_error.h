@@ -35,7 +35,9 @@ namespace SoLoud
 		DLL_NOT_FOUND     = 4, // DLL not found, or wrong DLL
 		OUT_OF_MEMORY     = 5, // Out of memory
 		NOT_IMPLEMENTED   = 6, // Feature not implemented
-		UNKNOWN_ERROR     = 7  // Other error
+		UNKNOWN_ERROR     = 7, // Other error
+		// ###### flutter_soloud local patch ######
+		FORMAT_NOT_SUPPORTED = 8 // No decoder for this format on this system
 	};
 };
 #endif

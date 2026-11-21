@@ -348,7 +348,7 @@ extern "C"
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
   /// Test-only entry points, compiled out of every shipping build. See
-  /// `test/engine_lifecycle_test.cpp`. Not visible to ffigen.
+  /// `test/common/engine_lifecycle_test.cpp`. Not visible to ffigen.
 
   /// Peak number of deferred idle-timeout workers alive at once.
   FFI_PLUGIN_EXPORT int soloudTestIdleTimeoutWorkerPeak();
@@ -500,8 +500,8 @@ extern "C"
   /// of a stream.
   ///
   /// [hash] the hash of the stream sound.
-  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
-  /// is the most used value.
+  /// [icyMetaInt] the icy metadata integer value. There is no default:
+  /// nothing is stripped until it is set (16000 is a common value).
   FFI_PLUGIN_EXPORT enum PlayerErrors setBufferIcyMetaInt(unsigned int hash,
                                                           int icyMetaInt);
 

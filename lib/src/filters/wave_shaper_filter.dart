@@ -34,7 +34,7 @@ abstract class _WaveShaperInternal extends FilterBase {
 class WaveShaperSingle extends _WaveShaperInternal {
   WaveShaperSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -43,7 +43,7 @@ class WaveShaperSingle extends _WaveShaperInternal {
     WaveShaperEnum.wet.max,
   );
 
-  FilterParam amount({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam amount({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

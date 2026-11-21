@@ -270,6 +270,8 @@ slot0.param(1, min: 1, max: 10).value = 4.0;
 
 On Web (WASM), C function pointers across memory spaces do not apply in the same way. Instead, attach your callback functions directly to `globalThis` using `dart:js_interop`:
 
+> **Single-threaded WASM build only.** The multi-threaded build (used automatically when the page is cross-origin isolated) renders audio in an AudioWorklet, which does not see the page's `globalThis`, so a function registered this way is never called there: the source stays silent and the filter has no effect (a warning is logged). Set `self.flutter_soloud_force_single_threaded = true` in `web/index.html` before loading `init_soloud.js` to use the single-threaded build.
+
 ```dart
 import 'dart:js_interop';
 

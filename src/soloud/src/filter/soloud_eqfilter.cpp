@@ -60,14 +60,17 @@ namespace SoLoud
 
 	void EqFilterInstance::fftFilterChannel(float *aFFTBuffer, unsigned int aSamples, float /*aSamplerate*/, time /*aTime*/, unsigned int /*aChannel*/, unsigned int /*aChannels*/)
 	{
-		// Scaling interleaved (re, im) directly by 2 * gain is algebraically
-		// identical to comp2MagPhase -> *= gain -> magPhase2Comp while avoiding
-		// per-bin sqrt/atan2/sin/cos transcendentals.
-		const unsigned int halfBins = aSamples / 2;
-		const unsigned int bandWidth = aSamples / 16;
+		// ###### flutter_soloud local patch (real FFT) ######
+		// aFFTBuffer holds the aSamples positive-frequency bins (DC up to just
+		// below Nyquist) of a real FFT (see soloud_fftfilter.cpp): every bin is
+		// scaled by its band gain, so all bands at 1 is transparent. The 8
+		// bands split the bins on a square-root scale. Scaling (re, im)
+		// directly is identical to comp2MagPhase -> *= gain -> magPhase2Comp
+		// without per-bin transcendentals.
+		const unsigned int halfBins = aSamples;
+		const unsigned int bandWidth = aSamples / 8;
 		if (halfBins == 0 || bandWidth == 0)
 		{
-			memset(aFFTBuffer + aSamples, 0, sizeof(float) * aSamples);
 			return;
 		}
 		const float invHalf = 1.0f / (float)halfBins;
@@ -89,7 +92,7 @@ namespace SoLoud
 				if (p2 > 7) p2 = 7;
 				if (p3 > 7) p3 = 7;
 				const float v = (float)(i % (int)bandWidth) * invBandWidth;
-				g[k] = 2.0f * catmullrom(v, mParam[p0 + 1], mParam[p1 + 1], mParam[p2 + 1], mParam[p3 + 1]);
+				g[k] = catmullrom(v, mParam[p0 + 1], mParam[p1 + 1], mParam[p2 + 1], mParam[p3 + 1]);
 			}
 			const auto vGain = soloud_simd::f32x4::make(g[0], g[0], g[1], g[1]);
 			soloud_simd::mul(soloud_simd::f32x4::loadu(aFFTBuffer + p * 2), vGain)
@@ -107,11 +110,10 @@ namespace SoLoud
 			if (p2 > 7) p2 = 7;
 			if (p3 > 7) p3 = 7;
 			const float v = (float)(i % (int)bandWidth) * invBandWidth;
-			const float gain = 2.0f * catmullrom(v, mParam[p0 + 1], mParam[p1 + 1], mParam[p2 + 1], mParam[p3 + 1]);
+			const float gain = catmullrom(v, mParam[p0 + 1], mParam[p1 + 1], mParam[p2 + 1], mParam[p3 + 1]);
 			aFFTBuffer[p * 2] *= gain;
 			aFFTBuffer[p * 2 + 1] *= gain;
 		}
-		memset(aFFTBuffer + aSamples, 0, sizeof(float) * aSamples);
 	}
 
 	result EqFilter::setParam(unsigned int aBand, float aVolume)

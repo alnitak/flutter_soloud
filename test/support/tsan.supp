@@ -1,0 +1,15 @@
+# ThreadSanitizer suppressions for the native tests (TSan builds). Only
+# reports inside uninstrumented system libraries belong here: TSan cannot see
+# their internal synchronization, so it reports their own threads' accesses
+# as races. Use with TSAN_OPTIONS=suppressions=<this file>.
+
+# libpulse runs its own mainloop thread ("threaded-ml") and hands packets to
+# it through its own locks; every report is inside libpulsecommon / libpulse
+# (pa_srbchannel_read, pa_packet_new_data, pa_iochannel_read_with_ancil_data,
+# pa_threaded_mainloop_wait), reached from miniaudio's PulseAudio backend or
+# from ALSA's pulse plug-in (test/docker routes ALSA's default PCM to pulse).
+race:libpulsecommon
+race:libpulse.so
+race:libasound_module_pcm_pulse
+deadlock:pa_threaded_mainloop_wait
+mutex:pa_threaded_mainloop_wait
