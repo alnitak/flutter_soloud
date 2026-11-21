@@ -54,9 +54,9 @@ class PitchShiftSingle extends _PitchShiftInternal {
   ///
   /// Note that both the [shift] and [semitones] parameters are acting to modify
   /// the pitch value, but using different scales. Changing this value will
-  /// therefore adjust the [shift] parameter with:
+  /// therefore adjust the [semitones] parameter with:
   /// ```dart
-  /// shift = pow(2., value / 12);
+  /// semitones = 12 * log(value) / ln2; // 12 * log2(value)
   /// ```
   FilterParam shift({SoundHandle? soundHandle}) => FilterParam(
     soundHandle,
@@ -72,9 +72,9 @@ class PitchShiftSingle extends _PitchShiftInternal {
   ///
   /// Note that both the [shift] and [semitones] parameters are acting to modify
   /// the pitch value, but using different scales. Changing this value will
-  /// therefore adjust the [semitones] parameter with:
+  /// therefore adjust the [shift] parameter with:
   /// ```dart
-  /// semitones = 12 * log2f(value);
+  /// shift = pow(2, value / 12);
   /// ```
   FilterParam semitones({SoundHandle? soundHandle}) => FilterParam(
     soundHandle,
@@ -113,9 +113,9 @@ class PitchShiftGlobal extends _PitchShiftInternal {
   ///
   /// Note that both the [shift] and [semitones] parameters are acting to modify
   /// the pitch value, but using different scales. Changing this value will
-  /// therefore adjust the [shift] parameter with:
+  /// therefore adjust the [semitones] parameter with:
   /// ```dart
-  /// shift = pow(2., value / 12);
+  /// semitones = 12 * log(value) / ln2; // 12 * log2(value)
   /// ```
   FilterParam get shift => FilterParam(
     null,
@@ -131,9 +131,9 @@ class PitchShiftGlobal extends _PitchShiftInternal {
   ///
   /// Note that both the [shift] and [semitones] parameters are acting to modify
   /// the pitch value, but using different scales. Changing this value will
-  /// therefore adjust the [semitones] parameter with:
+  /// therefore adjust the [shift] parameter with:
   /// ```dart
-  /// semitones = 12 * log2f(value);
+  /// shift = pow(2, value / 12);
   /// ```
   FilterParam get semitones => FilterParam(
     null,

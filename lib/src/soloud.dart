@@ -353,7 +353,7 @@ interface class SoLoud {
   /// For example:
   ///
   /// ```dart
-  /// final audioController = MyAudioController(SoLoudPlayer.instance);
+  /// final audioController = MyAudioController(SoLoud.instance);
   ///
   /// // Now provide the audio controller to parts of the app that need it.
   /// // No other part of the codebase need import `package:flutter_soloud`.
@@ -369,10 +369,10 @@ interface class SoLoud {
   ///   SoLoud? _soloud;
   ///
   ///   void _initializeSound() async {
-  ///     // The only place in the codebase that accesses SoLoudPlayer.instance
+  ///     // The only place in the codebase that accesses SoLoud.instance
   ///     // directly.
-  ///     final soloud = SoLoudPlayer.instance;
-  ///     await soloud.initialize();
+  ///     final soloud = SoLoud.instance;
+  ///     await soloud.init();
   ///
   ///     setState(() {
   ///       _soloud = soloud;
@@ -817,8 +817,11 @@ interface class SoLoud {
   /// When [newDevice] is omitted, the current system default output device
   /// is selected.
   ///
-  /// Note: Android and Web, only support one output device which is the
-  /// default device (iOS and MacOS?).
+  /// Note: Android and Web only support one output device, which is the
+  /// default device. On iOS the output follows the system audio route:
+  /// [listPlaybackDevices] reports only the outputs of the current route, so
+  /// there is no other device to switch to from here. macOS, Windows and
+  /// Linux can list and select several output devices.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
@@ -1915,13 +1918,13 @@ interface class SoLoud {
   /// When the first chunk of data has been received, the `icy-metaint`
   /// value can be read as follows:
   /// ```dart
-  /// bool mp3IcyMetaIntSent = false;
+  /// bool icyMetaIntSent = false;
   /// currentStream!.stream.listen(
   ///   (data) {
-  ///     if (!mp3IcyMetaIntSent) {
-  ///         mp3IcyMetaIntSent = true;
+  ///     if (!icyMetaIntSent) {
+  ///         icyMetaIntSent = true;
   ///         // set it when receiving the first audio chunk
-  ///         SoLoud.instance.setMp3BufferIcyMetaInt(
+  ///         SoLoud.instance.setBufferIcyMetaInt(
   ///             sound,
   ///             int.parse(currentStream!.headers['icy-metaint'] ?? '0'),
   ///         );
@@ -1931,8 +1934,10 @@ interface class SoLoud {
   ///
   /// [sound] the audio source.
   ///
-  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
-  /// is the most used value.
+  /// [icyMetaInt] the icy metadata integer value: the number of audio bytes
+  /// between two metadata blocks, as given by the `icy-metaint` response
+  /// header (16000 is a common value). There is no default: until a value
+  /// greater than 0 is set, no metadata is stripped from the stream.
   ///
   /// An online radio example is included in
   /// `example/lib/buffer_stream/web_radio.dart`.
@@ -2142,7 +2147,10 @@ interface class SoLoud {
   /// [BufferType.auto].
   ///
   /// [format] audio data format. Options: `f32le`, `s8`, `s16le`, `s32le`, or
-  /// `auto` (MP3, OGG/Opus, OGG/Vorbis, FLAC, WAV are automatically detected).
+  /// `auto`, which detects MP3, WAV, FLAC, Ogg (Opus, Vorbis or FLAC), AAC
+  /// (ADTS), AC-3 and E-AC-3 from the data. MP4/M4A containers cannot be
+  /// streamed. With `auto` the [sampleRate] and [channels] parameters are
+  /// ignored.
   ///
   /// [audioSizeBytes] total size in **bytes** of the original encoded or PCM
   /// stream. Used to determine the total audio duration and to request the
@@ -5781,7 +5789,7 @@ interface class SoLoud {
   /// with more context:
   ///
   /// ```dart
-  /// _logIfPlayerError(result, from: 'play()');
+  /// _logPlayerError(result, from: 'play()');
   /// ```
   ///
   /// The code above may produce a log record such as:

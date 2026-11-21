@@ -267,9 +267,27 @@ abstract class CustomFilterSlot extends FilterBase {
   ///   `SoLoudFilterDspCallback_t`) and an optional native state pointer
   ///   address as [userdataAddress].
   /// - On Web, pass [webJsFunctionName] (the name of a function attached to
-  ///   `globalThis` that receives `(bufferPtr, samples, bufferStride, channels,
-  ///   sampleRate, time, paramsPtr, numParams)`) or a Wasm table function index
-  ///   in [callbackAddress].
+  ///   `globalThis`) or a Wasm table function index in [callbackAddress].
+  ///   The JS function receives these 11 arguments, in this order:
+  ///   `(bufferPtr, samples, bufferSize, channels, sampleRate, time,
+  ///   paramsPtr, paramChangedMaskLo, paramChangedMaskHi, numParams,
+  ///   userData)`:
+  ///   - `bufferPtr`: byte offset in the WASM heap of the `float` buffer to
+  ///     process in place (index `Module_soloud.HEAPF32` with
+  ///     `bufferPtr >> 2`). The buffer is not interleaved: channel `ch`
+  ///     starts at `ch * bufferSize` floats.
+  ///   - `samples`: the number of samples to process for each channel.
+  ///   - `bufferSize`: the stride in floats between two channels.
+  ///   - `channels`: the number of channels.
+  ///   - `sampleRate`: the sample rate in Hz.
+  ///   - `time`: the stream time in seconds.
+  ///   - `paramsPtr`: byte offset in the WASM heap of the `float` parameter
+  ///     values (`paramsPtr >> 2` in `HEAPF32`); index `0` is `Wet`.
+  ///   - `paramChangedMaskLo`, `paramChangedMaskHi`: the low and high 32 bits
+  ///     of the mask of the parameters changed since the previous call (bit
+  ///     `n` is parameter `n`).
+  ///   - `numParams`: the number of values at `paramsPtr`.
+  ///   - `userData`: the [userdataAddress] given here.
   ///   A [webJsFunctionName] works only with the single-threaded WASM build:
   ///   the multi-threaded build renders in an AudioWorklet, which does not
   ///   see the page's `globalThis`, so the filter has no effect there (a

@@ -155,8 +155,10 @@ final class FiltersSingle {
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
   ///
-  /// - `attackTime`: The attack time in milliseconds. Determines how quickly
-  /// the gain reduction recovers after a signal peaks above the threshold.
+  /// - `attackTime`: The attack time in milliseconds (0.1 to 200, default 1).
+  /// It is the look-ahead window over which the gain reduction ramps in
+  /// before a peak above the threshold, and it delays the signal by the same
+  /// time.
   ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
@@ -214,10 +216,12 @@ final class FiltersSingle {
 
   /// The `Amplitude Modulator` filter for this sound.
   ///
-  /// Bipolar amplitude modulation (ring modulation) with a sine carrier. At
-  /// full wet the output is `input * sin(2π * frequency * t)`: there is no DC
-  /// bias on the carrier, so a sine input at `f1` produces components at
-  /// `frequency - f1` and `frequency + f1` instead of a tremolo.
+  /// Bipolar amplitude modulation (ring modulation) with a carrier of
+  /// selectable `waveform` (sine by default). At full wet the output is
+  /// `input * carrier(t)`, which is `input * sin(2π * frequency * t)` for the
+  /// sine: there is no DC bias on the carrier, so with the sine carrier a sine
+  /// input at `f1` produces components at `frequency - f1` and
+  /// `frequency + f1` instead of a tremolo.
   ///
   /// **Parameters**:
   /// - `wet`: Wet/dry mix ratio, 1.0 means fully modulated, 0.0 means fully
@@ -226,6 +230,9 @@ final class FiltersSingle {
   /// - `frequency`: The carrier frequency in Hz (0.1 to 20000, default 440).
   /// Requests at or above the Nyquist limit of the active sample rate are
   /// clamped just below it while processing.
+  ///
+  /// - `waveform`: The carrier waveform: 0 = sine (default), 1 = triangle,
+  /// 2 = square, 3 = saw.
   ///
   /// This filter is not part of SoLoud C++ lib and the source code can be found
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/amplitude_modulator_filter.cpp)
@@ -330,6 +337,11 @@ final class FiltersGlobal {
   /// - `kneeWidth`: The width of the knee in dB. A larger value results in a
   /// softer transition into limiting.
   ///
+  /// - `attackTime`: The attack time in milliseconds (0.1 to 200, default 1).
+  /// It is the look-ahead window over which the gain reduction ramps in
+  /// before a peak above the threshold, and it delays the signal by the same
+  /// time.
+  ///
   /// - `releaseTime`: The release time in milliseconds. Determines how quickly
   /// the gain reduction recovers after a signal drops below the threshold.
   ///
@@ -385,10 +397,12 @@ final class FiltersGlobal {
 
   /// The `Amplitude Modulator` filter used globally.
   ///
-  /// Bipolar amplitude modulation (ring modulation) with a sine carrier. At
-  /// full wet the output is `input * sin(2π * frequency * t)`: there is no DC
-  /// bias on the carrier, so a sine input at `f1` produces components at
-  /// `frequency - f1` and `frequency + f1` instead of a tremolo.
+  /// Bipolar amplitude modulation (ring modulation) with a carrier of
+  /// selectable `waveform` (sine by default). At full wet the output is
+  /// `input * carrier(t)`, which is `input * sin(2π * frequency * t)` for the
+  /// sine: there is no DC bias on the carrier, so with the sine carrier a sine
+  /// input at `f1` produces components at `frequency - f1` and
+  /// `frequency + f1` instead of a tremolo.
   ///
   /// **Parameters**:
   /// - `wet`: Wet/dry mix ratio, 1.0 means fully modulated, 0.0 means fully
@@ -397,6 +411,9 @@ final class FiltersGlobal {
   /// - `frequency`: The carrier frequency in Hz (0.1 to 20000, default 440).
   /// Requests at or above the Nyquist limit of the active sample rate are
   /// clamped just below it while processing.
+  ///
+  /// - `waveform`: The carrier waveform: 0 = sine (default), 1 = triangle,
+  /// 2 = square, 3 = saw.
   ///
   /// This filter is not part of SoLoud C++ lib and the source code can be found
   /// [here](https://github.com/alnitak/flutter_soloud/blob/main/src/filters/amplitude_modulator_filter.cpp)
@@ -457,8 +474,11 @@ class FilterParam {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
-  /// Throws [SoLoudCppException] if the value can't be read, for example
-  /// because the filter is not active.
+  /// Throws [SoLoudFilterNotFoundException] if the filter is not active.
+  /// Throws [SoLoudInvalidParameterException] if the parameter index is not
+  /// valid for the filter.
+  /// Throws another [SoLoudCppException] if the value can't be read for a
+  /// different reason, for example an invalid voice handle.
   double get value {
     if (kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();

@@ -712,8 +712,8 @@ PlayerErrors getStreamTimeConsumed(
 /// of a stream.
 ///
 /// [hash] the hash of the stream sound.
-/// [icyMetaInt] the icy metadata integer value. Default is 16000 which
-/// is the most used value.
+/// [icyMetaInt] the icy metadata integer value. There is no default:
+/// nothing is stripped until it is set (16000 is a common value).
 @ffi.Native<ffi.UnsignedInt Function(ffi.UnsignedInt, ffi.Int)>(
   symbol: 'setBufferIcyMetaInt',
 )
