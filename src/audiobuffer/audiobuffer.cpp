@@ -431,8 +431,10 @@ PlayerErrors BufferStream::setBufferStream(
   mBuffer.setBufferType(bufferingType);
   mIsBuffering = true;
   mIsDestroyed = false;
-  mIcyMetaInt =
-      16000; // for mp3 streaming audio only. Most online streaming use 16000
+  // No ICY metadata to strip until the stream asks for it with
+  // setBufferIcyMetaInt(): a reset hands this value to the new decoder, and
+  // stripping a stream that has none drops audio bytes.
+  mIcyMetaInt = 0;
 
   if (pcmFormat.dataType == BufferType::AUTO) {
     streamDecoder = std::make_unique<StreamDecoder>();

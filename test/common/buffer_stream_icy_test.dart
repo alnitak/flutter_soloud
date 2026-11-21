@@ -227,24 +227,16 @@ void main() {
     expect(events.every((e) => e.title.isEmpty), isTrue);
   });
 
-  test(
-    'a plain MP3 stream decodes fully after resetBufferStream',
-    () async {
-      final (source, _) = newStream();
-      soloud.addAudioDataStream(source, _mp3Frames(10));
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      soloud.resetBufferStream(source);
-      // 200 frames are 83400 bytes: past the 16000-byte default metaint.
-      feed(source, _mp3Frames(200));
-      soloud.setDataIsEnded(source);
-      _expectFrames(await settledLength(source), 200);
-    },
-    skip:
-        'bug H2: resetBufferStream turns ICY stripping on with the default '
-        'metaint 16000 for a stream that never set one, so a plain MP3 '
-        'loses one byte every 16000 and drops frames '
-        '(src/audiobuffer/audiobuffer.cpp:434 and :469)',
-  );
+  test('a plain MP3 stream decodes fully after resetBufferStream', () async {
+    final (source, _) = newStream();
+    soloud.addAudioDataStream(source, _mp3Frames(10));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    soloud.resetBufferStream(source);
+    // 200 frames are 83400 bytes: past the 16000-byte default metaint.
+    feed(source, _mp3Frames(200));
+    soloud.setDataIsEnded(source);
+    _expectFrames(await settledLength(source), 200);
+  });
 
   test('a plain MP3 stream decodes fully without a reset', () async {
     final (source, _) = newStream();
