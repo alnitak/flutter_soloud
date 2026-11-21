@@ -26,7 +26,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| A1 | stripIcyMetadata (title-only) calls back with unchanged title when only StreamUrl changes -> duplicate onTrackChange (FLAC, Ogg FLAC) | icy_metadata.h:92-95 | icy_metadata testUrl |
 | A2 | Chained Ogg: seek index stores per-link granules, decoder looks up absolute granule -> seek past link 1 wrong (Vorbis same code untested) | ogg_seek_index.h:37-40, opus_stream_decoder.cpp:558-573 | ogg_seek_index testDecoderChained |
 | A10 | Opus 3-8 ch decoded by single-stream decoder clamped to 2ch -> garbage | opus_stream_decoder.cpp:82,416,452 | opus testChannels |
 | A11 | Chained Opus links with different channel counts: one decode() mixes both under last link's count | opus_stream_decoder.cpp:270-292,314 | opus testChained |

@@ -28,7 +28,7 @@
 //                the empty title
 //   url          stripIcyMetadataEx reports a URL-only change with the same
 //                title; stripIcyMetadata (title only) must not report the
-//                unchanged title again (KNOWN BUG A1)
+//                unchanged title again
 //   append       cleanOut is appended to, not replaced
 //   max-block    a block of the largest size (255 * 16 = 4080 bytes)
 //
@@ -401,12 +401,11 @@ static void testUrl() {
   CHECK(audio == concatAudio(ivs), "title-only: audio differs");
   std::string got;
   for (const auto &t : titles) got += "[" + t + "]";
-  // Bug A1: a block that changes only StreamUrl calls onStreamTitle again
-  // with the unchanged title (icy_metadata.h:92-95 forwards every
-  // title-or-URL change), so the FLAC / Ogg FLAC decoders send a duplicate
-  // track-change event with identical metadata.
-  KNOWN_BUG("A1", titles == std::vector<std::string>({"Song", "Next"}),
-            "title-only callbacks %s, expected [Song][Next]", got.c_str());
+  // A block that changes only StreamUrl must not call onStreamTitle again
+  // with the unchanged title (the FLAC / Ogg FLAC decoders would send a
+  // duplicate track-change event).
+  CHECK(titles == std::vector<std::string>({"Song", "Next"}),
+        "title-only callbacks %s, expected [Song][Next]", got.c_str());
 }
 
 static void testAppend() {
