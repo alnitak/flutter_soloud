@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <mutex>
 #include <shared_mutex>
+#include <thread>
 
 /// One gate that every Dart callable native code holds must pass through.
 ///
@@ -67,7 +68,21 @@ namespace dart_callbacks
       std::atomic<uint64_t> lastGeneration{kNoGeneration};
       /// Which FlutterEngine published the live registration.
       int64_t ownerEngineId = kNoEngineId;
+      /// Registrations waiting for the exclusive lock. glibc's rwlock (behind
+      /// std::shared_mutex) prefers readers, so a steady stream of overlapping
+      /// invocations could keep a retirement waiting forever; new invocations
+      /// step aside while this is non-zero.
+      std::atomic<int> waitingRegistrations{0};
     };
+
+    /// How many InvocationPasses the calling thread holds. A nested pass
+    /// must not wait for a pending registration: that registration is
+    /// itself waiting for the outer pass to be released.
+    inline int &passDepth()
+    {
+      static thread_local int depth = 0;
+      return depth;
+    }
 
     /// Deliberately never destroyed: detached teardown workers and the audio
     /// thread can outlive main(), and locking a destroyed mutex is worse than
@@ -110,8 +125,16 @@ namespace dart_callbacks
   {
   public:
     InvocationPass()
-        : mLock(detail::gate().mutex),
-          mLiveGeneration(detail::gate().liveGeneration) {}
+        : mLock(waitForRegistrations()),
+          mLiveGeneration(detail::gate().liveGeneration)
+    {
+      ++detail::passDepth();
+    }
+
+    ~InvocationPass() { --detail::passDepth(); }
+
+    InvocationPass(const InvocationPass &) = delete;
+    InvocationPass &operator=(const InvocationPass &) = delete;
 
     /// Whether a callable registered at [registrationGeneration] may run.
     bool isLive(uint64_t registrationGeneration) const
@@ -121,6 +144,17 @@ namespace dart_callbacks
     }
 
   private:
+    // Let a pending registration (a retirement, usually) go first, so it
+    // cannot be starved by invocations that keep overlapping.
+    static std::shared_mutex &waitForRegistrations()
+    {
+      detail::GateState &state = detail::gate();
+      if (detail::passDepth() == 0)
+        while (state.waitingRegistrations.load(std::memory_order_acquire) > 0)
+          std::this_thread::yield();
+      return state.mutex;
+    }
+
     // Declaration order is load-bearing: the lock must be taken before the
     // live generation is read.
     std::shared_lock<std::shared_mutex> mLock;
@@ -137,7 +171,10 @@ namespace dart_callbacks
   class Registration
   {
   public:
-    Registration() : mLock(detail::gate().mutex) {}
+    Registration() : mLock(announce())
+    {
+      detail::gate().waitingRegistrations.fetch_sub(1, std::memory_order_release);
+    }
 
     /// Publish a registration owned by [ownerEngineId] and return its
     /// generation. Any earlier registration — and every source that recorded
@@ -181,6 +218,13 @@ namespace dart_callbacks
     uint64_t generation() const { return detail::gate().liveGeneration; }
 
   private:
+    static std::shared_mutex &announce()
+    {
+      detail::GateState &state = detail::gate();
+      state.waitingRegistrations.fetch_add(1, std::memory_order_acq_rel);
+      return state.mutex;
+    }
+
     std::unique_lock<std::shared_mutex> mLock;
   };
 
