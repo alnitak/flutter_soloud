@@ -31,12 +31,9 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | A11 | Chained Opus links with different channel counts: one decode() mixes both under last link's count | opus_stream_decoder.cpp:270-292,314 | opus testChained |
 | A12 | Opus 5 ms end fade applied to capped mid-stream decode() | opus_stream_decoder.cpp:317-333 | opus testBounded |
 | A13 | Opus position wrong after seek (frames vs interleaved samples; resumes up to a page early) | opus_stream_decoder.cpp:483,527; pull_buffer_stream.cpp:1178 | opus testSeek |
-| A14 | WAV seek skips target twice when buffered | wav_stream_decoder.cpp:151-158 | wav testSeek |
 | A15 | Vorbis trims chained file with last link's EOS granule | vorbis_stream_decoder.cpp:242-247 | vorbis testChained |
 | A16 | Vorbis stereo->mono link change: samples labelled mono then halved | vorbis_stream_decoder.cpp:282-285 | vorbis testChained |
 | A17 | Vorbis misplaced end fade (as A12) | vorbis_stream_decoder.cpp:259-279 | vorbis testBounded |
-| A18 | WAV input split inside a sample frame loses bytes; 1-byte pieces decode nothing | wav_stream_decoder.cpp:7-20,196 | wav testPieces |
-| A19 | WAV data size 0xFFFFFFFF stops after first piece (dr_wav sizes from bytes at init) | wav_stream_decoder.cpp:124 | wav testDataSize |
 | A20 | Pull stream seeked to/past end never ends | pull_buffer_stream.cpp:264,1262 | testSeekPastEnd |
 | A21 | Out-of-buffer PCM seek byte offset not frame-aligned (channels swapped) | pull_buffer_stream.cpp:1638 | testSeekFrameAlignment |
 | A22 | In-buffer seek between two frames swaps channels | pull_buffer_stream.cpp:267 | testSeekFrameAlignment |

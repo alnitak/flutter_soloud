@@ -269,14 +269,12 @@ static void testPieces() {
       Out o = decodeStream(w.file, chunk);
       const long d = firstDiff(o.pcm, w.expected, 0,
                                std::min(o.pcm.size(), w.expected.size()));
-      // dr_wav reads whatever on_read returns; a frame that is only partly
-      // buffered is read in part, and drwav_read_raw drops the partial
-      // frame's bytes (they are counted as consumed), so every later sample
-      // is shifted (wav_stream_decoder.cpp:7-20, :196).
-      KNOWN_BUG("A18", o.ended && o.pcm.size() == w.expected.size() && d < 0,
-                "%s chunk %zu (StreamDecoder): %zu samples (want %zu), "
-                "differs at sample %ld",
-                nameOf(f), chunk, o.pcm.size(), w.expected.size(), d);
+      // A frame that is only partly buffered must not be read in part:
+      // drwav_read_raw would drop the partial frame's bytes.
+      CHECK(o.ended && o.pcm.size() == w.expected.size() && d < 0,
+            "%s chunk %zu (StreamDecoder): %zu samples (want %zu), "
+            "differs at sample %ld",
+            nameOf(f), chunk, o.pcm.size(), w.expected.size(), d);
     }
     // The wrapper alone, every piece decoded as it arrives.
     for (size_t chunk : {(size_t)1, (size_t)7, (size_t)4096}) {
@@ -284,10 +282,10 @@ static void testPieces() {
       Out o = decodeWrapper(wr, w.file, chunk);
       const long d = firstDiff(o.pcm, w.expected, 0,
                                std::min(o.pcm.size(), w.expected.size()));
-      KNOWN_BUG("A18", o.ended && o.pcm.size() == w.expected.size() && d < 0,
-                "%s wrapper chunk %zu: %zu samples (want %zu), differs at "
-                "sample %ld",
-                nameOf(f), chunk, o.pcm.size(), w.expected.size(), d);
+      CHECK(o.ended && o.pcm.size() == w.expected.size() && d < 0,
+            "%s wrapper chunk %zu: %zu samples (want %zu), differs at "
+            "sample %ld",
+            nameOf(f), chunk, o.pcm.size(), w.expected.size(), d);
     }
   }
   // Pieces that are whole frames (after a frame-aligned header) work.
@@ -356,14 +354,13 @@ static void testDataSize() {
           "0xFFFFFFFF, one piece: %zu samples, want %zu", whole.pcm.size(),
           w.expected.size());
     // dr_wav replaces a 0xFFFFFFFF data size by the number of bytes it can
-    // read at init time; the wrapper initializes it as soon as the header
-    // is buffered (wav_stream_decoder.cpp:124), so a stream that arrives in
-    // pieces stops after the first piece.
+    // read at init time; a stream that arrives in pieces must not stop after
+    // the first piece.
     WavDecoderWrapper wr;
     Out o = decodeWrapper(wr, w.file, 4096);
-    KNOWN_BUG("A19", o.pcm.size() == w.expected.size(),
-              "0xFFFFFFFF in 4096-byte pieces: %zu samples, want %zu", o.pcm.size(),
-              w.expected.size());
+    CHECK(o.pcm.size() == w.expected.size(),
+          "0xFFFFFFFF in 4096-byte pieces: %zu samples, want %zu", o.pcm.size(),
+          w.expected.size());
   }
 }
 
@@ -452,13 +449,11 @@ static void testSeek() {
                                   w.expected.end());
     const long d = firstDiff(o.pcm, want, 0, std::min(o.pcm.size(), want.size()));
     // The data fed after the seek already starts at the target, behind the
-    // re-prepended header; the wrapper then seeks dr_wav to the target frame
-    // again (wav_stream_decoder.cpp:151-158), skipping it twice whenever
-    // that much data is buffered at init.
-    KNOWN_BUG("A14", o.pcm.size() == want.size() && d < 0,
-              "pieces of %zu: %zu samples after the seek (want %zu), differs "
-              "at %ld",
-              piece, o.pcm.size(), want.size(), d);
+    // re-prepended header: the wrapper must not skip to the target again.
+    CHECK(o.pcm.size() == want.size() && d < 0,
+          "pieces of %zu: %zu samples after the seek (want %zu), differs "
+          "at %ld",
+          piece, o.pcm.size(), want.size(), d);
   }
 }
 
