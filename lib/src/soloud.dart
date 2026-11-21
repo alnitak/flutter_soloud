@@ -4020,7 +4020,8 @@ interface class SoLoud {
   /// Normally, you'd want to call [setProtectVoice] on all long-running,
   /// looping or somehow especially important audio.
   ///
-  /// If all voices are protected, the result is undefined.
+  /// A protected voice is never stopped to make room: if every voice that
+  /// could be stopped is protected, the new sound does not play.
   /// The number of protected entries is inclusive in the
   /// maximum number of active voices [getMaxActiveVoiceCount].
   /// For example, when having max active voice count set to 16, and
@@ -4046,7 +4047,7 @@ interface class SoLoud {
   ///
   /// **Example**:
   /// ```dart
-  /// final sound = SoLoud.instance.load('path/to/sound.mp3');
+  /// final sound = await SoLoud.instance.loadFile('path/to/sound.mp3');
   /// final handle = SoLoud.instance.play3d(sound, 0, 0, 0);
   /// double xPos = 0;
   ///
@@ -4241,7 +4242,10 @@ interface class SoLoud {
   //  voice groups
   // ///////////////////////////////////////
 
-  /// Used to create a new voice group. Returns 0 if not successful.
+  /// Creates a new voice group and returns its handle.
+  ///
+  /// Throws [SoLoudCreateVoiceGroupDartException] if the group cannot be
+  /// created, which includes calling this before the engine is initialized.
   SoundHandle createVoiceGroup() {
     final ret = _controller.soLoudFFI.createVoiceGroup();
     if (ret.isError) throw const SoLoudCreateVoiceGroupDartException();
@@ -5181,7 +5185,8 @@ interface class SoLoud {
     _controller.soLoudFFI.set3dListenerPosition(posX, posY, posZ);
   }
 
-  /// Sets the at-vector (i.e. position) parameter of the 3D audio listener.
+  /// Sets the at-vector of the 3D audio listener: the direction it looks at
+  /// (not its position, see [set3dListenerPosition]).
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///

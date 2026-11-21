@@ -13,7 +13,7 @@ Tests were reorganized into `test/common`, `test/<platform>` and `test/support` 
   - Fixed undefined behavior when a `Bus` is destroyed while its voices are playing.
 - **Buses (breaking)**: `Bus` equality is now identity (`==`/`hashCode` were removed), and every bus becomes invalid after `deinit()`.
 - **Filters**
-  - Parameter ranges now match the native ranges: biquad frequency max 8000 and resonance max 2; flanger; limiter; pitch shift (shift min 0.1, semitones from -39.86 to 19.02); parametric EQ (`getDefault(paramIndex, {bands})`, `defaultBandQ`).
+  - Parameter ranges now match the native ranges: biquad frequency max 8000 and resonance max 20; flanger; limiter; pitch shift (shift min 0.1, semitones from -39.86 to 19.02); parametric EQ (`getDefault(paramIndex, {bands})`, `defaultBandQ`).
   - Fixed the waveshaper output growing without bound with an amount close to -1 and loud input.
   - The biquad cutoff is clamped below Nyquist.
   - Pitch shift copies the wet parameter and converts semitones correctly.
@@ -59,6 +59,8 @@ Tests were reorganized into `test/common`, `test/<platform>` and `test/support` 
   - Linux: retiring the Dart callbacks (hot restart, engine teardown) can no longer wait forever while callbacks keep firing.
 - **Engine, voices and 3D**
   - At the voice limit, `play()` no longer stops a protected voice.
+  - `play3d` no longer keeps the handle of a voice that could not start in the sound's `handles`.
+  - `setPan`, `setPanAbsolute` and custom filter parameters reject NaN like the other setters.
   - A virtual voice reports the right stream position when it comes back.
   - 3D: min and max distance 0 no longer produce NaN audio.
   - `getMixerOutputWavHeader()` no longer returns the previous engine session's header.
