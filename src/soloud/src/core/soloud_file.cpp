@@ -91,6 +91,11 @@ mFileHandle(fp)
 	{
 		if (!mFileHandle)
 			return;
+		// ###### flutter_soloud local patch ######
+		// A negative offset leaves the position where it is. fseek() does
+		// that on POSIX, but the Windows C runtime moves the position.
+		if (aOffset < 0)
+			return;
 		fseek(mFileHandle, aOffset, SEEK_SET);
 	}
 
