@@ -397,20 +397,10 @@ void runSession(const Session &s, const char *label, float maxPeak = 4.0f) {
     if (!std::isfinite(v)) nonFinite++;
     else worst = std::max(worst, std::fabs(v));
   }
-  bool hasNaN = false;
-  for (float v : input) hasNaN |= std::isnan(v);
-  if (s.kind == VORBIS && hasNaN)
-    KNOWN_BUG("C5", nonFinite == 0 && worst <= maxPeak,
-              "Vorbis %s (%d Hz, %d ch): input with NaN decodes to %zu "
-              "non-finite samples, peak %g: VorbisOutputEncoder::encode hands "
-              "NaN to libvorbis as is (vorbis_output_encoder.cpp:252-268), "
-              "WAV/FLAC turn it into 0",
-              label, s.rate, s.channels, nonFinite, worst);
-  else
-    CHECK(nonFinite == 0 && worst <= maxPeak,
-          "%s %s (%d Hz, %d ch): decoded audio has %zu non-finite samples, "
-          "peak %g",
-          kName[s.kind], label, s.rate, s.channels, nonFinite, worst);
+  CHECK(nonFinite == 0 && worst <= maxPeak,
+        "%s %s (%d Hz, %d ch): decoded audio has %zu non-finite samples, "
+        "peak %g",
+        kName[s.kind], label, s.rate, s.channels, nonFinite, worst);
 }
 
 /// Random sample. The encoders' contract is input in [-1, 1]

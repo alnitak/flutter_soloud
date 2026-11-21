@@ -270,6 +270,17 @@ bool VorbisOutputEncoder::encode(const float *input, size_t samples,
     }
   }
 
+  // NaN samples become 0, as in the WAV and FLAC encoders: libvorbis would
+  // spread a NaN over the whole block (huge peaks or non-finite output).
+  for (int ch = 0; ch < m_channels; ++ch) {
+    float *dst = buffer[ch];
+    for (size_t frame = 0; frame < frames; ++frame) {
+      if (dst[frame] != dst[frame]) {
+        dst[frame] = 0.0f;
+      }
+    }
+  }
+
   vorbis_analysis_wrote(vd, static_cast<int>(frames));
 
   if (!flushBlocks()) {
