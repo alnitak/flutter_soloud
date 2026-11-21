@@ -39,6 +39,49 @@ Tests were reorganized into `test/common`, `test/<platform>` and `test/support` 
 - **Linux decoding**
   - Decoding from memory honors `TMPDIR`.
   - M4A files no longer decode a few ms too long with FFmpeg older than 7.1.
+  - Loading AAC/M4A/AC-3 no longer crashes with FFmpeg 5.x or reads past the codec parameters with FFmpeg 4.4; truncated M4A files decode to the right length on FFmpeg 4.4.
+- **Behaviour changes**
+  - Volume, pan, play speed, fades, oscillations, `play*()` volume/pan/scale, 3D positions/velocities/parameters, `setFftDecibelRange`, `loadWaveform` scale/detune and filter parameter fades throw `ArgumentError` for NaN or infinite values. A NaN filter parameter value is ignored with a warning, like out-of-range values.
+  - `setBufferIcyMetaInt`, the voice group methods, `createMixingBus` and the 3D methods throw `SoLoudNotInitializedException` before `init()`, like the rest of the API.
+  - Setting or reading a parameter of a filter that is not active throws `SoLoudFilterNotFoundException`; an invalid parameter index throws `SoLoudInvalidParameterException`.
+  - The EQ filter is transparent with all bands at 1, and its bands now cover the whole spectrum, so existing EQ settings sound different.
+  - Ogg Opus streams with 3 to 8 channels are downmixed to stereo.
+  - Linux without FFmpeg: loading AAC/M4A/AC-3 throws `SoLoudAudioFormatNotSupportedCppException` instead of the generic file-load error, like the streaming path.
+  - Web: a custom audio source or custom filter with a `webJsFunctionName` works only with the single-threaded WASM build. The multi-threaded build now logs a warning; the docs explain how to force the single-threaded build.
+  - Web: `loadMem` and `loadUrl` of bytes that cannot be decoded throw `SoLoudFileLoadFailedException` instead of returning a silent sound, and `addPullBufferDataStream` throws on errors.
+- **Robustness**
+  - Native calls no longer crash on null pointers, negative lengths or out-of-range values, and running out of memory inside a native call reports `outOfMemory` instead of aborting the app.
+  - NaN samples are clipped to silence in the same way on every platform; recording to Ogg Vorbis no longer produces huge peaks from NaN samples.
+  - `startMixerOutputStream`, `setPullBufferStream` and `setRealtimeStream` with negative or absurd sizes fail cleanly instead of aborting or reserving gigabytes (the realtime ring is limited to 2^24 frames).
+  - Running out of memory while starting a sound with filters no longer deadlocks the engine.
+  - Calling `deinit()` while `loadMem` or `joinTwoSources` is running no longer reports uncaught async errors.
+  - Fixed a data race between pausing or playing a voice and the end of another voice.
+  - Linux: retiring the Dart callbacks (hot restart, engine teardown) can no longer wait forever while callbacks keep firing.
+- **Engine, voices and 3D**
+  - At the voice limit, `play()` no longer stops a protected voice.
+  - A virtual voice reports the right stream position when it comes back.
+  - 3D: min and max distance 0 no longer produce NaN audio.
+  - `getMixerOutputWavHeader()` no longer returns the previous engine session's header.
+  - `FlacInfo.toString` labels the bits per sample correctly, and `AudioMetadata.toString` no longer prints `null` for an MP3 without MP3 metadata.
+- **Filters**: the Bassboost filter no longer boosts frequencies near the top of the spectrum or creates high-frequency images of bass tones.
+- **Loading files**
+  - FLAC files whose header does not give the total length load; a truncated FLAC loaded into memory ends where its audio ends.
+  - The bitrate reported for M4A/MP4 is correct.
+  - Android: `LoadMode.memory` decoding of M4A files with an edit list no longer keeps the AAC end padding.
+  - Android: streaming AC-3/E-AC-3 in MP4 (`LoadMode.disk`) on devices with Dolby's decoder (e.g. Samsung Galaxy) no longer cuts off the last ~60 ms or loses the first ~30 ms, plays without the decoder's Dolby Atmos leveler, and no longer starts with ~0.1 s of silence after seeking to the start or looping.
+- **Streams**
+  - Ogg Opus: 3 to 8 channel streams no longer decode to noise; seeking resumes exactly at the target and no longer drops the end of the file.
+  - Chained Ogg Opus and Vorbis: links are no longer cut short or mixed together, and seeking into a later link works.
+  - Ogg Opus and Vorbis: the end fade is no longer applied in the middle of the stream.
+  - WAV: data split inside a sample frame no longer shifts or loses samples, streams with an unknown data size play to the end, and seeking no longer skips past the target.
+  - Pull buffer streams: a seek to or past the end ends the sound, and seeking between two frames no longer swaps the channels. Web: `setPullBufferStream` with a PCM format calls `onAudioDuration`.
+  - FLAC: no duplicate track change when only the ICY StreamUrl changes, and no crash when frames have fewer channels than the header declares.
+  - `resetBufferStream` no longer strips ICY metadata from streams that never set a metaint.
+  - MP3/AAC: ID3 comments in Latin-1 or UTF-16 are reported as UTF-8, and long metadata strings are cut on a UTF-8 character boundary.
+- **Linux devices**
+  - If switching the audio backend fails (e.g. JACK with no server), the engine reports the error and keeps playing on the previous backend.
+  - When the PulseAudio server goes away, the device state changes to stopped, and `startAudioDevice()` reopens the device once the server is back.
+  - The window manager's close button closes the VST3 plug-in editor.
 
 ## 5.3.1 (18 Nov 2026)
 - fix: eliminate playback drift between LoadMode.memory and LoadMode.disk, fix seek/tell callbacks in WavStream, and fix MemoryFile::seek boundary clamping. Thanks to @Solido #580
