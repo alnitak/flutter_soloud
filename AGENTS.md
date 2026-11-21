@@ -73,7 +73,7 @@ did not. Android and iOS native tests need a device or simulator
 | An export in `src/bindings.h/.cpp` | Regenerate ffigen; update `bindings_player.dart`, `bindings_player_ffi.dart`, `bindings_player_web.dart` and `js_extension.dart`; rebuild the WASM. `ffigen_bindings_sync_test` and `web_bindings_sync_test` fail otherwise. |
 | Any native source that the web build compiles | Rebuild with `web/compile_wasm.sh` and commit the four files in `web/` in their own commit (`update wasm libs`). |
 | `PlayerErrors` or another enum in `src/enums.h` | The Dart enum in `lib/src/enums.dart` (same order and values) and the exception mapping in `lib/src/exceptions/`. |
-| The public Dart API or its behaviour | The dartdoc, `CHANGELOG.md` (`## Unreleased`; behaviour changes go under "Behaviour changes"), the matching skill in `skills/`, and the page in `flutter_soloud_docs`. |
+| The public Dart API or its behaviour | The dartdoc, `CHANGELOG.md` (the entry of the next release, at the top; behaviour changes go under "Behaviour changes"), the matching skill in `skills/`, and the page in `flutter_soloud_docs`. |
 | A skill (`SKILL.md` or its `references/`) | Increase its `version:` by 1, or installed copies never update. |
 | A `test/common/*_test.sh`, added or changed | `python3 test/support/gen_cmake.py` (it regenerates `test/CMakeLists.txt`). |
 
