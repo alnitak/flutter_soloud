@@ -40,7 +40,9 @@ static bool hideFfmpeg() {
     return v != nullptr && v[0] == '1';
 }
 
-static int gHiddenOpens = 0;
+// Every libav* dlopen() call. With OSDEC_HIDE_FFMPEG=1 they are refused here;
+// without FFmpeg on the machine they fail on their own.
+static int gLibavOpens = 0;
 
 // glibc declares dlopen() with __THROWNL, which is noexcept in C++11 and
 // later; a redeclaration must match it.
@@ -53,12 +55,11 @@ static int gHiddenOpens = 0;
 extern "C" void *dlopen(const char *file, int mode) OSDEC_DLOPEN_NOEXCEPT {
     using DlopenFn = void *(*)(const char *, int);
     static DlopenFn real = reinterpret_cast<DlopenFn>(dlsym(RTLD_NEXT, "dlopen"));
-    if (file != nullptr && hideFfmpeg() &&
+    const bool libav = file != nullptr &&
         (std::strstr(file, "libavformat") != nullptr || std::strstr(file, "libavcodec") != nullptr ||
-         std::strstr(file, "libavutil") != nullptr || std::strstr(file, "libswresample") != nullptr)) {
-        ++gHiddenOpens;
-        return nullptr;
-    }
+         std::strstr(file, "libavutil") != nullptr || std::strstr(file, "libswresample") != nullptr);
+    if (libav) ++gLibavOpens;
+    if (libav && hideFfmpeg()) return nullptr;
     return real != nullptr ? real(file, mode) : nullptr;
 }
 
@@ -104,6 +105,8 @@ long countSoloudTempFiles() {
 void testWithoutFfmpeg() {
     std::cout << "[Test] Without FFmpeg every entry point fails cleanly" << std::endl;
     const long tempBefore = countSoloudTempFiles();
+    // Not counting the probe in ffmpegLoadable().
+    const int libavOpensBefore = gLibavOpens;
 
     for (const char *name : {"aac_lc_stereo_48000.m4a", "sample-AAC.aac", "sample-AC3.ac3", "sample-EAC3.eac3"}) {
         const std::string path = joinPath(gDir, name);
@@ -154,8 +157,10 @@ void testWithoutFfmpeg() {
     OSDEC_CHECK(AACDecoderWrapper::parseAacAdtsMetadata(adts.data(), adts.size(), aac) && aac.sampleRate == 44100 &&
                     aac.channels == 2,
                 "ADTS header parse: " << aac.sampleRate << " Hz " << aac.channels << " ch");
-    std::cout << "  " << gHiddenOpens << " libav* dlopen() calls refused" << std::endl;
-    OSDEC_CHECK(gHiddenOpens > 0, "the decoders never tried to dlopen FFmpeg");
+    const int attempts = gLibavOpens - libavOpensBefore;
+    std::cout << "  " << attempts << " libav* dlopen() calls by the decoders ("
+              << (hideFfmpeg() ? "refused: FFmpeg hidden" : "failed: FFmpeg not installed") << ")" << std::endl;
+    OSDEC_CHECK(attempts > 0, "the decoders never tried to dlopen FFmpeg");
 }
 
 /// Decoding from many threads at once while FFmpeg is loaded for the first

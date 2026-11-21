@@ -75,14 +75,24 @@ if [ "$DO_NATIVE" == "1" ]; then
     if [ "$USE_LLVM" == "1" ]; then
         "${PROFDATA[@]}" merge -sparse "$BUILD_DIR"/profraw/*.profraw \
             -o "$BUILD_DIR/merged.profdata"
-        OBJECTS=()
+        # llvm-cov takes the first binary as a positional argument and every
+        # other one after -object.
+        EXES=()
         while IFS= read -r exe; do
+            EXES+=("$exe")
+        done < <(find "$BUILD_DIR" -maxdepth 1 -type f -perm -u+x -name '*_test*' | sort)
+        if [ "${#EXES[@]}" -eq 0 ]; then
+            echo "No instrumented test binaries in $BUILD_DIR: no native report" >&2
+            exit 1
+        fi
+        OBJECTS=()
+        for exe in "${EXES[@]:1}"; do
             OBJECTS+=(-object "$exe")
-        done < <(find "$BUILD_DIR" -maxdepth 1 -type f -perm -u+x -name '*_test*')
+        done
         "${LLVMCOV[@]}" export -format=lcov \
             -instr-profile "$BUILD_DIR/merged.profdata" \
             -ignore-filename-regex='(src/soloud/|src/pffft/|src/filters/signalsmith|test/|/usr/|/opt/|Xcode)' \
-            "${OBJECTS[@]:1}" "${OBJECTS[@]:0:1}" > "$OUT_DIR/native.info"
+            "${EXES[0]}" ${OBJECTS[@]+"${OBJECTS[@]}"} > "$OUT_DIR/native.info"
     elif command -v gcovr >/dev/null 2>&1; then
         gcovr --root "$REPO_ROOT" --object-directory "$BUILD_DIR" \
             --filter 'src/' --exclude 'src/soloud/' --exclude 'src/pffft/' \
