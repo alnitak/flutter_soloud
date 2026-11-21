@@ -64,32 +64,12 @@ ffmpeg_os_decoder() {
     echo "FFmpeg libraries in this image:"
     ls /usr/lib/*/libavformat.so.* /usr/lib/*/libavcodec.so.* 2>/dev/null || echo "  (none)"
     command -v ffmpeg >/dev/null && ffmpeg -hide_banner -version | head -1
-    local lavf log status
-    lavf="$(ls /usr/lib/*/libavformat.so.[0-9]* 2>/dev/null | sed -n 's/.*libavformat\.so\.\([0-9]*\)$/\1/p' | head -1)"
+    local log status
     log="$(mktemp)"
     # stdout and FFmpeg's stderr together, so a failing check is in the log.
     OSDEC_VERBOSE=1 bash test/linux/os_decoder_linux_test.sh "$@" > "$log" 2>&1
     status=$?
     grep -v '^\[[a-z0-9_,]* @ 0x' "$log"
-    [ $status -eq 0 ] && return 0
-    # Known src/ bugs on the older FFmpeg majors (see the report of TEST_PLAN
-    # LIN2); OSDEC_STRICT=1 makes them fail. Anything else still fails.
-    if [ "${OSDEC_STRICT:-0}" != "1" ]; then
-        if [ "$lavf" == "59" ] && grep -q '^\[Test\] First FFmpeg load' "$log" &&
-            ! grep -q '^\[Test\] decodeMemory creates' "$log"; then
-            echo "KNOWN BUG M6 (os_decoder_linux.cpp:206 and :351: lavf 59 (FFmpeg 5.x) read with the lavf 60+ AVStream layout, codecpar taken from priv_data, time_base/duration from the wrong fields): crashes on the first decode (exit $status)"
-            return 0
-        fi
-        if [ "$lavf" == "58" ] && grep -q 'heap-buffer-overflow src/native_decoder/os_decoder_linux.cpp' "$log"; then
-            echo "KNOWN BUG M7 (os_decoder_linux.cpp: AVCodecParameters read at FFmpeg 7 offsets past the end of the lavc 58 struct)"
-            return 0
-        fi
-        if [ "$lavf" == "58" ] && grep -q '^1 CHECK(S) FAILED' "$log" &&
-            grep -q 'FAIL: aac_lc_mono_44100.m4a truncated to 99%: decoded .* more than the whole file' "$log"; then
-            echo "KNOWN BUG M8 (os_decoder_linux.cpp: no AVStream duration fallback for lavf 58, a truncated M4A is not trimmed)"
-            return 0
-        fi
-    fi
     return $status
 }
 ffmpeg_none() {

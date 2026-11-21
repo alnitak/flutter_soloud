@@ -25,8 +25,9 @@
 #                   version without a Linux machine.
 # Known src/ bugs are reported as KNOWN BUG and do not fail the run; set
 # OSDEC_STRICT=1 to count them.
-# Verification: verified on Linux arm64 (Ubuntu 24.04 in test/docker, FFmpeg
-# 6.1, lavf/lavc 60), also with --asan. The --macos-ffmpeg mode was run on
+# Verification: verified on Linux arm64 in test/docker against FFmpeg 4.4,
+# 5.1, 6.1, 7.1 and 8 (lavf/lavc 58-62, `test/docker/run.sh ffmpeg all`),
+# also with --asan. The --macos-ffmpeg mode was run on
 # macOS arm64 against Homebrew FFmpeg 9.0.1 (lavf/lavc 63).
 
 set -e

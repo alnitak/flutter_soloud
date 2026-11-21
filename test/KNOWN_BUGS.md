@@ -85,6 +85,3 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | M2 | PulseAudio server loss: state stays started, clock freezes; after restart startAudioDevice() no-op, only changeDevice recovers | soloud_miniaudio.cpp/Player (miniaudio.h off-limits) | linux/pulse_server_loss_test |
 | M4 | Without FFmpeg, AAC/M4A/AC-3 via loadMem/loadFile return generic fileLoadFailed (stream path audioFormatNotSupported) | soloud_wav.cpp:433 | linux/no_ffmpeg_test |
 | M5 | Linux VST3 editor WM_DELETE_WINDOW ignored: ClientMessage data.l[0] read from eventBuf[8], LP64 index 7 | vst3_editor_linux.cpp:857 | linux/vst3_editor_linux_test |
-| M6 | FFmpeg 5.x (lavf 59) crash: read with lavf 60+ AVStream layout | os_decoder_linux.cpp:206 (>=59 -> >=60; lavf59 codecpar@208), :351 (lavf59 time_base@16, duration@32) | docker ffmpeg 5 |
-| M7 | FFmpeg 4.4 (lavc 58) heap over-read: AVCodecParameters read at FFmpeg7 offsets 132/152 past 140-byte struct | os_decoder_linux.cpp:398-405 | docker ffmpeg 4 --asan |
-| M8 | FFmpeg 4.4: truncated M4A decodes longer (no AVStream duration fallback for lavf 58) | os_decoder_linux.cpp:351 | docker ffmpeg 4 |
