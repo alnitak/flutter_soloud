@@ -4794,7 +4794,6 @@ interface class SoLoud {
         activeSound.handlesInternal.add(ret.newHandle);
       }
     }
-    sound.handlesInternal.add(ret.newHandle);
     return ret.newHandle;
   }
 
