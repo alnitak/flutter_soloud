@@ -9,10 +9,11 @@
 # (SOLOUD_LIFECYCLE_TEST_HOOKS), which the shipping build never defines, for
 # the sound-count export.
 #
-# The test needs an engine that can initialize. miniaudio falls back to its
-# null backend on a machine with no audio hardware, so a failure to open one
-# is treated as a broken environment rather than a reason to pass vacuously;
-# set SOLOUD_LIFECYCLE_TEST_ALLOW_NO_DEVICE=1 to downgrade that to a skip.
+# The test needs an engine that can initialize. The build enables only
+# miniaudio's null backend, so it needs no audio device; a failure to
+# initialize is treated as a broken environment rather than a reason to pass
+# vacuously (set SOLOUD_LIFECYCLE_TEST_ALLOW_NO_DEVICE=1 to downgrade that to
+# a skip).
 #
 # Pass --asan to build under AddressSanitizer and UndefinedBehaviorSanitizer,
 # or --tsan to build under ThreadSanitizer.
@@ -59,6 +60,7 @@ fi
 
 c++ -std=c++17 -w -pthread "${SANITIZER[@]}" \
     -DWITH_MINIAUDIO \
+    -DMA_ENABLE_ONLY_SPECIFIC_BACKENDS -DMA_ENABLE_NULL \
     -DNO_XIPH_LIBS \
     -DSOLOUD_LIFECYCLE_TEST_HOOKS \
     -I src/soloud/include \

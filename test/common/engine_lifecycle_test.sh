@@ -6,8 +6,9 @@
 # plugin translation unit set. It is built with the test-only hooks enabled
 # (SOLOUD_LIFECYCLE_TEST_HOOKS), which the shipping build never defines.
 #
-# Every scenario needs an engine that can initialize. miniaudio falls back to its
-# null backend on a machine with no audio hardware, so a failure to open one is
+# Every scenario needs an engine that can initialize. The test is built with
+# miniaudio's null backend only (MA_ENABLE_ONLY_SPECIFIC_BACKENDS +
+# MA_ENABLE_NULL), so it needs no audio hardware and a failure to initialize is
 # treated as a broken environment rather than a reason to pass vacuously; set
 # SOLOUD_LIFECYCLE_TEST_ALLOW_NO_DEVICE=1 to downgrade that to a skip.
 #
@@ -55,6 +56,7 @@ fi
 
 c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     -DWITH_MINIAUDIO \
+    -DMA_ENABLE_ONLY_SPECIFIC_BACKENDS -DMA_ENABLE_NULL \
     -DNO_XIPH_LIBS \
     -DSOLOUD_LIFECYCLE_TEST_HOOKS \
     -I src/soloud/include \

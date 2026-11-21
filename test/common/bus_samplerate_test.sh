@@ -6,9 +6,9 @@
 #
 # It links the plugin's bindings and Player, so it needs the whole plugin
 # translation unit set, like test/common/filter_params_test.sh, plus SoLoud's null
-# driver for the scenario that mixes by hand. The "player" scenario opens the
-# default output device through initEngine() (miniaudio falls back to its null
-# backend without one). --asan builds with AddressSanitizer and
+# driver for the scenario that mixes by hand. The "player" scenario goes
+# through initEngine(); the build enables only miniaudio's null backend, so
+# it needs no audio device. --asan builds with AddressSanitizer and
 # UndefinedBehaviorSanitizer, --tsan with ThreadSanitizer. A scenario name runs
 # only that scenario.
 
@@ -54,6 +54,7 @@ fi
 
 c++ -std=c++17 -O2 -w -pthread "${SANITIZER[@]}" \
     -DWITH_MINIAUDIO \
+    -DMA_ENABLE_ONLY_SPECIFIC_BACKENDS -DMA_ENABLE_NULL \
     -DWITH_NULL \
     -DNO_XIPH_LIBS \
     -DSOLOUD_LIFECYCLE_TEST_HOOKS \

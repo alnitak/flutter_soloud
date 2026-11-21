@@ -19,6 +19,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:code_assets/code_assets.dart';
+import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import '../../hook/build.dart' as hook;
@@ -187,7 +188,8 @@ void main() {
 
       server.archives['xiph-macos.tar.gz'] = full;
       final dir = await ensureMacos();
-      expect(dir.path, cacheDir.path);
+      // The same directory: on Windows the hook returns it with `\\`.
+      expect(p.equals(dir.path, cacheDir.path), isTrue, reason: dir.path);
       expect(server.requests, hasLength(3));
       for (final lib in _xiphLibs) {
         expect(

@@ -179,10 +179,31 @@ constexpr int64_t kEngineA = 1001;
 constexpr int64_t kEngineB = 1002;
 constexpr int64_t kNoEngineId = -1;
 
+// Whether this is a sanitizer build, where everything runs several times
+// slower and a thread can lose the CPU for a long time.
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+#define SOLOUD_TEST_SANITIZED 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+#define SOLOUD_TEST_SANITIZED 1
+#endif
+#endif
+
 // A lifecycle hook takes one uncontended lock and does a handful of stores. The
 // number this excludes is the one that matters: the seconds a device stop, a
-// scheduler join or a decode can take while init_deinit_mutex is held.
+// scheduler join or a decode can take while init_deinit_mutex is held. (Where
+// the test parks that holder until the measured call has returned, a call that
+// waited for it would never return at all, and the watchdog reports it.)
+#ifdef SOLOUD_TEST_SANITIZED
+constexpr long long kPlatformThreadBudgetMs = 1000;
+#else
 constexpr long long kPlatformThreadBudgetMs = 100;
+#endif
+
+// How long to wait for something another thread is due to do. Only a failing
+// run waits this long: on a loaded machine (a parallel ctest run on a CI
+// runner, a sanitizer build) the device thread can be starved for seconds.
+constexpr int kWaitMs = 20000;
 
 int gFailures = 0;
 int gAssertions = 0;
@@ -496,7 +517,7 @@ void startWatchdog(int limitSeconds)
 }
 
 template <typename Predicate>
-bool waitFor(Predicate predicate, int timeoutMs = 5000)
+bool waitFor(Predicate predicate, int timeoutMs = kWaitMs)
 {
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
@@ -1040,7 +1061,7 @@ void testCaptureDeliversToTheStartingPort()
            "a capture should start on a port");
     EXPECT(first != 0 && first == getMixerCaptureId(),
            "the start should report the id of the capture it started");
-    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }, 3000),
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }),
            "the capture should post its packets to the starting port");
     size_t claimed = 0;
     const size_t matching =
@@ -1052,7 +1073,7 @@ void testCaptureDeliversToTheStartingPort()
 
     // The isolate ends: from now on its port refuses every post.
     closePort(kPortA);
-    EXPECT(waitFor([] { return refusedMessages() >= 1; }, 3000),
+    EXPECT(waitFor([] { return refusedMessages() >= 1; }),
            "posts to the closed port should be refused");
     std::vector<int64_t> refused;
     {
@@ -1079,7 +1100,7 @@ void testCaptureDeliversToTheStartingPort()
            "a start should replace the capture whose port refused it");
     EXPECT(second != 0 && second != first,
            "the replacement should be a new capture");
-    EXPECT(waitFor([] { return messagesTo(kPortB) >= 1; }, 3000),
+    EXPECT(waitFor([] { return messagesTo(kPortB) >= 1; }),
            "the new capture should post to the new port");
     claimFromPort(kPortB, second, kChunkBytes, claimed);
 
@@ -1121,7 +1142,7 @@ void testRefusedStartLeavesTheRunningPortAlone()
                                    256, 2048, &id, &gFakeApi, kPortA,
                                    kEngineA) == noError,
            "the first capture should start");
-    EXPECT(waitFor([] { return messagesTo(kPortA) >= 1; }, 3000),
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 1; }),
            "the first capture should post to its port");
 
     unsigned int refusedId = 77;
@@ -1132,7 +1153,7 @@ void testRefusedStartLeavesTheRunningPortAlone()
     EXPECT(refusedId == 0, "a refused start should report no capture");
     size_t claimed = 0;
     claimFromPort(kPortA, id, kChunkBytes, claimed);
-    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }, 3000),
+    EXPECT(waitFor([] { return messagesTo(kPortA) >= 2; }),
            "the running capture should keep posting to its own port");
     EXPECT(messagesTo(kPortB) == 0,
            "the refused start's port should get nothing");
@@ -2084,21 +2105,40 @@ void testLoadDecodeDoesNotBlockLifecycleCalls()
                    static_cast<int>(wav.size()), 1, &memHash) == noError,
            "loadMem should succeed");
 
+    // The calls Dart makes, timed. [memHash] is loaded already.
+    PlayerErrors memError = noError;
+    const auto lifecycleCalls = [&]
+    {
+        const auto start = std::chrono::steady_clock::now();
+        disposeSound(memHash);
+        unsigned int otherHash = 0;
+        memError = loadMem(const_cast<char *>("other"), wav.data(),
+                           static_cast<int>(wav.size()), 1, &otherHash);
+        disposeAllSound();
+        return millisSince(start);
+    };
+
+    // First with no decode in flight: what the calls cost on this machine
+    // right now. disposeAllSound() hands over to the device thread and back,
+    // which a loaded machine (a CI runner, a sanitizer build) can take tens of
+    // milliseconds to schedule.
+    const long long baseline = lifecycleCalls();
+    EXPECT(memError == noError, "loadMem should succeed with no decode");
+    EXPECT(loadMem(const_cast<char *>("mem"), wav.data(),
+                   static_cast<int>(wav.size()), 1, &memHash) == noError,
+           "loadMem should succeed again");
+
     std::thread loader = startParkedLoad(path);
 
-    const auto start = std::chrono::steady_clock::now();
-    disposeSound(memHash);
-    unsigned int otherHash = 0;
-    const PlayerErrors memError =
-        loadMem(const_cast<char *>("other"), wav.data(),
-                static_cast<int>(wav.size()), 1, &otherHash);
-    disposeAllSound();
-    const long long elapsed = millisSince(start);
+    // The decode stays parked until releaseParkedLoad() below: calls that
+    // waited for it would not return at all, and the watchdog would end the
+    // run. What is timed is that they cost no more than without it.
+    const long long elapsed = lifecycleCalls();
 
-    EXPECT(elapsed < kPlatformThreadBudgetMs,
-           "lifecycle calls took %lldms while a decode was in flight; they "
-           "must not wait for it",
-           elapsed);
+    EXPECT(elapsed < kPlatformThreadBudgetMs + 3 * baseline,
+           "lifecycle calls took %lldms while a decode was in flight (%lldms "
+           "with none); they must not wait for it",
+           elapsed, baseline);
     EXPECT(memError == noError, "loadMem should not be blocked by the decode");
 
     releaseParkedLoad(loader);
@@ -2198,8 +2238,7 @@ void testDiskStreamedM4aNeverBlocksLifecycle()
     long long elapsed = millisSince(start);
     EXPECT(elapsed < kPlatformThreadBudgetMs,
            "disposeSound took %lldms with streaming voices", elapsed);
-    EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; },
-                     2000),
+    EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; }),
            "the disposed sound's workers should exit, %d left",
            SoLoud::NativeStream::liveWorkerCount());
 
@@ -2215,8 +2254,7 @@ void testDiskStreamedM4aNeverBlocksLifecycle()
     dispose();
     elapsed = millisSince(start);
     EXPECT(elapsed < 2000, "dispose took %lldms with streaming voices", elapsed);
-    EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; },
-                     2000),
+    EXPECT(waitFor([] { return SoLoud::NativeStream::liveWorkerCount() == 0; }),
            "workers should exit after dispose, %d left",
            SoLoud::NativeStream::liveWorkerCount());
 

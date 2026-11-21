@@ -5,10 +5,11 @@
 //
 // This calls the real native exports through the @Native bindings (the
 // package's build hook builds the library for the host) on an initialized
-// engine (miniaudio falls back to its null backend without a device), and
+// engine, which opens an audio output device (hence the `device` tag), and
 // measures the resident set. test/common/load_mem_ownership_test.cpp checks the
 // native side of the contract.
 @TestOn('vm')
+@Tags(['device'])
 library;
 
 import 'dart:io';

@@ -122,6 +122,11 @@ bool _isRuntimeExport(String name) =>
     name.startsWith('_pthread') ||
     name.startsWith('_wasm_worker');
 
+/// The text of [file] with `\n` line endings: git checks the sources out
+/// with `\r\n` on Windows (core.autocrlf), and the line-based parsers below
+/// would not recognize a directive followed by `\r`.
+String _readText(File file) => file.readAsStringSync().replaceAll('\r\n', '\n');
+
 // ---------------------------------------------------------------------------
 // js_extension.dart
 
@@ -140,7 +145,7 @@ Set<String> _probedFunctions() => {
     if (f.path.endsWith('.dart'))
       for (final m in RegExp(
         r"wasmHasExport\(\s*'(_\w+)'\s*\)",
-      ).allMatches(f.readAsStringSync()))
+      ).allMatches(_readText(f)))
         m[1]!,
 };
 
@@ -316,8 +321,8 @@ Set<String> _gluedExports(String js) => {
 };
 
 void main() {
-  final script = File(_compileScriptPath).readAsStringSync();
-  final bound = _boundFunctions(File(_jsExtensionPath).readAsStringSync());
+  final script = _readText(File(_compileScriptPath));
+  final bound = _boundFunctions(_readText(File(_jsExtensionPath)));
   final probed = _probedFunctions();
   final scriptExported = _scriptExportedFunctions(script);
   final sources = _scriptSources(script);
@@ -331,7 +336,7 @@ void main() {
       flavor: {
         ...scriptExported,
         for (final f in [...sources, ...headers])
-          ..._ffiExports(_preprocess(f.readAsStringSync(), defined)),
+          ..._ffiExports(_preprocess(_readText(f), defined)),
       },
   };
   final allExports = exportList.values.expand((s) => s).toSet();
@@ -350,7 +355,7 @@ void main() {
 
   test('the preprocessor drops native-only and test-only exports', () {
     // Sanity check of _preprocess on exports guarded in bindings.cpp.
-    final code = File('src/bindings.cpp').readAsStringSync();
+    final code = _readText(File('src/bindings.cpp'));
     final unguarded = _ffiExports(code);
     for (final exports in exportList.values) {
       expect(exports.length, lessThan(unguarded.length));
@@ -419,7 +424,7 @@ void main() {
           return;
         }
         final built = _gluedExports(
-          file.readAsStringSync(),
+          _readText(file),
         ).where((n) => !_isRuntimeExport(n)).toSet();
         final expected = exportList[flavor]!;
         expect(

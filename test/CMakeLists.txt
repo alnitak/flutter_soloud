@@ -200,121 +200,123 @@ add_test(NAME analyzer_test COMMAND analyzer_test WORKING_DIRECTORY ${REPO_ROOT}
 set_tests_properties(analyzer_test PROPERTIES LABELS "common" SKIP_REGULAR_EXPRESSION "^SKIPPED: ;\nSKIPPED: " TIMEOUT 900)
 
 # ---- test/common/bindings_null_args_test.sh
-add_library(bindings_null_args_test_obj0 OBJECT ${REPO_ROOT}/src/pffft/pffft.c)
-target_include_directories(bindings_null_args_test_obj0 PRIVATE ${REPO_ROOT}/src/pffft)
-add_executable(bindings_null_args_test
-  ${REPO_ROOT}/test/common/bindings_null_args_test.cpp
-  ${REPO_ROOT}/src/soloud_common.cpp
-  ${REPO_ROOT}/src/device_lifecycle_test_hooks.cpp
-  ${REPO_ROOT}/src/bindings.cpp
-  ${REPO_ROOT}/src/player.cpp
-  ${REPO_ROOT}/src/analyzer.cpp
-  ${REPO_ROOT}/src/synth/basic_wave.cpp
-  ${REPO_ROOT}/src/synth/custom_source.cpp
-  ${REPO_ROOT}/src/waveform/waveform.cpp
-  ${REPO_ROOT}/src/waveform/miniaudio_libvorbis.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_android.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_linux.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_web.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_windows.cpp
-  ${REPO_ROOT}/src/audiobuffer/audiobuffer.cpp
-  ${REPO_ROOT}/src/audiobuffer/circular_float_buffer.cpp
-  ${REPO_ROOT}/src/audiobuffer/flac_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/m4a_metadata.cpp
-  ${REPO_ROOT}/src/audiobuffer/mp3_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/ogg_flac_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/opus_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/pull_buffer_stream.cpp
-  ${REPO_ROOT}/src/audiobuffer/realtime_stream.cpp
-  ${REPO_ROOT}/src/audiobuffer/stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/vorbis_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/wav_stream_decoder.cpp
-  ${REPO_ROOT}/src/native_stream/m4a_gapless.cpp
-  ${REPO_ROOT}/src/native_stream/native_stream_decoder_android.cpp
-  ${REPO_ROOT}/src/native_stream/native_stream_decoder_apple.cpp
-  ${REPO_ROOT}/src/native_stream/native_stream_source.cpp
-  ${REPO_ROOT}/src/native_decoder/native_audio_decoder.cpp
-  ${REPO_ROOT}/src/filters/amplitude_modulator_filter.cpp
-  ${REPO_ROOT}/src/filters/compressor.cpp
-  ${REPO_ROOT}/src/filters/custom_filter.cpp
-  ${REPO_ROOT}/src/filters/filters.cpp
-  ${REPO_ROOT}/src/filters/limiter.cpp
-  ${REPO_ROOT}/src/filters/parametric_eq_filter.cpp
-  ${REPO_ROOT}/src/filters/pitch_shift_filter.cpp
-  ${REPO_ROOT}/src/mixeroutput/flac_output_encoder.cpp
-  ${REPO_ROOT}/src/mixeroutput/mixer_output.cpp
-  ${REPO_ROOT}/src/mixeroutput/mixer_output_encoder.cpp
-  ${REPO_ROOT}/src/mixeroutput/opus_output_encoder.cpp
-  ${REPO_ROOT}/src/mixeroutput/pcm_converter.cpp
-  ${REPO_ROOT}/src/mixeroutput/pcm_queue.cpp
-  ${REPO_ROOT}/src/mixeroutput/vorbis_output_encoder.cpp
-  ${REPO_ROOT}/src/mixeroutput/wav_output_encoder.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_audiosource.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_bus.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_checkpoint.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_3d.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_basicops.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_faderops.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_filterops.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_getters.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_looping.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_setters.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_voicegroup.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_voiceops.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_fader.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_fft.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_fft_lut.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_file.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_filter.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_misc.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_queue.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_thread.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_bassboostfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_biquadresonantfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_dcremovalfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_duckfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_echofilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_eqfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_fftfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_flangerfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_freeverbfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_lofifilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_robotizefilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_waveshaperfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/chipplayer.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndbuffer.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndchip.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndrender.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/soloud_ay.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/monotone/soloud_monotone.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/noise/soloud_noise.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/sfxr/soloud_sfxr.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/darray.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/klatt.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/resonator.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/soloud_speech.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/tts.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/sid.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/soloud_tedsid.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/ted.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/vic/soloud_vic.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/vizsn/soloud_vizsn.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/wav/dr_impl.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/wav/mb_ogg.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/wav/soloud_wav.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/wav/soloud_wavstream.cpp
-  ${REPO_ROOT}/src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp
-  ${SOLOUD_AAC_DECODER_SOURCE}
-  ${SOLOUD_OS_DECODER_SOURCE}
-  $<TARGET_OBJECTS:bindings_null_args_test_obj0>
-)
-target_compile_definitions(bindings_null_args_test PRIVATE WITH_MINIAUDIO MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS)
-target_include_directories(bindings_null_args_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
-target_link_libraries(bindings_null_args_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
-add_test(NAME bindings_null_args_test COMMAND bindings_null_args_test WORKING_DIRECTORY ${REPO_ROOT})
-set_tests_properties(bindings_null_args_test PROPERTIES LABELS "common" SKIP_REGULAR_EXPRESSION "^SKIPPED: ;\nSKIPPED: " TIMEOUT 900)
+if(NOT WIN32)
+  add_library(bindings_null_args_test_obj0 OBJECT ${REPO_ROOT}/src/pffft/pffft.c)
+  target_include_directories(bindings_null_args_test_obj0 PRIVATE ${REPO_ROOT}/src/pffft)
+  add_executable(bindings_null_args_test
+    ${REPO_ROOT}/test/common/bindings_null_args_test.cpp
+    ${REPO_ROOT}/src/soloud_common.cpp
+    ${REPO_ROOT}/src/device_lifecycle_test_hooks.cpp
+    ${REPO_ROOT}/src/bindings.cpp
+    ${REPO_ROOT}/src/player.cpp
+    ${REPO_ROOT}/src/analyzer.cpp
+    ${REPO_ROOT}/src/synth/basic_wave.cpp
+    ${REPO_ROOT}/src/synth/custom_source.cpp
+    ${REPO_ROOT}/src/waveform/waveform.cpp
+    ${REPO_ROOT}/src/waveform/miniaudio_libvorbis.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_android.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_linux.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_web.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_windows.cpp
+    ${REPO_ROOT}/src/audiobuffer/audiobuffer.cpp
+    ${REPO_ROOT}/src/audiobuffer/circular_float_buffer.cpp
+    ${REPO_ROOT}/src/audiobuffer/flac_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/m4a_metadata.cpp
+    ${REPO_ROOT}/src/audiobuffer/mp3_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/ogg_flac_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/opus_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/pull_buffer_stream.cpp
+    ${REPO_ROOT}/src/audiobuffer/realtime_stream.cpp
+    ${REPO_ROOT}/src/audiobuffer/stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/vorbis_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/wav_stream_decoder.cpp
+    ${REPO_ROOT}/src/native_stream/m4a_gapless.cpp
+    ${REPO_ROOT}/src/native_stream/native_stream_decoder_android.cpp
+    ${REPO_ROOT}/src/native_stream/native_stream_decoder_apple.cpp
+    ${REPO_ROOT}/src/native_stream/native_stream_source.cpp
+    ${REPO_ROOT}/src/native_decoder/native_audio_decoder.cpp
+    ${REPO_ROOT}/src/filters/amplitude_modulator_filter.cpp
+    ${REPO_ROOT}/src/filters/compressor.cpp
+    ${REPO_ROOT}/src/filters/custom_filter.cpp
+    ${REPO_ROOT}/src/filters/filters.cpp
+    ${REPO_ROOT}/src/filters/limiter.cpp
+    ${REPO_ROOT}/src/filters/parametric_eq_filter.cpp
+    ${REPO_ROOT}/src/filters/pitch_shift_filter.cpp
+    ${REPO_ROOT}/src/mixeroutput/flac_output_encoder.cpp
+    ${REPO_ROOT}/src/mixeroutput/mixer_output.cpp
+    ${REPO_ROOT}/src/mixeroutput/mixer_output_encoder.cpp
+    ${REPO_ROOT}/src/mixeroutput/opus_output_encoder.cpp
+    ${REPO_ROOT}/src/mixeroutput/pcm_converter.cpp
+    ${REPO_ROOT}/src/mixeroutput/pcm_queue.cpp
+    ${REPO_ROOT}/src/mixeroutput/vorbis_output_encoder.cpp
+    ${REPO_ROOT}/src/mixeroutput/wav_output_encoder.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_audiosource.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_bus.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_checkpoint.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_3d.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_basicops.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_faderops.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_filterops.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_getters.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_looping.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_setters.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_voicegroup.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_voiceops.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_fader.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_fft.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_fft_lut.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_file.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_filter.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_misc.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_queue.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_thread.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_bassboostfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_biquadresonantfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_dcremovalfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_duckfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_echofilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_eqfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_fftfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_flangerfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_freeverbfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_lofifilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_robotizefilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_waveshaperfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/chipplayer.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndbuffer.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndchip.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndrender.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/soloud_ay.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/monotone/soloud_monotone.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/noise/soloud_noise.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/sfxr/soloud_sfxr.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/darray.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/klatt.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/resonator.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/soloud_speech.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/tts.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/sid.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/soloud_tedsid.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/ted.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/vic/soloud_vic.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/vizsn/soloud_vizsn.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/wav/dr_impl.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/wav/mb_ogg.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/wav/soloud_wav.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/wav/soloud_wavstream.cpp
+    ${REPO_ROOT}/src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp
+    ${SOLOUD_AAC_DECODER_SOURCE}
+    ${SOLOUD_OS_DECODER_SOURCE}
+    $<TARGET_OBJECTS:bindings_null_args_test_obj0>
+  )
+  target_compile_definitions(bindings_null_args_test PRIVATE WITH_MINIAUDIO MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS)
+  target_include_directories(bindings_null_args_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
+  target_link_libraries(bindings_null_args_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
+ add_test(NAME bindings_null_args_test COMMAND bindings_null_args_test WORKING_DIRECTORY ${REPO_ROOT})
+  set_tests_properties(bindings_null_args_test PROPERTIES LABELS "common" SKIP_REGULAR_EXPRESSION "^SKIPPED: ;\nSKIPPED: " TIMEOUT 900)
+endif()
 
 # ---- test/common/buffer_stream_format_test.sh
 if(SOLOUD_XIPH_FOUND)
@@ -752,7 +754,7 @@ add_executable(bus_samplerate_test
   ${SOLOUD_OS_DECODER_SOURCE}
   $<TARGET_OBJECTS:bus_samplerate_test_obj0>
 )
-target_compile_definitions(bus_samplerate_test PRIVATE WITH_MINIAUDIO WITH_NULL NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
+target_compile_definitions(bus_samplerate_test PRIVATE WITH_MINIAUDIO MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL WITH_NULL NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
 target_include_directories(bus_samplerate_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
 target_link_libraries(bus_samplerate_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
 add_test(NAME bus_samplerate_test COMMAND bus_samplerate_test WORKING_DIRECTORY ${REPO_ROOT})
@@ -1392,7 +1394,7 @@ add_executable(engine_lifecycle_test
   ${SOLOUD_OS_DECODER_SOURCE}
   $<TARGET_OBJECTS:engine_lifecycle_test_obj0>
 )
-target_compile_definitions(engine_lifecycle_test PRIVATE WITH_MINIAUDIO NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
+target_compile_definitions(engine_lifecycle_test PRIVATE WITH_MINIAUDIO MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
 target_include_directories(engine_lifecycle_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
 target_link_libraries(engine_lifecycle_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
 add_test(NAME engine_lifecycle_test COMMAND engine_lifecycle_test WORKING_DIRECTORY ${REPO_ROOT})
@@ -1629,7 +1631,7 @@ add_executable(filter_params_test
   ${SOLOUD_OS_DECODER_SOURCE}
   $<TARGET_OBJECTS:filter_params_test_obj0>
 )
-target_compile_definitions(filter_params_test PRIVATE WITH_MINIAUDIO NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
+target_compile_definitions(filter_params_test PRIVATE WITH_MINIAUDIO MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
 target_include_directories(filter_params_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
 target_link_libraries(filter_params_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
 add_test(NAME filter_params_test COMMAND filter_params_test WORKING_DIRECTORY ${REPO_ROOT})
@@ -1808,7 +1810,7 @@ add_executable(load_mem_ownership_test
   ${SOLOUD_OS_DECODER_SOURCE}
   $<TARGET_OBJECTS:load_mem_ownership_test_obj0>
 )
-target_compile_definitions(load_mem_ownership_test PRIVATE WITH_MINIAUDIO NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
+target_compile_definitions(load_mem_ownership_test PRIVATE WITH_MINIAUDIO MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
 target_include_directories(load_mem_ownership_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
 target_link_libraries(load_mem_ownership_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
 add_test(NAME load_mem_ownership_test COMMAND load_mem_ownership_test WORKING_DIRECTORY ${REPO_ROOT})
@@ -2162,122 +2164,124 @@ if(SOLOUD_XIPH_FOUND)
 endif()
 
 # ---- test/common/out_of_memory_test.sh
-add_library(out_of_memory_test_obj0 OBJECT ${REPO_ROOT}/src/pffft/pffft.c)
-target_include_directories(out_of_memory_test_obj0 PRIVATE ${REPO_ROOT}/src/pffft)
-add_executable(out_of_memory_test
-  ${REPO_ROOT}/test/common/out_of_memory_test.cpp
-  ${REPO_ROOT}/src/soloud_common.cpp
-  ${REPO_ROOT}/src/device_lifecycle_test_hooks.cpp
-  ${REPO_ROOT}/src/bindings.cpp
-  ${REPO_ROOT}/src/player.cpp
-  ${REPO_ROOT}/src/analyzer.cpp
-  ${REPO_ROOT}/src/synth/basic_wave.cpp
-  ${REPO_ROOT}/src/synth/custom_source.cpp
-  ${REPO_ROOT}/src/waveform/waveform.cpp
-  ${REPO_ROOT}/src/waveform/miniaudio_libvorbis.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_android.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_linux.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_web.cpp
-  ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_windows.cpp
-  ${REPO_ROOT}/src/audiobuffer/audiobuffer.cpp
-  ${REPO_ROOT}/src/audiobuffer/circular_float_buffer.cpp
-  ${REPO_ROOT}/src/audiobuffer/flac_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/m4a_metadata.cpp
-  ${REPO_ROOT}/src/audiobuffer/mp3_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/ogg_flac_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/opus_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/pull_buffer_stream.cpp
-  ${REPO_ROOT}/src/audiobuffer/realtime_stream.cpp
-  ${REPO_ROOT}/src/audiobuffer/stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/vorbis_stream_decoder.cpp
-  ${REPO_ROOT}/src/audiobuffer/wav_stream_decoder.cpp
-  ${REPO_ROOT}/src/native_stream/m4a_gapless.cpp
-  ${REPO_ROOT}/src/native_stream/native_stream_decoder_android.cpp
-  ${REPO_ROOT}/src/native_stream/native_stream_decoder_apple.cpp
-  ${REPO_ROOT}/src/native_stream/native_stream_source.cpp
-  ${REPO_ROOT}/src/native_decoder/native_audio_decoder.cpp
-  ${REPO_ROOT}/src/filters/amplitude_modulator_filter.cpp
-  ${REPO_ROOT}/src/filters/compressor.cpp
-  ${REPO_ROOT}/src/filters/custom_filter.cpp
-  ${REPO_ROOT}/src/filters/filters.cpp
-  ${REPO_ROOT}/src/filters/limiter.cpp
-  ${REPO_ROOT}/src/filters/parametric_eq_filter.cpp
-  ${REPO_ROOT}/src/filters/pitch_shift_filter.cpp
-  ${REPO_ROOT}/src/mixeroutput/flac_output_encoder.cpp
-  ${REPO_ROOT}/src/mixeroutput/mixer_output.cpp
-  ${REPO_ROOT}/src/mixeroutput/mixer_output_encoder.cpp
-  ${REPO_ROOT}/src/mixeroutput/opus_output_encoder.cpp
-  ${REPO_ROOT}/src/mixeroutput/pcm_converter.cpp
-  ${REPO_ROOT}/src/mixeroutput/pcm_queue.cpp
-  ${REPO_ROOT}/src/mixeroutput/vorbis_output_encoder.cpp
-  ${REPO_ROOT}/src/mixeroutput/wav_output_encoder.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_audiosource.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_bus.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_checkpoint.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_3d.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_basicops.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_faderops.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_filterops.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_getters.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_looping.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_setters.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_voicegroup.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_core_voiceops.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_fader.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_fft.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_fft_lut.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_file.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_filter.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_misc.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_queue.cpp
-  ${REPO_ROOT}/src/soloud/src/core/soloud_thread.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_bassboostfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_biquadresonantfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_dcremovalfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_duckfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_echofilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_eqfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_fftfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_flangerfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_freeverbfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_lofifilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_robotizefilter.cpp
-  ${REPO_ROOT}/src/soloud/src/filter/soloud_waveshaperfilter.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/chipplayer.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndbuffer.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndchip.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndrender.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/ay/soloud_ay.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/monotone/soloud_monotone.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/noise/soloud_noise.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/sfxr/soloud_sfxr.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/darray.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/klatt.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/resonator.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/soloud_speech.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/speech/tts.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/sid.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/soloud_tedsid.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/ted.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/vic/soloud_vic.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/vizsn/soloud_vizsn.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/wav/dr_impl.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/wav/mb_ogg.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/wav/soloud_wav.cpp
-  ${REPO_ROOT}/src/soloud/src/audiosource/wav/soloud_wavstream.cpp
-  ${REPO_ROOT}/src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp
-  ${REPO_ROOT}/src/soloud/src/backend/null/soloud_null.cpp
-  ${SOLOUD_AAC_DECODER_SOURCE}
-  ${SOLOUD_OS_DECODER_SOURCE}
-  $<TARGET_OBJECTS:out_of_memory_test_obj0>
-)
-target_compile_definitions(out_of_memory_test PRIVATE WITH_MINIAUDIO WITH_NULL MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS)
-target_include_directories(out_of_memory_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
-target_link_libraries(out_of_memory_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
-add_test(NAME out_of_memory_test COMMAND out_of_memory_test WORKING_DIRECTORY ${REPO_ROOT})
-set_tests_properties(out_of_memory_test PROPERTIES LABELS "common" SKIP_REGULAR_EXPRESSION "^SKIPPED: ;\nSKIPPED: " TIMEOUT 900)
+if(NOT WIN32)
+  add_library(out_of_memory_test_obj0 OBJECT ${REPO_ROOT}/src/pffft/pffft.c)
+  target_include_directories(out_of_memory_test_obj0 PRIVATE ${REPO_ROOT}/src/pffft)
+  add_executable(out_of_memory_test
+    ${REPO_ROOT}/test/common/out_of_memory_test.cpp
+    ${REPO_ROOT}/src/soloud_common.cpp
+    ${REPO_ROOT}/src/device_lifecycle_test_hooks.cpp
+    ${REPO_ROOT}/src/bindings.cpp
+    ${REPO_ROOT}/src/player.cpp
+    ${REPO_ROOT}/src/analyzer.cpp
+    ${REPO_ROOT}/src/synth/basic_wave.cpp
+    ${REPO_ROOT}/src/synth/custom_source.cpp
+    ${REPO_ROOT}/src/waveform/waveform.cpp
+    ${REPO_ROOT}/src/waveform/miniaudio_libvorbis.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_android.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_linux.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_web.cpp
+    ${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_windows.cpp
+    ${REPO_ROOT}/src/audiobuffer/audiobuffer.cpp
+    ${REPO_ROOT}/src/audiobuffer/circular_float_buffer.cpp
+    ${REPO_ROOT}/src/audiobuffer/flac_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/m4a_metadata.cpp
+    ${REPO_ROOT}/src/audiobuffer/mp3_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/ogg_flac_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/opus_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/pull_buffer_stream.cpp
+    ${REPO_ROOT}/src/audiobuffer/realtime_stream.cpp
+    ${REPO_ROOT}/src/audiobuffer/stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/vorbis_stream_decoder.cpp
+    ${REPO_ROOT}/src/audiobuffer/wav_stream_decoder.cpp
+    ${REPO_ROOT}/src/native_stream/m4a_gapless.cpp
+    ${REPO_ROOT}/src/native_stream/native_stream_decoder_android.cpp
+    ${REPO_ROOT}/src/native_stream/native_stream_decoder_apple.cpp
+    ${REPO_ROOT}/src/native_stream/native_stream_source.cpp
+    ${REPO_ROOT}/src/native_decoder/native_audio_decoder.cpp
+    ${REPO_ROOT}/src/filters/amplitude_modulator_filter.cpp
+    ${REPO_ROOT}/src/filters/compressor.cpp
+    ${REPO_ROOT}/src/filters/custom_filter.cpp
+    ${REPO_ROOT}/src/filters/filters.cpp
+    ${REPO_ROOT}/src/filters/limiter.cpp
+    ${REPO_ROOT}/src/filters/parametric_eq_filter.cpp
+    ${REPO_ROOT}/src/filters/pitch_shift_filter.cpp
+    ${REPO_ROOT}/src/mixeroutput/flac_output_encoder.cpp
+    ${REPO_ROOT}/src/mixeroutput/mixer_output.cpp
+    ${REPO_ROOT}/src/mixeroutput/mixer_output_encoder.cpp
+    ${REPO_ROOT}/src/mixeroutput/opus_output_encoder.cpp
+    ${REPO_ROOT}/src/mixeroutput/pcm_converter.cpp
+    ${REPO_ROOT}/src/mixeroutput/pcm_queue.cpp
+    ${REPO_ROOT}/src/mixeroutput/vorbis_output_encoder.cpp
+    ${REPO_ROOT}/src/mixeroutput/wav_output_encoder.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_audiosource.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_bus.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_checkpoint.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_3d.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_basicops.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_faderops.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_filterops.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_getters.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_looping.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_setters.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_voicegroup.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_core_voiceops.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_fader.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_fft.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_fft_lut.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_file.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_filter.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_misc.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_queue.cpp
+    ${REPO_ROOT}/src/soloud/src/core/soloud_thread.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_bassboostfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_biquadresonantfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_dcremovalfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_duckfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_echofilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_eqfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_fftfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_flangerfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_freeverbfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_lofifilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_robotizefilter.cpp
+    ${REPO_ROOT}/src/soloud/src/filter/soloud_waveshaperfilter.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/chipplayer.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndbuffer.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndchip.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/sndrender.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/ay/soloud_ay.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/monotone/soloud_monotone.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/noise/soloud_noise.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/sfxr/soloud_sfxr.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/darray.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/klatt.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/resonator.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/soloud_speech.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/speech/tts.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/sid.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/soloud_tedsid.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/tedsid/ted.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/vic/soloud_vic.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/vizsn/soloud_vizsn.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/wav/dr_impl.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/wav/mb_ogg.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/wav/soloud_wav.cpp
+    ${REPO_ROOT}/src/soloud/src/audiosource/wav/soloud_wavstream.cpp
+    ${REPO_ROOT}/src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp
+    ${REPO_ROOT}/src/soloud/src/backend/null/soloud_null.cpp
+    ${SOLOUD_AAC_DECODER_SOURCE}
+    ${SOLOUD_OS_DECODER_SOURCE}
+    $<TARGET_OBJECTS:out_of_memory_test_obj0>
+  )
+  target_compile_definitions(out_of_memory_test PRIVATE WITH_MINIAUDIO WITH_NULL MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS)
+  target_include_directories(out_of_memory_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
+  target_link_libraries(out_of_memory_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
+ add_test(NAME out_of_memory_test COMMAND out_of_memory_test WORKING_DIRECTORY ${REPO_ROOT})
+  set_tests_properties(out_of_memory_test PROPERTIES LABELS "common" SKIP_REGULAR_EXPRESSION "^SKIPPED: ;\nSKIPPED: " TIMEOUT 900)
+endif()
 
 # ---- test/common/output_encoders_fuzz_test.sh
 if(SOLOUD_XIPH_FOUND)
@@ -2494,7 +2498,7 @@ add_executable(play_missing_file_test
   ${SOLOUD_OS_DECODER_SOURCE}
   $<TARGET_OBJECTS:play_missing_file_test_obj0>
 )
-target_compile_definitions(play_missing_file_test PRIVATE WITH_MINIAUDIO NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
+target_compile_definitions(play_missing_file_test PRIVATE WITH_MINIAUDIO MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
 target_include_directories(play_missing_file_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
 target_link_libraries(play_missing_file_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
 add_test(NAME play_missing_file_test COMMAND play_missing_file_test WORKING_DIRECTORY ${REPO_ROOT})
@@ -3883,7 +3887,7 @@ add_executable(waveform_synth_test
   ${SOLOUD_OS_DECODER_SOURCE}
   $<TARGET_OBJECTS:waveform_synth_test_obj0>
 )
-target_compile_definitions(waveform_synth_test PRIVATE WITH_MINIAUDIO NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
+target_compile_definitions(waveform_synth_test PRIVATE WITH_MINIAUDIO MA_ENABLE_ONLY_SPECIFIC_BACKENDS MA_ENABLE_NULL NO_XIPH_LIBS SOLOUD_LIFECYCLE_TEST_HOOKS)
 target_include_directories(waveform_synth_test PRIVATE ${REPO_ROOT}/src/soloud/include ${REPO_ROOT}/src/soloud/src ${REPO_ROOT}/src/pffft ${REPO_ROOT}/src ${REPO_ROOT}/src/native_decoder)
 target_link_libraries(waveform_synth_test PRIVATE ${CMAKE_DL_LIBS} ${SOLOUD_M_LIB} Threads::Threads ${SOLOUD_PLATFORM_LIBS})
 add_test(NAME waveform_synth_test COMMAND waveform_synth_test WORKING_DIRECTORY ${REPO_ROOT})

@@ -33,7 +33,12 @@
 
 #include "../support/robustness_checks.h"
 
+#ifdef _WIN32
+#include <process.h>  // _getpid, _exit
+#define getpid _getpid
+#else
 #include <unistd.h>
+#endif
 
 #include <chrono>
 #include <cmath>

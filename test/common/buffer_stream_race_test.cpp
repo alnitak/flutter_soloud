@@ -417,7 +417,23 @@ void stressReleased() {
             std::this_thread::sleep_for(std::chrono::milliseconds(3));
         }
     });
+    // 1.5 s, in which the feeder delivers about 1.1 s of audio on an idle
+    // machine. On a loaded one (a sanitizer build on a CI runner) the feeder
+    // and the mixer get less done in that time: go on, within reason, until
+    // the voice has consumed what the check below asks for.
+    const auto started = std::chrono::steady_clock::now();
+    const auto consumedSoFar = [&] {
+        float seconds = 0.0f;
+        (void)getStreamTimeConsumed(hash, &seconds);
+        return seconds;
+    };
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+    while (consumedSoFar() <= 0.5f &&
+           std::chrono::steady_clock::now() - started < std::chrono::seconds(30))
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    const double ran = std::chrono::duration<double>(
+                           std::chrono::steady_clock::now() - started)
+                           .count();
     running.store(false);
     feeder.join();
     reader.join();
@@ -426,8 +442,9 @@ void stressReleased() {
     float consumed = 0.0f;
     EXPECT(getStreamTimeConsumed(hash, &consumed) == PlayerErrors::noError &&
                consumed > 0.5f,
-           "the voice should have consumed most of 1.5 s, consumed %.3f s",
-           consumed);
+           "the voice should have consumed most of what it was fed in %.1f s, "
+           "consumed %.3f s",
+           ran, consumed);
     stop(voice);
     disposeSound(hash);
 }

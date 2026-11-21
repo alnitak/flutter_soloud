@@ -24,7 +24,9 @@
 #include <csignal>
 #include <cstdio>
 #include <functional>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 #include <utility>
 #include <vector>
 
@@ -350,6 +352,7 @@ void testInaudibleTick()
            to - from, count, r.out.size(), first);
 }
 
+#ifndef _WIN32
 void onHang(int)
 {
     static const char message[] =
@@ -357,6 +360,7 @@ void onHang(int)
     (void)!write(2, message, sizeof message - 1);
     _exit(1);
 }
+#endif
 
 // A step over 512 source samples per output sample used to leave no output
 // sample in any block and loop forever (jarikomppa/soloud#343).

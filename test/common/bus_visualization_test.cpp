@@ -66,7 +66,8 @@ int gAssertions = 0;
     } \
 } while (0)
 
-bool near(float a, float b, float tolerance = 1e-4f) {
+// Not `near`: that is a macro in the Windows headers.
+bool isNear(float a, float b, float tolerance = 1e-4f) {
     return std::fabs(a - b) <= tolerance;
 }
 
@@ -230,7 +231,7 @@ SoLoud::handle playUnpanned(Engine &engine, SoLoud::Bus &bus,
 bool waveIs(const Packet &packet, int channel, float value) {
     if (packet.waveSamples == 0 || channel >= packet.channels) return false;
     for (int i = 0; i < packet.waveSamples; i++) {
-        if (!near(packet.wave(channel)[i], value)) return false;
+        if (!isNear(packet.wave(channel)[i], value)) return false;
     }
     return true;
 }
@@ -272,8 +273,8 @@ void testTapIsBeforeBusVolume() {
            "the wave should be the unscaled 0.5, not scaled by the bus volume "
            "(first sample %f)",
            packet.waveSamples ? packet.wave(0)[0] : -1.0f);
-    EXPECT(near(analyzer.getChannelPeak(0), 0.5f) &&
-               near(analyzer.getChannelPeak(1), 0.5f),
+    EXPECT(isNear(analyzer.getChannelPeak(0), 0.5f) &&
+               isNear(analyzer.getChannelPeak(1), 0.5f),
            "the peaks should be 0.5 (got %f, %f)", analyzer.getChannelPeak(0),
            analyzer.getChannelPeak(1));
 
@@ -544,8 +545,8 @@ void testChannelSelection() {
         inRange = inRange && packet.fft(0)[i] >= 0.0f && packet.fft(0)[i] <= 1.0f;
     }
     EXPECT(inRange, "FFT magnitudes should be normalized to [0, 1]");
-    EXPECT(near(analyzer.getChannelPeak(0), 0.5f) &&
-               near(analyzer.getChannelPeak(1), 0.25f),
+    EXPECT(isNear(analyzer.getChannelPeak(0), 0.5f) &&
+               isNear(analyzer.getChannelPeak(1), 0.25f),
            "peaks are per channel whatever the selection (got %f, %f)",
            analyzer.getChannelPeak(0), analyzer.getChannelPeak(1));
 
@@ -618,7 +619,7 @@ void testMonoBus() {
                return p.channels == 1 && waveIs(p, 0, 0.3f);
            }),
            "a mono bus should send its one channel");
-    EXPECT(near(analyzer.getChannelPeak(0), 0.3f) &&
+    EXPECT(isNear(analyzer.getChannelPeak(0), 0.3f) &&
                analyzer.getChannelPeak(1) == 0.0f,
            "only channel 0 should have a peak (got %f, %f)",
            analyzer.getChannelPeak(0), analyzer.getChannelPeak(1));
@@ -665,8 +666,8 @@ void testSourceIdsAcrossBuses() {
            "each bus should send its own packets under its own id");
     EXPECT(lastPacket(9).waveSamples == 0,
            "an FFT-only packet should hold no wave");
-    EXPECT(near(firstAnalyzer.getChannelPeak(0), 0.1f) &&
-               near(secondAnalyzer.getChannelPeak(0), 0.8f),
+    EXPECT(isNear(firstAnalyzer.getChannelPeak(0), 0.1f) &&
+               isNear(secondAnalyzer.getChannelPeak(0), 0.8f),
            "each analyzer should report its own bus's peak");
     EXPECT(lastPacket(0).source == -1,
            "nothing should be sent under the engine output's id");
@@ -769,28 +770,60 @@ void testWorkerIdlesWhileNothingIsCaptured() {
                                      VISUALIZATION_CHANNEL_MERGED, kChannels);
     bus.setAudioTap(&analyzer);
 
+    // While audio flows the worker checks every 3 ms. How many passes that
+    // makes in a given time depends on the machine: a loaded CI runner
+    // stretches every short sleep several times over. So a thread that only
+    // sleeps 3 ms at a time runs next to the worker as the measure of what
+    // this machine can do, and the audio is pumped until it has slept 100
+    // times (300 ms on an idle machine).
+    constexpr int kReferenceSleeps = 100;
+    std::atomic<int> referenceSleeps{0};
+    std::atomic<bool> referenceStop{false};
     uint64_t passes = Analyzer::workerPassesForTest();
     const auto busyStart = std::chrono::steady_clock::now();
-    engine.pumpUntil([&] {
-        return std::chrono::steady_clock::now() - busyStart >
-               std::chrono::milliseconds(300);
+    std::thread reference([&] {
+        while (!referenceStop.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(3));
+            referenceSleeps.fetch_add(1);
+        }
     });
+    engine.pumpUntil(
+        [&] { return referenceSleeps.load() >= kReferenceSleeps; }, 30000);
     const uint64_t busyPasses = Analyzer::workerPassesForTest() - passes;
+    const int busySleeps = referenceSleeps.load();
+    const double busySeconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      busyStart)
+            .count();
+    referenceStop = true;
+    reference.join();
     EXPECT(packetCount(12) > 0, "packets should flow while mixing");
-    EXPECT(busyPasses >= 30,
-           "the worker should check often while audio flows (%llu passes in "
-           "300 ms)",
-           static_cast<unsigned long long>(busyPasses));
+    EXPECT(busySleeps >= kReferenceSleeps,
+           "the reference thread should have slept %d times (%d in %.0f ms)",
+           kReferenceSleeps, busySleeps, busySeconds * 1000.0);
+    // Half the reference's pace leaves room for the work of a pass.
+    EXPECT(busyPasses * 2 >= static_cast<uint64_t>(busySleeps),
+           "the worker should check often while audio flows (%llu passes "
+           "while a thread sleeping 3 ms at a time woke %d times, in %.0f ms)",
+           static_cast<unsigned long long>(busyPasses), busySleeps,
+           busySeconds * 1000.0);
 
     // No mix at all, as with a stopped device.
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
     passes = Analyzer::workerPassesForTest();
+    const auto idleStart = std::chrono::steady_clock::now();
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
     const uint64_t idlePasses = Analyzer::workerPassesForTest() - passes;
-    EXPECT(idlePasses <= 20,
+    const double idleSeconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      idleStart)
+            .count();
+    // A check every 50 ms; a worker that did not back off would make one
+    // every 3 ms, over fifteen times as many.
+    EXPECT(static_cast<double>(idlePasses) <= idleSeconds / 0.050 * 2.0,
            "the worker should back off while nothing is captured (%llu "
-           "passes in 500 ms)",
-           static_cast<unsigned long long>(idlePasses));
+           "passes in %.0f ms)",
+           static_cast<unsigned long long>(idlePasses), idleSeconds * 1000.0);
 
     const auto resumed = std::chrono::steady_clock::now();
     EXPECT(engine.pumpPacket(12), "packets should resume with the audio");

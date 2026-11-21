@@ -3,9 +3,9 @@
 # passed to loadMem() (see test/common/load_mem_ownership_test.cpp).
 #
 # Like the lifecycle tests this links the plugin's own `bindings.cpp`, so
-# loadMem() is called through the export Dart uses, on a real engine;
-# miniaudio falls back to its null backend on a machine with no audio
-# hardware. It is built with the test-only hooks enabled
+# loadMem() is called through the export Dart uses, on a real engine.
+# The build enables only miniaudio's null backend, so it needs no audio
+# device. It is built with the test-only hooks enabled
 # (SOLOUD_LIFECYCLE_TEST_HOOKS), which the shipping build never defines, and
 # without the Xiph libraries.
 #
@@ -53,6 +53,7 @@ fi
 
 c++ -std=c++17 -w -pthread "${SANITIZER[@]}" \
     -DWITH_MINIAUDIO \
+    -DMA_ENABLE_ONLY_SPECIFIC_BACKENDS -DMA_ENABLE_NULL \
     -DNO_XIPH_LIBS \
     -DSOLOUD_LIFECYCLE_TEST_HOOKS \
     -I src/soloud/include \

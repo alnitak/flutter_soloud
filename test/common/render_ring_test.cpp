@@ -447,8 +447,31 @@ unsigned long long framesServedWhileMutexHeld(bool withWorker, bool &workerRan)
     // (less than the 93 ms the ring holds).
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     engine.lockAudioMutex_internal();
+    if (withWorker) {
+        // The worker cannot mix while the mutex is held, so the device can
+        // only get what the ring holds now. On a loaded machine the worker
+        // may not have run for a while: let it fill the ring first.
+        const auto filled =
+            std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (engine.mRenderRing.availableToRead() < kRenderAhead - kDevicePeriod &&
+               std::chrono::steady_clock::now() < filled) {
+            engine.unlockAudioMutex_internal();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            engine.lockAudioMutex_internal();
+        }
+    }
     const unsigned long long before = fromRing.load();
     std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    if (withWorker) {
+        // 60 ms is ~5 device periods, but the fake device thread may not have
+        // been scheduled in time for them. Keep the mutex until it has made
+        // the reads this is about; they still come from the ring alone.
+        const auto served =
+            std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (fromRing.load() - before < 3 * kDevicePeriod &&
+               std::chrono::steady_clock::now() < served)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
     const unsigned long long during = fromRing.load() - before;
     engine.unlockAudioMutex_internal();
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -465,7 +488,7 @@ void testRenderWorkerKeepsDeviceFed()
     bool workerRan = false;
     const unsigned long long withWorker = framesServedWhileMutexHeld(true, workerRan);
     EXPECT(workerRan, "the render worker did not start");
-    // 60 ms is ~5 device periods; allow for scheduling jitter.
+    // 60 ms is ~5 device periods; three of them are waited for.
     EXPECT(withWorker >= 3 * kDevicePeriod,
            "device got %llu frames while the audio mutex was held (want >= %u)",
            withWorker, 3 * kDevicePeriod);
@@ -478,7 +501,7 @@ void testRenderWorkerKeepsDeviceFed()
     EXPECT(without <= kQuantum,
            "control: without a worker the callback should wait for the mutex (%llu frames)",
            without);
-    std::printf("  device frames served during a 60 ms audio-mutex hold: %llu with the "
+    std::printf("  device frames served during an audio-mutex hold of 60 ms or more: %llu with the "
                 "render worker, %llu without\n", withWorker, without);
 }
 

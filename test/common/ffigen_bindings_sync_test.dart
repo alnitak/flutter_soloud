@@ -24,6 +24,12 @@ const _headerPath = 'src/bindings.h';
 /// Macros that are undefined when ffigen parses the header on the host.
 const _undefinedMacros = {'__EMSCRIPTEN__', 'SOLOUD_LIFECYCLE_TEST_HOOKS'};
 
+/// The text of the file at [path] with `\n` line endings: git checks the
+/// sources out with `\r\n` on Windows (core.autocrlf), and the line-based
+/// parsers below would not recognize a directive followed by `\r`.
+String _readText(String path) =>
+    File(path).readAsStringSync().replaceAll('\r\n', '\n');
+
 /// Removes `//` and `/* */` comments.
 String _stripCComments(String s) => s
     .replaceAll(RegExp(r'/\*.*?\*/', dotAll: true), '')
@@ -177,8 +183,8 @@ Set<String> _declarations(String dart) {
 }
 
 void main() {
-  final header = File(_headerPath).readAsStringSync();
-  final generated = File(_generatedPath).readAsStringSync();
+  final header = _readText(_headerPath);
+  final generated = _readText(_generatedPath);
 
   group('generated bindings match the exports of src/bindings.h', () {
     final split = _preprocess(header);
@@ -279,7 +285,7 @@ void main() {
         fail('ffigen failed (${result.exitCode}):\n$log');
       }
 
-      final fresh = _declarations(File(output).readAsStringSync());
+      final fresh = _declarations(_readText(output));
       final committed = _declarations(generated);
       String show(Set<String> s) => s
           .map((d) => d.length > 160 ? '${d.substring(0, 160)}...' : d)

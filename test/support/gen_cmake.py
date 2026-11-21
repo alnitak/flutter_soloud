@@ -47,6 +47,9 @@ PLATFORM_SOURCES = {
 # against the VST3 SDK outside the repository: ctest runs the script itself
 # (Unix only) instead of building a target.
 SCRIPT_ONLY = {"pull_mp3_seek_test", "simd_fallback_test", "vst3_param_changes_test"}
+# Tests that run each case in a child process (fork, waitpid): not built on
+# Windows.
+POSIX_ONLY = {"bindings_null_args_test", "out_of_memory_test"}
 XIPH_LIBS = {"ogg", "vorbis", "vorbisenc", "vorbisfile", "opus", "FLAC"}
 
 
@@ -179,6 +182,8 @@ def emit_target(name, link, objects, test_dir, run_args):
         conds.append("APPLE")
     if needs_xiph:
         conds.append("SOLOUD_XIPH_FOUND")
+    if name in POSIX_ONLY:
+        conds.append("NOT WIN32")
     ind = "  " if conds else ""
     if conds:
         out.append(f"if({' AND '.join(conds)})")

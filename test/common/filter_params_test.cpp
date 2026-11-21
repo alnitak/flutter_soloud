@@ -106,20 +106,10 @@ extern "C"
     void nativeFree(void *pointer);
     enum PlayerErrors getFilterParamNames(enum FilterType filterType,
                                           int *paramsCount, char **names);
-}
-
-// Set by the stand-in below.
-static bool gNoBoundedNames = false;
-
-// The plugin's definition overrides this weak stand-in. Without one (a
-// commit before the export existed) the stand-in keeps the file building
-// and the names scenario reports the export as missing.
-extern "C" __attribute__((weak)) enum PlayerErrors
-getFilterParamNamesBounded(enum FilterType, int *paramsCount, char **, int)
-{
-    gNoBoundedNames = true;
-    *paramsCount = 0;
-    return unknownError;
+    enum PlayerErrors getFilterParamNamesBounded(enum FilterType filterType,
+                                                 int *paramsCount,
+                                                 char **names,
+                                                 int namesCapacity);
 }
 
 namespace {
@@ -446,7 +436,6 @@ void testParamNamesFitTheArray() {
     int count = -1;
     PlayerErrors e =
         getFilterParamNamesBounded(ParametricEQFilter, &count, nullptr, 0);
-    EXPECT(!gNoBoundedNames, "getFilterParamNamesBounded() is missing");
     EXPECT(e == noError && count == kEqParams,
            "the EQ's parameter count reads back as error %d, count %d", e,
            count);

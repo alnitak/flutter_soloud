@@ -381,11 +381,12 @@ void testBusAnd3d() {
   CHECK(bus.getActiveVoiceCount() == 1, "bus has the voice");
   e.soloud.stopAll();
 
-  SynthState near, far;
-  near.expectedUserData = &near;
-  far.expectedUserData = &far;
-  SoLoud::CustomAudioSource nearSrc(kRate, 1, synth, &near, nullptr, false);
-  SoLoud::CustomAudioSource farSrc(kRate, 1, synth, &far, nullptr, false);
+  // Not `near` / `far`: those are macros in the Windows headers.
+  SynthState nearState, farState;
+  nearState.expectedUserData = &nearState;
+  farState.expectedUserData = &farState;
+  SoLoud::CustomAudioSource nearSrc(kRate, 1, synth, &nearState, nullptr, false);
+  SoLoud::CustomAudioSource farSrc(kRate, 1, synth, &farState, nullptr, false);
   auto level3d = [&](SoLoud::AudioSource &s, float dist) {
     SoLoud::handle v = e.soloud.play3d(s, dist, 0, 0);
     e.soloud.set3dSourceAttenuation(v, SoLoud::AudioSource::INVERSE_DISTANCE,
@@ -399,7 +400,7 @@ void testBusAnd3d() {
   };
   const float pNear = level3d(nearSrc, 1.0f);
   const float pFar = level3d(farSrc, 50.0f);
-  CHECK(near.calls > 0 && pNear > 0.0f, "3D voice audible (%g)", pNear);
+  CHECK(nearState.calls > 0 && pNear > 0.0f, "3D voice audible (%g)", pNear);
   CHECK(pFar < pNear * 0.2f, "distance attenuates (%g vs %g)", pFar, pNear);
   CHECK(!e.hasNaN(), "no NaN");
 
