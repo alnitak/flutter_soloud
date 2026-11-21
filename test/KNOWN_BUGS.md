@@ -73,7 +73,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | ID | Bug | Where | Test |
 |---|---|---|---|
 | L3 | Android streaming of AC-3 in MP4 wrong on device with AC-3 decoder: reads 93055/96000 frames, PCM after seek mismatches | native_stream_decoder_android.cpp read()/seek() (root cause unknown) | android/native_stream_decoder_android_test (S22) |
-| L4 | Long metadata strings cut mid UTF-8 char (strncpy 1023) | audiobuffer.cpp:994, pull_buffer_stream.cpp:1680 | common/web_realtime_stream_test |
 
 ## Linux and FFmpeg
 

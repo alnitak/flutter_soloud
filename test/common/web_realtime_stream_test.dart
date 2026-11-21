@@ -178,23 +178,18 @@ void main() {
       expect(m.title, title);
     });
 
-    test(
-      'a longer title is cut without breaking the string',
-      () async {
-        final title = 'é' * 700; // 1400 bytes
-        final m = await metadataOf(title, 'b');
-        final n = utf8.encode(m.title).length;
-        expect(n, inInclusiveRange(1, 1023));
-        expect(
-          m.title.contains('�'),
-          isFalse,
-          reason: 'cut in the middle of a character',
-        );
-        expect(title.startsWith(m.title), isTrue);
-      },
-      skip:
-          'bug L4: metadata strings are cut to 1023 bytes with strncpy, in the middle of a UTF-8 character (src/audiobuffer/audiobuffer.cpp:994; the last character decodes as U+FFFD)',
-    );
+    test('a longer title is cut without breaking the string', () async {
+      final title = 'é' * 700; // 1400 bytes
+      final m = await metadataOf(title, 'b');
+      final n = utf8.encode(m.title).length;
+      expect(n, inInclusiveRange(1, 1023));
+      expect(
+        m.title.contains('�'),
+        isFalse,
+        reason: 'cut in the middle of a character',
+      );
+      expect(title.startsWith(m.title), isTrue);
+    });
 
     test('an empty title is empty', () async {
       final m = await metadataOf('', 'c');
