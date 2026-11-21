@@ -1507,6 +1507,22 @@ interface class SoLoud {
     final counter = _currentLoadCounter++;
     loadedFileCompleters.addAll({'$path-$counter': completer});
 
+    // Listen to the completer before awaiting the load below: deinit() can
+    // fail it meanwhile, and an error on a future nobody listens to yet is
+    // also reported as an uncaught async error. See loadFile().
+    final result =
+        completer.future
+            .whenComplete(() {
+              loadedFileCompleters.removeWhere(
+                (key, __) => key.compareTo('$path-$counter') == 0,
+              );
+            })
+            .then((source) {
+              source.autoDispose = autoDispose;
+              return source;
+            })
+          ..ignore();
+
     final ret = kIsWeb
         ? await _loadMemWeb(
             path: path,
@@ -1531,16 +1547,7 @@ interface class SoLoud {
       'counter': counter,
     });
 
-    return completer.future
-        .whenComplete(() {
-          loadedFileCompleters.removeWhere(
-            (key, __) => key.compareTo('$path-$counter') == 0,
-          );
-        })
-        .then((source) {
-          source.autoDispose = autoDispose;
-          return source;
-        });
+    return result;
   }
 
   /// Loads 2 audio buffers and joins them into a single stereo [AudioSource]
@@ -1579,6 +1586,22 @@ interface class SoLoud {
     final counter = _currentLoadCounter++;
     loadedFileCompleters.addAll({'$path-$counter': completer});
 
+    // Listen to the completer before awaiting the load below: deinit() can
+    // fail it meanwhile, and an error on a future nobody listens to yet is
+    // also reported as an uncaught async error. See loadFile().
+    final result =
+        completer.future
+            .whenComplete(() {
+              loadedFileCompleters.removeWhere(
+                (key, __) => key.compareTo('$path-$counter') == 0,
+              );
+            })
+            .then((source) {
+              source.autoDispose = autoDispose;
+              return source;
+            })
+          ..ignore();
+
     final ret = kIsWeb
         ? _controller.soLoudFFI.joinTwoSources(path, bufferLeft, bufferRight)
         : await compute(_joinTwoSources, {
@@ -1597,16 +1620,7 @@ interface class SoLoud {
       'counter': counter,
     });
 
-    return completer.future
-        .whenComplete(() {
-          loadedFileCompleters.removeWhere(
-            (key, __) => key.compareTo('$path-$counter') == 0,
-          );
-        })
-        .then((source) {
-          source.autoDispose = autoDispose;
-          return source;
-        });
+    return result;
   }
 
   /// Manager for the mixer output capture stream. It is intentionally separate

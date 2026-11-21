@@ -135,8 +135,8 @@ void main() {
   }
 
   test('deinit while loads are running fails them cleanly', () async {
-    // The loads' errors also escape as uncaught errors (bug J6): collect
-    // those here, so that this test checks the rest.
+    // Collect uncaught errors here, so that this test checks the results
+    // even if the failures also escape to the zone.
     final uncaught = <Object>[];
     final results = await runZonedGuarded(
       loadsInterruptedByDeinit,
@@ -146,7 +146,7 @@ void main() {
       // Each load either finished before the deinit or failed cleanly.
       expect(r, anyOf(isA<AudioSource>(), isA<SoLoudException>()));
     }
-    expect(uncaught, everyElement(isA<SoLoudNotInitializedException>()));
+    expect(uncaught, isEmpty);
     expect(soloud.isInitialized, isFalse);
 
     await initTestEngine();
@@ -155,18 +155,10 @@ void main() {
     expect(soloud.getIsValidVoiceHandle(soloud.play(sound)), isTrue);
   });
 
-  test(
-    'deinit while loads are running raises no uncaught error',
-    () async {
-      final results = await loadsInterruptedByDeinit();
-      expect(results, hasLength(6));
-    },
-    skip:
-        'bug J6: deinit() fails the pending load completers before loadMem '
-        'listens to them (it is still awaiting compute), so each failure '
-        'is also reported as an uncaught async error, besides reaching the '
-        'caller (lib/src/soloud.dart:1129 with 1506-1531)',
-  );
+  test('deinit while loads are running raises no uncaught error', () async {
+    final results = await loadsInterruptedByDeinit();
+    expect(results, hasLength(6));
+  });
 
   group('joinTwoSources', () {
     test('lasts as long as the longer source', () async {

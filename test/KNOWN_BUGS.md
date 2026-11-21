@@ -99,7 +99,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | ID | Bug | Where | Test |
 |---|---|---|---|
 | J5 | At voice limit play() stops the oldest voice of same sound even if protected | player.cpp:2702-2706 (play3d 2832,2968) | max_voices_test |
-| J6 | deinit() while loadMem running fails completers before listened -> uncaught async errors | soloud.dart:1129, 1506-1531 | async_multi_load_test |
 | J7 | WAV capture header survives deinit/init | mixer_output.cpp:572,699 | mixer_output_wav_header_test |
 | J12 | startMixerOutputStream(bufferSizeBytes<0) aborts with length_error | bindings.cpp:864 -> mixer_output.cpp:498 | invalid_arguments_test |
 | J14 | 3D min=max distance=0 with inverse attenuation -> 0/0 NaN | soloud_core_3d.cpp:165 | invalid_arguments_test |
