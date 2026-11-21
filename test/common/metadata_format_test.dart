@@ -188,17 +188,11 @@ void main() {
       expect(s, contains('24'));
     });
 
-    test(
-      'FlacInfo.toString does not call the bits per sample a bitrate',
-      () {
-        // 24 bits per sample is not a bitrate: printed as "Bitrate: 24" it
-        // reads as 24 bit/s.
-        expect(_lines(_flac().toString()), isNot(contains('Bitrate: 24')));
-      },
-      skip:
-          'bug J1: FlacInfo.toString prints bitsPerSample with the label '
-          '"Bitrate" (lib/src/metadata.dart:374)',
-    );
+    test('FlacInfo.toString does not call the bits per sample a bitrate', () {
+      // 24 bits per sample is not a bitrate: printed as "Bitrate: 24" it
+      // reads as 24 bit/s.
+      expect(_lines(_flac().toString()), isNot(contains('Bitrate: 24')));
+    });
   });
 
   group('OggMetadata.toStringWithFormat', () {
@@ -412,21 +406,14 @@ void main() {
       });
     }
 
-    test(
-      'MP3 without its metadata prints no "null"',
-      () {
-        for (final type in [DetectedType.mp3WithId3, DetectedType.mp3Stream]) {
-          expect(
-            AudioMetadata(detectedType: type).toString(),
-            isNot(contains('null')),
-          );
-        }
-      },
-      skip:
-          'bug J2: AudioMetadata.toString writes "null" when an MP3 type has '
-          'no mp3Metadata, where every other type prints a fallback line '
-          '(lib/src/metadata.dart:809)',
-    );
+    test('MP3 without its metadata prints no "null"', () {
+      for (final type in [DetectedType.mp3WithId3, DetectedType.mp3Stream]) {
+        expect(
+          AudioMetadata(detectedType: type).toString(),
+          isNot(contains('null')),
+        );
+      }
+    });
   });
 
   group('equality', () {

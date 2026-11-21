@@ -98,8 +98,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| J1 | FlacInfo.toString labels bitsPerSample as "Bitrate" | lib/src/metadata.dart:374 | common/metadata_format_test |
-| J2 | AudioMetadata.toString writes "null" for MP3 with no mp3Metadata | metadata.dart:809 | metadata_format_test |
 | J3 | setBufferIcyMetaInt / setMp3BufferIcyMetaInt documented to throw not-initialized but no init check | soloud.dart:1913,1926 | api_before_init_test |
 | J4 | 3D setters/getters, destroyVoiceGroup, addVoicesToGroup, isVoiceGroup(Empty), createMixingBus have no init check | soloud.dart:4169-4210,4905-5069,5224 | api_before_init_test |
 | J5 | At voice limit play() stops the oldest voice of same sound even if protected | player.cpp:2702-2706 (play3d 2832,2968) | max_voices_test |
