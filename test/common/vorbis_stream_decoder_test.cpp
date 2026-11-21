@@ -213,14 +213,13 @@ static void testChained() {
     }
   }
 
-  // In one piece: the trim to the EOS granule (vorbis_stream_decoder.cpp:242)
-  // compares the last link's granule, which counts from that link's start,
-  // with all the samples of the call, and cuts the output of both links to
-  // the length of the second.
+  // In one piece: the trim to the EOS granule must compare each link's
+  // granule, which counts from that link's start, with that link's samples
+  // only, not cut the output of both links to the length of the second.
   Out one = decodeStream(file, file.size(), 44100, 2);
-  KNOWN_BUG("A15", one.pcm.size() == lenA + lenB,
-            "one piece: %zu samples, want %zu + %zu (cut to the last link's "
-            "granule)", one.pcm.size(), lenA, lenB);
+  CHECK(one.pcm.size() == lenA + lenB,
+        "one piece: %zu samples, want %zu + %zu (cut to the last link's "
+        "granule)", one.pcm.size(), lenA, lenB);
 
   // A stereo stream followed by a mono one. The first piece ends where the
   // mono stream's audio starts: the call that decodes it returns the rest of
@@ -252,15 +251,14 @@ static void testChained() {
   auto r1 = w.decode(p1, &sr, &ch);
   collect(o, r1, sr, ch);
   const size_t lenStereo = (size_t)fa.finalGranule * 2;
-  // vorbis_stream_decoder.cpp:282 reports the channel count of the link
-  // whose headers were parsed last, and :242 trims the call's samples with
-  // that link's channel count.
-  KNOWN_BUG("A16", o.calls.size() == 1 && o.calls[0].first == 2 &&
-                       o.calls[0].second == lenStereo,
-            "the call ending the stereo link returned %zu samples labelled %d "
-            "channel(s); want %zu samples, 2 channels",
-            o.calls.empty() ? 0 : o.calls[0].second,
-            o.calls.empty() ? 0 : o.calls[0].first, lenStereo);
+  // Not the channel count of the link whose headers were parsed last, nor
+  // the call's samples trimmed with that link's channel count.
+  CHECK(o.calls.size() == 1 && o.calls[0].first == 2 &&
+            o.calls[0].second == lenStereo,
+        "the call ending the stereo link returned %zu samples labelled %d "
+        "channel(s); want %zu samples, 2 channels",
+        o.calls.empty() ? 0 : o.calls[0].second,
+        o.calls.empty() ? 0 : o.calls[0].first, lenStereo);
   auto r2 = w.decode(p2, &sr, &ch);
   CHECK(ch == 1 && r2.first.size() > 0, "mono link: %zu samples, %d ch",
         r2.first.size(), ch);
@@ -302,16 +300,15 @@ static void testBounded() {
         "unbounded: %zu samples", whole.pcm.size());
   CHECK(bounded.pcm.size() == whole.pcm.size(), "bounded: %zu samples, want %zu",
         bounded.pcm.size(), whole.pcm.size());
-  // The 5 ms end fade is applied to the end of the decode() call that read
-  // the EOS page (vorbis_stream_decoder.cpp:259), even when that call stopped
-  // at maxOutputSamples with packets of the page still queued: the fade
-  // lands mid-stream and the real end is not faded.
+  // The 5 ms end fade must land at the end of the stream, also when the
+  // decode() call that read the EOS page stopped at maxOutputSamples with
+  // packets of the page still queued.
   const long d = firstDiff(bounded.pcm, whole.pcm, 0,
                            std::min(bounded.pcm.size(), whole.pcm.size()));
-  KNOWN_BUG("A17", d < 0,
-            "bounded decode differs from the unbounded one at sample %ld of %zu "
-            "(end fade applied mid-stream)",
-            d, whole.pcm.size());
+  CHECK(d < 0,
+        "bounded decode differs from the unbounded one at sample %ld of %zu "
+        "(end fade applied mid-stream)",
+        d, whole.pcm.size());
 }
 
 int main(int argc, char **argv) {

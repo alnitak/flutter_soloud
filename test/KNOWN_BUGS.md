@@ -26,9 +26,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| A15 | Vorbis trims chained file with last link's EOS granule | vorbis_stream_decoder.cpp:242-247 | vorbis testChained |
-| A16 | Vorbis stereo->mono link change: samples labelled mono then halved | vorbis_stream_decoder.cpp:282-285 | vorbis testChained |
-| A17 | Vorbis misplaced end fade (as A12) | vorbis_stream_decoder.cpp:259-279 | vorbis testBounded |
 | A23 | MemoryFile::read bounds check wraps -> memcpy ~4GB (heap overflow) | soloud_file.cpp:161 | soloud_file testMemoryFile |
 | A24 | Failed openToMem frees data but keeps old length -> later read from address 0 | soloud_file.cpp:256-262 | testToMem |
 | A25 | openFileToMem/openToMem ignore short read -> uninitialised tail | soloud_file.cpp:268,286 | testToMem |

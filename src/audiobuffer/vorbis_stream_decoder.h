@@ -34,6 +34,7 @@ public:
 private:
     AudioMetadata getMetadata();
     void decodePacket(ogg_packet* packet, std::vector<float> &out);
+    void applyFades(float *dst, int frames, int chs);
 
     int decodingSamplerate;
     int decodingChannels;
@@ -53,13 +54,22 @@ private:
     bool syncInitialized;
     bool streamInitialized;
     bool headerParsed;
-    bool firstPcmBlock;
     int packetCount;
     bool mDataEnded;
     bool mDrained;
 
     OggSeekIndex mSeekIndex;
     ogg_int64_t mTotalSamples = -1;
+
+    /// Chained streams: the seek index maps a time from the start of the
+    /// file (in samples) to a byte offset. Start of the current link on that
+    /// timeline and the last granule seen in it.
+    ogg_int64_t mLinkStart = 0;
+    ogg_int64_t mLinkLastGranule = 0;
+    /// Frames of the current link returned so far (-1: unknown, after a
+    /// seek), and the link's EOS granule (-1: not seen yet).
+    ogg_int64_t mLinkFrames = 0;
+    ogg_int64_t mLinkEnd = -1;
 };
 
 #endif // VORBIS_DECODER_H
