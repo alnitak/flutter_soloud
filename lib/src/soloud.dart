@@ -3879,6 +3879,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [pan] is NaN or infinite.
+  ///
   /// Note that if you `setPan()` to `0.8` and then `getPan()`, you might
   /// get a slightly different number, such as `0.800000042353`.
   /// This is expected since the internal audio engine uses float
@@ -3887,6 +3889,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(pan, 'pan');
     assert(
       pan >= -1 && pan <= 1,
       'The pan argument must be in range -1 to 1 inclusive!',
@@ -3904,10 +3907,14 @@ interface class SoLoud {
   /// [panRight] value for the right pan. Must be >= -1 and <= 1.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [panLeft] or [panRight] is NaN or infinite.
   void setPanAbsolute(SoundHandle handle, double panLeft, double panRight) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(panLeft, 'panLeft');
+    checkFinite(panRight, 'panRight');
     assert(
       panLeft >= -1 && panLeft <= 1,
       'The panLeft argument must be in range -1 to 1 inclusive!',

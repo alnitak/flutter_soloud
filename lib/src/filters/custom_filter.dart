@@ -4,6 +4,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/argument_checks.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -105,7 +106,7 @@ class CustomFilterParam extends FilterParam {
     if (kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
-    if (val < min || val > max) {
+    if (val.isNaN || val < min || val > max) {
       Logger(
         'flutter_soloud.CustomFilter[$slotIndex]',
       ).warning(() => 'value [$val] out of accepted range [$min, $max]');
@@ -134,6 +135,7 @@ class CustomFilterParam extends FilterParam {
     if (!SoLoud.instance.isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     final error = SoLoudController().soLoudFFI.fadeCustomFilterParameter(
       slotIndex,
       attributeId,
@@ -160,6 +162,8 @@ class CustomFilterParam extends FilterParam {
     if (!SoLoud.instance.isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(from, 'from');
+    checkFinite(to, 'to');
     final error = SoLoudController().soLoudFFI.oscillateCustomFilterParameter(
       slotIndex,
       attributeId,
