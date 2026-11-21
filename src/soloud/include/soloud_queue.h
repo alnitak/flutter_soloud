@@ -40,6 +40,7 @@ namespace SoLoud
 		QueueInstance(Queue *aParent);
 		virtual unsigned int getAudio(float *aBuffer, unsigned int aSamplesToRead, unsigned int aBufferSize);
 		virtual bool hasEnded();
+		virtual void stopChildAudioSource_internal(unsigned int aAudioSourceID);
 		virtual ~QueueInstance();
 	};
 

@@ -317,11 +317,9 @@ void drainRestart() {
   const SoLoud::result r = q.play(b);
   std::vector<float> out = e.mix(2048);
   const bool heard = firstNonZero(out) >= 0;
-  KNOWN_BUG("C1", r != SoLoud::SO_NO_ERROR || heard,
-            "Queue::play() on a queue whose voice ended returns %d (no "
-            "error) but the source is never heard: findQueueHandle() keeps "
-            "the stale handle (soloud_queue.cpp:106,122-125)",
-            (int)r);
+  CHECK(r != SoLoud::SO_NO_ERROR || heard,
+        "Queue::play() on a queue whose voice ended returns %d (no error) "
+        "but the source is never heard", (int)r);
   // Playing the queue again restarts it with what is queued.
   SoLoud::handle h2 = e.soloud.play(q);
   CHECK(e.soloud.isValidVoiceHandle(h2), "queue plays again");
@@ -351,13 +349,10 @@ void destroyed() {
   q.play(*b);
   delete b;  // ~AudioSource stops b's voices, but b's instance is in the queue
   e.mix(4096);
-  KNOWN_BUG("C2", gGetAudioOnDestroyedSource == 0,
-            "a source destroyed while queued is still played: the queued "
-            "instance reads its freed parent (%d getAudio calls; with a Wav "
-            "this is a heap use-after-free of WavInstance::mParent). "
-            "~AudioSource -> stopAudioSource only stops voices, not queued "
-            "instances (soloud_queue.cpp:45, soloud_audiosource.cpp:228)",
-            gGetAudioOnDestroyedSource);
+  CHECK(gGetAudioOnDestroyedSource == 0,
+        "a source destroyed while queued is still played: the queued "
+        "instance reads its freed parent (%d getAudio calls)",
+        gGetAudioOnDestroyedSource);
 }
 
 void starving() {
@@ -378,12 +373,10 @@ void starving() {
     calls = static_cast<SeqInstance *>(q.mSource[q.mReadIndex])->mCalls;
   else
     calls = 200001;  // consumed entirely within one mix
-  KNOWN_BUG("C3", calls <= 4,
-            "one mix() of %u frames called a starving source's getAudio %ld "
-            "times: QueueInstance::getAudio spins while the source returns 0 "
-            "without ending (soloud_queue.cpp:43-47); with a source that "
-            "never produces, mix() never returns",
-            kBlock, calls);
+  CHECK(calls <= 4,
+        "one mix() of %u frames called a starving source's getAudio %ld "
+        "times: QueueInstance::getAudio must not spin while the source "
+        "returns 0 without ending", kBlock, calls);
 }
 
 }  // namespace

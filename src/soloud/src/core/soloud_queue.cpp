@@ -53,8 +53,40 @@ namespace SoLoud
 				mParent->mCount--;
 				mLoopCount++;
 			}
+			else
+			{
+				// ###### flutter_soloud local patch (starving source) ######
+				// A source that gives fewer samples than asked without ending
+				// (a stream waiting for data) has nothing more now: calling it
+				// again would spin here with the audio mutex held. The mixer
+				// pads the rest with silence.
+				break;
+			}
 		}
 		return copyofs;
+	}
+
+	void QueueInstance::stopChildAudioSource_internal(unsigned int aAudioSourceID)
+	{
+		// Drop the queued instances of a source that is being stopped or
+		// destroyed (they would read their freed parent), keeping the order
+		// of the others.
+		unsigned int kept = 0;
+		AudioSourceInstance *keep[SOLOUD_QUEUE_MAX];
+		for (unsigned int k = 0; k < mParent->mCount; k++)
+		{
+			unsigned int idx = (mParent->mReadIndex + k) % SOLOUD_QUEUE_MAX;
+			AudioSourceInstance *instance = mParent->mSource[idx];
+			mParent->mSource[idx] = 0;
+			if (instance && instance->mAudioSourceID == aAudioSourceID)
+				delete instance;
+			else
+				keep[kept++] = instance;
+		}
+		for (unsigned int k = 0; k < kept; k++)
+			mParent->mSource[(mParent->mReadIndex + k) % SOLOUD_QUEUE_MAX] = keep[k];
+		mParent->mCount = kept;
+		mParent->mWriteIndex = (mParent->mReadIndex + kept) % SOLOUD_QUEUE_MAX;
 	}
 
 	bool QueueInstance::hasEnded()
@@ -96,20 +128,34 @@ namespace SoLoud
 			mInstance = 0;
 		}
 		mInstance = new QueueInstance(this);
+		// The handle of a previous voice is stale (see findQueueHandle).
+		mQueueHandle = 0;
 		return mInstance;
 	}
 
 	void Queue::findQueueHandle()
 	{
 		// Find the channel the queue is playing on to calculate handle..
+		// ###### flutter_soloud local patch (ended queue voice) ######
+		// The voice found earlier may have ended (the queue drained, or it
+		// was stopped): forget its handle, so play() on a queue that is not
+		// playing fails instead of queuing a source nobody will mix.
+		mSoloud->lockAudioMutex_internal();
+		if (mQueueHandle != 0)
+		{
+			int v = mSoloud->getVoiceFromHandle_internal(mQueueHandle);
+			if (v < 0 || mSoloud->mVoice[v] != mInstance)
+				mQueueHandle = 0;
+		}
 		int i;
 		for (i = 0; mQueueHandle == 0 && i < (signed)mSoloud->mHighestVoice; i++)
 		{
-			if (mSoloud->mVoice[i] == mInstance)
+			if (mInstance && mSoloud->mVoice[i] == mInstance)
 			{
 				mQueueHandle = mSoloud->getHandleFromVoice_internal(i);
 			}
 		}
+		mSoloud->unlockAudioMutex_internal();
 	}
 
 	result Queue::play(AudioSource &aSound)
@@ -133,6 +179,9 @@ namespace SoLoud
 			mSoloud->mAudioSourceID++;
 		}
 
+		// So that destroying or stopping aSound also drops its instance
+		// from the queue (Soloud::stopAudioSource).
+		aSound.mSoloud = mSoloud;
 		SoLoud::AudioSourceInstance *instance = aSound.createInstance();
 
 		if (instance == 0)

@@ -269,6 +269,12 @@ namespace SoLoud
 		virtual result rewind();
 		// Get information. Returns 0 by default.
 		virtual float getInfo(unsigned int aInfoKey);
+		// ###### flutter_soloud local patch (queued source lifetime) ######
+		// Called by Soloud::stopAudioSource() with the audio mutex held, for
+		// every voice: an instance that holds instances of other sources
+		// (QueueInstance) deletes those of aAudioSourceID, whose source is
+		// being stopped or destroyed.
+		virtual void stopChildAudioSource_internal(unsigned int aAudioSourceID) { (void)aAudioSourceID; }
 	};
 
 	class Soloud;

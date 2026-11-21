@@ -541,6 +541,12 @@ namespace SoLoud
 				{
 					stopVoice_internal(i);
 				}
+				else if (mVoice[i])
+				{
+					// ###### flutter_soloud local patch (queued source lifetime) ######
+					// Instances waiting in a Queue read their source too.
+					mVoice[i]->stopChildAudioSource_internal(aSound.mAudioSourceID);
+				}
 			}
 			unlockAudioMutex_internal();
 		}
