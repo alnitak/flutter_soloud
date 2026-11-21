@@ -52,7 +52,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| C4 | `FFTFilterInstance` passes 256 real samples to a complex FFT of 128 points: EQ not transparent; Bassboost boosts 22 kHz and images 172 Hz to 21.9 kHz (reachable from plugin). | `soloud_fftfilter.cpp:135`, `soloud_eqfilter.cpp:114`, `soloud_bassboostfilter.cpp:44` | `common/dc_removal_eq_filter_test` (eq_transparent, bassboost) |
 | C5 | Vorbis encoder passes NaN to libvorbis (WAV/FLAC map NaN to 0): huge peaks. NaN passes NEON/scalar clip on ARM. | `vorbis_output_encoder.cpp:252-268` | `common/output_encoders_fuzz_test` (nan_in_tone) |
 | C6 | `getStreamPosition()` keeps advancing while a voice is virtual; on return audio resumes where it stopped but position is ahead. | `soloud.cpp:3429` | `common/voice_virtualization_test` (resume_point) |
 | C7 | `setProtectVoice()` does not set `mActiveVoiceDirty`: protecting a playing virtual voice has no effect until something else re-evaluates. | `soloud_core_setters.cpp:164-178` | `common/voice_virtualization_test` (protected) |

@@ -243,14 +243,10 @@ void eqTransparent() {
     int d = 0;
     const double err = delayedError(in, out, 600, &d);
     const double a = ctest::toneAmplitude(out.data() + 4096, 17640, f, kSr);
-    KNOWN_BUG("C4", err < 1e-3,
-              "EqFilter with all bands at 1 is not transparent at %g Hz: "
-              "amplitude %.3f for 0.5 in, max error %.3f vs the input "
-              "delayed by %d. FFTFilterInstance::filterChannel passes 256 "
-              "real samples to FFT::fft(mTemp, 256), a complex FFT of 128 "
-              "interleaved points (soloud_fftfilter.cpp:135), and EqFilter "
-              "then zeroes half the bins (soloud_eqfilter.cpp:114)",
-              f, a, err, d);
+    CHECK(err < 1e-3,
+          "EqFilter with all bands at 1 is not transparent at %g Hz: "
+          "amplitude %.3f for 0.5 in, max error %.3f vs the input delayed "
+          "by %d", f, a, err, d);
   }
 }
 
@@ -304,17 +300,13 @@ void bassboost() {
   CHECK(std::fabs(mid - 0.5) < 0.01, "1 kHz untouched: %g", mid);
   // 22 kHz is no bass: it must come out as it went in.
   const double nyq = measure(22000, 22000);
-  KNOWN_BUG("C4", std::fabs(nyq - 0.5) < 0.05,
-            "Bassboost boosts a 22 kHz tone like the bass: %.3f for 0.5 in "
-            "(the interleaved complex FFT folds f and sr/2 - f together, "
-            "soloud_fftfilter.cpp:135, soloud_bassboostfilter.cpp:44)",
-            nyq);
+  CHECK(std::fabs(nyq - 0.5) < 0.05,
+        "Bassboost boosts a 22 kHz tone like the bass: %.3f for 0.5 in", nyq);
   // A 172 Hz tone (one FFT bin) must not create a tone at sr/2 - 172 Hz.
   const double image = measure(172.27, 22050 - 172.27);
-  KNOWN_BUG("C4", image < 0.01,
-            "Bassboost on a 172 Hz tone creates a %.3f amplitude image at "
-            "21878 Hz (0.5 in)",
-            image);
+  CHECK(image < 0.01,
+        "Bassboost on a 172 Hz tone creates a %.3f amplitude image at "
+        "21878 Hz (0.5 in)", image);
 }
 
 }  // namespace
