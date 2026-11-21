@@ -2,6 +2,7 @@
 
 #include "native_audio_decoder.h"
 #include "../audiobuffer/aac_stream_decoder.h"
+#include "../native_stream/m4a_gapless.h"
 #include <android/log.h>
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaExtractor.h>
@@ -247,7 +248,9 @@ private:
     unsigned int mChannels = 0;
 };
 
-DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
+// [gapless]: the container's edit list / iTunSMPB, when it is an MP4 that
+// declares one (nullptr otherwise).
+DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor, const M4aGaplessInfo *gapless) {
     if (!extractor) return failure("Invalid AMediaExtractor");
 
     const size_t numTracks = AMediaExtractor_getTrackCount(extractor);
@@ -470,15 +473,22 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
     if (!outputConfigured || pcm.frames() == 0) return failure("No audio frames decoded from stream");
 
     // Priming is trimmed by the codec (encoder-delay), but end padding is only
-    // trimmed when the container reports encoder-padding (iTunSMPB). Fall back
-    // to the container duration (e.g. an MP4 edit list) for small excesses.
-    if (durationUs > 0) {
+    // trimmed when the extractor reports encoder-padding (iTunSMPB). For an
+    // MP4 the valid length is the edit list's (or iTunSMPB's); otherwise fall
+    // back to the extractor's duration, which for an MP4 is the media
+    // duration, priming and padding included. Only small excesses are cut.
+    size_t expectedFrames = 0;
+    uint64_t delayFrames = 0, validFrames = 0;
+    if (gapless != nullptr && gapless->resolve(static_cast<double>(sampleRate), delayFrames, validFrames) &&
+        validFrames > 0) {
+        expectedFrames = static_cast<size_t>(validFrames);
+    } else if (durationUs > 0) {
         const double expected = static_cast<double>(durationUs) * sampleRate / 1e6;
-        const size_t expectedFrames = static_cast<size_t>(expected + 0.5);
-        if (expectedFrames > 0 && pcm.frames() > expectedFrames &&
-            pcm.frames() - expectedFrames <= kMaxTrailingPaddingFrames) {
-            pcm.truncate(expectedFrames);
-        }
+        expectedFrames = static_cast<size_t>(expected + 0.5);
+    }
+    if (expectedFrames > 0 && pcm.frames() > expectedFrames &&
+        pcm.frames() - expectedFrames <= kMaxTrailingPaddingFrames) {
+        pcm.truncate(expectedFrames);
     }
 
     DecodedAudioData result;
@@ -499,7 +509,9 @@ DecodedAudioData decodeFromFd(int fd, off64_t length) {
         return failure("AMediaExtractor_setDataSourceFd failed (unsupported or corrupt media): " +
                        std::to_string(status));
     }
-    return decodeFromExtractor(extractor.get());
+    M4aGaplessInfo gapless;
+    const bool isMp4 = parseM4aGaplessFd(fd, gapless);
+    return decodeFromExtractor(extractor.get(), isMp4 ? &gapless : nullptr);
 }
 
 DecodedAudioData decodeElementaryStream(std::vector<unsigned char> buffer, DetectedType type) {

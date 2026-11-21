@@ -17,7 +17,7 @@
 # Env: see test/support/android_ndk.sh (ANDROID_NDK_HOME, ABI, API, ANDROID_SERIAL);
 # CASE_FILTER=<regex> runs only the matching fixtures.
 #   --build-only  only build (no adb needed); prints the binary's path.
-#   --strict      count KNOWN BUG checks (L1) as failures.
+#   --strict      count KNOWN BUG checks (L3) as failures.
 # Without --build-only and no adb or device the script prints SKIPPED.
 # Verification: run on a Pixel 8 API 34 arm64 emulator (macOS arm64 host, NDK 29).
 

@@ -211,25 +211,11 @@ void runStreamCase(const std::string &dir, const Case &c) {
         full.freeSamples();
     } else if (full.success) {
         std::printf("  decodeFile: %zu frames, %u ch, %.0f Hz\n", full.sampleCount, full.channels, full.sampleRate);
-        // L1: for an M4A whose length comes from an edit list (ffmpeg, no
-        // iTunSMPB) the full decode keeps the AAC end padding: it trims only
-        // to the extractor's duration (mdhd, priming included), while the
-        // stream, Apple and the container say the edit list's length.
-#if defined(__ANDROID__)
-        const bool l1 = full.sampleCount > fmt.totalFrames && full.sampleCount - fmt.totalFrames <= 4096 &&
-                        fmt.totalFrames == c.frames;
-#else
-        const bool l1 = false;
-#endif
-        if (l1) {
-            KNOWN_BUG(false, "L1",
-                      "%s: decodeFile (os_decoder_android.cpp) returns %zu frames, the edit list says %llu "
-                      "(end padding kept in LoadMode.memory)",
-                      c.file.c_str(), full.sampleCount, static_cast<unsigned long long>(fmt.totalFrames));
-        } else {
-            EXPECT(full.sampleCount == fmt.totalFrames, "%s: decodeFile %zu frames, stream %llu", c.file.c_str(),
-                   full.sampleCount, static_cast<unsigned long long>(fmt.totalFrames));
-        }
+        // For an M4A whose length comes from an edit list (ffmpeg, no
+        // iTunSMPB) the full decode must also stop at the edit list's length,
+        // not at the extractor's duration (mdhd, priming included).
+        EXPECT(full.sampleCount == fmt.totalFrames, "%s: decodeFile %zu frames, stream %llu", c.file.c_str(),
+               full.sampleCount, static_cast<unsigned long long>(fmt.totalFrames));
         if (full.channels == ch && full.sampleCount >= got) {
             float worst = 0;
             for (size_t i = 0; i < got; ++i)

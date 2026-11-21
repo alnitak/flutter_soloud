@@ -69,6 +69,7 @@ OUT="${TMPDIR:-/tmp}/android_native_decoder_test"
     -o "$OUT" \
     test/android/android_native_decoder_test.cpp \
     src/native_decoder/os_decoder_android.cpp \
+    src/native_stream/m4a_gapless.cpp \
     src/audiobuffer/aac_stream_decoder.cpp \
     src/audiobuffer/aac_stream_decoder_android.cpp \
     src/audiobuffer/m4a_metadata.cpp \
