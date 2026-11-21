@@ -33,6 +33,7 @@
 
 #include "audiobuffer/mp3_stream_decoder.h"
 #include "audiobuffer/stream_decoder.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <algorithm>
 #include <cmath>
@@ -452,7 +453,7 @@ static void testTruncated(Asset &a) {
 }
 
 int main(int argc, char **argv) {
-  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   // --write-raw <path> <frames>: write the PCM the script encodes with lame
   // (stereo, 16-bit little-endian, 44.1 kHz, deterministic).
   if (argc == 4 && std::strcmp(argv[1], "--write-raw") == 0) {

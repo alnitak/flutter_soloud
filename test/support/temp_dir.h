@@ -25,3 +25,12 @@ inline std::string makeTestTempDir(const std::string &prefix)
     }
     return {};
 }
+
+// A path for [name] in a directory of the system temp directory made once per
+// process, or "" if it cannot be made. Use it instead of $TMPDIR or /tmp,
+// which do not exist on Windows.
+inline std::string testTempPath(const std::string &name)
+{
+    static const std::string dir = makeTestTempDir("soloud_test");
+    return dir.empty() ? std::string() : dir + "/" + name;
+}

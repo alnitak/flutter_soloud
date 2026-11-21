@@ -41,6 +41,7 @@
 #include "waveform/waveform.h"
 #if !defined(NO_XIPH_LIBS)
 #include "waveform/miniaudio_libvorbis.h"
+#include "../support/temp_dir.h"
 #endif
 
 #include <cmath>
@@ -132,12 +133,7 @@ ReadSamplesErrors readMem(const std::vector<unsigned char> &data, float start, f
                                  average, out);
 }
 
-std::string tempPath(const char *name) {
-    const char *tmp = std::getenv("TMPDIR");
-    std::string dir = (tmp && *tmp) ? tmp : "/tmp";
-    if (dir.back() != '/') dir += '/';
-    return dir + name;
-}
+std::string tempPath(const char *name) { return testTempPath(name); }
 
 bool writeFile(const std::string &path, const std::vector<unsigned char> &d) {
     FILE *f = std::fopen(path.c_str(), "wb");

@@ -41,6 +41,7 @@
 #include "audiobuffer/stream_decoder.h"
 #include "audiobuffer/vorbis_stream_decoder.h"
 #include "audiobuffer/wav_stream_decoder.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <FLAC/stream_encoder.h>
 
@@ -417,7 +418,7 @@ static const char *typeName(int t) {
 }
 
 int main(int argc, char **argv) {
-  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   uint32_t baseSeed = 20261119;
   int iterations = 40;
   long only = -1;

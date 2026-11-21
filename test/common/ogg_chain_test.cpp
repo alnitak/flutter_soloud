@@ -52,6 +52,7 @@
 #include "soloud_wavstream.h"
 
 #include "native_audio_decoder.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <FLAC/stream_encoder.h>
 #include <ogg/ogg.h>
@@ -1082,7 +1083,7 @@ int main(int argc, char **argv)
 {
 	// Keep the output in order with the decoder's own printf()s, and complete
 	// up to a crash.
-	setvbuf(stdout, nullptr, _IOLBF, 0);
+	lineBufferedStdout();
 
 	for (const Case &c : kCases)
 	{

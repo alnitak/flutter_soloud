@@ -32,6 +32,7 @@
 #include "enums.h"
 
 #include "../support/robustness_checks.h"
+#include "../support/temp_dir.h"
 
 #ifdef _WIN32
 #include <process.h>  // _getpid, _exit
@@ -381,9 +382,7 @@ int main(int argc, char **argv) {
       apiThreads = std::atoi(argv[i + 1]);
     if (std::strcmp(argv[i], "--cycles") == 0) cycles = std::atoi(argv[i + 1]);
   }
-  const char *tmp = std::getenv("TMPDIR");
-  gWavPath = std::string(tmp ? tmp : "/tmp") + "/player_concurrency_" +
-             std::to_string(getpid()) + ".wav";
+  gWavPath = testTempPath("player_concurrency_" + std::to_string(getpid()) + ".wav");
   {
     std::ofstream f(gWavPath, std::ios::binary);
     f.write(reinterpret_cast<const char *>(gShort.data()), gShort.size());

@@ -36,6 +36,7 @@
 #include "audiobuffer/m4a_metadata.h"
 
 #include "../support/mp4_fixtures.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -452,7 +453,7 @@ static void testTruncated() {
 }
 
 int main(int argc, char **argv) {
-  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   std::string assets;
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--strict") == 0)

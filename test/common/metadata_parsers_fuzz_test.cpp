@@ -47,6 +47,7 @@
 
 #include "../support/metadata_fuzz_inputs.h"
 #include "../support/mp4_fixtures.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -547,7 +548,7 @@ static void testFlacChannels() {
 }
 
 int main(int argc, char **argv) {
-  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   std::string assets;
   uint32_t seed = 4242;
   int iterations = 150;

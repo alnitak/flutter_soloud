@@ -33,6 +33,7 @@
 #include "enums.h"
 
 #include "../support/robustness_checks.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <cmath>
 #include <csignal>
@@ -1393,7 +1394,7 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; ++i)
     if (argv[i][0] != '-') filter = argv[i];
   // Keep the children's "not initialized" warnings out of the way.
-  setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   const char *tmp = std::getenv("TMPDIR");
   gLogPath = std::string(tmp != nullptr ? tmp : "/tmp") +
              "/bindings_null_args_child_" + std::to_string(getpid()) + ".log";

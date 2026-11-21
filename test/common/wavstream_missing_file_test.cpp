@@ -44,6 +44,7 @@
 #include <mutex>
 #include <string>
 #include "../support/temp_dir.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <filesystem>
 #include <vector>
@@ -346,7 +347,7 @@ void testDiskFileWithoutFile(const std::string &workDir)
 int main()
 {
 	// Keep the report up to a crash.
-	std::setvbuf(stdout, nullptr, _IOLBF, 0);
+	lineBufferedStdout();
 	const std::string workDirPath = makeTestTempDir("wavstream_missing_file");
 	const char *workDir = workDirPath.empty() ? nullptr : workDirPath.c_str();
 	if (workDir == nullptr)

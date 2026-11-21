@@ -23,6 +23,7 @@
 #include "native_stream/m4a_gapless.h"
 #include "native_stream/native_stream_source.h"
 #include "native_audio_decoder.h"
+#include "../support/temp_dir.h"
 
 #include <atomic>
 #include <chrono>
@@ -1131,8 +1132,7 @@ void testGaplessParser() {
 
     // A box whose 64-bit size would wrap the file offset must be rejected,
     // not parsed in a loop forever.
-    const char *tmp = std::getenv("TMPDIR");
-    const std::string crafted = std::string(tmp ? tmp : "/tmp") + "/native_stream_wrap.m4a";
+    const std::string crafted = testTempPath("native_stream_wrap.m4a");
     if (FILE *f = std::fopen(crafted.c_str(), "wb")) {
         const unsigned char bytes[] = {0, 0, 0, 8, 'f', 't', 'y', 'p',            // ftyp, 8 bytes
                                        0, 0, 0, 1, 'f', 'r', 'e', 'e',            // free, 64-bit size:
@@ -1148,7 +1148,7 @@ void testGaplessParser() {
     // also be rejected rather than returning early once `moov` is parsed.
     {
         const std::string srcPath = gAssetDir + "/aac_lc_stereo_48000.m4a";
-        const std::string truncPath = std::string(tmp ? tmp : "/tmp") + "/native_stream_trunc.m4a";
+        const std::string truncPath = testTempPath("native_stream_trunc.m4a");
         if (FILE *in = std::fopen(srcPath.c_str(), "rb")) {
             std::fseek(in, 0, SEEK_END);
             const long len = std::ftell(in);
@@ -1185,7 +1185,7 @@ void testGaplessParser() {
             {"16 zero bytes", std::vector<unsigned char>(16, 0)},
             {"a cut-off box", cutBox},
         };
-        const std::string trailedPath = std::string(tmp ? tmp : "/tmp") + "/native_stream_trailed.m4a";
+        const std::string trailedPath = testTempPath("native_stream_trailed.m4a");
         for (const Case &c : cases) {
             std::vector<unsigned char> file;
             if (FILE *in = std::fopen((gAssetDir + "/" + c.file).c_str(), "rb")) {
@@ -1217,7 +1217,7 @@ void testGaplessParser() {
     {
         // Whether the first [keep] bytes of [file] (or all but -[keep]) parse.
         const auto truncatedParses = [&](const char *file, long keep) {
-            const std::string truncPath = std::string(tmp ? tmp : "/tmp") + "/native_stream_trunc2.m4a";
+            const std::string truncPath = testTempPath("native_stream_trunc2.m4a");
             bool parsed = false;
             if (FILE *in = std::fopen((gAssetDir + "/" + file).c_str(), "rb")) {
                 std::fseek(in, 0, SEEK_END);
@@ -1500,8 +1500,7 @@ void testPinnedFile(const std::string &path, const std::string &replacement, dou
         EXPECT(false, "needs a %u Hz full decode of %s", kSampleRate, path.c_str());
         return;
     }
-    const char *tmpDir = std::getenv("TMPDIR");
-    std::string pinned = std::string(tmpDir && *tmpDir ? tmpDir : "/tmp") + "/native_stream_pinned.m4a";
+    std::string pinned = testTempPath("native_stream_pinned.m4a");
     EXPECT(copyFile(path, pinned), "copy to %s failed", pinned.c_str());
 
     SoLoud::Soloud soloud;

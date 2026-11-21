@@ -57,6 +57,8 @@
 #include "mixeroutput/mixer_output.h"
 #include "native_stream/native_stream_source.h"
 
+#include "../support/temp_dir.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -599,9 +601,12 @@ std::vector<unsigned char> makeWavBytes()
 
 std::string writeWavFile()
 {
-    const char *tmp = std::getenv("TMPDIR");
-    std::string path = std::string(tmp != nullptr ? tmp : "/tmp") +
-                       "/soloud_lifecycle_test_load.wav";
+    // The system temp directory on every platform (there is no /tmp on
+    // Windows); one directory per run.
+    static const std::string dir = makeTestTempDir("soloud_lifecycle_test");
+    if (dir.empty())
+        return std::string();
+    std::string path = dir + "/soloud_lifecycle_test_load.wav";
     const std::vector<unsigned char> wav = makeWavBytes();
     FILE *f = std::fopen(path.c_str(), "wb");
     if (f == nullptr)

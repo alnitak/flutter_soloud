@@ -23,6 +23,7 @@
 
 #include "../support/mp4_fixtures.h"
 #include "../support/temp_dir.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -419,7 +420,7 @@ static void testTruncated() {
 }
 
 int main() {
-  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   testValidGapless();
   testSizes();
   testNesting();

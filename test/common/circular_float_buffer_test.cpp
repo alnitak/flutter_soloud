@@ -22,6 +22,7 @@
 //   ./test/common/circular_float_buffer_test.sh [--asan]
 
 #include "audiobuffer/circular_float_buffer.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -317,7 +318,7 @@ static void testRandomModel() {
 }
 
 int main() {
-  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   testCapacityZero();
   testCapacityOne();
   testOversizedWrite();

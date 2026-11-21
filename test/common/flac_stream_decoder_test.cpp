@@ -40,6 +40,7 @@
 
 #include "audiobuffer/flac_stream_decoder.h"
 #include "audiobuffer/stream_decoder.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <FLAC/metadata.h>
 #include <FLAC/stream_encoder.h>
@@ -503,7 +504,7 @@ static void testTruncated(const Fixture &fx) {
 }
 
 int main(int argc, char **argv) {
-  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   for (int i = 1; i < argc; ++i)
     if (std::strcmp(argv[i], "--strict") == 0) gStrict = true;
   Fixture fx;

@@ -28,6 +28,7 @@
 
 #include "../support/metadata_fuzz_inputs.h"
 #include "../support/mp4_fixtures.h"
+#include "../support/line_buffered_stdout.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -171,7 +172,7 @@ static std::vector<CorpusEntry> makeCorpus(const std::string &assets) {
 #if !defined(METADATA_LIBFUZZER)
 // Replay: runs the seed corpus (or the files given) through the target.
 int main(int argc, char **argv) {
-  std::setvbuf(stdout, nullptr, _IOLBF, 0);
+  lineBufferedStdout();
   std::string assets = "example/assets/audio";
   std::string corpusDir;
   std::vector<std::string> files;
