@@ -29,7 +29,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | A26 | Wav rejects FLAC with total-samples 0 (spec: unknown) | soloud_wav.cpp:372 | soloud_wav_load testFlac |
 | A27 | Truncated FLAC zero-padded to header length | soloud_wav.cpp:382 | testTruncated |
 | A28 | After failed Wav reload a voice never ends (sample count not reset) | soloud_wav.cpp:462-466 | testInstanceAndReload |
-| A30 | M4A bitrate read at wrong esds offset | m4a_metadata.cpp:183 | m4a testEsdsBitrate |
 
 ## Native concurrency, bindings and out-of-memory
 

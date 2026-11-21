@@ -10,10 +10,10 @@
 //                  comment, track and disc numbers), and the audio sample
 //                  entry (codec, channels, sample rate)
 //   esds-bitrate   the average bitrate of the esds DecoderConfigDescriptor,
-//                  with 4-byte and 1-byte descriptor lengths (KNOWN BUG A30)
+//                  with 4-byte and 1-byte descriptor lengths
 //   assets         the M4A/MP4 files in example/assets/audio: sample rate and
 //                  channels from the file name / stsd, codec, and bitrate
-//                  against the esds parsed here independently (A30)
+//                  against the esds parsed here independently
 //   containers     a 'meta' box without the FullBox header (QuickTime), a
 //                  'moov' with a 64-bit size and with size 0 (to the end)
 //   nested         4 MiB of nested 'moov' boxes, parsed on a thread with a
@@ -180,10 +180,8 @@ static void testValid() {
 
 // ------------------------------------------------------------ esds bitrate
 // The DecoderConfigDescriptor is: tag 0x04, length, objectTypeIndication (1),
-// streamType (1), bufferSizeDB (3), maxBitrate (4), avgBitrate (4). The
-// parser reads 4 bytes at offset 6 after the length, which straddles
-// maxBitrate and avgBitrate, instead of offset 9
-// (src/audiobuffer/m4a_metadata.cpp:183).
+// streamType (1), bufferSizeDB (3), maxBitrate (4), avgBitrate (4):
+// avgBitrate is at offset 9 after the length.
 static void testEsdsBitrate() {
   std::printf("esds-bitrate: avgBitrate of the DecoderConfigDescriptor\n");
   for (bool longLengths : {true, false}) {
@@ -194,9 +192,9 @@ static void testEsdsBitrate() {
     const Mp4File g = makeMp4(t);
     M4aMetadata mm;
     parseM4aMetadata(g.bytes.data(), g.bytes.size(), mm);
-    KNOWN_BUG(mm.bitrate == 128000,
-              "A30: bitrate %d, expected avgBitrate 128000 (%s descriptor lengths)",
-              mm.bitrate, longLengths ? "4-byte" : "1-byte");
+    CHECK(mm.bitrate == 128000,
+          "bitrate %d, expected avgBitrate 128000 (%s descriptor lengths)",
+          mm.bitrate, longLengths ? "4-byte" : "1-byte");
   }
 }
 
@@ -257,8 +255,8 @@ static void testAssets(const std::string &dir) {
     const int avg = esdsAvgBitrate(file);
     CHECK(avg > 0, "%s: test could not parse the esds", a.name);
     if (avg > 0)
-      KNOWN_BUG(m.bitrate == avg, "A30: %s: bitrate %d, esds avgBitrate %d", a.name,
-                m.bitrate, avg);
+      CHECK(m.bitrate == avg, "%s: bitrate %d, esds avgBitrate %d", a.name,
+            m.bitrate, avg);
   }
   if (!found) std::printf("SKIPPED (assets case): no M4A assets in %s\n", dir.c_str());
 }
