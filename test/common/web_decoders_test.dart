@@ -126,49 +126,39 @@ void main() {
     }
   });
 
-  test(
-    "'ftyp' followed by garbage fails cleanly",
-    () async {
-      // A 'ftyp' box header (size 0x18, brand 'M4A ') and then garbage.
-      final b = Uint8List(4096);
-      for (var i = 12; i < b.length; i++) {
-        b[i] = (i * 31) & 0xff;
-      }
-      b.setAll(0, [
-        0,
-        0,
-        0,
-        0x18,
-        0x66,
-        0x74,
-        0x79,
-        0x70,
-        0x4d,
-        0x34,
-        0x41,
-        0x20,
-      ]);
-      await expectCleanFailure('ftyp-garbage.m4a', b);
-    },
-    skip:
-        'bug L5: on the web loadMem accepts bytes it cannot decode (lib/src/soloud.dart:167: _loadMemWeb falls back to an auto-detecting buffer stream and returns a silent AudioSource; native throws SoLoudCppException)',
-  );
+  test("'ftyp' followed by garbage fails cleanly", () async {
+    // A 'ftyp' box header (size 0x18, brand 'M4A ') and then garbage.
+    final b = Uint8List(4096);
+    for (var i = 12; i < b.length; i++) {
+      b[i] = (i * 31) & 0xff;
+    }
+    b.setAll(0, [
+      0,
+      0,
+      0,
+      0x18,
+      0x66,
+      0x74,
+      0x79,
+      0x70,
+      0x4d,
+      0x34,
+      0x41,
+      0x20,
+    ]);
+    await expectCleanFailure('ftyp-garbage.m4a', b);
+  });
 
-  test(
-    'ADTS sync word followed by garbage fails cleanly',
-    () async {
-      final b = Uint8List(2048);
-      for (var i = 0; i < b.length; i++) {
-        b[i] = (i * 13) & 0xff;
-      }
-      b
-        ..[0] = 0xFF
-        ..[1] = 0xF1;
-      await expectCleanFailure('adts-garbage.aac', b);
-    },
-    skip:
-        'bug L5: on the web loadMem accepts bytes it cannot decode (lib/src/soloud.dart:167: _loadMemWeb falls back to an auto-detecting buffer stream and returns a silent AudioSource; native throws SoLoudCppException)',
-  );
+  test('ADTS sync word followed by garbage fails cleanly', () async {
+    final b = Uint8List(2048);
+    for (var i = 0; i < b.length; i++) {
+      b[i] = (i * 13) & 0xff;
+    }
+    b
+      ..[0] = 0xFF
+      ..[1] = 0xF1;
+    await expectCleanFailure('adts-garbage.aac', b);
+  });
 
   test('AC-3 and E-AC-3 are refused with audioFormatNotSupported', () async {
     for (final name in ['sample-AC3.ac3', 'sample-EAC3.eac3']) {

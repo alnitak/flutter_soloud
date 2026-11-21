@@ -103,7 +103,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | J12 | startMixerOutputStream(bufferSizeBytes<0) aborts with length_error | bindings.cpp:864 -> mixer_output.cpp:498 | invalid_arguments_test |
 | J14 | 3D min=max distance=0 with inverse attenuation -> 0/0 NaN | soloud_core_3d.cpp:165 | invalid_arguments_test |
 | J15 | negative setPullBufferStream bufferSizeBytes / setRealtimeStream sampleRate -> huge alloc (WASM abort) | pull_buffer_stream.cpp:489, realtime_stream.cpp:351 | invalid_arguments_test (web) |
-| J16 | Web loadMem of non-audio bytes returns a source (= L5) | soloud.dart:166-215 | async_multi_load_test |
 | J17 | Web PCM pull stream onAudioDuration lost (callback registered after WASM call) | bindings_player_web.dart:904-985, pull_buffer_stream.cpp:581 | pull_buffer_stream_dart_test |
 | J18 | Web addPullBufferDataStream always noError | bindings_player_web.dart:999-1031 | pull_buffer_stream_dart_test |
 
@@ -114,7 +113,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | L1 | Android full decode keeps AAC end padding for edit-list M4As (trims to extractor duration, ignores edit list) | os_decoder_android.cpp:472-481 | android/native_stream_decoder_android_test (API 34 emulator) |
 | L3 | Android streaming of AC-3 in MP4 wrong on device with AC-3 decoder: reads 93055/96000 frames, PCM after seek mismatches | native_stream_decoder_android.cpp read()/seek() (root cause unknown) | android/native_stream_decoder_android_test (S22) |
 | L4 | Long metadata strings cut mid UTF-8 char (strncpy 1023) | audiobuffer.cpp:994, pull_buffer_stream.cpp:1680 | common/web_realtime_stream_test |
-| L5 | Web loadMem/loadUrl accept undecodable bytes (silent source); native throws | lib/src/soloud.dart:167 (_loadMemWeb) | common/web_loader_test, web_decoders_test |
 
 ## Linux and FFmpeg
 

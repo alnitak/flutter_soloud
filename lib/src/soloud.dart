@@ -213,6 +213,19 @@ Future<({PlayerErrors error, SoundHash soundHash})> _loadMemWeb({
     return (error: endError, soundHash: const SoundHash.invalid());
   }
 
+  // Ending the data decodes everything still buffered, so a stream that
+  // holds no audio now never will: the bytes are empty or not a format the
+  // stream decoders understand. Fail like the native loaders do instead of
+  // returning a silent source.
+  final size = SoLoudController().soLoudFFI.getBufferSize(ret.soundHash);
+  if (size.error != PlayerErrors.noError || size.sizeInBytes == 0) {
+    SoLoudController().soLoudFFI.disposeSound(ret.soundHash);
+    return (
+      error: PlayerErrors.fileLoadFailed,
+      soundHash: const SoundHash.invalid(),
+    );
+  }
+
   return ret;
 }
 

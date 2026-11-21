@@ -74,23 +74,13 @@ void main() {
     await expectCleanFailure('/cut.wav', isA<http.ClientException>());
   });
 
-  test(
-    'an empty body throws a SoLoud exception',
-    () async {
-      await expectCleanFailure('/empty.wav', isA<SoLoudException>());
-    },
-    skip:
-        'bug L5: on the web loadMem accepts bytes it cannot decode (lib/src/soloud.dart:167: _loadMemWeb falls back to an auto-detecting buffer stream and returns a silent AudioSource; native throws SoLoudCppException)',
-  );
+  test('an empty body throws a SoLoud exception', () async {
+    await expectCleanFailure('/empty.wav', isA<SoLoudException>());
+  });
 
-  test(
-    'bytes that are no audio throw a SoLoud exception',
-    () async {
-      await expectCleanFailure('/garbage.wav', isA<SoLoudException>());
-    },
-    skip:
-        'bug L5: on the web loadMem accepts bytes it cannot decode (lib/src/soloud.dart:167: _loadMemWeb falls back to an auto-detecting buffer stream and returns a silent AudioSource; native throws SoLoudCppException)',
-  );
+  test('bytes that are no audio throw a SoLoud exception', () async {
+    await expectCleanFailure('/garbage.wav', isA<SoLoudException>());
+  });
 
   test('an invalid URL throws FormatException', () async {
     await expectLater(soloud.loadUrl('http://[::1'), throwsFormatException);

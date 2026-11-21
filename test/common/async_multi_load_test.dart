@@ -96,27 +96,19 @@ void main() {
     }
   });
 
-  test(
-    'parallel loads mixed with a failing one',
-    () async {
-      final results = await Future.wait([
-        soloud.loadMem('ok_1.wav', wavBytes()),
-        soloud
-            .loadMem('broken.wav', Uint8List.fromList(List.filled(256, 7)))
-            .then<Object>((s) => s, onError: (Object e) => e),
-        soloud.loadMem('ok_2.wav', wavBytes()),
-      ]);
-      expect(results[0], isA<AudioSource>());
-      expect(results[1], isA<SoLoudException>());
-      expect(results[2], isA<AudioSource>());
-      expect(soloud.activeSounds, hasLength(2));
-    },
-    skip: kIsWeb
-        ? 'bug J16: on the web loadMem feeds the bytes to an auto-detecting '
-              'buffer stream and returns a source even when they are not '
-              'audio (lib/src/soloud.dart:166-215)'
-        : null,
-  );
+  test('parallel loads mixed with a failing one', () async {
+    final results = await Future.wait([
+      soloud.loadMem('ok_1.wav', wavBytes()),
+      soloud
+          .loadMem('broken.wav', Uint8List.fromList(List.filled(256, 7)))
+          .then<Object>((s) => s, onError: (Object e) => e),
+      soloud.loadMem('ok_2.wav', wavBytes()),
+    ]);
+    expect(results[0], isA<AudioSource>());
+    expect(results[1], isA<SoLoudException>());
+    expect(results[2], isA<AudioSource>());
+    expect(soloud.activeSounds, hasLength(2));
+  });
 
   /// Starts six loads, deinitializes the engine while they run and returns
   /// what each load completed with.
