@@ -4328,12 +4328,29 @@ interface class SoLoud {
     }
   }
 
+  /// Throws for [error] from a per-voice fade, oscillation or schedule,
+  /// except [PlayerErrors.soundHandleNotFound]: the voice may end at any
+  /// moment, so these calls ignore a handle that is no longer playing, like
+  /// [setVolume] does.
+  void _checkVoiceCommand(String name, PlayerErrors error) {
+    if (error == PlayerErrors.noError) return;
+    if (error == PlayerErrors.soundHandleNotFound) {
+      _log.fine(() => '$name(): the voice is no longer playing');
+      return;
+    }
+    _log.severe(() => '$name(): $error');
+    throw SoLoudCppException.fromPlayerError(error);
+  }
+
   /// Smoothly changes a single sound instance's volume
   /// to the value of [to] over the specified [time].
   ///
   /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Does nothing if [handle] is not a playing voice (for example a voice
+  /// that has just ended).
   ///
   /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadeVolume(SoundHandle handle, double to, Duration time) {
@@ -4342,10 +4359,7 @@ interface class SoLoud {
     }
     checkFinite(to, 'to');
     final error = _controller.soLoudFFI.fadeVolume(handle, to, time);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'fadeVolume(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    _checkVoiceCommand('fadeVolume', error);
   }
 
   /// Smoothly changes a currently playing sound's pan setting
@@ -4355,6 +4369,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Does nothing if [handle] is not a playing voice (for example a voice
+  /// that has just ended).
+  ///
   /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadePan(SoundHandle handle, double to, Duration time) {
     if (!isInitialized) {
@@ -4362,10 +4379,7 @@ interface class SoLoud {
     }
     checkFinite(to, 'to');
     final error = _controller.soLoudFFI.fadePan(handle, to, time);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'fadePan(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    _checkVoiceCommand('fadePan', error);
   }
 
   /// Smoothly changes a currently playing sound's relative play speed
@@ -4375,6 +4389,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Does nothing if [handle] is not a playing voice (for example a voice
+  /// that has just ended).
+  ///
   /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadeRelativePlaySpeed(SoundHandle handle, double to, Duration time) {
     if (!isInitialized) {
@@ -4382,10 +4399,7 @@ interface class SoLoud {
     }
     checkFinite(to, 'to');
     final error = _controller.soLoudFFI.fadeRelativePlaySpeed(handle, to, time);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'fadeRelativePlaySpeed(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    _checkVoiceCommand('fadeRelativePlaySpeed', error);
   }
 
   /// Waits the specified [time], then pauses the currently playing sound.
@@ -4393,15 +4407,15 @@ interface class SoLoud {
   /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Does nothing if [handle] is not a playing voice (for example a voice
+  /// that has just ended).
   void schedulePause(SoundHandle handle, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
     final error = _controller.soLoudFFI.schedulePause(handle, time);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'schedulePause(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    _checkVoiceCommand('schedulePause', error);
   }
 
   /// Waits the specified [time], then stops the currently playing sound.
@@ -4409,15 +4423,15 @@ interface class SoLoud {
   /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Does nothing if [handle] is not a playing voice (for example a voice
+  /// that has just ended).
   void scheduleStop(SoundHandle handle, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
     final error = _controller.soLoudFFI.scheduleStop(handle, time);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'scheduleStop(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    _checkVoiceCommand('scheduleStop', error);
   }
 
   /// Sets fader to oscillate the volume at specified frequency.
@@ -4432,6 +4446,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Does nothing if [handle] is not a playing voice (for example a voice
+  /// that has just ended).
+  ///
   /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillateVolume(
     SoundHandle handle,
@@ -4445,10 +4462,7 @@ interface class SoLoud {
     checkFinite(from, 'from');
     checkFinite(to, 'to');
     final error = _controller.soLoudFFI.oscillateVolume(handle, from, to, time);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'oscillateVolume(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    _checkVoiceCommand('oscillateVolume', error);
   }
 
   /// Sets oscillation of the pan at specified frequency.
@@ -4463,6 +4477,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Does nothing if [handle] is not a playing voice (for example a voice
+  /// that has just ended).
+  ///
   /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillatePan(SoundHandle handle, double from, double to, Duration time) {
     if (!isInitialized) {
@@ -4471,10 +4488,7 @@ interface class SoLoud {
     checkFinite(from, 'from');
     checkFinite(to, 'to');
     final error = _controller.soLoudFFI.oscillatePan(handle, from, to, time);
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'oscillatePan(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    _checkVoiceCommand('oscillatePan', error);
   }
 
   /// Sets oscillation of the play speed at specified frequency.
@@ -4488,6 +4502,9 @@ interface class SoLoud {
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Does nothing if [handle] is not a playing voice (for example a voice
+  /// that has just ended).
   ///
   /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillateRelativePlaySpeed(
@@ -4507,10 +4524,7 @@ interface class SoLoud {
       to,
       time,
     );
-    if (error != PlayerErrors.noError) {
-      _log.severe(() => 'oscillateRelativePlaySpeed(): $error');
-      throw SoLoudCppException.fromPlayerError(error);
-    }
+    _checkVoiceCommand('oscillateRelativePlaySpeed', error);
   }
 
   /// Set fader to oscillate the global volume at specified frequency.
