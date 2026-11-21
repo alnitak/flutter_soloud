@@ -58,8 +58,7 @@ namespace {
 using Bytes = std::vector<unsigned char>;
 std::string gAssets = "example/assets/audio";
 
-// The child exits with this when a scenario found the engine wedged and
-// already reported it as a known bug.
+// The child exits with this when a scenario hit a known bug that ends it.
 constexpr int kChildKnownBugExit = 3;
 
 Bytes readFile(const std::string &path) {
@@ -117,11 +116,10 @@ bool finishesWithin(std::function<void()> fn, int ms) {
   return true;
 }
 
-[[noreturn]] void wedged(const char *id, const char *what, long n) {
-  KNOWN_BUG(id, false, "%s: engine deadlocked after allocation #%ld failed",
-            what, n);
+[[noreturn]] void wedged(const char *what, long n) {
+  CHECK(false, "%s: engine deadlocked after allocation #%ld failed", what, n);
   std::fflush(stdout);
-  _exit(robustness::gStrict ? 1 : kChildKnownBugExit);
+  _exit(1);
 }
 
 // Next countdown value: every N up to 400, then sparser.
@@ -256,7 +254,7 @@ void scenarioWavStream() {
         injected = oom::disarm();
         if (t) ++threw;
         if (!finishesWithin([&] { engine.mix(out.data(), 512); }, 5000))
-          wedged("B20", label, n);
+          wedged(label, n);
         if (!t && r == SoLoud::SO_NO_ERROR && h != 0 &&
             !engine.isValidVoiceHandle(h))
           ++bad;
@@ -274,10 +272,7 @@ void scenarioWavStream() {
     std::printf("  %s: %ld allocation points, %d threw\n", label, n, threw);
     CHECK(n < kMaxN, "%s: never completed", label);
     CHECK(bad == 0, "%s: %d plays returned a dead handle", label, bad);
-    // WavStream::loadMem() leaks its MemoryFile when copying the data or
-    // parsing throws, and WavStreamInstance's constructor leaks the voice's
-    // MemoryFile when allocating the decoder throws.
-    KNOWN_BUG("B25", leaks == 0, "%s: %d failures leaked", label, leaks);
+    CHECK(leaks == 0, "%s: %d failures leaked", label, leaks);
   }
   engine.deinit();
 }
@@ -324,7 +319,7 @@ void scenarioPlay(const char *label, bool withFilter, int mode) {
     oom::clearTracked();
     unsigned before = 0;
     if (!finishesWithin([&] { before = engine.getActiveVoiceCount(); }, 5000))
-      wedged("B20", label, n);
+      wedged(label, n);
     SoLoud::handle h = 0;
     bool t = false;
     oom::arm(n);
@@ -342,7 +337,7 @@ void scenarioPlay(const char *label, bool withFilter, int mode) {
               after = engine.getActiveVoiceCount();
             },
             5000))
-      wedged("B20", label, n);
+      wedged(label, n);
     if (t || h == 0) {
       // Nothing was created, so nothing new plays.
       if (after > before) ++ghost;
@@ -491,7 +486,7 @@ void exportCountdown(const char *label, const char *bugId,
     }
     bool alive = false;
     if (!finishesWithin([&] { alive = engineAlive(); }, 5000))
-      wedged("B20", label, n);
+      wedged(label, n);
     if (!alive) ++broken;
     cleanup(r.threw ? unknownError : r.error);
     // Voices are deleted by the audio thread.
@@ -567,8 +562,7 @@ void scenarioBindings() {
             return loadMem(name, copy.data(), static_cast<int>(copy.size()),
                            intoMem, &hash);
           },
-          // Stream mode: WavStream::loadMem() leaks its MemoryFile (B25).
-          disposeLoaded, alive, intoMem ? nullptr : "B25");
+          disposeLoaded, alive);
     }
   }
 

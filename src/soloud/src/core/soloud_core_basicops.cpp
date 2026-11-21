@@ -47,9 +47,38 @@ namespace SoLoud
 		{
 			return -1;
 		}
+		// ###### flutter_soloud local patch (filter instance allocation) ######
+		// Create the filter instances before anything is changed: this runs
+		// with the audio mutex held, and a createInstance() that throws
+		// (std::bad_alloc) must neither leave the mutex locked in the caller
+		// nor a half-initialized voice behind. The failure is reported like
+		// "no free voice" (the caller deletes aInstance).
+		FilterInstance *filters[FILTERS_PER_STREAM] = {};
+		try
+		{
+			for (int i = 0; i < FILTERS_PER_STREAM; i++)
+			{
+				if (aSound.mFilter[i])
+				{
+					filters[i] = aSound.mFilter[i]->createInstance();
+				}
+			}
+		}
+		catch (...)
+		{
+			for (int i = 0; i < FILTERS_PER_STREAM; i++)
+			{
+				delete filters[i];
+			}
+			return -1;
+		}
 		int ch = findFreeVoice_internal();
 		if (ch < 0)
 		{
+			for (int i = 0; i < FILTERS_PER_STREAM; i++)
+			{
+				delete filters[i];
+			}
 			return -1;
 		}
 		if (!aSound.mAudioSourceID)
@@ -97,9 +126,9 @@ namespace SoLoud
 
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
-			if (aSound.mFilter[i])
+			if (filters[i])
 			{
-				mVoice[ch]->mFilter[i] = aSound.mFilter[i]->createInstance();
+				mVoice[ch]->mFilter[i] = filters[i];
 			}
 		}
 

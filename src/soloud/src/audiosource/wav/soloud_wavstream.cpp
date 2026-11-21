@@ -155,6 +155,43 @@ namespace SoLoud
 			return;
 		}
 		
+		// ###### flutter_soloud local patch (allocation failure) ######
+		// The destructor does not run when the constructor throws
+		// (std::bad_alloc while creating the decoder): release what was
+		// made here, then rethrow.
+		try
+		{
+			openCodec_internal();
+		}
+		catch (...)
+		{
+			switch (mParent->mFiletype)
+			{
+#if !defined(NO_XIPH_LIBS)
+			case WAVSTREAM_OGG:
+				delete mCodec.mOgg;
+				break;
+#endif
+			case WAVSTREAM_FLAC:
+				if (mCodec.mFlac)
+					drflac_close(mCodec.mFlac);
+				break;
+			case WAVSTREAM_MP3:
+				// Only reached when `new drmp3` threw: nothing to uninit.
+				break;
+			case WAVSTREAM_WAV:
+				break;
+			}
+			mCodec.mOgg = 0;
+			if (mFile != mParent->mStreamFile)
+				delete mFile;
+			mFile = 0;
+			throw;
+		}
+	}
+
+	void WavStreamInstance::openCodec_internal()
+	{
 		if (mFile)
 		{
 			if (mParent->mFiletype == WAVSTREAM_WAV)
@@ -689,14 +726,21 @@ namespace SoLoud
 		}
 
 		MemoryFile *mf = new MemoryFile();
-		int res = mf->openMem(aData, aDataLen, aCopy, aTakeOwnership);
-		if (res != SO_NO_ERROR)
+		int res;
+		// ###### flutter_soloud local patch (allocation failure) ######
+		// Copying the data or parsing may throw std::bad_alloc: do not leak
+		// the MemoryFile.
+		try
+		{
+			res = mf->openMem(aData, aDataLen, aCopy, aTakeOwnership);
+			if (res == SO_NO_ERROR)
+				res = parse(mf);
+		}
+		catch (...)
 		{
 			delete mf;
-			return res;
+			throw;
 		}
-
-		res = parse(mf);
 
 		if (res != SO_NO_ERROR)
 		{
@@ -751,14 +795,19 @@ namespace SoLoud
 		mSampleCount = 0;
 
 		MemoryFile *mf = new MemoryFile();
-		int res = mf->openFileToMem(aFile);
-		if (res != SO_NO_ERROR)
+		int res;
+		// ###### flutter_soloud local patch (allocation failure) ######
+		try
+		{
+			res = mf->openFileToMem(aFile);
+			if (res == SO_NO_ERROR)
+				res = parse(mf);
+		}
+		catch (...)
 		{
 			delete mf;
-			return res;
+			throw;
 		}
-
-		res = parse(mf);
 
 		if (res != SO_NO_ERROR)
 		{

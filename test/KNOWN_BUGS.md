@@ -43,11 +43,9 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | B17 | createBus() succeeds before init / after dispose | bindings.cpp:5051 | bindings_null_args_test |
 | B18 | startMixerCapture negative bufferSizeBytes -> uncaught bad_alloc | bindings.cpp:971 | bindings_null_args_test |
 | B19 | set3dSource* with made-up handle reads m3dData OOB before validating | soloud_internal.h:153-154 via bindings.cpp:4941 | bindings_null_args_test (UBSan) |
-| B20 | filter-instance alloc failure in play() leaves audio mutex locked -> deadlock | soloud_core_basicops.cpp:102 (mutex :123) | out_of_memory_test voices_filter |
 | B21 | bad_alloc escapes loadMem/loadWaveform exports -> abort via FFI | bindings.cpp:2516,2794; player.cpp:900 | out_of_memory_test bindings |
 | B22 | same for play/play3d/createBus/busPlayOnEngine | bindings.cpp:2990,5051,5083 | out_of_memory_test |
 | B23 | same for setBufferStream/addAudioDataStream | bindings.cpp:2586,2751 | out_of_memory_test |
-| B25 | WavStream::loadMem / WavStreamInstance ctor leak MemoryFile on alloc failure | soloud_wavstream.cpp:691-699,131,162,202 | out_of_memory_test wavstream |
 | B26 | Player::loadWaveform leaves half-built entry on alloc failure | player.cpp:1739-1747 | out_of_memory_test bindings |
 
 ## Native DSP and engine
