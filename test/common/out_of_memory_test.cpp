@@ -128,15 +128,6 @@ bool finishesWithin(std::function<void()> fn, int ms) {
 long nextN(long n) { return n < 400 ? n + 1 : n + n / 40; }
 constexpr long kMaxN = 200000;
 
-// Formats whose decoder state is known to leak when the sample buffer cannot
-// be allocated (see the bug list in the report).
-const char *heapProbeId(const char *label) {
-  // Wav::loadflac: drflac_open_memory() mallocs the decoder, then
-  // `new float[]` throws and drflac_close() is never reached.
-  if (std::strncmp(label, "flac", 4) == 0) return "B24";
-  return nullptr;
-}
-
 // ---------------------------------------------------------------------------
 // SoLoud::Wav::loadMem for every container the in-memory loader handles.
 void scenarioWavLoad(const char *label, const Bytes &data) {
@@ -208,14 +199,8 @@ void scenarioWavLoad(const char *label, const Bytes &data) {
   CHECK(unusable == 0, "%s: %d failed loads left the Wav unusable", label,
         unusable);
   CHECK(leaks == 0, "%s: %d failed loads leaked", label, leaks);
-  if (heapProbeId(label) != nullptr)
-    KNOWN_BUG(heapProbeId(label), cLeaks == 0,
-              "%s: %d failed loads leaked %lld bytes of malloc'd decoder "
-              "state each",
-              label, cLeaks, cLeakBytes);
-  else
-    CHECK(cLeaks == 0, "%s: %d failed loads leaked %lld malloc'd bytes",
-          label, cLeaks, cLeakBytes);
+  CHECK(cLeaks == 0, "%s: %d failed loads leaked %lld malloc'd bytes", label,
+        cLeaks, cLeakBytes);
 }
 
 void scenarioWav() {

@@ -376,15 +376,12 @@ static void testFlac() {
     const SoLoud::result r = w.loadMem(
         fx.bytes.data(), static_cast<unsigned int>(fx.bytes.size()), true,
         false);
-    // Bug A26: Wav::loadflac() sizes its buffer from STREAMINFO's total
-    // sample count and refuses a file where it is 0, which the FLAC format
-    // defines as "unknown" (written by encoders that stream and cannot seek
-    // back). Such a file does not load at all (the MP3 and OS fallbacks
-    // reject it too); loadogg() decodes an unknown length to the end.
-    KNOWN_BUG(r == SoLoud::SO_NO_ERROR && w.mSampleCount == 20000,
-              "A26 (soloud_wav.cpp Wav::loadflac): a valid FLAC of 20000 "
-              "frames with total samples 0 gives result %d, %u frames",
-              (int)r, w.mSampleCount);
+    // A total sample count of 0 in STREAMINFO means "unknown" (written by
+    // encoders that stream and cannot seek back): decoded to the end, as
+    // loadogg() does.
+    CHECK(r == SoLoud::SO_NO_ERROR && w.mSampleCount == 20000,
+          "a valid FLAC of 20000 frames with total samples 0 gives result "
+          "%d, %u frames", (int)r, w.mSampleCount);
     if (r == SoLoud::SO_NO_ERROR && w.mSampleCount == 20000)
       CHECK(maxError(w, fx.expected, 2, 20000) <= 1e-6,
             "unknown-length FLAC: the samples are the source's");
@@ -417,7 +414,7 @@ static void testTruncated(const std::string &assets) {
       CHECK(maxError(w, fx.expected, 2, 4000) <= 1e-6,
             "truncated WAV: the 4000 frames present are the source's");
       // dr_wav bounds the frame count by the bytes present, so the voice
-      // ends at the data (see A27 for FLAC, where it does not).
+      // ends at the data.
       const size_t played = playFrames(w, 1000000);
       CHECK(played == 4000, "a WAV holding 4000 of the 10000 frames its "
                             "header promises plays %zu frames", played);
@@ -438,16 +435,12 @@ static void testTruncated(const std::string &assets) {
         CHECK(good > fx.frames / 3,
               "truncated FLAC: %zu leading frames match the source", good);
         const size_t played = playFrames(w, 1000000);
-        // Bug A27: loadflac() zero-fills the frames dr_flac could not read
-        // but keeps mActualSampleCount at STREAMINFO's count, so a voice of
-        // a truncated file plays silence to the promised length. loadmp3()
-        // and loadogg() set it to the frames actually decoded, and loadwav()
-        // gets a count bounded by the data from dr_wav. One FLAC block (4096
-        // frames) may be lost at the cut.
-        KNOWN_BUG(played <= good + 4096,
-                  "A27 (soloud_wav.cpp Wav::loadflac): a FLAC cut at 60%% "
-                  "decodes %zu frames but plays %zu of the %zu promised",
-                  good, played, fx.frames);
+        // A voice ends at the frames actually decoded, not at STREAMINFO's
+        // count (as loadmp3() and loadogg()). One FLAC block (4096 frames)
+        // may be lost at the cut.
+        CHECK(played <= good + 4096,
+              "a FLAC cut at 60%% decodes %zu frames but plays %zu of the %zu "
+              "promised", good, played, fx.frames);
       } else {
         CHECK(r == SoLoud::FILE_LOAD_FAILED, "truncated FLAC: result %d",
               (int)r);
@@ -663,14 +656,10 @@ static void testInstanceAndReload(const std::string &dir) {
   CHECK(r == SoLoud::FILE_LOAD_FAILED, "the reload fails: %d", (int)r);
   CHECK(w.mData == nullptr && w.mSampleCount == 0 && w.getLength() == 0,
         "after a failed reload the sound is empty");
-  // Bug A28: testAndLoadFile() clears mData and mSampleCount but not
-  // mActualSampleCount, so a voice of the failed sound reads nothing (no
-  // data) yet never ends (its offset stays below the old count). The
-  // Player loads every file into a new Wav, so this needs a reused Wav.
-  KNOWN_BUG(w.mActualSampleCount == 0 && playFrames(w, 100000) == 0,
-            "A28 (soloud_wav.cpp Wav::testAndLoadFile): after a failed reload "
-            "mActualSampleCount is %u and a voice never ends",
-            w.mActualSampleCount);
+  // A voice of the failed sound reads nothing and ends at once.
+  CHECK(w.mActualSampleCount == 0 && playFrames(w, 100000) == 0,
+        "after a failed reload mActualSampleCount is %u and a voice never "
+        "ends", w.mActualSampleCount);
 }
 
 int main(int argc, char **argv) {

@@ -26,9 +26,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| A26 | Wav rejects FLAC with total-samples 0 (spec: unknown) | soloud_wav.cpp:372 | soloud_wav_load testFlac |
-| A27 | Truncated FLAC zero-padded to header length | soloud_wav.cpp:382 | testTruncated |
-| A28 | After failed Wav reload a voice never ends (sample count not reset) | soloud_wav.cpp:462-466 | testInstanceAndReload |
 
 ## Native concurrency, bindings and out-of-memory
 
@@ -50,7 +47,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | B21 | bad_alloc escapes loadMem/loadWaveform exports -> abort via FFI | bindings.cpp:2516,2794; player.cpp:900 | out_of_memory_test bindings |
 | B22 | same for play/play3d/createBus/busPlayOnEngine | bindings.cpp:2990,5051,5083 | out_of_memory_test |
 | B23 | same for setBufferStream/addAudioDataStream | bindings.cpp:2586,2751 | out_of_memory_test |
-| B24 | Wav::loadflac leaks dr_flac decoder when sample alloc fails | soloud_wav.cpp:363-379 | out_of_memory_test wav |
 | B25 | WavStream::loadMem / WavStreamInstance ctor leak MemoryFile on alloc failure | soloud_wavstream.cpp:691-699,131,162,202 | out_of_memory_test wavstream |
 | B26 | Player::loadWaveform leaves half-built entry on alloc failure | player.cpp:1739-1747 | out_of_memory_test bindings |
 
