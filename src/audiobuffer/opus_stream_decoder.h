@@ -11,14 +11,17 @@
 #ifdef __EMSCRIPTEN__
 // For Web include dirs downloaded from git for build
 #include "../../xiph/opus/include/opus.h"
+#include "../../xiph/opus/include/opus_multistream.h"
 #include "../../xiph/ogg/include/ogg/ogg.h"
 #else
 #include <fstream>
 #include <deque>
 #if __has_include(<opus/opus.h>)
 #include <opus/opus.h>
+#include <opus/opus_multistream.h>
 #else
 #include <opus.h>
+#include <opus_multistream.h>
 #endif
 #include <ogg/ogg.h>
 #endif
@@ -26,7 +29,9 @@
 /// Wrapper class for Opus stream decoder
 ///
 /// The supported sampleRate for Opus format are 8, 12, 16, 24 amd 48 KHz.
-/// The channels is the number of channels in the audio data. Only 1 or 2 allowed.
+/// The output has the stream's channels, at most 2: streams with 3 to 8
+/// channels (mapping family 1, Vorbis channel order) are downmixed to stereo
+/// with the matrices of RFC 7845 section 5.1.1.5.
 class OpusDecoderWrapper : public IDecoderWrapper
 {
 public:
@@ -52,9 +57,20 @@ private:
     void getMetadata(ogg_packet* packet);
     OpusInfo parseOpusHead(ogg_packet *packet);
     void decodePacket(ogg_packet *packet, std::vector<float> &out);
-    bool ensureDecoder(int newSampleRate, int newChannels);
+    int decodeNextPacket(std::vector<float> &out);
+    bool ensureDecoder(int newSampleRate, const OpusInfo &head);
+    ogg_int64_t timelineGranule(ogg_int64_t granule) const;
+    void resyncAfterSeek(const ogg_page &page);
 
-    OpusDecoder *decoder;
+    OpusMSDecoder *decoder;
+    /// Layout the decoder was created for.
+    int decoderStreams = 0;
+    int decoderCoupled = 0;
+    std::vector<unsigned char> decoderMapping;
+    /// Mapping family 1: 3-8 channels in Vorbis order, downmixed to stereo.
+    bool downmixFamily1 = false;
+    /// Channels in the stream (decodingChannels is the output, at most 2).
+    int sourceChannels;
     int engineSamplerate;
     int engineChannels;
     int decodingSamplerate;
@@ -81,7 +97,20 @@ private:
 
     OggSeekIndex mSeekIndex;
 
-    /// Scratch buffer for opus_decode_float, reused across packets to avoid
+    /// Chained streams: the seek index maps a time from the start of the
+    /// file (48 kHz units) to a byte offset. Start of the current link on
+    /// that timeline, its pre-skip and the last granule seen in it.
+    int64_t mLinkStart = 0;
+    int mLinkPreSkip = 0;
+    int64_t mLinkLastGranule = 0;
+
+    /// After prepareForSeek(): the first page with a granule tells where
+    /// decoding resumes, and the samples before [mSeekTarget] (output rate,
+    /// from the start of the file) are dropped.
+    bool mSeekResync = false;
+    int64_t mSeekTarget = 0;
+
+    /// Scratch buffer for opus_multistream_decode_float, reused across packets to avoid
     /// allocating per packet.
     std::vector<float> mOutputScratch;
 };

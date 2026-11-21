@@ -24,7 +24,7 @@
 //   chained      two links with different serials: the index holds the raw
 //                per-link granules. Through OpusDecoderWrapper, a time in the
 //                second link must map to a byte offset in the second link at
-//                that link's local time (KNOWN BUG A2)
+//                that link's local time
 //   decoder      a single-link Opus file decoded by OpusDecoderWrapper:
 //                timeToByteOffset() lands at or before the page that holds
 //                the target, and canSeekToTime() is false past the end
@@ -386,20 +386,19 @@ static void testDecoderChained() {
     CHECK(holder >= 0 && off <= static_cast<uint64_t>(holder), "t=0.5: offset %llu, holder %ld",
           (unsigned long long)off, holder);
   }
-  // 1.5 s from the start is 0.5 s into the second link. Bug A2: the index
-  // stores each link's own granules (ogg_seek_index.h:37-40) and the wrapper
-  // looks up the absolute granule (opus_stream_decoder.cpp:569-573), so it
-  // finds the second link's page at granule 72000, i.e. 1.5 s into that
-  // link (2.5 s from the start).
+  // 1.5 s from the start is 0.5 s into the second link. The index stores
+  // each link's own granules; the wrapper must index the time from the
+  // start of the file, or it finds the second link's page at granule 72000,
+  // i.e. 1.5 s into that link (2.5 s from the start).
   const double t = 1.5;
   const uint64_t off = w.timeToByteOffset(t);
   const bool seekable = w.canSeekToTime(t);
   const long local = pageHolding(b.file, static_cast<int64_t>(0.5 * 48000) + b.preSkip);
   const uint64_t lo = a.file.size();
   const uint64_t hi = a.file.size() + static_cast<uint64_t>(local);
-  KNOWN_BUG("A2", !seekable || (off >= lo && off <= hi),
-            "t=1.5 s maps to byte %llu; the page holding it is at %llu (link 2 starts at %llu)",
-            (unsigned long long)off, (unsigned long long)hi, (unsigned long long)lo);
+  CHECK(seekable && off >= lo && off <= hi,
+        "t=1.5 s maps to byte %llu; the page holding it is at %llu (link 2 starts at %llu)",
+        (unsigned long long)off, (unsigned long long)hi, (unsigned long long)lo);
 }
 
 int main(int argc, char **argv) {

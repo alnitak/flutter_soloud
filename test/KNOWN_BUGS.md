@@ -26,11 +26,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| A2 | Chained Ogg: seek index stores per-link granules, decoder looks up absolute granule -> seek past link 1 wrong (Vorbis same code untested) | ogg_seek_index.h:37-40, opus_stream_decoder.cpp:558-573 | ogg_seek_index testDecoderChained |
-| A10 | Opus 3-8 ch decoded by single-stream decoder clamped to 2ch -> garbage | opus_stream_decoder.cpp:82,416,452 | opus testChannels |
-| A11 | Chained Opus links with different channel counts: one decode() mixes both under last link's count | opus_stream_decoder.cpp:270-292,314 | opus testChained |
-| A12 | Opus 5 ms end fade applied to capped mid-stream decode() | opus_stream_decoder.cpp:317-333 | opus testBounded |
-| A13 | Opus position wrong after seek (frames vs interleaved samples; resumes up to a page early) | opus_stream_decoder.cpp:483,527; pull_buffer_stream.cpp:1178 | opus testSeek |
 | A15 | Vorbis trims chained file with last link's EOS granule | vorbis_stream_decoder.cpp:242-247 | vorbis testChained |
 | A16 | Vorbis stereo->mono link change: samples labelled mono then halved | vorbis_stream_decoder.cpp:282-285 | vorbis testChained |
 | A17 | Vorbis misplaced end fade (as A12) | vorbis_stream_decoder.cpp:259-279 | vorbis testBounded |

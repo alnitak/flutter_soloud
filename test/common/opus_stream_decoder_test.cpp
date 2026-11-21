@@ -16,8 +16,9 @@
 //   comments     a 200 KB comment (OpusTags across many pages) reaches the
 //                callback intact, fed 7 bytes at a time
 //   channels     1-8 channels: 1-2 match the reference; 3-8 (mapping family
-//                1, multistream packets) must decode to audible audio of the
-//                right length (the wrapper outputs at most 2 channels)
+//                1, multistream packets) decode to the right length and to
+//                the reference downmixed to stereo with the RFC 7845
+//                matrices (the wrapper outputs at most 2 channels)
 //   chained      two concatenated streams (different serials) decode one
 //                after the other and report their tags twice; streams with
 //                different channel counts are never mixed in one decode()
@@ -27,8 +28,9 @@
 //                the same samples as an unbounded decode
 //   rate24k      a 24 kHz engine decodes at 24 kHz with the exact length
 //   seek         prepareForSeek with the target in interleaved samples (as
-//                PullBufferStream passes it) still decodes to the end of the
-//                file
+//                PullBufferStream passes it) decodes from the target to the
+//                end of the file; a target before the resume page decodes
+//                from that page to the end
 //
 // Needs no audio device and no assets. Needs libopus, libogg (and the other
 // Xiph libraries the stream decoder set links); the script skips without.
@@ -48,6 +50,21 @@ using oggfx::OpusFixture;
 using oggfx::OpusOptions;
 
 static const size_t kFade = 240; // 5 ms at 48 kHz, frames
+
+// RFC 7845 section 5.1.1.5 stereo downmix of 3-8 channels in Vorbis order.
+static const float kDownmix[6][8][2] = {
+    {{0.5858f, 0.0f}, {0.4142f, 0.4142f}, {0.0f, 0.5858f}},
+    {{0.4226f, 0.0f}, {0.0f, 0.4226f}, {0.366f, 0.2114f}, {0.2114f, 0.366f}},
+    {{0.651f, 0.0f}, {0.46f, 0.46f}, {0.0f, 0.651f}, {0.5636f, 0.3254f},
+     {0.3254f, 0.5636f}},
+    {{0.529f, 0.0f}, {0.3741f, 0.3741f}, {0.0f, 0.529f}, {0.4582f, 0.2645f},
+     {0.2645f, 0.4582f}, {0.3741f, 0.3741f}},
+    {{0.4553f, 0.0f}, {0.322f, 0.322f}, {0.0f, 0.4553f}, {0.3943f, 0.2277f},
+     {0.2277f, 0.3943f}, {0.2788f, 0.2788f}, {0.322f, 0.322f}},
+    {{0.3886f, 0.0f}, {0.2748f, 0.2748f}, {0.0f, 0.3886f}, {0.3366f, 0.1943f},
+     {0.1943f, 0.3366f}, {0.3366f, 0.1943f}, {0.1943f, 0.3366f},
+     {0.2748f, 0.2748f}},
+};
 
 static bool makeOpus(const OpusOptions &o, OpusFixture &fx) {
   if (!oggfx::encodeOpus(o, fx)) {
@@ -179,23 +196,26 @@ static void testChannels() {
       CHECK(d < 0, "%d ch: differs from the reference at sample %ld", ch, d);
     } else {
       // Multistream packets (one self-delimited Opus stream per channel
-      // pair) go to opus_decode_float of a single-stream decoder
-      // (opus_stream_decoder.cpp:82, :452): they fail to decode or decode
-      // only part of the first stream.
-      // Channel 0 is the front left in every Vorbis-order layout; compare
-      // it with the reference's.
+      // pair) need the multistream decoder; the output is the stereo
+      // downmix. Compare both channels with the downmixed reference, away
+      // from the end fade.
       const size_t frames = o.pcm.size() / outCh;
       double err = 0, pow = 0;
-      for (size_t i = 0; i < std::min(frames, opt.frames); ++i) {
-        const double d = o.pcm[i * outCh] - ref[0].pcm[i * ch];
-        err += d * d;
-        pow += double(ref[0].pcm[i * ch]) * ref[0].pcm[i * ch];
-      }
+      const size_t n = std::min(frames, opt.frames);
+      for (size_t i = 0; i + kFade < n; ++i)
+        for (int k = 0; k < 2; ++k) {
+          double want = 0;
+          for (int c = 0; c < ch; ++c)
+            want += ref[0].pcm[i * ch + c] * kDownmix[ch - 3][c][k];
+          const double d = o.pcm[i * outCh + k] - want;
+          err += d * d;
+          pow += want * want;
+        }
       const double rel = pow > 0 ? std::sqrt(err / pow) : 1.0;
-      KNOWN_BUG("A10", frames == opt.frames && rel < 0.1,
-                "%d ch: %zu frames (want %zu), front-left error %.3f of the "
-                "reference",
-                ch, frames, opt.frames, rel);
+      CHECK(frames == opt.frames && rel < 1e-4,
+            "%d ch: %zu frames (want %zu), error %.3g of the downmixed "
+            "reference",
+            ch, frames, opt.frames, rel);
     }
   }
 }
@@ -243,10 +263,10 @@ static void testChained() {
   Out o = decodeStream(mixed, mixed.size());
   size_t frames = 0;
   for (auto &c : o.calls) frames += c.second / (size_t)std::max(1, c.first);
-  KNOWN_BUG("A11", frames == a.frames + m.frames,
-            "%zu frames over %zu calls (want %zu + %zu): a call mixes the "
-            "stereo and mono links under one channel count",
-            frames, o.calls.size(), a.frames, m.frames);
+  CHECK(frames == a.frames + m.frames,
+        "%zu frames over %zu calls (want %zu + %zu): a call mixes the "
+        "stereo and mono links under one channel count",
+        frames, o.calls.size(), a.frames, m.frames);
 }
 
 static void testTruncated() {
@@ -285,16 +305,15 @@ static void testBounded() {
         whole.pcm.size());
   CHECK(bounded.pcm.size() == whole.pcm.size(), "bounded: %zu samples, want %zu",
         bounded.pcm.size(), whole.pcm.size());
-  // The 5 ms end fade is applied to the end of the decode() call that read
-  // the EOS page (opus_stream_decoder.cpp:317), even when that call stopped
-  // at maxOutputSamples with packets of the page still queued: the fade
-  // lands mid-stream and the real end is not faded.
+  // The 5 ms end fade must land at the end of the stream, also when the
+  // decode() call that read the EOS page stopped at maxOutputSamples with
+  // packets of the page still queued.
   const long d = firstDiff(bounded.pcm, whole.pcm, 0,
                            std::min(bounded.pcm.size(), whole.pcm.size()));
-  KNOWN_BUG("A12", d < 0,
-            "bounded decode differs from the unbounded one at sample %ld of %zu "
-            "(end fade applied mid-stream)",
-            d, whole.pcm.size());
+  CHECK(d < 0,
+        "bounded decode differs from the unbounded one at sample %ld of %zu "
+        "(end fade applied mid-stream)",
+        d, whole.pcm.size());
 }
 
 static void testRate24k() {
@@ -362,30 +381,43 @@ static void testSeek() {
   if (ref.empty()) { CHECK(false, "no reference"); return; }
   const double t = 1.5;
   uint64_t off = 0;
-  // With the target in frames. The index maps a granule to the start of the
-  // page before the one holding it (OggSeekIndex pairs a page's start byte
-  // with its end granule), so decoding resumes up to a page before the
-  // target, and the wrapper neither drops the samples before the target
-  // (opus_stream_decoder.cpp:511-531 only sets totalOutputSamples) nor
-  // corrects its count: the EOS trim (:483) then cuts the end of the file
-  // by as much as the decode resumed early.
-  Out byFrames = decodeAfterSeek(fx, t, (uint64_t)(t * 48000), &off);
-  CHECK(!byFrames.pcm.empty(), "target in frames: nothing decoded after the seek");
-  KNOWN_BUG("A13", endsLikeReference(byFrames, ref[0].pcm),
-            "target in frames: the output (%zu samples) does not end with the "
-            "file's last samples", byFrames.pcm.size());
-  // Same bug, A13: the position after the seek is wrong.
+  // The index maps a granule to the start of the page before the one
+  // holding it (OggSeekIndex pairs a page's start byte with its end
+  // granule), so decoding resumes up to a page before the target. The
+  // wrapper must count from where it resumes, or the EOS trim cuts the end
+  // of the file.
+  //
+  // A target before the resume page (here half the time, as a target in
+  // frames reads in interleaved samples): the output runs from that page
+  // to the end of the file.
+  Out early = decodeAfterSeek(fx, t, (uint64_t)(t * 48000), &off);
+  CHECK(!early.pcm.empty(), "early target: nothing decoded after the seek");
+  CHECK(endsLikeReference(early, ref[0].pcm),
+        "early target: the output (%zu samples) does not end with the "
+        "file's last samples", early.pcm.size());
   // PullBufferStream passes the target in interleaved samples, seconds *
-  // rate * channels (pull_buffer_stream.cpp:1178), as the WAV wrapper
-  // expects (wav_stream_decoder.cpp:154). The Opus wrapper stores it as a
-  // frame count (opus_stream_decoder.cpp:527), so the EOS trim (:483)
-  // believes twice the frames were played: once the duration is known,
-  // nothing (or less than the rest of the file) comes out after a seek.
+  // rate * channels: the samples before the target are dropped, and the
+  // output is the file from the target to its end.
   Out byInterleaved = decodeAfterSeek(fx, t, (uint64_t)(t * 48000) * 2, &off);
-  KNOWN_BUG("A13", byInterleaved.pcm.size() == byFrames.pcm.size(),
-            "target in interleaved samples: %zu samples after the seek (%zu "
-            "with the target in frames); the end of the file is dropped",
-            byInterleaved.pcm.size(), byFrames.pcm.size());
+  const size_t want = (opt.frames - (size_t)(t * 48000)) * 2;
+  CHECK(byInterleaved.pcm.size() == want,
+        "target in interleaved samples: %zu samples after the seek, want %zu",
+        byInterleaved.pcm.size(), want);
+  CHECK(endsLikeReference(byInterleaved, ref[0].pcm),
+        "target in interleaved samples: the output does not end with the "
+        "file's last samples");
+  // Away from the decoder restart, the output is the reference from the
+  // target.
+  const size_t from = (size_t)(t * 48000) * 2;
+  long d = -1;
+  for (size_t i = 9600; i < std::min(byInterleaved.pcm.size(), want) - kFade * 2;
+       ++i)
+    if (std::fabs(byInterleaved.pcm[i] - ref[0].pcm[from + i]) > 2e-3f) {
+      d = (long)i;
+      break;
+    }
+  CHECK(d < 0, "target in interleaved samples: differs from the reference "
+        "at the target at sample %ld", d);
 }
 
 int main(int argc, char **argv) {
