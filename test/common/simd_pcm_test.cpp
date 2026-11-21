@@ -105,7 +105,9 @@ int32_t refS32(float x) {
   return static_cast<int32_t>(s);
 }
 float refRoundoff(float c, float post) {
-  if (c <= -1.65f)
+  if (std::isnan(c))
+    c = 0.0f;
+  else if (c <= -1.65f)
     c = -0.9862875f;
   else if (c >= 1.65f)
     c = 0.9862875f;
@@ -449,12 +451,12 @@ void testReductionsAndClip() {
         const float pa = S::peakAbsF32(s, n);
         const float pb = R::peakAbsF32(s, n);
         if (hasNaN) {
-          // No reference: but both builds must agree with each other.
-          if (!sameBits(pa, pb)) {
+          // A NaN counts as 0 (refPeak skips it) in both builds.
+          if (!sameBits(pa, pb) || !sameBits(pa, refPeak)) {
             ++nanPeak;
             if (nanPeak < 3)
-              std::printf("    peakAbs with NaN n=%zu: simd=%g scalar=%g\n",
-                          n, pa, pb);
+              std::printf("    peakAbs with NaN n=%zu: simd=%g scalar=%g "
+                          "ref=%g\n", n, pa, pb, refPeak);
           }
         } else if (!sameBits(pa, refPeak) || !sameBits(pb, refPeak)) {
           ++badPeak;
@@ -466,6 +468,7 @@ void testReductionsAndClip() {
           R::clipHardInPlaceF32(hb.data() + off, n, -1.0f, 1.0f, post);
           for (size_t i = 0; i < n; ++i) {
             float x = s[i];
+            if (std::isnan(x)) x = 0.0f;
             if (x < -1.0f) x = -1.0f;
             if (x > 1.0f) x = 1.0f;
             const float want = post == 1.0f ? x : x * post;
@@ -513,20 +516,20 @@ void testReductionsAndClip() {
   CHECK(badPeak == 0, "%d peakAbs results differ", badPeak);
   CHECK(badHard == 0, "%d clipHard samples differ", badHard);
   CHECK(badRound == 0, "%d clipRoundoff samples off", badRound);
-  // A NaN sample must give the same result whether it lands in the SIMD
-  // body or in the scalar tail, and in the SIMD and the scalar build.
-  KNOWN_BUG("B1", nanPeak == 0,
-            "peakAbsF32: %d buffers with a NaN give a different peak in the "
-            "SIMD and the scalar build",
-            nanPeak);
-  KNOWN_BUG("B1", nanHard == 0,
-            "clipHardInPlaceF32: %d NaN samples clipped differently by the "
-            "vector body and the scalar tail",
-            nanHard);
-  KNOWN_BUG("B1", nanRound == 0,
-            "clipRoundoffInPlaceF32: %d NaN samples clipped differently by "
-            "the vector body and the scalar tail",
-            nanRound);
+  // A NaN sample is 0 whether it lands in the SIMD body or in the scalar
+  // tail, and in the SIMD and the scalar build.
+  CHECK(nanPeak == 0,
+        "peakAbsF32: %d buffers with a NaN give a different peak in the SIMD "
+        "and the scalar build, or not the peak of the other samples",
+        nanPeak);
+  CHECK(nanHard == 0,
+        "clipHardInPlaceF32: %d NaN samples not clipped to 0 by the vector "
+        "body and the scalar tail alike",
+        nanHard);
+  CHECK(nanRound == 0,
+        "clipRoundoffInPlaceF32: %d NaN samples not clipped to 0 by the "
+        "vector body and the scalar tail alike",
+        nanRound);
 }
 
 } // namespace

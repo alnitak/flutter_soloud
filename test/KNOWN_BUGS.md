@@ -31,7 +31,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| B1 | NaN handling differs by build/position: clipRoundoff vector vs scalar tail, clipHard scalar only, peakAbs NEON vs scalar | simd_pcm.h:766,713,691; soloud_simd.h:403/418 | simd_pcm_test nanRound/nanHard/nanPeak |
 | B2 | Data race on ActiveSound::handle: applyPauseState/play read without sounds_mutex while audio thread erases | player.cpp:1819,2688,2704-2706 vs 3131 | player_concurrency_test --tsan |
 | B10 | Required pointer args dereferenced without null check (crash) | bindings.cpp many; player.cpp:1711; audiobuffer.cpp:583; pull_buffer_stream.cpp:809 | bindings_null_args_test |
 | B11 | loadMem negative length -> SIGBUS | player.cpp:918,928 | bindings_null_args_test |
