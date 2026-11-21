@@ -1650,9 +1650,9 @@ interface class SoLoud {
 
   /// Captures the master mixer output as a [Stream] of [Uint8List] chunks.
   ///
-  /// [format] the desired output format. PCM formats are supported on all
-  /// platforms. Compressed formats (Opus, Vorbis, FLAC, WAV) are available when
-  /// the plugin is built with Xiph libraries. The default is PCM F32LE and
+  /// [format] the desired output format. PCM and WAV are supported on all
+  /// platforms. The compressed formats (Opus, Vorbis, FLAC) are available when
+  /// the plugin is built with the Xiph libraries. The default is PCM F32LE and
   /// it is the only format that doesn't require sample conversion on the
   /// native side, so it is the most efficient and preferred on mobile. Every
   /// format uses the engine sample rate and channel count.
@@ -1767,10 +1767,10 @@ interface class SoLoud {
   /// supports only mono and stereo.
   ///
   /// [format] Audio data format. Options: `f32le`, `s8`, `s16le`, `s32le`, or
-  /// `auto` (OGG/Opus, OGG/Vorbis, or MP3 formats are automatically detected).
-  /// <br/>**Note:** the `auto` autodetect MP3 and Ogg container with Opus
-  /// or Vorbis. With this format, the samplerate and channels parameters
-  /// are ignored.
+  /// `auto`, which detects MP3, WAV, FLAC, Ogg (Opus, Vorbis or FLAC), AAC
+  /// (ADTS), AC-3 and E-AC-3 from the data. MP4/M4A containers cannot be
+  /// streamed. With `auto` the samplerate and channels parameters are
+  /// ignored.
   ///
   /// [autoDispose] if set to true, this source will be automatically disposed
   /// when all its handles have finished playing. There will be no need to call
@@ -2032,8 +2032,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudXiphLibsNotAvailableException] if the Ogg, Opus and
   /// Vorbis libraries are not linked and trying to add audio data in those
-  /// formats. Probably you need to unset NO_XIPH_LIBS environment
-  /// variable. Ref:
+  /// formats: the plugin was built with `no_xiph_libs: true` in the
+  /// `hooks: user_defines:` of the app's pubspec.yaml. Ref:
   /// https://docs.page/alnitak/flutter_soloud_docs/get_started/no_xiph_libs
   void addAudioDataStream(AudioSource source, Uint8List audioChunk) {
     if (!isInitialized) {
