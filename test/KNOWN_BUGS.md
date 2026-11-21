@@ -103,8 +103,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | J12 | startMixerOutputStream(bufferSizeBytes<0) aborts with length_error | bindings.cpp:864 -> mixer_output.cpp:498 | invalid_arguments_test |
 | J14 | 3D min=max distance=0 with inverse attenuation -> 0/0 NaN | soloud_core_3d.cpp:165 | invalid_arguments_test |
 | J15 | negative setPullBufferStream bufferSizeBytes / setRealtimeStream sampleRate -> huge alloc (WASM abort) | pull_buffer_stream.cpp:489, realtime_stream.cpp:351 | invalid_arguments_test (web) |
-| J17 | Web PCM pull stream onAudioDuration lost (callback registered after WASM call) | bindings_player_web.dart:904-985, pull_buffer_stream.cpp:581 | pull_buffer_stream_dart_test |
-| J18 | Web addPullBufferDataStream always noError | bindings_player_web.dart:999-1031 | pull_buffer_stream_dart_test |
 
 ## Android, iOS, macOS and web
 

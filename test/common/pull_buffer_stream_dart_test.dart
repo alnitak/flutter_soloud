@@ -347,36 +347,26 @@ void main() {
     expect(position, lessThan(const Duration(milliseconds: 700)));
   });
 
-  test(
-    'raw PCM: the duration comes from the size and format',
-    () async {
-      // 1.5 s of mono 16-bit samples at 22050 Hz, without a header.
-      final wav = wavBytes(
-        duration: const Duration(milliseconds: 1500),
-        sampleRate: 22050,
-      );
-      final pcm = wav.sublist(44);
-      final feeder = _PullFeeder(
-        pcm,
-        chunkSize: 8 * 1024,
-        format: BufferType.s16le,
-        sampleRate: 22050,
-        channels: Channels.mono,
-      );
-      expect(await feeder.waitDuration(), closeTo(1.5, 0.01));
-      final handle = soloud.play(feeder.source);
-      final elapsed = await playToEnd(feeder.source, handle);
-      expect(_seconds(elapsed), greaterThan(1));
-      expect(feeder.reachedEnd, isTrue);
-    },
-    skip: kIsWeb
-        ? 'bug J17: on the web the onAudioDuration callback is registered '
-              'only after the WASM call returns, but for PCM formats the '
-              'duration is reported during setPullBufferStream, so it is lost '
-              '(lib/src/bindings/bindings_player_web.dart:904-985, '
-              'src/audiobuffer/pull_buffer_stream.cpp:581)'
-        : null,
-  );
+  test('raw PCM: the duration comes from the size and format', () async {
+    // 1.5 s of mono 16-bit samples at 22050 Hz, without a header.
+    final wav = wavBytes(
+      duration: const Duration(milliseconds: 1500),
+      sampleRate: 22050,
+    );
+    final pcm = wav.sublist(44);
+    final feeder = _PullFeeder(
+      pcm,
+      chunkSize: 8 * 1024,
+      format: BufferType.s16le,
+      sampleRate: 22050,
+      channels: Channels.mono,
+    );
+    expect(await feeder.waitDuration(), closeTo(1.5, 0.01));
+    final handle = soloud.play(feeder.source);
+    final elapsed = await playToEnd(feeder.source, handle);
+    expect(_seconds(elapsed), greaterThan(1));
+    expect(feeder.reachedEnd, isTrue);
+  });
 
   test('audioSizeBytes 0 is rejected', () {
     expect(
@@ -397,19 +387,11 @@ void main() {
     );
   });
 
-  test(
-    'addPullBufferDataStream rejects other sources',
-    () async {
-      final sound = await loadTestSound();
-      expect(
-        () => soloud.addPullBufferDataStream(sound, Uint8List(16)),
-        throwsA(isA<SoLoudException>()),
-      );
-    },
-    skip: kIsWeb
-        ? 'bug J18: on the web addPullBufferDataStream defers the native call '
-              'to a microtask and always returns noError, so it never throws '
-              '(lib/src/bindings/bindings_player_web.dart:999-1031)'
-        : null,
-  );
+  test('addPullBufferDataStream rejects other sources', () async {
+    final sound = await loadTestSound();
+    expect(
+      () => soloud.addPullBufferDataStream(sound, Uint8List(16)),
+      throwsA(isA<SoLoudException>()),
+    );
+  });
 }

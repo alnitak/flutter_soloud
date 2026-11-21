@@ -2241,10 +2241,17 @@ interface class SoLoud {
   ///
   /// Returns [PlayerErrors.noError] if success.
   ///
+  /// On the web, when this is called synchronously from inside
+  /// `onMoreDataIsNeeded`, the data is added right after the callback returns
+  /// and an error is only logged.
+  ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [source] is not
   /// found.
+  ///
+  /// Throws a [SoLoudCppException] if the data could not be added, for
+  /// example when [source] is not a pull buffer stream.
   PlayerErrors addPullBufferDataStream(
     AudioSource source,
     Uint8List audioChunk, {
