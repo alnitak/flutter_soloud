@@ -12,7 +12,7 @@
 # device ALSA can also reach (test/docker sets ALSA's default PCM to pulse);
 # prints SKIPPED without one, and off Linux. No assets.
 #   --asan    AddressSanitizer + UBSan;  --tsan  ThreadSanitizer.
-#   --strict  known src/ bugs (KNOWN BUG M1) fail the run.
+#   --strict  known src/ bugs (KNOWN BUG checks) fail the run.
 # Verification: Linux arm64, Ubuntu 24.04 in test/docker (PulseAudio null
 # sink), also with --asan.
 

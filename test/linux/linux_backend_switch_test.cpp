@@ -16,7 +16,7 @@
 //   2. Switching to a backend that is not available (JACK with no server, or
 //      no libjack):
 //      the call reports an error and the engine keeps playing on the previous
-//      backend (KNOWN BUG M1: it is left with no device at all).
+//      backend.
 //   3. After that failure, switching back to a working backend recovers.
 //   4. Repeated quick switches (stress), then a clean dispose().
 //
@@ -230,11 +230,9 @@ static void testUnavailableBackend(unsigned handle, unsigned previous)
                 getAudioDeviceState());
 
     // The documented contract is "switches the output device"; a switch that
-    // cannot happen should leave the previous, working device in place.
-    // miniaudio_changeLinuxBackend_impl() uninitializes the device and the
-    // context first and returns on ma_context_init() failure without
-    // restoring either, so the engine is left silent.
-    KNOWN_BUG("M1", engineClockRuns(0.1, 1500),
+    // cannot happen must leave the previous, working device in place
+    // (miniaudio_changeLinuxBackend_impl() reopens the previous backend).
+    CHECK(engineClockRuns(0.1, 1500),
               "engine still playing on %s after the failed JACK switch "
               "(device state %d)",
               backendName(previous), getAudioDeviceState());

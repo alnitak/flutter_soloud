@@ -14,7 +14,7 @@
 # (Ubuntu: pulseaudio; on PipeWire desktops it may be missing, then the test
 # prints SKIPPED). No audio hardware, no assets.
 #   --asan    AddressSanitizer + UBSan;  --tsan  ThreadSanitizer.
-#   --strict  known src/ bugs (KNOWN BUG M...) fail the run.
+#   --strict  known src/ bugs (KNOWN BUG checks) fail the run.
 # Verification: Linux arm64, Ubuntu 24.04 in test/docker.
 
 set -e

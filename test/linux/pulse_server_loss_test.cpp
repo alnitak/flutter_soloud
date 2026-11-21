@@ -12,13 +12,12 @@
 //      startAudioDevice(), changeDevice() and setLinuxAudioBackend() each
 //      return within a budget (a watchdog aborts the process otherwise).
 //   2. The device state stops reporting "started" once the server is gone
-//      (the engine notices the loss). KNOWN BUG M2.
+//      (the engine notices the loss).
 //   3. After the server is back, startAudioDevice() (the Dart
 //      SoLoud.startAudioDevice()) brings playback back: the engine clock
 //      advances and the voice that was playing is still valid.
 //   4. A restart with no call in between: startAudioDevice() resumes
-//      playback (KNOWN BUG M2: the dead stream still reports "started", so
-//      nothing reopens it; changeDevice() does).
+//      playback (the lost stream is stopped, so the start reopens it).
 //   5. dispose() returns.
 //
 //   test/linux/pulse_server_loss_test <stop command> <start command> [--strict] [--verbose]
@@ -241,7 +240,7 @@ int main(int argc, char **argv)
     std::printf("  device state after the loss: %d, clock %s\n",
                 getAudioDeviceState(),
                 engineClockRuns(0.1, 800) ? "still advancing" : "stopped");
-    KNOWN_BUG("M2", noticed,
+    CHECK(noticed,
               "the device state still reports started (%d) 3 s after the "
               "PulseAudio server went away",
               getAudioDeviceState());
@@ -321,7 +320,7 @@ int main(int argc, char **argv)
                         r, engineClockRuns() ? "resumed" : "did not resume");
         }
     }
-    KNOWN_BUG("M3", recovered,
+    CHECK(recovered,
               "startAudioDevice() after the server came back did not resume "
               "playback (state %d)",
               getAudioDeviceState());
@@ -347,10 +346,10 @@ int main(int argc, char **argv)
     const bool resumedByStart = engineClockRuns(0.1, 1500);
     std::printf("  startAudioDevice() -> %d, state %d, playback %s\n", r,
                 getAudioDeviceState(), resumedByStart ? "resumed" : "dead");
-    KNOWN_BUG("M2", autoResumed || resumedByStart,
-              "after a PulseAudio restart the engine still reports state %d "
-              "(started) but its clock does not move, and startAudioDevice() "
-              "returned %d without reopening the stream",
+    CHECK(autoResumed || resumedByStart,
+          "after a PulseAudio restart the engine reports state %d but its "
+          "clock does not move, and startAudioDevice() returned %d without "
+          "reopening the stream",
               getAudioDeviceState(), r);
     if (!autoResumed && !resumedByStart)
     {

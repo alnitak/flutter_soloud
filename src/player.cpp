@@ -585,6 +585,7 @@ PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
     }
 
     bool shouldStartReplacement = false;
+    bool restoredPrevious = false;
     PlayerErrors changeResult = noError;
     {
         std::lock_guard<std::mutex> operationLock(
@@ -610,14 +611,21 @@ PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
             soloud.miniaudio_changeLinuxBackend(static_cast<int>(backend));
 
         if (result != SoLoud::SO_NO_ERROR)
+        {
             changeResult = audioDeviceFailedToStart;
+            // The new backend could not be opened and the previous one was
+            // reopened (stopped): bring it back up as it was.
+            if (shouldStartReplacement &&
+                getAudioDeviceState() != audioDeviceUninitialized)
+                restoredPrevious = performAudioDeviceStart() == noError;
+        }
         else if (shouldStartReplacement)
         {
             changeResult = performAudioDeviceStart();
         }
     }
 
-    if (changeResult == noError && shouldStartReplacement)
+    if ((changeResult == noError || restoredPrevious) && shouldStartReplacement)
         evaluateAudioDeviceIdle();
     return changeResult;
 #else
