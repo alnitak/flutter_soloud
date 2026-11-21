@@ -81,11 +81,12 @@ static bool gStrict = false;
         }                                                                       \
     } while (0)
 
-// L3: AC-3 in MP4 through MediaCodec on a device with an AC-3 decoder
-// (Galaxy S22, API 36): the stream ends thousands of frames before the
-// totalFrames it declares, and the PCM after seek() is not the PCM at that
-// position. Only the "opt" (AC-3) cases are marked; elsewhere these are
-// plain failures.
+// L3: AC-3 in MP4 through MediaCodec on a device with Dolby's AC-3 decoder
+// (Galaxy S22, API 36): the decoder raises the level ~6 dB and runs it
+// through a limiter whose state survives a flush and depends on what was
+// decoded long before, so where the limiter acts (this loud tone) the PCM
+// after seek() differs from the PCM at that position by a few percent.
+// Only the "opt" (AC-3) cases are marked; elsewhere this is a plain failure.
 #if defined(__ANDROID__)
 #define EXPECT_OR_L3(isAc3, cond, ...)                                          \
     do {                                                                        \
@@ -174,7 +175,7 @@ void runStreamCase(const std::string &dir, const Case &c) {
     std::printf("  read %llu frames in %.0f ms\n", static_cast<unsigned long long>(got), secondsSince(t1) * 1000);
     EXPECT(last == 0, "%s: last read returned %ld, expected 0 (end of data)", c.file.c_str(), last);
     const bool ac3 = c.expect == "opt";
-    EXPECT_OR_L3(ac3, got == fmt.totalFrames, "%s: read %llu frames, totalFrames %llu", c.file.c_str(),
+    EXPECT(got == fmt.totalFrames, "%s: read %llu frames, totalFrames %llu", c.file.c_str(),
            static_cast<unsigned long long>(got), static_cast<unsigned long long>(fmt.totalFrames));
     std::vector<float> tmp(256 * ch);
     EXPECT(d->read(tmp.data(), 256) == 0, "%s: read after the end did not return 0", c.file.c_str());
@@ -236,7 +237,7 @@ void runStreamCase(const std::string &dir, const Case &c) {
         EXPECT(d->seek(target), "%s: seek(%llu) failed", c.file.c_str(), static_cast<unsigned long long>(target));
         const long n = d->read(tmp.data(), 256);
         const long expectedN = static_cast<long>(std::min<uint64_t>(256, got - target));
-        EXPECT_OR_L3(ac3, n == expectedN, "%s: read after seek(%llu) gave %ld frames, expected %ld", c.file.c_str(),
+        EXPECT(n == expectedN, "%s: read after seek(%llu) gave %ld frames, expected %ld", c.file.c_str(),
                static_cast<unsigned long long>(target), n, expectedN);
         auto diffAt = [&](long lag) {
             float worst = 0;
@@ -255,7 +256,7 @@ void runStreamCase(const std::string &dir, const Case &c) {
         EXPECT_OR_L3(ac3, at < (isHe(c) ? 0.05f : 2e-3f), "%s: after seek(%llu) PCM differs by %g", c.file.c_str(),
                static_cast<unsigned long long>(target), at);
         if (rmsCh0(pcm, ch, target, std::min<uint64_t>(got, target + 256)) > 0.05f)
-            EXPECT_OR_L3(ac3, at < before && at < after, "%s: after seek(%llu) the PCM is off by a frame or more",
+            EXPECT(at < before && at < after, "%s: after seek(%llu) the PCM is off by a frame or more",
                    c.file.c_str(), static_cast<unsigned long long>(target));
     }
 

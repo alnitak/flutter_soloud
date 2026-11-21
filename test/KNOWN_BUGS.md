@@ -51,7 +51,7 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| L3 | Android streaming of AC-3 in MP4 wrong on device with AC-3 decoder: reads 93055/96000 frames, PCM after seek mismatches | native_stream_decoder_android.cpp read()/seek() (root cause unknown) | android/native_stream_decoder_android_test (S22) |
+| L3 | Android streaming of loud AC-3 in MP4 on Dolby's decoder (S22): PCM after seek differs from the sequential decode by ~0.03 (length, placement and quiet content are right) | the platform decoder: it adds ~6 dB and limits, and the limiter's state survives a flush and depends on what came long before; no exposed parameter turns it off | android/native_stream_decoder_android_test (S22) |
 
 ## Linux and FFmpeg
 
