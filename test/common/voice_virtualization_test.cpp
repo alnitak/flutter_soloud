@@ -162,12 +162,9 @@ void protectedVoice() {
   e.s.setProtectVoice(h[3], true);
   e.mix(1);
   m = mixedSet(e, srcs);
-  KNOWN_BUG("C7", setString(m) == "111100",
-            "protecting a playing, virtual voice has no effect until something "
-            "else re-evaluates the mixed set: %s, expected 111100. "
-            "Soloud::setProtectVoice does not set mActiveVoiceDirty "
-            "(soloud_core_setters.cpp:164-178)",
-            setString(m).c_str());
+  CHECK(setString(m) == "111100",
+        "protecting a playing, virtual voice applies at the next mix: %s, "
+        "expected 111100", setString(m).c_str());
   // Any change that re-evaluates (here a volume set to its current value)
   // applies it.
   e.s.setVolume(h[0], 0.9f);
@@ -177,7 +174,7 @@ void protectedVoice() {
         "re-evaluation: %s, expected 111100", setString(m).c_str());
   // More protected voices than slots: still 4 mixed, all protected.
   for (int i = 0; i < 6; i++) e.s.setProtectVoice(h[i], true);
-  e.s.setVolume(h[0], 0.9f);  // re-evaluate (see C7)
+  e.s.setVolume(h[0], 0.9f);  // re-evaluate
   e.mix(1);
   m = mixedSet(e, srcs);
   CHECK(std::count(m.begin(), m.end(), true) == 4, "6 protected, 4 slots: %s",
@@ -256,12 +253,10 @@ void resumePoint() {
   // Reported position vs heard position: the source is at mFrames.
   const double reported = e.s.getStreamPosition(hv);
   const double actual = (double)ramp.mFrames / kRate;
-  KNOWN_BUG("C6", std::fabs(reported - actual) < 2.0 * kBlock / kRate,
-            "getStreamPosition() reports %.4f s for a voice whose source is at "
-            "%.4f s: it kept advancing (%.4f -> %.4f s) while the voice was "
-            "virtual and not read (soloud.cpp:3429, mixVoicesLocked_internal "
-            "advances mStreamPosition for every unpaused voice)",
-            reported, actual, posBefore, posVirtual);
+  CHECK(std::fabs(reported - actual) < 2.0 * kBlock / kRate,
+        "getStreamPosition() reports %.4f s for a voice whose source is at "
+        "%.4f s: it must not advance (%.4f -> %.4f s) while the voice is "
+        "virtual and not read", reported, actual, posBefore, posVirtual);
 }
 
 void mustTick() {

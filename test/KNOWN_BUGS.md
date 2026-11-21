@@ -51,8 +51,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| C6 | `getStreamPosition()` keeps advancing while a voice is virtual; on return audio resumes where it stopped but position is ahead. | `soloud.cpp:3429` | `common/voice_virtualization_test` (resume_point) |
-| C7 | `setProtectVoice()` does not set `mActiveVoiceDirty`: protecting a playing virtual voice has no effect until something else re-evaluates. | `soloud_core_setters.cpp:164-178` | `common/voice_virtualization_test` (protected) |
 
 ## Dart API (part 1)
 

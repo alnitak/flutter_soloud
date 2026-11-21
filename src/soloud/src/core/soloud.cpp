@@ -3411,9 +3411,16 @@ namespace SoLoud
 		time buffertime = (time)aSamples / (time)mSamplerate;
 
 		// Process faders. May change scratch size.
+		// ###### flutter_soloud local patch (virtual voice position) ######
+		// The stream position advances only for voices that are mixed this
+		// quantum (see below): a virtual voice (beyond the active voice
+		// count, or inaudible without ticking) is not read, and resumes where
+		// it stopped.
+		double positionStep[VOICE_COUNT];
 		int i;
 		for (i = 0; i < (signed)mHighestVoice; i++)
 		{
+			positionStep[i] = 0;
 			if (mVoice[i] && !(mVoice[i]->mFlags & AudioSourceInstance::PAUSED))
 			{
 				float volume[2];
@@ -3426,7 +3433,7 @@ namespace SoLoud
 				}
 
 				mVoice[i]->mStreamTime += buffertime;
-				mVoice[i]->mStreamPosition += (double)buffertime * (double)mVoice[i]->mOverallRelativePlaySpeed;
+				positionStep[i] = (double)buffertime * (double)mVoice[i]->mOverallRelativePlaySpeed;
 
 				// TODO: this is actually unstable, because mStreamTime depends on the relative
 				// play speed.
@@ -3541,6 +3548,11 @@ namespace SoLoud
 			memset(mixed, 0, mHighestVoice);
 			for (i = 0; i < (signed)mActiveVoiceCount; i++)
 				mixed[mActiveVoice[i]] = 1;
+			for (i = 0; i < (signed)mHighestVoice; i++)
+			{
+				if (mVoice[i] && mixed[i])
+					mVoice[i]->mStreamPosition += positionStep[i];
+			}
 			for (i = 0; i < (signed)mHighestVoice; i++)
 			{
 				AudioSourceInstance *voice = mVoice[i];
