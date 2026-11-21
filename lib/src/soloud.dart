@@ -1966,11 +1966,13 @@ interface class SoLoud {
     );
   }
 
-  /// Add PCM audio data to the stream.
+  /// Add audio data to a buffer stream created with [setBufferStream].
   ///
-  /// This method can be called within an `Isolate` making it possible
-  /// to create PCM data and send them to the buffer without frezing
-  /// the main thread.
+  /// This method and [setDataIsEnded] can also be called from another
+  /// `Isolate` (for example inside `compute()`), so audio can be generated
+  /// and pushed without freezing the main isolate. The engine must have been
+  /// initialized, and the stream created with [setBufferStream], in the main
+  /// isolate.
   /// When finishing to add data to the stream, call [setDataIsEnded].
   ///
   /// [source] the audio source to add audio data to.
@@ -1980,20 +1982,16 @@ interface class SoLoud {
   /// 'Int16List' etc, you will have to convert it to `Uint8List`:
   /// `[yourTypedData*List].buffer.asUint8List()`.
   ///
-  /// **Example**: compute PCM audio inside an `Isolate` returning the new
-  /// `AudioSource`.
+  /// **Example**: compute PCM audio inside an `Isolate`.
   /// ```dart
   /// // This is a global function or a static member of a class.
   /// @pragma('vm:entry-point')
-  /// Future<AudioSource> computePCM(void args) async {
-  ///   final pcmBuffer = Uint8List(1024 * 1024); // 1 MB in bytes
-  ///   final pcmAudio = SoLoud.instance.setBufferStream(
-  ///     maxBufferSize: 1024 * 1024, // 1 MB in bytes
-  ///     format: BufferPcmType.s8, // signed 8 bits
-  ///   );
+  /// void computePCM(AudioSource pcmAudio) {
+  ///   final pcmBuffer = Int8List(1024 * 1024); // 1 MB in bytes
+  ///   final random = Random();
   ///   for (var i = 0; i < pcmBuffer.length; i++) {
   ///     // Compose your PCM data here.
-  ///     pcmBuffer[i] = Random().nextInt(256) - 128;
+  ///     pcmBuffer[i] = random.nextInt(256) - 128;
   ///   }
   ///
   ///   /// Add the PCM data to the audio stream.
@@ -2002,14 +2000,19 @@ interface class SoLoud {
   ///
   ///   /// Mark the end of the PCM data.
   ///   SoLoud.instance.setDataIsEnded(pcmAudio);
-  ///
-  ///   return pcmAudio;
   /// }
   ///
   /// /// A method inside a class to call the `computePCM` function.
   /// Future<void> generate() async {
+  ///   /// Create the stream in the main isolate.
+  ///   final pcmAudio = SoLoud.instance.setBufferStream(
+  ///     maxBufferSizeBytes: 1024 * 1024, // 1 MB in bytes
+  ///     format: BufferType.s8, // signed 8 bits
+  ///   );
+  ///
   ///   /// Generate PCM data inside an Isolate.
-  ///   final myNewGeneratedAudio = await compute(computePCM, '');
+  ///   await compute(computePCM, pcmAudio);
+  ///   SoLoud.instance.play(pcmAudio);
   /// }
   /// ```
   /// An example is also included in `example/lib/buffer_stream/generate.dart`.
@@ -2027,8 +2030,9 @@ interface class SoLoud {
   /// stream reached its maximum capacity, in this case the stream is
   /// automatically marked to be ended.
   ///
-  /// Thows [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
-  /// the given `maxBufferSize` of the `setBufferStream` call is too small.
+  /// Throws [SoLoudOutOfMemoryException] if the buffer is out of OS memory or
+  /// the given `maxBufferSizeBytes` of the `setBufferStream` call is too
+  /// small.
   ///
   /// Throws [SoLoudXiphLibsNotAvailableException] if the Ogg, Opus and
   /// Vorbis libraries are not linked and trying to add audio data in those
@@ -2036,7 +2040,9 @@ interface class SoLoud {
   /// `hooks: user_defines:` of the app's pubspec.yaml. Ref:
   /// https://docs.page/alnitak/flutter_soloud_docs/get_started/no_xiph_libs
   void addAudioDataStream(AudioSource source, Uint8List audioChunk) {
-    if (!isInitialized) {
+    // Only the native engine state: this method may run in another isolate,
+    // which has none of the main isolate's Dart state (see [isInitialized]).
+    if (!_controller.soLoudFFI.isInited()) {
       throw const SoLoudNotInitializedException();
     }
 
@@ -2074,7 +2080,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudSoundHashNotFoundDartException] if the [sound] is not found.
   void setDataIsEnded(AudioSource sound) {
-    if (!isInitialized) {
+    // Like [addAudioDataStream], this may run in another isolate.
+    if (!_controller.soLoudFFI.isInited()) {
       throw const SoLoudNotInitializedException();
     }
     final e = SoLoudController().soLoudFFI.setDataIsEnded(sound.soundHash);

@@ -2,8 +2,9 @@
 // seen by a worker, a realtime stream attached and fed from a worker (Float32
 // and Int16, heard on the mixer output), its counters read from a worker, a
 // worker killed while it pushes, the isolate-backed feeder, the mixer output
-// WAV header, and reading samples from memory. Mixer output capture from
-// workers is in mixer_output_isolate_test.dart.
+// WAV header, reading samples from memory, and feeding a buffer stream
+// (addAudioDataStream) from a worker. Mixer output capture from workers is
+// in mixer_output_isolate_test.dart.
 @TestOn('vm')
 @Tags(['device'])
 library;
@@ -134,6 +135,19 @@ int _feedTone(
   }
   emit(frames);
   return frames;
+}
+
+/// Feeds half a second of silence to the s8 buffer stream [stream] and ends
+/// it. Returns the type of the error thrown, if any.
+String? _feedBufferStream(AudioSource stream) {
+  try {
+    SoLoud.instance
+      ..addAudioDataStream(stream, Uint8List(_rate ~/ 2))
+      ..setDataIsEnded(stream);
+    return null;
+  } on Object catch (e) {
+    return '${e.runtimeType}';
+  }
 }
 
 void main() {
@@ -293,6 +307,31 @@ void main() {
     final samples = await _inWorker(_readSamples, bytes);
     expect(samples, hasLength(100));
     expect(samples.any((s) => s.abs() > 0.1), isTrue);
+  });
+
+  test('a worker feeds a buffer stream', () async {
+    // The documented pattern (example/lib/buffer_stream/generate.dart): the
+    // stream is created in the main isolate and fed inside compute().
+    final stream = soloud.setBufferStream(
+      maxBufferSizeBytes: 1024 * 1024,
+      format: BufferType.s8,
+      sampleRate: _rate,
+    );
+    final error = await _inWorker(_feedBufferStream, stream);
+    expect(error, isNull);
+    expect(soloud.getBufferSize(stream), greaterThan(0));
+    final handle = soloud.play(stream);
+    expect(soloud.getIsValidVoiceHandle(handle), isTrue);
+  });
+
+  test('a worker cannot feed a buffer stream after deinit', () async {
+    final stream = soloud.setBufferStream(
+      maxBufferSizeBytes: 1024 * 1024,
+      format: BufferType.s8,
+    );
+    soloud.deinit();
+    final error = await _inWorker(_feedBufferStream, stream);
+    expect(error, 'SoLoudNotInitializedException');
   });
 
   test('after deinit a worker sees no engine and pushes nothing', () async {

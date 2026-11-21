@@ -80,6 +80,7 @@ Tests were reorganized into `test/common`, `test/<platform>` and `test/support` 
   - Pull buffer streams: a seek to or past the end ends the sound, and seeking between two frames no longer swaps the channels. Web: `setPullBufferStream` with a PCM format calls `onAudioDuration`.
   - FLAC: no duplicate track change when only the ICY StreamUrl changes, and no crash when frames have fewer channels than the header declares.
   - `resetBufferStream` no longer strips ICY metadata from streams that never set a metaint.
+  - `addAudioDataStream` and `setDataIsEnded` work again from a worker isolate (e.g. inside `compute()`), as documented; they threw `SoLoudNotInitializedException` there.
   - MP3/AAC: ID3 comments in Latin-1 or UTF-16 are reported as UTF-8, and long metadata strings are cut on a UTF-8 character boundary.
 - **Linux devices**
   - If switching the audio backend fails (e.g. JACK with no server), the engine reports the error and keeps playing on the previous backend.
