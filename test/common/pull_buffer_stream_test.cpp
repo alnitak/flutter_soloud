@@ -396,15 +396,10 @@ void testSeekPastEnd() {
       st.read(256, nullptr);
       ended = st.ended();
     }
-    // Bug A20: the seek clamps to the length and maps it to offset ==
-    // audioSizeBytes. It leaves a pending seek and resets mDataIsEnded, but
-    // nextDataRequestLocked() never asks for data at or past the declared
-    // size, so nothing ever completes the seek or ends the data: the voice
-    // plays silence forever and never ends.
-    KNOWN_BUG(ended,
-              "A20 (pull_buffer_stream.cpp seekLocked/nextDataRequestLocked): "
-              "after seek(%.1f) on a %.1f s stream the voice never ends",
-              target, length);
+    // The seek clamps to the length and maps it to offset == audioSizeBytes,
+    // where no data can be requested: the voice must end.
+    CHECK(ended, "after seek(%.1f) on a %.1f s stream the voice never ends",
+          target, length);
     st.close();
   }
 }
@@ -431,15 +426,12 @@ void testSeekFrameAlignment() {
       st.seek(between);
       uint64_t requested = UINT64_MAX;
       popRequest(requested);
-      // Bug A21: timeToEncodedByteOffsetLocked() returns seconds * bytes per
-      // second, not rounded to a frame, and the decode then frames the data
-      // from that byte: every sample after the seek is assembled from the
-      // wrong bytes.
-      KNOWN_BUG(requested != UINT64_MAX && requested % frameBytes == 0,
-                "A21 (pull_buffer_stream.cpp timeToEncodedByteOffsetLocked): "
-                "seek(%.9f) requested byte %llu, not a multiple of the "
-                "%llu-byte frame", between, (unsigned long long)requested,
-                (unsigned long long)frameBytes);
+      // The decode frames the data from the requested byte, so the offset
+      // must start a frame.
+      CHECK(requested != UINT64_MAX && requested % frameBytes == 0,
+            "seek(%.9f) requested byte %llu, not a multiple of the "
+            "%llu-byte frame", between, (unsigned long long)requested,
+            (unsigned long long)frameBytes);
       if (requested != UINT64_MAX) {
         st.answer(requested, 8192);
         out.clear();
@@ -450,10 +442,10 @@ void testSeekFrameAlignment() {
         }
         const bool sane = out.size() >= 2 && out[0] > 0.0f && out[0] < 1.0f &&
                           out[1] < 0.0f && out[1] > -1.0f;
-        KNOWN_BUG(sane, "A21: after the seek the first frame is (%g, %g); "
-                        "the left channel should be in (0, 1), the right in "
-                        "(-1, 0)", out.size() > 0 ? out[0] : 0.0,
-                  out.size() > 1 ? out[1] : 0.0);
+        CHECK(sane, "after the seek the first frame is (%g, %g); "
+                    "the left channel should be in (0, 1), the right in "
+                    "(-1, 0)", out.size() > 0 ? out[0] : 0.0,
+              out.size() > 1 ? out[1] : 0.0);
       }
       st.close();
     }
@@ -490,16 +482,13 @@ void testSeekFrameAlignment() {
       out.clear();
       st.read(64, &out);
       const bool sane = out.size() >= 2 && out[0] > 0.0f && out[1] < 0.0f;
-      // Bug A22: the target sample is floor(t * rate * channels), which is
-      // not a multiple of the channel count when t falls between two frames;
-      // the read pointer moves by that many samples, so every later frame
-      // takes its channels from two neighbouring frames (left and right
-      // swapped in stereo).
-      KNOWN_BUG(sane, "A22 (pull_buffer_stream.cpp seekLocked): after an "
-                      "in-buffer seek(%.9f) the first frame is (%g, %g); the "
-                      "left channel should be positive, the right negative",
-                between, out.size() > 0 ? out[0] : 0.0,
-                out.size() > 1 ? out[1] : 0.0);
+      // A time between two frames must move the read pointer to a frame
+      // start, or every later frame takes its channels from two
+      // neighbouring frames (left and right swapped in stereo).
+      CHECK(sane, "after an in-buffer seek(%.9f) the first frame is (%g, %g); "
+                  "the left channel should be positive, the right negative",
+            between, out.size() > 0 ? out[0] : 0.0,
+            out.size() > 1 ? out[1] : 0.0);
       st.close();
     }
   }
@@ -628,7 +617,7 @@ void testThreads() {
     // checked, only that nothing crashes (run it with --asan).
     st.read(1 + rng() % 512, nullptr);
     if (rng() % 50 == 0) {
-      // Frame-exact times only (see A21/A22).
+      // Frame-exact times only.
       st.seek((rng() % (2 * 22050)) / 22050.0);
     }
   }

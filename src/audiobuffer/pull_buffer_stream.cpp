@@ -264,9 +264,11 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
     aSeconds = totalLength;
   }
 
+  // Seek to the start of a frame: a time between two frames must not move
+  // the read position into the middle of one, which swaps the channels.
   const size_t targetSample = static_cast<size_t>(
-      std::floor(aSeconds * mParent->mPCMformat.sampleRate *
-                 mParent->mPCMformat.channels));
+      std::floor(aSeconds * mParent->mPCMformat.sampleRate) *
+      mParent->mPCMformat.channels);
 
   bool didInBufferSeek = false;
 
@@ -290,8 +292,8 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
   // to prevent seeking into stale decoded audio.
   const uint64_t logicalStartSamples = mParent->mBufferStartTime > 0.0
       ? static_cast<uint64_t>(std::floor(mParent->mBufferStartTime *
-                                         mParent->mPCMformat.sampleRate *
-                                         mParent->mPCMformat.channels))
+                                         mParent->mPCMformat.sampleRate) *
+                                  mParent->mPCMformat.channels)
       : 0;
   const uint64_t effectiveStart = std::max(bufferedStart, logicalStartSamples);
 
@@ -350,9 +352,18 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
       mParent->mDataIsEnded.store(false);
       mParent->mWaitingForData.store(false);
       mParent->resetDecoderForSeek(targetSample, newOffset);
-      // The buffer was just discarded, so this leaves the seek pending
-      // until data at the target has been decoded.
-      mParent->applyPendingSeek(/*aUnderAudioMutex*/ true);
+      if (mParent->mAudioSizeBytes > 0 &&
+          newOffset >= mParent->mAudioSizeBytes) {
+        // A seek to (or past) the end: there is no data to request at or
+        // past the declared size, so nothing would complete the seek. End
+        // the data instead, so the voice ends.
+        mParent->mPendingSeek.store(false);
+        mParent->mDataIsEnded.store(true);
+      } else {
+        // The buffer was just discarded, so this leaves the seek pending
+        // until data at the target has been decoded.
+        mParent->applyPendingSeek(/*aUnderAudioMutex*/ true);
+      }
     }
   }
 
@@ -1176,8 +1187,8 @@ void PullBufferStream::applyPendingSeek(bool aUnderAudioMutex) {
     // The offset is now known. Move the play head to the target and reset the
     // decoder so that the next incoming data is decoded from the new offset.
     const uint64_t targetSample = static_cast<uint64_t>(
-        std::floor(mPendingSeekTime * mPCMformat.sampleRate *
-                   mPCMformat.channels));
+        std::floor(mPendingSeekTime * mPCMformat.sampleRate) *
+        mPCMformat.channels);
     resetBufferWindow(targetSample, targetSample, mPendingSeekTime, newOffset,
                       newOffset);
     if (aUnderAudioMutex) {
@@ -1632,10 +1643,11 @@ uint64_t PullBufferStream::timeToEncodedByteOffsetLocked(double seconds) {
     }
     return 0;
   }
-  const double bytesPerSecond = static_cast<double>(mPCMformat.sampleRate) *
-                                static_cast<double>(mPCMformat.channels) *
-                                static_cast<double>(mPCMformat.bytesPerSample);
-  return static_cast<uint64_t>(seconds * bytesPerSecond);
+  // The offset of the frame that starts at or before [seconds]: raw PCM is
+  // framed from the first byte it receives.
+  const uint64_t frame = static_cast<uint64_t>(
+      std::floor(seconds * static_cast<double>(mPCMformat.sampleRate)));
+  return frame * mPCMformat.channels * mPCMformat.bytesPerSample;
 }
 
 AudioMetadataFFI
