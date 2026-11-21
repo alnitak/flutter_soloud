@@ -2727,6 +2727,31 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return Int16List.view(heapU8.buffer, address, int16Length);
   }
 
+  static bool _warnedJsDspOnMultiThreadedBuild = false;
+
+  /// A JavaScript DSP function (`webJsFunctionName`) is looked up and called
+  /// on the thread that renders the audio. In the multi-threaded WASM build
+  /// that is the AudioWorklet, a separate JavaScript realm where the
+  /// function installed on the page's `globalThis` (and the Dart program
+  /// behind it) does not exist, so the source or filter stays silent. Warn
+  /// once; see the dartdoc of `SoLoud.createCustomAudioSource`.
+  static void _warnJsDspOnMultiThreadedBuild(String caller) {
+    if (_warnedJsDspOnMultiThreadedBuild) return;
+    final build = flutterSoloudBuild;
+    final multiThreaded =
+        build == 'mt' ||
+        (build == 'manual' && (isCrossOriginIsolated ?? false));
+    if (!multiThreaded) return;
+    _warnedJsDspOnMultiThreadedBuild = true;
+    _log.warning(
+      '$caller: JavaScript DSP callbacks (webJsFunctionName) do not run on '
+      'the multi-threaded WASM build, because the audio renders in an '
+      "AudioWorklet where the page's globalThis is not visible. Set "
+      '`self.flutter_soloud_force_single_threaded = true` before loading '
+      'init_soloud.js to use the single-threaded build.',
+    );
+  }
+
   @override
   ({PlayerErrors error, SoundHash soundHash}) createCustomAudioSource({
     required int sampleRate,
@@ -2743,6 +2768,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     final hashPtr = wasmMalloc(4);
     var webNamePtr = 0;
     if (webJsFunctionName != null && webJsFunctionName.isNotEmpty) {
+      _warnJsDspOnMultiThreadedBuild('createCustomAudioSource');
       webNamePtr = _allocUtf8CString(webJsFunctionName);
     }
     try {
@@ -2832,6 +2858,7 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }) {
     var webNamePtr = 0;
     if (webJsFunctionName != null && webJsFunctionName.isNotEmpty) {
+      _warnJsDspOnMultiThreadedBuild('setCustomFilterCallback');
       webNamePtr = _allocUtf8CString(webJsFunctionName);
     }
     try {

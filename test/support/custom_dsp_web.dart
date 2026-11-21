@@ -55,7 +55,6 @@ bool get testDspIsAudible =>
 
 /// Why [testDspIsAudible] is false, for a skip reason.
 String get testDspSilentReason =>
-    'bug H1: in the multi-threaded web build the custom source renders on '
-    "the AudioWorklet thread and looks webJsFunctionName up on that thread's "
-    "globalThis, not the page's where the documented setup puts it, so the "
-    'source is silent (src/synth/custom_source.cpp:124)';
+    'JS DSP callbacks need the single-threaded WASM build: the '
+    'multi-threaded build renders in an AudioWorklet, which does not see '
+    "the page's globalThis (documented on createCustomAudioSource)";

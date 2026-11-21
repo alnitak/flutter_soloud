@@ -5664,7 +5664,11 @@ interface class SoLoud {
   /// - [userdataAddress]: Optional opaque pointer passed to the callbacks.
   /// - [webJsFunctionName]: On Web, the name of a JavaScript function on
   ///   `globalThis` (e.g. `'myCustomSynthDsp'`) invoked synchronously from
-  ///   WASM via `EM_ASM_INT`.
+  ///   WASM via `EM_ASM_INT`. Only the single-threaded WASM build can call
+  ///   it: the multi-threaded build renders in an AudioWorklet, which does
+  ///   not see the page's `globalThis`, so the source stays silent there (a
+  ///   warning is logged). Set `self.flutter_soloud_force_single_threaded =
+  ///   true` before loading `init_soloud.js` to use the single-threaded build.
   /// - [mustTickWhenInaudible]: Whether the voices keep advancing (calling
   ///   the DSP callback) while inaudible, e.g. at zero volume (default
   ///   `true`). Applies to every voice of this source; see

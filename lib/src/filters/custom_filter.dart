@@ -266,6 +266,11 @@ abstract class CustomFilterSlot extends FilterBase {
   ///   `globalThis` that receives `(bufferPtr, samples, bufferStride, channels,
   ///   sampleRate, time, paramsPtr, numParams)`) or a Wasm table function index
   ///   in [callbackAddress].
+  ///   A [webJsFunctionName] works only with the single-threaded WASM build:
+  ///   the multi-threaded build renders in an AudioWorklet, which does not
+  ///   see the page's `globalThis`, so the filter has no effect there (a
+  ///   warning is logged). Set `self.flutter_soloud_force_single_threaded =
+  ///   true` before loading `init_soloud.js` to use the single-threaded build.
   @experimental
   void setNativeCallback({
     int callbackAddress = 0,

@@ -41,7 +41,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| H1 | MT web build: custom audio source (and likely custom filter) looks up the JS DSP function on the AudioWorklet thread's globalThis, but the documented setup installs it on the page's; the source is silent. | `src/synth/custom_source.cpp:124` (same lookup `src/filters/custom_filter.cpp:106`) | `common/custom_audio_source_test` (5 audibility tests, --wasm only) |
 
 ## Dart API (part 2)
 

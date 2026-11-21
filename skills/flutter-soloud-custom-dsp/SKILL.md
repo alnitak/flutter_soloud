@@ -331,6 +331,8 @@ final int sourceAddress = getSourceAddr().address;
 ### Option C: Web Platform Support (`dart:js_interop`)
 On Web (Wasm), C pointers cannot be passed across memory spaces. Instead, register functions on `globalThis` using `dart:js_interop`:
 
+> **Single-threaded WASM build only.** The multi-threaded build (used automatically when the page is cross-origin isolated) renders audio in an AudioWorklet, which does not see the page's `globalThis`, so a function registered this way is never called there: the source stays silent and the filter has no effect (a warning is logged). Set `self.flutter_soloud_force_single_threaded = true` in `web/index.html` before loading `init_soloud.js` to use the single-threaded build.
+
 ```dart
 import 'dart:js_interop';
 
