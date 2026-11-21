@@ -101,12 +101,7 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | J5 | At voice limit play() stops the oldest voice of same sound even if protected | player.cpp:2702-2706 (play3d 2832,2968) | max_voices_test |
 | J6 | deinit() while loadMem running fails completers before listened -> uncaught async errors | soloud.dart:1129, 1506-1531 | async_multi_load_test |
 | J7 | WAV capture header survives deinit/init | mixer_output.cpp:572,699 | mixer_output_wav_header_test |
-| J8 | setVolume/setGlobalVolume/setRelativePlaySpeed/fades/play(volume) accept NaN/Inf | soloud.dart:3731,3774,3276,4218-4280; player.cpp:2607,3524,3534 | invalid_arguments_test |
-| J9 | setFftDecibelRange stores NaN bounds | soloud.dart:4143 | invalid_arguments_test |
-| J10 | 3D NaN/Inf positions/velocities/sound speed -> NaN in mix | soloud.dart:4905-5069 | invalid_arguments_test |
-| J11 | FilterParam.value lets NaN through; fade to NaN -> NaN in mix | lib/src/filters/filters.dart:491,528 | invalid_arguments_test |
 | J12 | startMixerOutputStream(bufferSizeBytes<0) aborts with length_error | bindings.cpp:864 -> mixer_output.cpp:498 | invalid_arguments_test |
-| J13 | loadWaveform NaN/Inf scale/detune -> NaN samples | soloud.dart:2386, player.cpp:1717 | invalid_arguments_test |
 | J14 | 3D min=max distance=0 with inverse attenuation -> 0/0 NaN | soloud_core_3d.cpp:165 | invalid_arguments_test |
 | J15 | negative setPullBufferStream bufferSizeBytes / setRealtimeStream sampleRate -> huge alloc (WASM abort) | pull_buffer_stream.cpp:489, realtime_stream.cpp:351 | invalid_arguments_test (web) |
 | J16 | Web loadMem of non-audio bytes returns a source (= L5) | soloud.dart:166-215 | async_multi_load_test |

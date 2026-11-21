@@ -21,30 +21,6 @@ import '../support/sounds.dart';
 const _nan = double.nan;
 const _inf = double.infinity;
 
-const _j8 =
-    'bug J8: volume, global volume, relative play speed and their faders '
-    '(and play(volume:/scale:)) accept NaN and infinity: nothing checks the '
-    'value, so getVolume/getGlobalVolume/getRelativePlaySpeed/getPan read '
-    'back NaN or infinity (lib/src/soloud.dart:3731, 3774, 3276, 4218-4280; '
-    'src/player.cpp:2607, 3524, 3534)';
-const _j9 =
-    'bug J9: setFftDecibelRange checks only min >= max, which is false for '
-    'NaN, so NaN bounds are stored (lib/src/soloud.dart:4143)';
-const _j10 =
-    'bug J10: the 3D setters accept NaN/infinite positions, velocities, '
-    'sound speed and doppler factor, and the 3D voice then mixes NaN samples '
-    '(lib/src/soloud.dart:4905-5069)';
-const _j11 =
-    'bug J11: FilterParam.value rejects out-of-range values with '
-    '`val < min || val > max`, false for NaN, so NaN reaches the filter '
-    '(the value then cannot be read back); fading to NaN is not checked '
-    'either and the mix gets NaN samples (lib/src/filters/filters.dart:491, '
-    '528)';
-const _j13 =
-    'bug J13: loadWaveform accepts a NaN/infinite scale or detune and the '
-    'waveform then produces NaN samples (setWaveformFreq has an isfinite '
-    'guard, loadWaveform has none) (lib/src/soloud.dart:2386, '
-    'src/player.cpp:1717)';
 const _j14 =
     'bug J14: with min and max distance 0 the inverse-distance attenuation '
     'computes 0 / 0 and the 3D voice mixes NaN samples; '
@@ -122,7 +98,7 @@ void main() {
         expectFinite(soloud.getVolume(handle), 'getVolume after $v');
       }
       await expectSaneOutput();
-    }, skip: _j8);
+    });
 
     test('setGlobalVolume', () async {
       for (final v in _badDoubles) {
@@ -134,7 +110,7 @@ void main() {
       }
       soloud.setGlobalVolume(0.5);
       await expectSaneOutput();
-    }, skip: _j8);
+    });
 
     test('setPan and setPanAbsolute', () async {
       for (final v in [..._badDoubles, 5.0, -5.0]) {
@@ -161,7 +137,7 @@ void main() {
         expect(speed, greaterThan(0));
       }
       await expectSaneOutput();
-    }, skip: _j8);
+    });
 
     test('seek to negative and past-the-end times', () async {
       final sound = await loadTestSound(duration: const Duration(seconds: 2));
@@ -237,7 +213,7 @@ void main() {
         expectFinite(soloud.getRelativePlaySpeed(h), 'speed of $h');
       }
       await expectSaneOutput();
-    }, skip: _j8);
+    });
 
     test('playClocked and playScheduled with negative times', () async {
       await _rejectOrAccept(
@@ -292,7 +268,7 @@ void main() {
       expectFinite(soloud.getPan(handle), 'pan');
       expectFinite(soloud.getRelativePlaySpeed(handle), 'speed');
       await expectSaneOutput();
-    }, skip: _j8);
+    });
 
     test('fadeGlobalVolume to NaN', () async {
       await _rejectOrAccept(
@@ -303,7 +279,7 @@ void main() {
       expectFinite(soloud.getGlobalVolume(), 'global volume');
       soloud.setGlobalVolume(0.5);
       await expectSaneOutput();
-    }, skip: _j8);
+    });
 
     test('oscillators with NaN bounds or a zero/negative period', () async {
       for (final t in [Duration.zero, const Duration(milliseconds: -10)]) {
@@ -375,7 +351,7 @@ void main() {
         });
       }
       await expectSaneOutput();
-    }, skip: _j13);
+    });
   });
 
   group('limits and analysis', () {
@@ -407,7 +383,7 @@ void main() {
         expectFinite(soloud.maxDecibels, 'maxDecibels after ($min, $max)');
         expect(soloud.minDecibels, lessThan(soloud.maxDecibels));
       }
-    }, skip: _j9);
+    });
 
     test('getApproximateVolume of channels that do not exist', () {
       for (final c in [-1, 2, 8, 1 << 20]) {
@@ -472,7 +448,7 @@ void main() {
         );
       }
       await expectSaneOutput();
-    }, skip: _j10);
+    });
 
     for (final (name, call) in <(String, void Function(SoundHandle))>[
       ('set3dSoundSpeed(0)', (_) => soloud.set3dSoundSpeed(0)),
@@ -702,7 +678,7 @@ void main() {
         expect(now, before, reason: 'wet changed by $v');
       }
       await expectSaneOutput();
-    }, skip: _j11);
+    });
 
     test('fading a parameter to NaN', () async {
       final echo = soloud.filters.echoFilter..activate();
@@ -727,6 +703,6 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 150));
       await expectSaneOutput();
-    }, skip: _j11);
+    });
   });
 }

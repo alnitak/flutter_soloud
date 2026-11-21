@@ -14,6 +14,7 @@ import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
 import 'package:flutter_soloud/src/enums.dart';
 import 'package:flutter_soloud/src/exceptions/exceptions.dart';
 import 'package:flutter_soloud/src/filters/filters.dart';
+import 'package:flutter_soloud/src/helpers/argument_checks.dart';
 import 'package:flutter_soloud/src/helpers/looping_region.dart';
 import 'package:flutter_soloud/src/helpers/playback_device.dart';
 import 'package:flutter_soloud/src/metadata.dart';
@@ -2390,6 +2391,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [scale] or [detune] is NaN or infinite.
+  ///
   /// Returns the new sound as [AudioSource].
   Future<AudioSource> loadWaveform(
     WaveForm waveform,
@@ -2400,6 +2403,8 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(scale, 'scale');
+    checkFinite(detune, 'detune');
     final ret = _controller.soLoudFFI.loadWaveform(
       waveform,
       superWave,
@@ -2584,6 +2589,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [volume], [pan] or [scale] is NaN or infinite.
+  ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
   ///
@@ -2611,6 +2618,9 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(volume, 'volume');
+    checkFinite(pan, 'pan');
+    checkFinite(scale, 'scale');
     validateLoopRegion(
       start: loopingStartAt,
       end: loopingEndAt,
@@ -2729,6 +2739,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [volume], [pan] or [scale] is NaN or infinite.
+  ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
   ///
@@ -2756,6 +2768,9 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(volume, 'volume');
+    checkFinite(pan, 'pan');
+    checkFinite(scale, 'scale');
     validateLoopRegion(
       start: loopingStartAt,
       end: loopingEndAt,
@@ -3020,6 +3035,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [volume], [pan] or [scale] is NaN or infinite.
+  ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
   ///
@@ -3048,6 +3065,9 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(volume, 'volume');
+    checkFinite(pan, 'pan');
+    checkFinite(scale, 'scale');
     validateLoopRegion(
       start: loopingStartAt,
       end: loopingEndAt,
@@ -3119,6 +3139,8 @@ interface class SoLoud {
   /// immediately, like [fadeVolume].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadeScheduled(
     SoundHandle handle,
     Duration atTime,
@@ -3129,6 +3151,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     _controller.soLoudFFI.fadeScheduled(
       handle,
       atTime,
@@ -3281,10 +3304,13 @@ interface class SoLoud {
   /// rate is cheaper.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [speed] is NaN or infinite.
   void setRelativePlaySpeed(SoundHandle handle, double speed) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(speed, 'speed');
     _controller.soLoudFFI.setRelativePlaySpeed(handle, speed);
   }
 
@@ -3731,6 +3757,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [volume] is NaN or infinite.
+  ///
   /// Note that if you `setGlobalVolume()` to `0.8` and then
   /// `getGlobalVolume()`, you might get a slightly different number,
   /// such as `0.800000042353`.
@@ -3740,6 +3768,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(volume, 'volume');
     final ret = _controller.soLoudFFI.setGlobalVolume(volume);
     final error = PlayerErrors.values[ret];
     if (error != PlayerErrors.noError) {
@@ -3775,6 +3804,8 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [volume] is NaN or infinite.
+  ///
   /// Note that if you `setVolume()` to `0.8` and then `getVolume()`, you might
   /// get a slightly different number, such as `0.800000042353`.
   /// This is expected since the internal audio engine uses float
@@ -3783,6 +3814,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(volume, 'volume');
     _controller.soLoudFFI.setVolume(handle, volume);
   }
 
@@ -4143,11 +4175,16 @@ interface class SoLoud {
   /// Applies to the engine output's visualization and to every bus's.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [minDecibels] or [maxDecibels] is NaN or
+  /// infinite.
   /// Throws [ArgumentError] if [minDecibels] >= [maxDecibels].
   void setFftDecibelRange(double minDecibels, double maxDecibels) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(minDecibels, 'minDecibels');
+    checkFinite(maxDecibels, 'maxDecibels');
     if (minDecibels >= maxDecibels) {
       throw ArgumentError(
         'minDecibels ($minDecibels) must be less than '
@@ -4243,10 +4280,13 @@ interface class SoLoud {
   /// over specified [time].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadeGlobalVolume(double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.fadeGlobalVolume(to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeGlobalVolume(): $error');
@@ -4260,10 +4300,13 @@ interface class SoLoud {
   /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadeVolume(SoundHandle handle, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.fadeVolume(handle, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeVolume(): $error');
@@ -4277,10 +4320,13 @@ interface class SoLoud {
   /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadePan(SoundHandle handle, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.fadePan(handle, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadePan(): $error');
@@ -4294,10 +4340,13 @@ interface class SoLoud {
   /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadeRelativePlaySpeed(SoundHandle handle, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.fadeRelativePlaySpeed(handle, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'fadeRelativePlaySpeed(): $error');
@@ -4348,6 +4397,8 @@ interface class SoLoud {
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillateVolume(
     SoundHandle handle,
     double from,
@@ -4357,6 +4408,8 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(from, 'from');
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.oscillateVolume(handle, from, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateVolume(): $error');
@@ -4375,10 +4428,14 @@ interface class SoLoud {
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillatePan(SoundHandle handle, double from, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(from, 'from');
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.oscillatePan(handle, from, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillatePan(): $error');
@@ -4397,6 +4454,8 @@ interface class SoLoud {
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillateRelativePlaySpeed(
     SoundHandle handle,
     double from,
@@ -4406,6 +4465,8 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(from, 'from');
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.oscillateRelativePlaySpeed(
       handle,
       from,
@@ -4427,10 +4488,14 @@ interface class SoLoud {
   /// The specified [time] is the period of oscillation.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillateGlobalVolume(double from, double to, Duration time) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(from, 'from');
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.oscillateGlobalVolume(from, to, time);
     if (error != PlayerErrors.noError) {
       _log.severe(() => 'oscillateGlobalVolume(): $error');
@@ -4451,6 +4516,8 @@ interface class SoLoud {
   /// [time] the fade slope duration.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadeGlobalFilterParameter(
     FilterType filterType,
     int attributeId,
@@ -4460,6 +4527,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.fadeFilterParameter(
       filterType,
       attributeId,
@@ -4487,6 +4555,8 @@ interface class SoLoud {
   /// [time] the fade slope duration.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillateGlobalFilterParameter(
     FilterType filterType,
     int attributeId,
@@ -4497,6 +4567,8 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(from, 'from');
+    checkFinite(to, 'to');
     final error = _controller.soLoudFFI.oscillateFilterParameter(
       filterType,
       attributeId,
@@ -4581,6 +4653,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [posX], [posY], [posZ], [velX], [velY], [velZ],
+  /// [volume] or [scale] is NaN or infinite.
+  ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
   ///
@@ -4610,6 +4685,14 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(posX, 'posX');
+    checkFinite(posY, 'posY');
+    checkFinite(posZ, 'posZ');
+    checkFinite(velX, 'velX');
+    checkFinite(velY, 'velY');
+    checkFinite(velZ, 'velZ');
+    checkFinite(volume, 'volume');
+    checkFinite(scale, 'scale');
     validateLoopRegion(
       start: loopingStartAt,
       end: loopingEndAt,
@@ -4707,6 +4790,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [posX], [posY], [posZ], [velX], [velY], [velZ],
+  /// [volume] or [scale] is NaN or infinite.
+  ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
   ///
@@ -4739,6 +4825,14 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(posX, 'posX');
+    checkFinite(posY, 'posY');
+    checkFinite(posZ, 'posZ');
+    checkFinite(velX, 'velX');
+    checkFinite(velY, 'velY');
+    checkFinite(velZ, 'velZ');
+    checkFinite(volume, 'volume');
+    checkFinite(scale, 'scale');
     validateLoopRegion(
       start: loopingStartAt,
       end: loopingEndAt,
@@ -4833,6 +4927,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   ///
+  /// Throws [ArgumentError] if [posX], [posY], [posZ], [velX], [velY], [velZ],
+  /// [volume] or [scale] is NaN or infinite.
+  ///
   /// Throws [SoLoudBufferStreamCanBePlayedOnlyOnceCppException] if we try to
   /// play a BufferStream using `release` buffer type more than once.
   ///
@@ -4873,6 +4970,14 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(posX, 'posX');
+    checkFinite(posY, 'posY');
+    checkFinite(posZ, 'posZ');
+    checkFinite(velX, 'velX');
+    checkFinite(velY, 'velY');
+    checkFinite(velZ, 'velZ');
+    checkFinite(volume, 'volume');
+    checkFinite(scale, 'scale');
     validateLoopRegion(
       start: loopingStartAt,
       end: loopingEndAt,
@@ -4932,10 +5037,13 @@ interface class SoLoud {
   /// and that the environment is dry air at around 20 degrees Celsius.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [speed] is NaN or infinite.
   void set3dSoundSpeed(double speed) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(speed, 'speed');
     _controller.soLoudFFI.set3dSoundSpeed(speed);
   }
 
@@ -4955,6 +5063,10 @@ interface class SoLoud {
   /// parameters of the 3D audio listener with one call.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [posX], [posY], [posZ], [atX], [atY], [atZ],
+  /// [upX], [upY], [upZ], [velocityX], [velocityY] or [velocityZ] is NaN or
+  /// infinite.
   void set3dListenerParameters(
     double posX,
     double posY,
@@ -4972,6 +5084,18 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(posX, 'posX');
+    checkFinite(posY, 'posY');
+    checkFinite(posZ, 'posZ');
+    checkFinite(atX, 'atX');
+    checkFinite(atY, 'atY');
+    checkFinite(atZ, 'atZ');
+    checkFinite(upX, 'upX');
+    checkFinite(upY, 'upY');
+    checkFinite(upZ, 'upZ');
+    checkFinite(velocityX, 'velocityX');
+    checkFinite(velocityY, 'velocityY');
+    checkFinite(velocityZ, 'velocityZ');
     _controller.soLoudFFI.set3dListenerParameters(
       posX,
       posY,
@@ -4991,36 +5115,54 @@ interface class SoLoud {
   /// Sets the position parameter of the 3D audio listener.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [posX], [posY] or [posZ] is NaN or infinite.
   void set3dListenerPosition(double posX, double posY, double posZ) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(posX, 'posX');
+    checkFinite(posY, 'posY');
+    checkFinite(posZ, 'posZ');
     _controller.soLoudFFI.set3dListenerPosition(posX, posY, posZ);
   }
 
   /// Sets the at-vector (i.e. position) parameter of the 3D audio listener.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [atX], [atY] or [atZ] is NaN or infinite.
   void set3dListenerAt(double atX, double atY, double atZ) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(atX, 'atX');
+    checkFinite(atY, 'atY');
+    checkFinite(atZ, 'atZ');
     _controller.soLoudFFI.set3dListenerAt(atX, atY, atZ);
   }
 
   /// Sets the up-vector parameter of the 3D audio listener.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [upX], [upY] or [upZ] is NaN or infinite.
   void set3dListenerUp(double upX, double upY, double upZ) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(upX, 'upX');
+    checkFinite(upY, 'upY');
+    checkFinite(upZ, 'upZ');
     _controller.soLoudFFI.set3dListenerUp(upX, upY, upZ);
   }
 
   /// Sets the 3D listener's velocity vector.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [velocityX], [velocityY] or [velocityZ] is NaN
+  /// or infinite.
   void set3dListenerVelocity(
     double velocityX,
     double velocityY,
@@ -5029,6 +5171,9 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(velocityX, 'velocityX');
+    checkFinite(velocityY, 'velocityY');
+    checkFinite(velocityZ, 'velocityZ');
     _controller.soLoudFFI.set3dListenerVelocity(
       velocityX,
       velocityY,
@@ -5042,6 +5187,9 @@ interface class SoLoud {
   /// The sound instance is provided via its [handle].
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [posX], [posY], [posZ], [velocityX], [velocityY]
+  /// or [velocityZ] is NaN or infinite.
   void set3dSourceParameters(
     SoundHandle handle,
     double posX,
@@ -5054,6 +5202,12 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(posX, 'posX');
+    checkFinite(posY, 'posY');
+    checkFinite(posZ, 'posZ');
+    checkFinite(velocityX, 'velocityX');
+    checkFinite(velocityY, 'velocityY');
+    checkFinite(velocityZ, 'velocityZ');
     _controller.soLoudFFI.set3dSourceParameters(
       handle,
       posX,
@@ -5068,6 +5222,8 @@ interface class SoLoud {
   /// Sets the position of a live 3D audio source.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [posX], [posY] or [posZ] is NaN or infinite.
   void set3dSourcePosition(
     SoundHandle handle,
     double posX,
@@ -5077,12 +5233,18 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(posX, 'posX');
+    checkFinite(posY, 'posY');
+    checkFinite(posZ, 'posZ');
     _controller.soLoudFFI.set3dSourcePosition(handle, posX, posY, posZ);
   }
 
   /// Set the velocity parameter of a live 3D audio source.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [velocityX], [velocityY] or [velocityZ] is NaN
+  /// or infinite.
   void set3dSourceVelocity(
     SoundHandle handle,
     double velocityX,
@@ -5092,6 +5254,9 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(velocityX, 'velocityX');
+    checkFinite(velocityY, 'velocityY');
+    checkFinite(velocityZ, 'velocityZ');
     _controller.soLoudFFI.set3dSourceVelocity(
       handle,
       velocityX,
@@ -5106,6 +5271,9 @@ interface class SoLoud {
   /// Default values are 1 and 1000000.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [minDistance] or [maxDistance] is NaN or
+  /// infinite.
   void set3dSourceMinMaxDistance(
     SoundHandle handle,
     double minDistance,
@@ -5114,6 +5282,8 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(minDistance, 'minDistance');
+    checkFinite(maxDistance, 'maxDistance');
     _controller.soLoudFFI.set3dSourceMinMaxDistance(
       handle,
       minDistance,
@@ -5135,6 +5305,8 @@ interface class SoLoud {
   /// See https://solhsa.com/soloud/concepts3d.html.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [attenuationRolloffFactor] is NaN or infinite.
   void set3dSourceAttenuation(
     SoundHandle handle,
     int attenuationModel,
@@ -5143,6 +5315,7 @@ interface class SoLoud {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(attenuationRolloffFactor, 'attenuationRolloffFactor');
     _controller.soLoudFFI.set3dSourceAttenuation(
       handle,
       attenuationModel,
@@ -5154,10 +5327,13 @@ interface class SoLoud {
   /// 0 = disable, 1 = normal, >1 = exaggerated
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [dopplerFactor] is NaN or infinite.
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     if (!isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(dopplerFactor, 'dopplerFactor');
     _controller.soLoudFFI.set3dSourceDopplerFactor(handle, dopplerFactor);
   }
 

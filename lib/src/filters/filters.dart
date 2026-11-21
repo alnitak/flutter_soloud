@@ -18,6 +18,7 @@ import 'package:flutter_soloud/src/filters/parametric_eq.dart';
 import 'package:flutter_soloud/src/filters/pitchshift_filter.dart';
 import 'package:flutter_soloud/src/filters/robotize_filter.dart';
 import 'package:flutter_soloud/src/filters/wave_shaper_filter.dart';
+import 'package:flutter_soloud/src/helpers/argument_checks.dart';
 import 'package:flutter_soloud/src/soloud.dart';
 import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
@@ -482,13 +483,16 @@ class FilterParam {
 
   /// Set the parameter value.
   ///
+  /// A value outside [min]..[max], or NaN, is not applied: a warning is
+  /// logged and the parameter keeps its value.
+  ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
   set value(double val) {
     if (kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
-    if (val < _min || val > _max) {
+    if (val.isNaN || val < _min || val > _max) {
       Logger(
         'flutter_soloud.${_type.name}Filter',
       ).warning(() => 'value [$val] out of accepted range [$_min, $_max]');
@@ -527,6 +531,8 @@ class FilterParam {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   void fadeFilterParameter({required double to, required Duration time}) =>
       _type.fadeFilterParameter(_soundHandle, _busId, _attributeId, to, time);
 
@@ -535,6 +541,8 @@ class FilterParam {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   void oscillateFilterParameter({
     required double from,
     required double to,
@@ -695,6 +703,8 @@ enum FilterType {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// a filter for a single sound on the Web platform.
+  ///
+  /// Throws [ArgumentError] if [to] is NaN or infinite.
   @internal
   void fadeFilterParameter(
     SoundHandle? soundHandle,
@@ -709,6 +719,7 @@ enum FilterType {
     if (!SoLoud.instance.isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(to, 'to');
     final error = SoLoudController().soLoudFFI.fadeFilterParameter(
       this,
       attributeId,
@@ -730,6 +741,8 @@ enum FilterType {
   ///
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// a filter for a single sound on the Web platform.
+  ///
+  /// Throws [ArgumentError] if [from] or [to] is NaN or infinite.
   @internal
   void oscillateFilterParameter(
     SoundHandle? soundHandle,
@@ -745,6 +758,8 @@ enum FilterType {
     if (!SoLoud.instance.isInitialized) {
       throw const SoLoudNotInitializedException();
     }
+    checkFinite(from, 'from');
+    checkFinite(to, 'to');
     final error = SoLoudController().soLoudFFI.oscillateFilterParameter(
       this,
       attributeId,
