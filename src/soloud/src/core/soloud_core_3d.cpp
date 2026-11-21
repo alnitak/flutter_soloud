@@ -155,20 +155,34 @@ namespace SoLoud
 		float maxspeed = aSoundSpeed / aFactor;
 		vss = MIN(vss, maxspeed);
 		vls = MIN(vls, maxspeed);
-		return (aSoundSpeed - aFactor * vls) / (aSoundSpeed - aFactor * vss);
+		const float ratio = (aSoundSpeed - aFactor * vls) / (aSoundSpeed - aFactor * vss);
+		// flutter_soloud: an infinite factor or speed gives inf * 0 and 0 / 0
+		// here. The ratio scales the voice's sample rate, so a NaN would reach
+		// the mixer's float -> int step conversion: no shift instead.
+		if (!(ratio == ratio) || ratio > 3.4e38f || ratio < -3.4e38f)
+			return 1.0f;
+		return ratio;
 	}
 
 	float attenuateInvDistance(float aDistance, float aMinDistance, float aMaxDistance, float aRolloffFactor)
 	{
 		float distance = MAX(aDistance, aMinDistance);
 		distance = MIN(distance, aMaxDistance);
-		return aMinDistance / (aMinDistance + aRolloffFactor * (distance - aMinDistance));
+		const float denominator = aMinDistance + aRolloffFactor * (distance - aMinDistance);
+		// flutter_soloud: with a min (and so a clamped) distance of 0 this is
+		// 0 / 0. The source is then at the min distance: full volume.
+		if (denominator <= 0)
+			return 1;
+		return aMinDistance / denominator;
 	}
 
 	float attenuateLinearDistance(float aDistance, float aMinDistance, float aMaxDistance, float aRolloffFactor)
 	{
 		float distance = MAX(aDistance, aMinDistance);
 		distance = MIN(distance, aMaxDistance);
+		// flutter_soloud: min == max (0 / 0) leaves no range to fade over.
+		if (aMaxDistance <= aMinDistance)
+			return 1;
 		return 1 - aRolloffFactor * (distance - aMinDistance) / (aMaxDistance - aMinDistance);
 	}
 
@@ -176,6 +190,9 @@ namespace SoLoud
 	{
 		float distance = MAX(aDistance, aMinDistance);
 		distance = MIN(distance, aMaxDistance);
+		// flutter_soloud: a min distance of 0 makes this 0 / 0 (see above).
+		if (aMinDistance <= 0)
+			return 1;
 		return powf(distance / aMinDistance, -aRolloffFactor);
 	}
 

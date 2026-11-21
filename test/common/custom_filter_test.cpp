@@ -325,7 +325,7 @@ void testWet() {
             kScopeName[s], block);
       float got = -1.0f;
       CHECK(f.getFilterParams(h, CustomFilter, SoLoud::CustomFilter::WET,
-                              &got, 0) &&
+                              &got, 0) == noError &&
                 std::fabs(got - 0.25f) < 1e-6f,
             "%s/%u: wet reads back (%g)", kScopeName[s], block, got);
     }

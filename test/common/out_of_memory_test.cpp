@@ -464,8 +464,7 @@ template <typename F> ExportResult callExport(long n, F f) {
 
 // Run [op] for N = 0, 1, ... [cleanup] releases what a success made.
 // Counts exceptions that escaped the export.
-void exportCountdown(const char *label, const char *bugId,
-                     std::function<PlayerErrors()> op,
+void exportCountdown(const char *label, std::function<PlayerErrors()> op,
                      std::function<void(PlayerErrors)> cleanup,
                      std::function<bool()> engineAlive,
                      const char *leakBugId = nullptr) {
@@ -505,10 +504,10 @@ void exportCountdown(const char *label, const char *bugId,
   std::printf("  %s: %ld allocation points, %d escaped, %d errors\n", label, n,
               escaped, errors);
   CHECK(n < kMaxN, "%s: never completed", label);
-  KNOWN_BUG(bugId, escaped == 0,
-            "%s: std::bad_alloc escaped the FFI export %d times (first at "
-            "allocation #%ld); through Dart FFI that aborts the app",
-            label, escaped, firstEscape);
+  CHECK(escaped == 0,
+        "%s: std::bad_alloc escaped the FFI export %d times (first at "
+        "allocation #%ld); through Dart FFI that aborts the app",
+        label, escaped, firstEscape);
   CHECK(broken == 0, "%s: engine unusable after %d failures", label, broken);
   if (leakBugId != nullptr)
     KNOWN_BUG(leakBugId, leaks == 0, "%s: %d failures leaked", label, leaks);
@@ -554,11 +553,13 @@ void scenarioBindings() {
       std::string label = std::string("loadMem ") +
                           (data == &wav ? "wav" : "mp3") +
                           (intoMem ? " (memory)" : " (stream)");
+      // Copied here, not in the operation: an allocation of the test's own
+      // would fail there and throw outside the export.
+      Bytes copy = *data;
       exportCountdown(
-          label.c_str(), "B21",
+          label.c_str(),
           [&] {
             char name[] = "oom-load";
-            Bytes copy = *data;
             return loadMem(name, copy.data(), static_cast<int>(copy.size()),
                            intoMem, &hash);
           },
@@ -580,14 +581,14 @@ void scenarioBindings() {
     handle = 0;
   };
   exportCountdown(
-      "play", "B22",
+      "play",
       [&] {
         return play(playHash, 0, 1.0f, 0.0f, false, false, 0, 0, -1, -1, 1.0f,
                     &handle);
       },
       stopVoice, alive);
   exportCountdown(
-      "play3d", "B22",
+      "play3d",
       [&] {
         return play3d(playHash, 0, 0, 0, 0, 0, 0, 0, 1.0f, false, false, 0,
                       &handle);
@@ -595,13 +596,10 @@ void scenarioBindings() {
       stopVoice, alive);
 
   exportCountdown(
-      "loadWaveform", "B21",
+      "loadWaveform",
       [&] { return loadWaveform(0, false, 0.25f, 1.0f, &hash); },
-      // Player::loadWaveform() pushes the ActiveSound into `sounds` first;
-      // a later allocation that throws leaves it there half built (B26).
-      disposeLoaded, alive, "B26");
-  // Those half-built entries (no sound, no filters) are still in the sound
-  // list: the calls that walk it must survive them.
+      disposeLoaded, alive);
+  // The calls that walk the sound list after the failed loadWaveform calls.
   CHECK(finishesWithin(
             [] {
               stopAll();
@@ -615,7 +613,7 @@ void scenarioBindings() {
   // Buffer stream: set up, then feed MP3 data (decoded on this thread).
   if (!mp3.empty()) {
     exportCountdown(
-        "setBufferStream + addAudioDataStream (mp3)", "B23",
+        "setBufferStream + addAudioDataStream (mp3)",
         [&] {
           PlayerErrors e = setBufferStream(&hash, 1u << 22, 0, 0.5, 44100, 2,
                                            BufferType::AUTO, nullptr, nullptr);
@@ -637,7 +635,7 @@ void scenarioBindings() {
 
   unsigned int busId = 0;
   exportCountdown(
-      "createBus + busPlayOnEngine", "B22",
+      "createBus + busPlayOnEngine",
       [&] {
         busId = createBus();
         if (busId == 0) return unknownError;
@@ -652,7 +650,7 @@ void scenarioBindings() {
   // A sound with a filter: the filter instance is created with the voice.
   addFilter(playHash, 0, EchoFilter);
   exportCountdown(
-      "play with a sound filter", "B22",
+      "play with a sound filter",
       [&] {
         return play(playHash, 0, 1.0f, 0.0f, false, false, 0, 0, -1, -1, 1.0f,
                     &handle);

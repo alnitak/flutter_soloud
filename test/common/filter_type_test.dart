@@ -13,7 +13,9 @@ import 'package:test/test.dart';
 List<String> _nativeFilterTypes() {
   final source = File('src/enums.h').readAsStringSync();
   final body = RegExp(
-    r'typedef enum FilterType \{(.*?)\} FilterType_t;',
+    // The C++ declaration fixes the underlying type between the name and
+    // the brace.
+    r'typedef enum FilterType[^{]*\{(.*?)\} FilterType_t;',
     dotAll: true,
   ).firstMatch(source);
   expect(

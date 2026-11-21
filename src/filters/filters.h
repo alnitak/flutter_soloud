@@ -51,28 +51,40 @@ public:
   std::vector<std::string> getFilterParamNames(FilterType filterType);
 
   /// If [handle]==0 the operation is done to global filters.
-  void setFilterParams(SoLoud::handle handle, FilterType filterType,
-                       int attributeId, float value, int customFilterId = 0);
+  ///
+  /// The parameter operations below return filterNotFound if the filter is
+  /// not active, invalidParameter if [attributeId] is not one of its
+  /// parameters, and soundHandleNotFound for a bus that has no voice.
+  PlayerErrors setFilterParams(SoLoud::handle handle, FilterType filterType,
+                               int attributeId, float value,
+                               int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
-  /// Stores the parameter in [value] and returns true, or returns false and
-  /// leaves [value] alone if the filter is not active (or, for a bus, if
-  /// [handle] is 0). Every float is a possible parameter value, so none can
-  /// stand for a missing filter.
-  bool getFilterParams(SoLoud::handle handle, FilterType filterType,
-                       int attributeId, float *value, int customFilterId = 0);
+  /// Stores the parameter in [value] and returns noError, or returns an error
+  /// and leaves [value] alone. Every float is a possible parameter value, so
+  /// none can stand for a missing filter.
+  PlayerErrors getFilterParams(SoLoud::handle handle, FilterType filterType,
+                               int attributeId, float *value,
+                               int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
-  void fadeFilterParameter(SoLoud::handle handle, FilterType filterType,
-                           int attributeId, float to, float time,
-                           int customFilterId = 0);
+  PlayerErrors fadeFilterParameter(SoLoud::handle handle,
+                                   FilterType filterType, int attributeId,
+                                   float to, float time,
+                                   int customFilterId = 0);
 
   /// If [handle]==0 the operation is done to global filters.
-  void oscillateFilterParameter(SoLoud::handle handle, FilterType filterType,
-                                int attributeId, float from, float to,
-                                float time, int customFilterId = 0);
+  PlayerErrors oscillateFilterParameter(SoLoud::handle handle,
+                                        FilterType filterType,
+                                        int attributeId, float from, float to,
+                                        float time, int customFilterId = 0);
 
 private:
+  /// The index of the active filter [filterType] whose parameter
+  /// [attributeId] an operation addresses, or an error (see setFilterParams).
+  PlayerErrors findParam(SoLoud::handle handle, FilterType filterType,
+                         int attributeId, int customFilterId, int &index);
+
   /// main SoLoud engine, the one used by player.cpp
   SoLoud::Soloud *mSoloud;
 

@@ -180,6 +180,10 @@ public:
   /// new unique hash is assigned anyway), or [pending]'s decode error.
   PlayerErrors registerSound(PendingSound pending, unsigned int &hash);
 
+  /// @brief List [sound], already built in full, under its soundHash. If an
+  /// allocation fails it throws and lists nothing.
+  void addSound(std::unique_ptr<ActiveSound> sound);
+
   /// @brief Load two sounds stored into [mem1] and [mem2], convert them to mono
   /// if needed, resample them to the engine's sample rate, and join them into a
   /// single stereo AudioSource (left and right channels).
@@ -517,6 +521,20 @@ public:
   /// @param channel the channel.
   /// @return zero for invalid parameters or while visualization is disabled.
   float getApproximateVolume(unsigned int channel);
+
+  /// @brief The number of voices [sound] has, read under sounds_mutex.
+  size_t voiceCount(ActiveSound &sound);
+
+  /// @brief At the active voice limit, stop the oldest unprotected voice of
+  /// [sound] to make room for a new one.
+  /// @return false if the limit is reached and no voice of [sound] can be
+  /// stopped.
+  bool makeRoomForVoice(ActiveSound &sound);
+
+  /// @brief Record the new voice [handle] of [sound]. If an allocation fails
+  /// the voice is stopped and the exception rethrown.
+  void registerVoice(ActiveSound &sound, SoLoud::handle handle,
+                     bool userPaused);
 
   /// @brief Play already loaded sound identified by [soundHash].
   /// @param soundHash the unique hash of the sound to play.

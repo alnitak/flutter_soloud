@@ -1235,73 +1235,9 @@ struct KnownBug {
   const char *match2; // and this too, when not null
   const char *what;
 };
-const KnownBug kKnownBugs[] = {
-    // Specific ones first: the first match wins.
-    {"B11", "CRASH", "loadMem(name, gWav.data(), -1,",
-     "negative length becomes a 4 GB unsigned length (Player::decodeMem -> "
-     "Wav::loadMem), src/player.cpp:918"},
-    {"B11", "CRASH", "std::numeric_limits<int>::min(), 0, &hash",
-     "negative length becomes a huge unsigned length, src/player.cpp:928"},
-    {"B18", "CRASH", "startMixerCapture(0, 44100, 2, -4096",
-     "negative bufferSizeBytes is cast to size_t (src/bindings.cpp:971) and "
-     "MixerOutput::start() tries to allocate it: std::bad_alloc, abort"},
-    {"B10", "CRASH", "nullptr",
-     "a required pointer argument is dereferenced without a null check "
-     "(Dart always passes one: precondition, but no error code)"},
-    {"B12", "fadesAndOscillators:", "returned noError h=0x",
-     "fade / oscillate / schedule* do not validate the handle "
-     "(src/bindings.cpp:3726 fadeVolume and its siblings)"},
-    {"B13", "Volume(", "kNaN",
-     "non-finite / out-of-range floats are not validated: NaN volume accepted "
-     "(src/bindings.cpp:3468 setGlobalVolume, 3489 setVolume)"},
-    {"B13", "setGlobalVolume(-kInf)", nullptr, "Inf global volume accepted"},
-    // Under UBSan: the same unvalidated floats reach float -> int
-    // conversions (soloud_core_basicops.cpp:359/477 seek, soloud_wav.cpp:116
-    // scheduled play, waveform.cpp:51/59 readSamples, soloud.cpp:2793 3D
-    // update with a zero sound speed / zero listener vectors).
-    {"B13", "CRASH", "seek(v, ", "NaN / negative / huge seek time"},
-    {"B13", "CRASH", "Scheduled(s, kNaN", "NaN scheduled play time"},
-    {"B13", "CRASH", "readSamplesFromMem(gWav.data(), gWav.size(), ",
-     "NaN / negative / huge readSamples range"},
-    {"B13", "CRASH", "valid 3d voice", "degenerate 3D parameters"},
-    {"B14", "filters:", "returned noError",
-     "set/fade/oscillate on an inactive filter or an out-of-range attribute "
-     "return noError (src/filters/filters.cpp:355 setFilterParams returns "
-     "void)"},
-    {"B14", "FilterBadParams:", "returned noError",
-     "out-of-range filter attribute: set ignored and get returns 0 with "
-     "noError (src/filters/filters.cpp:381)"},
-    {"B14", "ustomFilter", "returned noError",
-     "out-of-range custom filter attribute returns noError"},
-    {"B15", "BufferStream:", "returned noError",
-     "enum / format arguments are not range-checked: setBufferStream / "
-     "setPullBufferStream accept an unknown format, 0 or too many channels, "
-     "bufferingType -1 (src/bindings.cpp:2586; 0 channels divides by zero at "
-     "src/audiobuffer/audiobuffer.cpp:402)"},
-    // Under UBSan: an int from Dart cast to a C++ enum it does not fit
-    // (src/bindings.cpp:970 MixerOutputFormat, 3870 FilterType,
-    // src/player.cpp:1276/1407 BufferType, 4359 / analyzer.cpp:308
-    // VisualizationKind, Soloud::WAVEFORM).
-    {"B15", "CRASH", "startMixerCapture(-1,", "MixerOutputFormat -1"},
-    {"B15", "CRASH", "startMixerCapture(99,", "MixerOutputFormat 99"},
-    {"B15", "CRASH", "loadWaveform(", "waveform id out of range"},
-    {"B15", "CRASH", "isualizationEnabled(", "VisualizationKind out of range"},
-    {"B15", "CRASH", "(FilterType)", "FilterType out of range"},
-    {"B15", "CRASH", "(0, 0, bt", "FilterType out of range"},
-    {"B15", "CRASH", "setRealtimeStream(&hash, 44100, 2, -1,", "format -1"},
-    {"B15", "CRASH", "setRealtimeStream(&hash, 44100, 2, 99,", "format 99"},
-    {"B15", "CRASH", "BufferStream(&hash", "stream format / channels"},
-    {"B19", "CRASH", "source3d:",
-     "set3dSource* with a made-up handle index m3dData[(handle & 0xfff) - 1] "
-     "out of bounds (index up to 4094 of 1024) before checking it "
-     "(src/soloud/include/soloud_internal.h:153-154, FOR_ALL_VOICES_PRE_3D)"},
-    {"B16", "setRealtimeStream(&hash, 44100, 2, 0, 0xFFFFFFFF", nullptr,
-     "no upper bound on the ring capacity: a 0xFFFFFFFF-frame request "
-     "allocates tens of GB (slow / OOM) instead of failing"},
-    {"B17", "createBus() returned non-zero", nullptr,
-     "createBus() works without an initialized engine "
-     "(src/bindings.cpp:5051 checks only player != nullptr)"},
-};
+// Empty while no bug is known: add {id, match, match2, what} entries here,
+// specific ones first (the first match wins).
+const std::vector<KnownBug> kKnownBugs = {};
 
 const KnownBug *knownBug(const std::string &text) {
   for (const KnownBug &k : kKnownBugs) {

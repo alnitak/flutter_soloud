@@ -499,10 +499,10 @@ void main() {
             () => filter.params.first.global().value,
             throwsA(isA<SoLoudFilterNotFoundException>()),
           );
-          // Setting it is silently ignored.
+          // Nor set.
           expect(
             () => filter.params.first.global().value = 0.5,
-            returnsNormally,
+            throwsA(isA<SoLoudFilterNotFoundException>()),
           );
         });
 
@@ -615,15 +615,20 @@ void main() {
           f.deactivate();
         });
 
-        test('an attribute index beyond the parameters reads 0', () {
+        test('an attribute index beyond the parameters is refused', () {
           f.activate();
           final beyond = FilterParam(null, null, filter.type, 195, -1000, 1000);
-          expect(beyond.value, 0);
-          beyond.value = 1;
-          expect(beyond.value, 0);
+          expect(
+            () => beyond.value,
+            throwsA(isA<SoLoudInvalidParameterException>()),
+          );
+          expect(
+            () => beyond.value = 1,
+            throwsA(isA<SoLoudInvalidParameterException>()),
+          );
           expect(
             () => beyond.fadeFilterParameter(to: 1, time: Duration.zero),
-            returnsNormally,
+            throwsA(isA<SoLoudInvalidParameterException>()),
           );
           f.deactivate();
         });

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 
 #include "../device_lifecycle_test_hooks.h"
@@ -509,8 +510,10 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   if (aPlayer == nullptr || aParent == nullptr) {
     return PlayerErrors::nullPointer;
   }
-  if (bufferSizeBytes == 0 || bufferTriggerPosition < 0.0 ||
-      bufferTriggerPosition > 1.0) {
+  // Written so a NaN position fails too. A size past INT32_MAX is a negative
+  // Dart int: allocating it would reserve gigabytes (and abort on the web).
+  if (bufferSizeBytes == 0 || bufferSizeBytes > INT32_MAX ||
+      !(bufferTriggerPosition >= 0.0 && bufferTriggerPosition <= 1.0)) {
     return PlayerErrors::invalidParameter;
   }
   if (sampleRate == 0 || channels == 0) {

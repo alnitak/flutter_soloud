@@ -113,9 +113,12 @@ result WavInstance::seek(double aSeconds, float *mScratch,
   if (mParent == NULL || mBaseSamplerate <= 0.0f) {
     return INVALID_PARAMETER;
   }
-  unsigned int pos = (unsigned int)floor(mBaseSamplerate * aSeconds + 0.5);
-  if (pos > mParent->mActualSampleCount) {
-    pos = mParent->mActualSampleCount;
+  // flutter_soloud: clamped before the conversion, which is undefined for a
+  // value past the range of unsigned int (or a NaN).
+  const double target = floor(mBaseSamplerate * aSeconds + 0.5);
+  unsigned int pos = mParent->mActualSampleCount;
+  if (target < (double)mParent->mActualSampleCount) {
+    pos = (unsigned int)target;
   }
   mOffset = pos;
   mStreamPosition = float(pos / mBaseSamplerate);

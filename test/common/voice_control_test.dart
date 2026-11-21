@@ -331,11 +331,16 @@ void main() {
       soloud
         ..setVolume(_bogus, 1)
         ..setPan(_bogus, -1)
-        ..setRelativePlaySpeed(_bogus, 3)
-        ..fadeVolume(_bogus, 0, Duration.zero)
-        ..oscillateVolume(_bogus, 0, 1, Duration.zero)
-        ..schedulePause(_bogus, Duration.zero)
-        ..scheduleStop(_bogus, Duration.zero);
+        ..setRelativePlaySpeed(_bogus, 3);
+      // The faders and schedulers report the unknown handle.
+      for (final call in <void Function()>[
+        () => soloud.fadeVolume(_bogus, 0, Duration.zero),
+        () => soloud.oscillateVolume(_bogus, 0, 1, Duration.zero),
+        () => soloud.schedulePause(_bogus, Duration.zero),
+        () => soloud.scheduleStop(_bogus, Duration.zero),
+      ]) {
+        expect(call, throwsA(isA<SoLoudSoundHandleNotFoundCppException>()));
+      }
       await soloud.stop(_bogus);
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(soloud.getIsValidVoiceHandle(h), isTrue);

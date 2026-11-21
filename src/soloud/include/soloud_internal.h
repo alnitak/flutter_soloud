@@ -151,7 +151,9 @@ namespace SoLoud
 				while (*h_) \
 						{ \
 			int ch = (*h_ & 0xfff) - 1; \
-			if (ch != -1 && m3dData[ch].mHandle == *h_)  \
+			/* flutter_soloud: the low 12 bits of a made-up handle can */ \
+			/* index past m3dData[VOICE_COUNT]: check before reading. */ \
+			if (ch >= 0 && ch < VOICE_COUNT && m3dData[ch].mHandle == *h_)  \
 						{
 
 #define FOR_ALL_VOICES_POST_3D \

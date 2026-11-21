@@ -145,10 +145,6 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
       expect(soloud.getIsValidVoiceHandle(protectedHandle), isTrue);
     },
-    skip:
-        'bug J5: when the limit is reached, play() stops the oldest voice of '
-        'the sound even if it is protected (src/player.cpp:2702-2706, same in '
-        'play3d at 2832 and 2968)',
   );
 
   test('a limit of 0 or above 1023 is ignored', () {

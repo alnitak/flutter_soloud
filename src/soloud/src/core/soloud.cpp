@@ -2788,7 +2788,9 @@ namespace SoLoud
 			{
 				float step = voice->mSamplerate / aSamplerate;
 				// avoid step overflow
-				if (step > (1 << (32 - FIXPOINT_FRAC_BITS)))
+				// flutter_soloud: written so a NaN step (a NaN sample rate)
+				// is caught too: converting it to int is undefined.
+				if (!(step <= (1 << (32 - FIXPOINT_FRAC_BITS))))
 					step = 0;
 				unsigned int step_fixed = (int)floor(step * FIXPOINT_FRAC_MUL);
 				unsigned int outofs = 0;

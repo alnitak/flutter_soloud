@@ -275,15 +275,15 @@ void testNoValueMeansMissing() {
            "a missing custom filter reads back as error %d, value %g", e,
            value);
 
-    // A NaN value is the one error a present filter reports.
-    EXPECT(setFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, NAN) ==
-               noError,
-           "set the global band 0 to NaN");
-    e = getFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, &value);
-    EXPECT(e == filterParameterGetError,
-           "a NaN global parameter reads back as error %d, value %g", e,
-           value);
+    // A NaN value is refused, and the parameter keeps its value.
     setFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, 1000.0f);
+    EXPECT(setFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, NAN) ==
+               invalidParameter,
+           "setting the global band 0 to NaN is refused");
+    e = getFilterParams(0, 0, ParametricEQFilter, kEqBand0Freq, &value);
+    EXPECT(e == noError && value == 1000.0f,
+           "the global band 0 still reads back as error %d, value %g", e,
+           value);
 
     dispose();
 }

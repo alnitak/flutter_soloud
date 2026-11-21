@@ -21,26 +21,6 @@ import '../support/sounds.dart';
 const _nan = double.nan;
 const _inf = double.infinity;
 
-const _j14 =
-    'bug J14: with min and max distance 0 the inverse-distance attenuation '
-    'computes 0 / 0 and the 3D voice mixes NaN samples; '
-    'set3dSourceMinMaxDistance accepts 0 '
-    '(src/soloud/src/core/soloud_core_3d.cpp:165)';
-
-/// The cases that abort the WASM module (bug J15).
-const _j15Cases = {'pull bufferSizeBytes: -1', 'realtime sampleRate: -1'};
-const _j15 =
-    'bug J15: negative sizes and rates reach native code as huge unsigned '
-    'values and are allocated as is (setPullBufferStream bufferSizeBytes '
-    '-1, setRealtimeStream sampleRate -1, which scales the ring capacity): '
-    'the WASM module aborts (RuntimeError: Aborted); native code silently '
-    'reserves gigabytes (src/audiobuffer/pull_buffer_stream.cpp:489, '
-    'src/audiobuffer/realtime_stream.cpp:351)';
-const _j12 =
-    'bug J12: a negative bufferSizeBytes becomes a huge size_t and the '
-    'capture buffer allocation aborts the process with std::length_error '
-    '(src/bindings.cpp:864 -> src/mixeroutput/mixer_output.cpp:498)';
-
 /// Bad values for a parameter of type double.
 const _badDoubles = [_nan, _inf, -_inf, -1.0, 1e30, -1e30];
 
@@ -494,7 +474,6 @@ void main() {
         });
         await expectSaneOutput();
       },
-      skip: _j14,
     );
   });
 
@@ -584,7 +563,7 @@ void main() {
           soloud.play(make(), volume: 0.1);
         });
         await expectSaneOutput();
-      }, skip: kIsWeb && _j15Cases.contains('pull $name') ? _j15 : null);
+      });
     }
 
     for (final (name, start) in <(String, Stream<Uint8List> Function())>[
@@ -623,7 +602,7 @@ void main() {
         });
         expect(soloud.isMixerOutputStreamRunning, isFalse);
         await expectSaneOutput();
-      }, skip: name.startsWith('bufferSizeBytes: -') ? _j12 : null);
+      });
     }
 
     test('readSamplesFromMem with bad counts and times', () async {
@@ -658,7 +637,7 @@ void main() {
       test('setRealtimeStream($name)', () async {
         await _rejectOrAccept(name, make);
         await expectSaneOutput();
-      }, skip: kIsWeb && _j15Cases.contains('realtime $name') ? _j15 : null);
+      });
     }
   });
 

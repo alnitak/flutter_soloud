@@ -101,39 +101,14 @@ c++ -std=c++17 -w -pthread "${SANITIZER[@]}" \
     "${PLATFORM_LIBS[@]}" \
     -ldl -lm
 
-STRICT=0
-for arg in "$@"; do [ "$arg" == "--strict" ] && STRICT=1; done
-
-# Known bug B2: Player::applyPauseState() and Player::play() read
-# ActiveSound::handle without sounds_mutex while the audio thread's
-# voice-ended dispatch erases from it (Player::removeHandle). TSan reports it
-# as a data race; it is suppressed (and reported as KNOWN BUG) unless
-# --strict is given.
-TSAN_SUPP="$WORK_DIR/tsan.supp"
-cat > "$TSAN_SUPP" <<'SUPP'
-race:Player::applyPauseState
-race:Player::play(unsigned int, unsigned int&
-SUPP
 if [ "${SANITIZER[0]}" == "-fsanitize=thread" ]; then
-    TSAN_DEFAULT="halt_on_error=1 second_deadlock_stack=1"
-    if [ "$STRICT" == 0 ]; then
-        TSAN_DEFAULT="$TSAN_DEFAULT suppressions=$TSAN_SUPP print_suppressions=1"
-    fi
-    export TSAN_OPTIONS="${TSAN_OPTIONS:-$TSAN_DEFAULT}"
+    export TSAN_OPTIONS="${TSAN_OPTIONS:-halt_on_error=1 second_deadlock_stack=1}"
 fi
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
 # The decoders print a line per stream load, and loadFile() warns when the
 # engine is down (which loads racing a deinit expect): drop those.
 set +e
 "$OUT" "$@" 2>&1 | grep -v -e '^\[WavStream::parse\]' \
-    -e '^WARNING (from SoLoud C++ binding code): the player has not yet been initialized' \
-    | tee "$WORK_DIR/output.txt"
+    -e '^WARNING (from SoLoud C++ binding code): the player has not yet been initialized'
 STATUS=${PIPESTATUS[0]}
-if grep -q -e '^ *[0-9]* race:Player::applyPauseState' \
-        -e '^ *[0-9]* race:Player::play' "$WORK_DIR/output.txt"; then
-    echo "  KNOWN BUG B2 (TSan: Player::applyPauseState / Player::play read" \
-        "ActiveSound::handle without sounds_mutex while the audio thread" \
-        "erases from it in Player::removeHandle; src/player.cpp:1819," \
-        "2688-2706, 3131)"
-fi
 exit "$STATUS"
