@@ -32,7 +32,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -51,7 +51,7 @@ jobs:
         flavor: [js, wasm]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -88,13 +88,30 @@ jobs:
             sanitize: thread
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Xiph libraries (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libogg-dev libvorbis-dev libopus-dev libflac-dev \
             libasound2-dev libpulse-dev
+      - name: FFmpeg runtime libraries (Linux)
+        # The Linux decoders dlopen() libavformat/libavcodec: with the runtime
+        # libraries test/linux/os_decoder_linux_test also checks real
+        # decoding (without them it only checks the "no FFmpeg" path). Only
+        # the runtime packages, whatever FFmpeg version the image ships.
+        if: runner.os == 'Linux'
+        run: |
+          pkgs=""
+          for lib in libavformat libavcodec; do
+            # pkgnames lists real package names only (`search` also matches
+            # the libavcodec-extra* packages, which provide libavcodecN).
+            pkg="$(apt-cache pkgnames "$lib" | grep -E "^${lib}[0-9]+\$" | sort -V | tail -1)"
+            [ -n "$pkg" ] || { echo "no $lib runtime package found"; exit 1; }
+            pkgs="$pkgs $pkg"
+          done
+          echo "Installing:$pkgs"
+          sudo apt-get install -y --no-install-recommends $pkgs
       - name: Xiph libraries (macOS)
         if: runner.os == 'macOS'
         run: brew install libogg libvorbis opus flac
@@ -134,14 +151,14 @@ jobs:
     name: Coverage
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
       - run: brew install libogg libvorbis opus flac lcov
       - run: flutter pub get
       - run: ./test/support/coverage.sh -- -x device
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: coverage/
