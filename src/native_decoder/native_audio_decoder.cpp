@@ -5,12 +5,14 @@
 DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
     DecodedAudioData result;
     result.errorMessage = "Native audio decoding is not supported on this platform";
+    result.formatNotSupported = true;
     return result;
 }
 
 DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, size_t length) {
     DecodedAudioData result;
     result.errorMessage = "Native audio decoding is not supported on this platform";
+    result.formatNotSupported = true;
     return result;
 }
 

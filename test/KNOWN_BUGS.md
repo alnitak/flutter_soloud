@@ -58,4 +58,3 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 
 | ID | Bug | Where | Test |
 |---|---|---|---|
-| M4 | Without FFmpeg, AAC/M4A/AC-3 via loadMem/loadFile return generic fileLoadFailed (stream path audioFormatNotSupported) | soloud_wav.cpp:433 | linux/no_ffmpeg_test |

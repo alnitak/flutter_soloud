@@ -299,6 +299,7 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     DecodedAudioData result;
     if (!gFFmpeg.init()) {
         result.errorMessage = "FFmpeg libraries (libavformat/libavcodec) not available on system";
+        result.formatNotSupported = true;
         return result;
     }
 
@@ -412,6 +413,7 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     if (!codec) {
         gFFmpeg.avformat_close_input(&fmtCtx);
         result.errorMessage = "Codec decoder not found for audio stream";
+        result.formatNotSupported = true;
         return result;
     }
 

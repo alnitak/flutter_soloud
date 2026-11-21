@@ -481,8 +481,11 @@ static result adoptNativeDecoded(Wav *aWav, DecodedAudioData aDecoded) {
       aDecoded.channels > MAX_CHANNELS || !(aDecoded.sampleRate > 0.0f)) {
     if (!aDecoded.errorMessage.empty())
       printf("[Wav::loadnative] %s\n", aDecoded.errorMessage.c_str());
+    const bool unsupported = !aDecoded.success && aDecoded.formatNotSupported;
     aDecoded.freeSamples();
-    return FILE_LOAD_FAILED;
+    // No decoder for the format here (e.g. no FFmpeg on Linux): say so, as
+    // the streaming path does, rather than report a corrupt file.
+    return unsupported ? FORMAT_NOT_SUPPORTED : FILE_LOAD_FAILED;
   }
 
   delete[] aWav->mData;
@@ -531,8 +534,17 @@ result Wav::testAndLoadFile(MemoryFile *aReader) {
 
   // Fallback to native OS decoder for M4A, MP4, AAC, AC3/EAC3, ALAC, etc.
   aReader->seek(0);
-  if (loadnative(aReader) == SO_NO_ERROR) {
+  const result nativeResult = loadnative(aReader);
+  if (nativeResult == SO_NO_ERROR) {
     return SO_NO_ERROR;
+  }
+  // Only data that looks like a native format is "not supported here";
+  // anything else is a file that could not be loaded.
+  if (nativeResult == FORMAT_NOT_SUPPORTED &&
+      NativeAudioDecoder::isSupportedNativeFormat(aReader->getMemPtr(),
+                                                  aReader->length())) {
+    printf("[Wav::testAndLoadFile] -> FORMAT_NOT_SUPPORTED\n");
+    return FORMAT_NOT_SUPPORTED;
   }
 
   printf("[Wav::testAndLoadFile] -> FILE_LOAD_FAILED\n");

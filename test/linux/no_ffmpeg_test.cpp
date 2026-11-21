@@ -17,9 +17,7 @@
 //      loadIntoMem true and false: an error, never a crash or a "loaded"
 //      sound; the error says the format is not supported here
 //      (audioFormatNotSupported), as the streaming path already does, not
-//      the generic fileLoadFailed of a corrupt file (KNOWN BUG M4:
-//      Wav::loadnative() maps every native-decoder failure to
-//      FILE_LOAD_FAILED, src/soloud/src/audiosource/wav/soloud_wav.cpp).
+//      the generic fileLoadFailed of a corrupt file.
 //   2. An AAC buffer stream (BufferType AUTO) reports audioFormatNotSupported
 //      from addAudioDataStream().
 //   3. MP3, WAV and FLAC still load (memory and disk mode) and play.
@@ -196,14 +194,14 @@ static void testOsFormatsFailCleanly(const std::string &dir)
                         disposeSound(hash);
                     continue;
                 }
-                KNOWN_BUG("M4", err == audioFormatNotSupported,
-                          "%s(%s, %s) returned %d (%s); without FFmpeg the "
-                          "format is unsupported here, which the streaming "
-                          "path reports as audioFormatNotSupported (29)",
-                          apiName, f, modeName(intoMem), err,
-                          err == fileLoadFailed ? "fileLoadFailed, same as a "
-                                                  "corrupt file"
-                                                : "other");
+                CHECK(err == audioFormatNotSupported,
+                      "%s(%s, %s) returned %d (%s); without FFmpeg the "
+                      "format is unsupported here, which the streaming "
+                      "path reports as audioFormatNotSupported (29)",
+                      apiName, f, modeName(intoMem), err,
+                      err == fileLoadFailed ? "fileLoadFailed, same as a "
+                                              "corrupt file"
+                                            : "other");
             }
         }
     }

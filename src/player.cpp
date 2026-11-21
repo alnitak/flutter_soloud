@@ -275,6 +275,8 @@ static PlayerErrors fromSoLoudError(SoLoud::result result)
         return outOfMemory;
     case SoLoud::NOT_IMPLEMENTED:
         return notImplemented;
+    case SoLoud::FORMAT_NOT_SUPPORTED:
+        return audioFormatNotSupported;
     default:
         return unknownError;
     }

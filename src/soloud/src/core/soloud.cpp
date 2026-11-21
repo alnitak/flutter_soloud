@@ -1356,6 +1356,7 @@ namespace SoLoud
 		case DLL_NOT_FOUND: return "DLL not found, or wrong DLL";
 		case OUT_OF_MEMORY: return "Out of memory";
 		case NOT_IMPLEMENTED: return "Feature not implemented";
+		case FORMAT_NOT_SUPPORTED: return "Audio format not supported on this system";
 		/*case UNKNOWN_ERROR: return "Other error";*/
 		}
 		return "Other error";

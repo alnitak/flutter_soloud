@@ -15,7 +15,7 @@
 # Platform: Linux (glibc). Needs: a C/C++ toolchain and the fixtures in
 # example/assets/audio. No audio device.
 #   --asan    AddressSanitizer + UBSan;  --tsan  ThreadSanitizer.
-#   --strict  known src/ bugs (KNOWN BUG M4) fail the run.
+#   --strict  checks marked KNOWN BUG fail the run.
 # Verification: Linux arm64, Ubuntu 24.04 in test/docker (FFmpeg hidden) and
 # the `ffmpeg none` image (no FFmpeg installed).
 
