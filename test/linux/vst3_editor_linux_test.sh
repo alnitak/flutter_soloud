@@ -15,7 +15,7 @@
 # Xvfb, which the script starts itself when DISPLAY is unset. Prints SKIPPED
 # when one of them is missing. No audio device, no assets.
 #   --asan    AddressSanitizer + UBSan.
-#   --strict  known src/ bugs (KNOWN BUG M5) fail the run.
+#   --strict  known src/ bugs (KNOWN BUG checks) fail the run.
 # Verification: Linux arm64, Ubuntu 24.04 in test/docker with Xvfb, also with
 # --asan.
 

@@ -84,4 +84,3 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | M1 | Failed Linux backend switch (JACK) leaves engine with no device: state uninitialized, play() noError, no fallback | soloud_miniaudio.cpp:2304-2311 | linux/linux_backend_switch_test |
 | M2 | PulseAudio server loss: state stays started, clock freezes; after restart startAudioDevice() no-op, only changeDevice recovers | soloud_miniaudio.cpp/Player (miniaudio.h off-limits) | linux/pulse_server_loss_test |
 | M4 | Without FFmpeg, AAC/M4A/AC-3 via loadMem/loadFile return generic fileLoadFailed (stream path audioFormatNotSupported) | soloud_wav.cpp:433 | linux/no_ffmpeg_test |
-| M5 | Linux VST3 editor WM_DELETE_WINDOW ignored: ClientMessage data.l[0] read from eventBuf[8], LP64 index 7 | vst3_editor_linux.cpp:857 | linux/vst3_editor_linux_test |

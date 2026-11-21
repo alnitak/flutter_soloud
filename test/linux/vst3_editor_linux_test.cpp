@@ -13,7 +13,7 @@
 //   4. close() unmaps the window; open() again with the same view reuses the
 //      attachment; open() with a new view detaches the old one.
 //   5. The window manager's close button (a WM_PROTOCOLS / WM_DELETE_WINDOW
-//      ClientMessage) closes the editor. KNOWN BUG M5.
+//      ClientMessage) closes the editor.
 //   6. Destroying the window object detaches the view and removes its run
 //      loop sources, so no timer fires on a freed handler.
 //   7. A view that does not support X11 embedding, and no display at all,
@@ -383,16 +383,15 @@ static void testWindowManagerClose()
     pump(50);
     sendWmDelete(win);
     pump(300);
-    // onEventPollStatic() reads the ClientMessage's data.l[0] from
-    // eventBuf[8]; on LP64 data.l[0] is at byte 56, i.e. eventBuf[7], and
-    // eventBuf[8] holds data.l[1] (the timestamp). The comparison with
-    // WM_DELETE_WINDOW never matches, so the close button does nothing.
-    KNOWN_BUG("M5", !window->isOpen(),
+    // onEventPollStatic() must read the ClientMessage's data.l[0] from
+    // eventBuf[7] (byte 56 on LP64); eventBuf[8] holds data.l[1], the
+    // timestamp.
+    CHECK(!window->isOpen(),
               "the editor is still open after the window manager's "
               "WM_DELETE_WINDOW message");
     XWindowAttributes a{};
     waitAttrs(win, a, [](const XWindowAttributes &x) { return x.map_state == IsUnmapped; });
-    KNOWN_BUG("M5", a.map_state == IsUnmapped, "the window is still mapped (%d)", a.map_state);
+    CHECK(a.map_state == IsUnmapped, "the window is still mapped (%d)", a.map_state);
     window.reset();
     view->release();
 }
