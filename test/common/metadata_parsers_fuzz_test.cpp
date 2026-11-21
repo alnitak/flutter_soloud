@@ -7,9 +7,9 @@
 // Groups (each input is built from the seed, so a failure names the input
 // that reproduces it):
 //   valid     well-formed tags parse to what was written, before any fuzzing:
-//             ID3 text frames in every encoding, COMM comments (KNOWN BUG
-//             A33: the COMM text is copied raw, not converted to UTF-8),
-//             OpusTags, Vorbis and FLAC comments, ICY titles
+//             ID3 text frames in every encoding, COMM comments in Latin-1
+//             and UTF-16 (converted to UTF-8), OpusTags, Vorbis and FLAC
+//             comments, ICY titles
 //   id3text   id3TextToUtf8() on random frames: for encodings 0, 1 and 2 the
 //             output must be valid UTF-8
 //   id3tag    ID3v2.3/2.4 tags with many frames, corrupted (sizes, flags,
@@ -24,10 +24,8 @@
 //   ogg       the bundled Opus and Vorbis files with their comment packet
 //             replaced by a corrupted one (re-paged, so CRCs stay valid)
 //   flac      a FLAC file with VORBIS_COMMENT and PICTURE blocks, and the
-//             same in Ogg FLAC, with corrupted metadata. KNOWN BUG A34: a
-//             STREAMINFO with more channels than the frames crashes the
-//             native FLAC decoder (checked on its own; a fuzz input that
-//             fails and has such a STREAMINFO counts as this known bug)
+//             same in Ogg FLAC, with corrupted metadata; a STREAMINFO with
+//             more channels than the frames (checked on its own too)
 //   random    random bytes, alone and behind each format's magic, through
 //             every pure parser and StreamDecoder
 //
@@ -362,25 +360,6 @@ static std::string runFlac(uint32_t seed) {
   return checkStream(runStreamDecoder(nativeFlacInput(rnd), randomChunks(rnd)), "FLAC");
 }
 
-// For a failed flac input: "A34" when the input has a STREAMINFO block (the
-// first one, or a block whose type was corrupted to 0) declaring more
-// channels than the frames have, the known bug checked in testFlacChannels.
-static std::string knownFlac(uint32_t seed) {
-  Rng rnd(seed);
-  if (rnd(3) == 0 && gSeeds.oggFlacPackets.size() > 3) return "";
-  const Bytes f = nativeFlacInput(rnd);
-  size_t p = 4;
-  while (p + 4 <= f.size()) {
-    const size_t len = (size_t(f[p + 1]) << 16) | (size_t(f[p + 2]) << 8) | f[p + 3];
-    if ((f[p] & 0x7F) == 0 && len >= 34 && p + 4 + 13 <= f.size() &&
-        ((f[p + 4 + 12] >> 1) & 7) != 0)
-      return "A34";
-    if (f[p] & 0x80) break;
-    p += 4 + len;
-  }
-  return "";
-}
-
 static std::string runRandom(uint32_t seed) {
   Rng rnd(seed);
   static const char *magics[] = {"", "ID3\x03", "ID3\x04", "OggS", "fLaC", "\xff\xfb\x90\xc0",
@@ -404,7 +383,7 @@ static std::string noKnownBug(uint32_t) { return ""; }
 static const Group kGroups[] = {
     {"id3text", runId3Text, noKnownBug}, {"id3tag", runId3Tag, noKnownBug},
     {"m4a", runM4a, noKnownBug},         {"icy", runIcyGroup, noKnownBug},
-    {"ogg", runOgg, noKnownBug},         {"flac", runFlac, knownFlac},
+    {"ogg", runOgg, noKnownBug},         {"flac", runFlac, noKnownBug},
     {"random", runRandom, noKnownBug},
 };
 
@@ -436,9 +415,8 @@ static void testValid() {
     CHECK(f.aac == f.expected, "AAC %s: '%s'", f.what, f.aac.c_str());
     CHECK(f.mp3 == f.expected, "MP3 %s: '%s'", f.what, f.mp3.c_str());
   }
-  // A33: COMM text in Latin-1 and UTF-16 must come out as UTF-8, like the
-  // text frames (src/audiobuffer/aac_stream_decoder.cpp:508-520 and
-  // mp3_stream_decoder.cpp:148-160 copy the bytes after the description).
+  // COMM text in Latin-1 and UTF-16 must come out as UTF-8, like the text
+  // frames.
   struct Comm {
     const char *what;
     Bytes body;
@@ -453,11 +431,11 @@ static void testValid() {
     size_t s = 0;
     AACDecoderWrapper::parseId3Tags(t.data(), t.size(), a, s);
     const StreamRun r = runStreamDecoder(cat(t, mp3Frames(8)), {4096});
-    KNOWN_BUG(a.comment == "Caf\xC3\xA9", "A33: AAC COMM %s: comment %zu bytes, valid UTF-8 %d",
-              c.what, a.comment.size(), validUtf8(a.comment));
-    KNOWN_BUG(r.last.mp3Metadata.comment == "Caf\xC3\xA9",
-              "A33: MP3 COMM %s: comment %zu bytes, valid UTF-8 %d", c.what,
-              r.last.mp3Metadata.comment.size(), validUtf8(r.last.mp3Metadata.comment));
+    CHECK(a.comment == "Caf\xC3\xA9", "AAC COMM %s: comment %zu bytes, valid UTF-8 %d",
+          c.what, a.comment.size(), validUtf8(a.comment));
+    CHECK(r.last.mp3Metadata.comment == "Caf\xC3\xA9",
+          "MP3 COMM %s: comment %zu bytes, valid UTF-8 %d", c.what,
+          r.last.mp3Metadata.comment.size(), validUtf8(r.last.mp3Metadata.comment));
   }
   // OpusTags.
   if (gSeeds.opusPackets.size() > 3) {
@@ -540,11 +518,10 @@ static std::string inChild(const std::function<std::string()> &fn) {
 }
 #endif
 
-// A34: the native FLAC wrapper sizes each frame by the STREAMINFO channel
-// count (src/audiobuffer/flac_stream_decoder.cpp:436) instead of the
-// frame's own (as ogg_flac_stream_decoder.cpp:406 does), and reads libFLAC's
-// channel buffers past the frame's: a NULL dereference when STREAMINFO says
-// stereo and the frames are mono.
+// The native FLAC wrapper outputs the STREAMINFO channel count: a frame with
+// fewer channels must not make it read libFLAC's channel buffers past the
+// frame's (a NULL dereference when STREAMINFO says stereo and the frames are
+// mono).
 static void testFlacChannels() {
   std::printf("flac-channels: STREAMINFO says 2 channels, the frames have 1\n");
   Bytes f = gSeeds.flac;
@@ -554,7 +531,7 @@ static void testFlacChannels() {
   std::printf("  skipped on Windows (needs fork)\n");
 #else
   const std::string r = inChild([&] { return checkStream(runStreamDecoder(f, {4096}), "FLAC"); });
-  KNOWN_BUG(r.empty(), "A34: mono frames under a stereo STREAMINFO: %s", r.c_str());
+  CHECK(r.empty(), "mono frames under a stereo STREAMINFO: %s", r.c_str());
   // The same mismatch in Ogg FLAC is handled.
   std::vector<Bytes> packets = gSeeds.oggFlacPackets;
   if (packets.size() > 3 && packets[0].size() > 29) {

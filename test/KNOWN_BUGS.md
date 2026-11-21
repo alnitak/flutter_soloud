@@ -33,8 +33,6 @@ O1–O3, S1–S9, K1–K2, P1–P9.
 | A27 | Truncated FLAC zero-padded to header length | soloud_wav.cpp:382 | testTruncated |
 | A28 | After failed Wav reload a voice never ends (sample count not reset) | soloud_wav.cpp:462-466 | testInstanceAndReload |
 | A30 | M4A bitrate read at wrong esds offset | m4a_metadata.cpp:183 | m4a testEsdsBitrate |
-| A33 | ID3 COMM comment not converted to UTF-8 | aac_stream_decoder.cpp:508-520, mp3_stream_decoder.cpp:148-160 | metadata_parsers_fuzz testValid |
-| A34 | Native FLAC NULL deref when frames have fewer channels than STREAMINFO | flac_stream_decoder.cpp:436 (crash :464) | metadata_parsers_fuzz testFlacChannels |
 
 ## Native concurrency, bindings and out-of-memory
 

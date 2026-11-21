@@ -4,6 +4,7 @@
 #include "metadata_bounds.h"
 #include "../soloud_common.h"
 #include "../simd/simd_pcm.h"
+#include <algorithm>
 #include <cstring> // For memcpy
 
 namespace
@@ -441,6 +442,21 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
                             ? (1.0f / static_cast<float>(1u << (bps - 1)))
                             : ((bps == 32) ? (1.0f / 2147483648.0f) : 1.0f);
 
+    // The output has the STREAMINFO channel count (reported to the caller
+    // and used for seeking). A frame with another count is mapped to it: its
+    // last channel is repeated, or its extra channels are dropped. libFLAC
+    // gives only the frame's channel buffers.
+    const unsigned frameChannels = frame->header.channels;
+    if (frameChannels == 0 || channels > FLAC__MAX_CHANNELS)
+    {
+        return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+    }
+    const FLAC__int32 *planes[FLAC__MAX_CHANNELS];
+    for (unsigned c = 0; c < channels; ++c)
+    {
+        planes[c] = buffer[std::min(c, frameChannels - 1)];
+    }
+
     const size_t frameTotalSamples = num_samples * channels;
     const uint64_t frameStartSample =
         static_cast<uint64_t>(frame->header.number.sample_number) * channels;
@@ -462,7 +478,7 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
         const size_t oldSize = self->m_decodedPcm.size();
         self->m_decodedPcm.resize(oldSize + frameTotalSamples);
         SoLoud::interleavePlanarInt32ToFloats(
-            reinterpret_cast<const int32_t *const *>(buffer),
+            reinterpret_cast<const int32_t *const *>(planes),
             self->m_decodedPcm.data() + oldSize,
             static_cast<unsigned int>(num_samples), channels, scale);
     }
@@ -478,7 +494,7 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
             const unsigned firstChannel = (i == startFrame) ? startChannel : 0;
             for (unsigned channel = firstChannel; channel < channels; ++channel)
             {
-                self->m_decodedPcm.push_back(static_cast<float>(buffer[channel][i]) * scale);
+                self->m_decodedPcm.push_back(static_cast<float>(planes[channel][i]) * scale);
             }
         }
     }

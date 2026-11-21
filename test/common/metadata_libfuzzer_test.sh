@@ -6,8 +6,7 @@
 #  2. when a clang with libFuzzer is found, the fuzzer build (ASan + UBSan +
 #     libFuzzer) runs time-boxed (60 s by default) on that corpus, in fork
 #     mode so it goes on after a crash. Each crash/timeout input it saves is
-#     replayed and classified: the known native FLAC channel bug (A34) is
-#     reported as KNOWN BUG, anything else fails the run.
+#     replayed and reported, and fails the run.
 #
 # Needs no audio device. Needs the Xiph libraries (brew install opus libogg
 # libvorbis flac; apt install libogg-dev libvorbis-dev libopus-dev
@@ -20,7 +19,8 @@
 #
 # --asan builds the replay with AddressSanitizer and UndefinedBehaviorSanitizer
 # (the fuzzer build always has them).
-# --strict makes known bugs found by the fuzzer fail the run.
+# --strict is accepted for symmetry with the other tests (no known bugs are
+# classified).
 # --seconds N sets the fuzzing time (also FUZZ_SECONDS).
 # Artifacts and the grown corpus stay in $TMPDIR/metadata_libfuzzer_work.
 #
@@ -155,25 +155,18 @@ if [ $STATUS -ne 0 ] && ! ls "$WORK"/artifacts/* >/dev/null 2>&1; then
     exit 1
 fi
 
-# ---- classify what the fuzzer saved
+# ---- report what the fuzzer saved
 FAILED=0
-KNOWN=0
 for a in "$WORK"/artifacts/*; do
     [ -f "$a" ] || continue
     LOG="$a.log"
     "$FUZZER" -timeout=25 "$a" > "$LOG" 2>&1 || true
-    if grep -q "FlacDecoderWrapper::write_callback" "$LOG" &&
-       grep -qE "null pointer|SEGV" "$LOG"; then
-        echo "KNOWN BUG A34: $(basename "$a"): native FLAC frame with fewer channels than STREAMINFO"
-        KNOWN=$((KNOWN + 1))
-    else
-        echo "FAIL: $(basename "$a") (replay: $FUZZER $a)"
-        grep -E "ERROR|runtime error|SUMMARY|invariant|#[0-4] " "$LOG" | head -12
-        FAILED=$((FAILED + 1))
-    fi
+    echo "FAIL: $(basename "$a") (replay: $FUZZER $a)"
+    grep -E "ERROR|runtime error|SUMMARY|invariant|#[0-4] " "$LOG" | head -12
+    FAILED=$((FAILED + 1))
 done
-echo "libFuzzer: $FAILED new failures, $KNOWN known bugs"
-if [ $FAILED -ne 0 ] || { [ $STRICT -eq 1 ] && [ $KNOWN -ne 0 ]; }; then
+echo "libFuzzer: $FAILED failures"
+if [ $FAILED -ne 0 ]; then
     echo "FAILED"
     exit 1
 fi

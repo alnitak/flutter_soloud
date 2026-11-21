@@ -148,16 +148,8 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
       } else if (strcmp(frame_id, "COMM") == 0) {
         // COMM frame: 1 byte encoding, 3 bytes language, short description, comment text
         if (frame_size > 4) {
-          size_t text_start = pos + 4;
-          while (text_start < pos + frame_size && rawData[text_start] != 0) {
-            text_start++;
-          }
-          if (text_start < pos + frame_size) text_start++; // Skip null terminator
-          if (text_start < pos + frame_size) {
-            decoder->mCachedMp3Metadata.comment = std::string(
-                reinterpret_cast<const char *>(rawData + text_start),
-                (pos + frame_size) - text_start);
-          }
+          decoder->mCachedMp3Metadata.comment =
+              id3CommentToUtf8(rawData + pos, frame_size);
         }
       }
 
