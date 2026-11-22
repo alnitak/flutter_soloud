@@ -82,7 +82,7 @@ class ScopedFlushDenormals {
     mPrev = _mm_getcsr();
     constexpr unsigned int kFtzDaz = 0x8040u;  // FTZ (bit 15) | DAZ (bit 6)
     if ((mPrev & kFtzDaz) != kFtzDaz) {
-      _mm_setcsr(mPrev | kFtzDaz);
+      _mm_setcsr(static_cast<unsigned int>(mPrev | kFtzDaz));
       mChanged = true;
     }
 #elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM64EC))

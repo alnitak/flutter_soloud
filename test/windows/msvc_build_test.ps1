@@ -51,13 +51,15 @@ foreach ($src in $sources) {
     $vendored = $rel -like 'src\soloud\*' -or $rel -like 'src\pffft\*'
     $obj = Join-Path $objDir ('{0:D3}.obj' -f $index)
     $index++
-    $lang = if ([IO.Path]::GetExtension($src) -eq '.c') { @('/TC') } else { @('/TP') }
-    $warn = if ($vendored) { @('/W0') } else {
+    # A one-element array assigned from `if` collapses to a string, which @splat
+    # would pass character by character (/ T P).
+    $lang = @(if ([IO.Path]::GetExtension($src) -eq '.c') { '/TC' } else { '/TP' })
+    $warn = @(if ($vendored) { '/W0' } else {
         # Vendored headers included from plugin files are not ours: /external
         # keeps their warnings out of /WX.
         @("/W$WarningLevel", '/WX', '/external:W0', ('/external:I' + (Join-Path $RepoRoot 'src\soloud')),
           ('/external:I' + (Join-Path $RepoRoot 'src\pffft')))
-    }
+    })
     $out = & cl.exe @common @lang @warn "/Fo$obj" $src 2>&1 | Where-Object { $_ -notmatch '^\S+\.(c|cpp)$' }
     if ($LASTEXITCODE -ne 0) {
         $failedFiles.Add($rel)
