@@ -49,7 +49,16 @@
 #include <mutex>
 #include <shared_mutex>
 #include <stdio.h>
+#include <string.h>
 #include <thread>
+
+// Strings handed to Dart, which frees them with free(). MSVC deprecates the
+// POSIX name (C4996); _strdup allocates with malloc() as well.
+#if defined(_MSC_VER)
+#define soloud_strdup _strdup
+#else
+#define soloud_strdup strdup
+#endif
 
 #if defined(__ANDROID__)
 #include <jni.h>
@@ -662,7 +671,7 @@ extern "C"
     // [e,name,n] pointers must be deleted on Dart.
     PlayerErrors *e = (PlayerErrors *)malloc(sizeof(PlayerErrors));
     *e = error;
-    char *name = strdup(completeFileName);
+    char *name = soloud_strdup(completeFileName);
     unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int));
     *n = *hash;
     uint64_t *ts = (uint64_t *)malloc(sizeof(uint64_t));
@@ -1842,7 +1851,7 @@ extern "C"
       if (hasSpecialChar)
         continue;
 
-      devicesName[numDevices] = strdup(d[i].name.c_str());
+      devicesName[numDevices] = soloud_strdup(d[i].name.c_str());
       isDefault[numDevices] = (int *)malloc(sizeof(int));
       *isDefault[numDevices] = d[i].isDefault;
       deviceId[numDevices] = (int *)malloc(sizeof(int));
@@ -4151,7 +4160,7 @@ extern "C"
     const int n = std::min(*paramsCount, capacity);
     for (int i = 0; i < n; i++)
     {
-      names[i] = strdup(pNames[i].c_str());
+      names[i] = soloud_strdup(pNames[i].c_str());
     }
     return noError;
   }

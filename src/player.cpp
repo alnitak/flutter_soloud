@@ -2654,7 +2654,7 @@ unsigned int Player::getActiveVoiceCount_internal()
     unsigned int count = 0;
     for (auto &s : sounds)
     {
-        count += s->handle.size();
+        count += static_cast<unsigned int>(s->handle.size());
     }
     return count;
 }
