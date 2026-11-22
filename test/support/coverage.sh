@@ -114,6 +114,6 @@ for f in "$OUT_DIR"/dart.info "$OUT_DIR"/native.info "$OUT_DIR"/lcov.info; do
 done
 
 if command -v genhtml >/dev/null 2>&1 && [ -s "$OUT_DIR/lcov.info" ]; then
-    genhtml -q --ignore-errors source,unmapped -o "$OUT_DIR/html" "$OUT_DIR/lcov.info" \
+    genhtml -q --ignore-errors source,unmapped,inconsistent,corrupt,unsupported -o "$OUT_DIR/html" "$OUT_DIR/lcov.info" \
         && echo "HTML report: $OUT_DIR/html/index.html"
 fi

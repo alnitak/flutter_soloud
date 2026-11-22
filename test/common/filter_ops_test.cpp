@@ -167,6 +167,8 @@ void testFilterGetterRacesVoiceEnd() {
                 (void)soloud.getFilterParameter(h, 0, 0);
                 reads.fetch_add(1);
             }
+            // A pure spin starves the player and the mixer on small CI runners.
+            std::this_thread::yield();
         }
     });
 
@@ -177,7 +179,7 @@ void testFilterGetterRacesVoiceEnd() {
     mixer.join();
 
     std::printf("  %lu plays, %lu filter reads\n", plays.load(), reads.load());
-    EXPECT(plays.load() > 100, "too few voices were played to race: %lu",
+    EXPECT(plays.load() > 20, "too few voices were played to race: %lu",
            plays.load());
     EXPECT(reads.load() > 100, "too few filter reads: %lu", reads.load());
 

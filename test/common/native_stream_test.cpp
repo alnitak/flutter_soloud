@@ -617,6 +617,8 @@ void testSyntheticUnderrun() {
         stream.load("synthetic", syntheticFactory(control, total));
         SoLoud::handle h = playUnity(soloud, stream);
         soloud.seek(h, 2.0);
+        // Under a sanitizer the worker can take a while to reach the new position.
+        EXPECT(waitFor([&] { return buffered(soloud, h) >= 8 * kBufferSize; }, 5000), "worker should reach the seek");
         std::vector<float> out = mixPaced(soloud, {h}, 4 * kBufferSize);
         expectFrames(out, 0, 2 * kSampleRate, 4 * kBufferSize, "before the underrun");
         uint64_t played = 4 * kBufferSize;

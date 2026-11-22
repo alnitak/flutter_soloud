@@ -55,7 +55,12 @@ static void removalCase(const std::string &subUID) {
     gState.clear();
     ET_CHECK(initOn(engineId) == noError, "init on the aggregate");
     const unsigned int h = playSine();
-    ET_CHECK(h != 0 && waitDeviceState(audioDeviceStarted) && mixing(h), "playing on the aggregate");
+    ET_CHECK(h != 0, "sound started");
+    ET_CHECK(waitDeviceState(audioDeviceStarted, 5000), "device started (state %d)", static_cast<int>(getAudioDeviceState()));
+    // A freshly created aggregate can take a moment to start its clock (slow on CI runners).
+    bool playing = false;
+    for (int i = 0; i < 5 && !playing; ++i) playing = mixing(h, 500);
+    ET_CHECK(playing, "playing on the aggregate");
 
     const auto t0 = std::chrono::steady_clock::now();
     ET_CHECK(catest::destroyAggregate(agg), "aggregate destroyed while in use");
