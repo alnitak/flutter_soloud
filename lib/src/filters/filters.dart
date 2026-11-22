@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/src/audio_source.dart';
 import 'package:flutter_soloud/src/bindings/bindings_player.dart';
 import 'package:flutter_soloud/src/bindings/soloud_controller.dart';
@@ -23,6 +22,8 @@ import 'package:flutter_soloud/src/sound_handle.dart';
 import 'package:flutter_soloud/src/sound_hash.dart';
 import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
+
+const bool _kIsWeb = bool.fromEnvironment('dart.library.js_interop');
 
 /// This class serves as a base for all audio filter methods.
 abstract class FilterBase {
@@ -459,7 +460,7 @@ class FilterParam {
   /// Throws [SoLoudCppException] if the value can't be read, for example
   /// because the filter is not active.
   double get value {
-    if (kIsWeb && _soundHandle != null) {
+    if (_kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     final ret = SoLoudController().soLoudFFI.getFilterParams(
@@ -485,7 +486,7 @@ class FilterParam {
   /// Throws [SoLoudFilterForSingleSoundOnWebDartException] if trying to use
   /// [FiltersSingle] on the Web platform.
   set value(double val) {
-    if (kIsWeb && _soundHandle != null) {
+    if (_kIsWeb && _soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     if (val < _min || val > _max) {
@@ -638,7 +639,7 @@ enum FilterType {
   /// a filter for a single sound on the Web platform.
   @internal
   void activate(SoundHash? soundHash, int? busId) {
-    if (kIsWeb && soundHash != null) {
+    if (_kIsWeb && soundHash != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     final error = SoLoudController().soLoudFFI.addFilter(
@@ -672,7 +673,7 @@ enum FilterType {
   /// a filter for a single sound on the Web platform.
   @internal
   void deactivate(SoundHash? soundHash, int? busId) {
-    if (kIsWeb && soundHash != null) {
+    if (_kIsWeb && soundHash != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     final error = SoLoudController().soLoudFFI.removeFilter(
@@ -703,7 +704,7 @@ enum FilterType {
     double to,
     Duration time,
   ) {
-    if (kIsWeb && soundHandle != null) {
+    if (_kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     if (!SoLoud.instance.isInitialized) {
@@ -739,7 +740,7 @@ enum FilterType {
     double to,
     Duration time,
   ) {
-    if (kIsWeb && soundHandle != null) {
+    if (_kIsWeb && soundHandle != null) {
       throw const SoLoudFilterForSingleSoundOnWebDartException();
     }
     if (!SoLoud.instance.isInitialized) {
