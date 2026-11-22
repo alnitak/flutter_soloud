@@ -65,7 +65,7 @@ if build native_decoder_test \
     -I src -I src/soloud/include -I src/native_decoder -I src/audiobuffer -I src/soloud/src/audiosource/wav \
     test/common/native_decoder_test.cpp src/audiobuffer/aac_stream_decoder.cpp \
     src/audiobuffer/aac_stream_decoder_windows.cpp src/audiobuffer/m4a_metadata.cpp \
-    src/audiobuffer/mp3_stream_decoder.cpp src/native_decoder/os_decoder_windows.cpp \
+    src/audiobuffer/mp3_stream_decoder.cpp src/native_decoder/os_decoder_windows.cpp src/native_stream/m4a_gapless.cpp \
     src/native_decoder/native_audio_decoder.cpp \
     "${MF_LIBS[@]}"; then
     run native_decoder_test "$OUT/native_decoder_test.exe"
@@ -75,7 +75,7 @@ if build os_decoder_windows_test \
     -I src -I src/native_decoder -I src/audiobuffer \
     test/windows/os_decoder_windows_test.cpp src/audiobuffer/aac_stream_decoder.cpp \
     src/audiobuffer/aac_stream_decoder_windows.cpp src/audiobuffer/m4a_metadata.cpp \
-    src/native_decoder/os_decoder_windows.cpp \
+    src/native_decoder/os_decoder_windows.cpp src/native_stream/m4a_gapless.cpp \
     "${MF_LIBS[@]}"; then
     mkdir -p "$OUT/work"
     run os_decoder_windows_test "$OUT/os_decoder_windows_test.exe" example/assets/audio "$OUT/work"
@@ -85,7 +85,7 @@ if build aac_stream_decoder_windows_test \
     -I src -I src/native_decoder -I src/audiobuffer \
     test/windows/aac_stream_decoder_windows_test.cpp src/audiobuffer/aac_stream_decoder.cpp \
     src/audiobuffer/aac_stream_decoder_windows.cpp src/audiobuffer/m4a_metadata.cpp \
-    src/native_decoder/os_decoder_windows.cpp \
+    src/native_decoder/os_decoder_windows.cpp src/native_stream/m4a_gapless.cpp \
     "${MF_LIBS[@]}"; then
     run aac_stream_decoder_windows_test "$OUT/aac_stream_decoder_windows_test.exe" example/assets/audio
 fi

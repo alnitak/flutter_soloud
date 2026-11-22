@@ -31,6 +31,7 @@ Invoke-NativeBuild -Out $exe -Asan:$Asan `
         'src\audiobuffer\aac_stream_decoder.cpp',
         'src\audiobuffer\aac_stream_decoder_windows.cpp',
         'src\native_decoder\os_decoder_windows.cpp',
+        'src\native_stream\m4a_gapless.cpp',
         'src\audiobuffer\mp3_stream_decoder.cpp',
         'src\audiobuffer\m4a_metadata.cpp') `
     -Libs @('mfplat.lib', 'mfreadwrite.lib', 'mfuuid.lib', 'shlwapi.lib', 'ole32.lib', 'uuid.lib')

@@ -227,7 +227,8 @@ static void scanBoxes(const unsigned char *data, size_t size, M4aMetadata &meta,
             boxSize = static_cast<uint32_t>(largeSize);
             headerSize = 16;
         } else if (boxSize == 0) {
-            boxSize = size - offset;
+            const size_t rest = size - offset;
+            boxSize = rest > 0xFFFFFFFFu ? 0xFFFFFFFFu : static_cast<uint32_t>(rest);
         }
 
         if (boxSize < headerSize || !metadataHasBytes(size, offset, boxSize)) break;

@@ -311,6 +311,16 @@ bool parseM4aGapless(FILE *file, M4aGaplessInfo &out) {
     }, out);
 }
 
+bool parseM4aGaplessMemory(const unsigned char *data, size_t size, M4aGaplessInfo &out) {
+    out = M4aGaplessInfo();
+    if (!data || size == 0) return false;
+    return parseTopLevel(static_cast<uint64_t>(size), [data, size](uint64_t pos, unsigned char *buffer, size_t length) {
+        if (pos > size || length > size - pos) return false;
+        std::memcpy(buffer, data + pos, length);
+        return true;
+    }, out);
+}
+
 #if !defined(_WIN32)
 bool parseM4aGaplessFd(int fd, M4aGaplessInfo &out) {
     out = M4aGaplessInfo();

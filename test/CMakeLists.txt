@@ -80,7 +80,8 @@ if(APPLE)
     "-framework Foundation" "-framework CoreFoundation" "-framework CoreAudio"
     "-framework AudioToolbox" "-framework AVFoundation")
 elseif(WIN32)
-  set(SOLOUD_OS_DECODER_SOURCE "${REPO_ROOT}/src/native_decoder/os_decoder_windows.cpp")
+  set(SOLOUD_OS_DECODER_SOURCE "${REPO_ROOT}/src/native_decoder/os_decoder_windows.cpp"
+    "${REPO_ROOT}/src/native_stream/m4a_gapless.cpp")
   set(SOLOUD_AAC_DECODER_SOURCE "${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_windows.cpp")
   set(SOLOUD_PLATFORM_LIBS mfplat mfreadwrite mfuuid ole32 propsys shlwapi winmm)
   set(SOLOUD_M_LIB "")

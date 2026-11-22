@@ -227,7 +227,7 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   // is currently calling getAudio(). Buffering checks are done when the user
   // adds data or marks the end of the stream (main thread).
   mParent->requestMoreDataIfNeeded(/*aFromMixer*/ true);
-  return readFrames;
+  return static_cast<unsigned int>(readFrames);
 }
 
 result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,

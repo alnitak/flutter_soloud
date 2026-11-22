@@ -6,11 +6,16 @@
 
 #include "native_audio_decoder.h"
 #include "../audiobuffer/aac_stream_decoder.h"
+#include "../native_stream/m4a_gapless.h"
 #include <windows.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <shlwapi.h>
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <new>
 #include <vector>
 #include <string>
 #include <fstream>
@@ -228,6 +233,41 @@ DecodedAudioData decodeElementaryStream(const unsigned char *bytes, size_t lengt
     return result;
 }
 
+/// Media Foundation's MPEG-4 source returns every decoded AAC frame: the
+/// encoder delay (edit list or iTunSMPB) and the end padding stay in. Trim
+/// them as the other platforms do. When the output is already shorter than
+/// delay + valid length, the delay was dropped already and only the length
+/// is bounded.
+void applyM4aGapless(DecodedAudioData &d, const M4aGaplessInfo &info) {
+    if (!d.success || !d.samples || d.sampleCount == 0 || d.channels == 0) return;
+    uint64_t delay = 0, valid = 0;
+    if (!info.resolve(static_cast<double>(d.sampleRate), delay, valid) || valid == 0) return;
+    const uint64_t total = d.sampleCount;
+    const uint64_t start = total >= delay + valid ? delay : 0;
+    const uint64_t count = std::min<uint64_t>(valid, total - start);
+    if (start == 0 && count == total) return;
+    float *trimmed = new (std::nothrow) float[static_cast<size_t>(count) * d.channels];
+    if (!trimmed) return;
+    for (unsigned int c = 0; c < d.channels; ++c)
+        std::memcpy(trimmed + c * count, d.samples + c * total + start, static_cast<size_t>(count) * sizeof(float));
+    delete[] d.samples;
+    d.samples = trimmed;
+    d.sampleCount = static_cast<size_t>(count);
+}
+
+/// [applyM4aGapless] for an MP4 file on disk (wide path, also \\?\).
+void trimM4aFile(DecodedAudioData &d, const wchar_t *path) {
+    if (!d.success) return;
+    FILE *f = _wfopen(path, L"rb");
+    if (!f) return;
+    unsigned char head[12] = {0};
+    const size_t n = fread(head, 1, sizeof(head), f);
+    M4aGaplessInfo info;
+    const bool ok = NativeAudioDecoder::isM4aOrMp4(head, n) && parseM4aGapless(f, info);
+    fclose(f);
+    if (ok) applyM4aGapless(d, info);
+}
+
 } // anonymous namespace
 
 DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
@@ -298,6 +338,7 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
                 if (SUCCEEDED(hr) && pReader) {
                     result = decodeFromReader(pReader);
                     pReader->Release();
+                    trimM4aFile(result, wPath.data());
                 }
                 DeleteFileW(copy.c_str());
                 if (SUCCEEDED(hr)) return result;
@@ -311,6 +352,7 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
 
     result = decodeFromReader(pReader);
     pReader->Release();
+    trimM4aFile(result, wPath.data());
     return result;
 }
 
@@ -416,6 +458,10 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
 
     result = decodeFromReader(pReader);
     pReader->Release();
+    if (isM4a) {
+        M4aGaplessInfo info;
+        if (parseM4aGaplessMemory(bytes, length, info)) applyM4aGapless(result, info);
+    }
     return result;
 }
 

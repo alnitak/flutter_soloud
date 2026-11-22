@@ -25,6 +25,7 @@ A bug-fix release: a new, much larger test suite found many bugs, now fixed.
   - Apple: HE-AAC plays at full rate, the last AC-3 frame is no longer dropped.
   - Android: AC-3/E-AC-3 in MP4 on devices with Dolby's decoder no longer cuts the start/end or applies the Atmos leveler.
   - Linux: crashes and wrong lengths with FFmpeg 4.4/5.x fixed; decoding from memory honors `TMPDIR`.
+  - Windows: M4A files no longer start with the encoder delay or end with padding (gapless trim as on the other platforms); M4A paths longer than `MAX_PATH` (`\\?\` prefix) load.
   - FLAC files without a total length load; M4A bitrate is correct.
 - **Recording (mixer output)**: correct channel order for 6/8-channel Vorbis and FLAC; valid WAV files over 4 GB.
 - **Linux devices**: a failed backend switch keeps the previous backend; the device recovers when PulseAudio comes back; the VST3 editor's close button works.

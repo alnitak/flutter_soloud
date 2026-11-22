@@ -1666,7 +1666,7 @@ PlayerErrors Player::getStreamTimeConsumed(unsigned int hash, float *timeConsume
     if (static_cast<SoLoud::BufferStream *>(s->sound.get())->getBufferingType() != BufferingType::RELEASED)
         return PlayerErrors::wrongBufferTypeToAskForTimeConsumed;
 
-    *timeConsumed = static_cast<SoLoud::BufferStream *>(s->sound.get())->getStreamTimeConsumed();
+    *timeConsumed = static_cast<float>(static_cast<SoLoud::BufferStream *>(s->sound.get())->getStreamTimeConsumed());
     return PlayerErrors::noError;
 }
 
@@ -2631,8 +2631,8 @@ bool Player::getPause(unsigned int handle)
 
 void Player::setRelativePlaySpeed(unsigned int handle, float speed)
 {
-    if (speed < 0.05)
-        speed = 0.05;
+    if (speed < 0.05f)
+        speed = 0.05f;
     soloud.setRelativePlaySpeed(handle, speed);
 }
 

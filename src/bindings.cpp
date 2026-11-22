@@ -3691,7 +3691,7 @@ extern "C"
     // Rounding to 6 decimal to work around the float to double precision.
     if (!allFinite(pan))
       return;
-    player.get()->setPan(handle, pan);
+    player.get()->setPan(handle, static_cast<float>(pan));
   }
 
   /// Set the left/right volumes directly.
@@ -3707,7 +3707,7 @@ extern "C"
       return;
     if (!allFinite(panLeft, panRight))
       return;
-    player.get()->setPanAbsolute(handle, panLeft, panRight);
+    player.get()->setPanAbsolute(handle, static_cast<float>(panLeft), static_cast<float>(panRight));
   }
 
   /// Check if a handle is still valid.

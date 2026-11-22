@@ -649,8 +649,8 @@ PlayerErrors BufferStream::addData(const void *aData, unsigned int aDataLen,
         std::lock_guard<std::recursive_mutex> lock(mBuffer.bufferMutex);
         if (sampleRate != -1) {
           mPCMformat.sampleRate = sampleRate;
-          mBaseSamplerate = sampleRate;
-          autoTypeSamplerate = sampleRate;
+          mBaseSamplerate = static_cast<float>(sampleRate);
+          autoTypeSamplerate = static_cast<float>(sampleRate);
         }
         if (channels != -1) {
           mPCMformat.channels = channels;

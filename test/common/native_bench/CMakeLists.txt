@@ -60,6 +60,7 @@ elseif(WIN32)
   list(APPEND BENCH_SOURCES
     "${REPO_ROOT}/src/native_decoder/os_decoder_windows.cpp"
     "${REPO_ROOT}/src/audiobuffer/aac_stream_decoder_windows.cpp"
+    "${REPO_ROOT}/src/native_stream/m4a_gapless.cpp"
   )
 elseif(UNIX)
   list(APPEND BENCH_SOURCES

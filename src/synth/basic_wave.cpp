@@ -81,7 +81,7 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
             aBuffer[i] = SoLoud::Misc::generateWaveform(
                              waveform,
                              static_cast<float>(mPhase)) *
-                         mParent->mADSR.val(mT, 10000000000000.0);
+                         static_cast<float>(mParent->mADSR.val(mT, 10000000000000.0));
 
             mT += d;
         }
@@ -108,7 +108,7 @@ unsigned int BasicwaveInstance::getAudio(float *aBuffer, unsigned int aSamplesTo
             mHarmonicPhases[2] =
                 wrapPhase(mHarmonicPhases[2] + phaseIncrement * harmMult2);
 
-            const float env = mParent->mADSR.val(mT, 10000000000000.0);
+            const float env = static_cast<float>(mParent->mADSR.val(mT, 10000000000000.0));
             const float primary = SoLoud::Misc::generateWaveform(
                 waveform, static_cast<float>(mPhase));
             const float harmonics =
@@ -162,7 +162,7 @@ void Basicwave::setDetune(double aDetune)
 
 void Basicwave::setSamplerate(double aSamplerate)
 {
-    mBaseSamplerate = aSamplerate;
+    mBaseSamplerate = static_cast<float>(aSamplerate);
     mFreq.store((double)(440 / mBaseSamplerate), std::memory_order_relaxed);
 }
 
