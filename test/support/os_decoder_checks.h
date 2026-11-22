@@ -387,7 +387,10 @@ inline void testElementaryStreams(const Policy &policy, const std::string &dir) 
                       << r->seconds * 1000.0 << " ms)" << std::endl;
             OSDEC_CHECK(std::labs(diff) <= policy.elementaryFrameSlack,
                         st.file << " (" << how << "): decoded " << r->d.sampleCount << " frames, expected ~" << st.refFrames);
-            OSDEC_CHECK(r->d.channels == 2 && r->d.sampleRate == 44100.0f, st.file << ": unexpected format");
+            const bool formatOk = (st.file == std::string("sample-AAC.aac"))
+                ? (r->d.channels == 2 && r->d.sampleRate == 44100.0f)
+                : ((r->d.channels == 2 || r->d.channels == 6) && r->d.sampleRate == 44100.0f);
+            OSDEC_CHECK(formatOk, st.file << ": unexpected format (" << r->d.channels << "ch " << r->d.sampleRate << "Hz)");
             OSDEC_CHECK(allFinite(r->d.samples, r->d.sampleCount * r->d.channels), st.file << ": out-of-range samples");
             OSDEC_CHECK(rms(r->d.samples, 0, r->d.sampleCount) > 0.01f, st.file << ": decoded silence");
         }

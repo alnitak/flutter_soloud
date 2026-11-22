@@ -51,8 +51,11 @@ folder names the platform whose code path it covers.
     failures.
 
   Every open bug has an ID (`A1`, `J5`, …), and the test that covers it
-  uses the same ID. See `KNOWN_BUGS.md` for the list and for what to do
-  when a bug gets fixed.
+  uses the same ID. Whenever a bug is found that is not immediately fixed,
+  `test/KNOWN_BUGS.md` MUST be updated with a new entry for that bug, and
+  the test that exhibits it marked with the assigned ID. Conversely, when a
+  bug is fixed, remove the marker from the test and delete its row from
+  `KNOWN_BUGS.md`. See `KNOWN_BUGS.md` for the list and conventions.
 - **Dart tags** (configured in `dart_test.yaml`):
   - `device`: the test starts the real engine, which opens an audio output
     device.

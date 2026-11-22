@@ -84,14 +84,15 @@ function Invoke-NativeBuild {
         [string[]]$Libs = @(),
         [string[]]$CxxFlags = @(),
         [string[]]$ForceIncludes = @(),
+        [string]$Runtime = 'MD',
         [switch]$Dll,
         [switch]$Asan
     )
     $objDir = Join-Path ([IO.Path]::GetTempPath()) ('soloud_obj_' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $objDir | Out-Null
     try {
-        # /MD: the DLL runtime, as CMake and the prebuilt VST3 SDK use.
-        $flags = @('/nologo', '/c', '/MD', '/EHsc', '/utf-8', '/W3', '/Zc:inline', '/DNOMINMAX', '/D_CRT_SECURE_NO_WARNINGS')
+        # Default /MD: the DLL runtime, as CMake uses.
+        $flags = @('/nologo', '/c', "/$Runtime", '/EHsc', '/utf-8', '/W3', '/Zc:inline', '/DNOMINMAX', '/D_CRT_SECURE_NO_WARNINGS')
         if ($Asan) { $flags += @('/fsanitize=address', '/Zi', '/Od') } else { $flags += @('/O2') }
         foreach ($d in $Defines) { $flags += "/D$d" }
         # String-valued defines are easier to pass in a header than through

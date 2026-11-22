@@ -44,7 +44,7 @@ New-Item -ItemType Directory -Path $work | Out-Null
 # The mock plug-in, as a Windows .vst3 bundle (a DLL named .vst3).
 $bundleBin = Join-Path $work "MockVst3.vst3\Contents\$archDir"
 New-Item -ItemType Directory -Force -Path $bundleBin | Out-Null
-Invoke-NativeBuild -Out (Join-Path $bundleBin 'MockVst3.vst3') -Dll -Asan:$Asan `
+Invoke-NativeBuild -Out (Join-Path $bundleBin 'MockVst3.vst3') -Dll -Asan:$Asan -Runtime 'MT' `
     -Includes @('test\support', $sdkInclude) `
     -Sources @('test\support\vst3_mock_plugin.cpp') `
     -Libs @($sdkLib, 'ole32.lib')
@@ -66,7 +66,7 @@ $defines = Join-Path $work 'vst3_test_defines.h'
 "#define SOLOUD_VST3_HELPER_PATH `"$($helper -replace '\\', '/')`"" | Set-Content -Encoding ASCII $defines
 
 $exe = Join-Path $work 'vst3_host_test.exe'
-Invoke-NativeBuild -Out $exe -Asan:$Asan `
+Invoke-NativeBuild -Out $exe -Asan:$Asan -Runtime 'MT' `
     -Defines @('SOLOUD_ENABLE_VST3') -ForceIncludes @($defines) `
     -Includes @('src', 'test\support', $sdkInclude) `
     -Sources @(

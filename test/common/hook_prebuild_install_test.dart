@@ -135,9 +135,28 @@ void main() {
   }
 
   /// Sets the modification time of each of [entities] two hours back, with
-  /// touch: dart:io cannot set a directory's.
+  /// touch (or PowerShell on Windows): dart:io cannot set a directory's.
   Future<void> ageTwoHours(List<FileSystemEntity> entities) async {
     final then = DateTime.now().subtract(const Duration(hours: 2));
+    if (Platform.isWindows) {
+      final iso = then.toIso8601String();
+      final script = entities
+          .map((e) {
+            final p = e.path.replaceAll("'", "''");
+            return "(Get-Item -LiteralPath '$p').LastWriteTime = "
+                "[DateTime]::Parse('$iso')";
+          })
+          .join('; ');
+      final result = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        script,
+      ]);
+      expect(result.exitCode, 0, reason: '${result.stderr}');
+      return;
+    }
     String two(int n) => n.toString().padLeft(2, '0');
     final stamp =
         '${then.year}${two(then.month)}${two(then.day)}'

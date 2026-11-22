@@ -37,7 +37,7 @@ void main() {
     });
 
     test('fadeVolume reaches the target', () async {
-      final h = soloud.play(tone, volume: 1);
+      final h = soloud.play(tone);
       soloud.fadeVolume(h, 0.2, const Duration(milliseconds: 100));
       expect(
         await waitUntil(() => (soloud.getVolume(h) - 0.2).abs() < 1e-3),
@@ -70,7 +70,7 @@ void main() {
     });
 
     test('setVolume after a fade cancels it', () async {
-      final h = soloud.play(tone, volume: 1);
+      final h = soloud.play(tone);
       soloud
         ..fadeVolume(h, 0, const Duration(milliseconds: 200))
         ..setVolume(h, 0.5);

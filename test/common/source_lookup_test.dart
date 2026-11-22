@@ -22,7 +22,12 @@ import '../support/sounds.dart';
 /// path. The file is deleted after the test.
 String writeTempWav(Uint8List bytes) {
   final dir = Directory.systemTemp.createTempSync('soloud_play_source');
-  addTearDown(() => dir.deleteSync(recursive: true));
+  addTearDown(() async {
+    if (SoLoud.instance.isInitialized) {
+      await SoLoud.instance.disposeAllSources();
+    }
+    dir.deleteSync(recursive: true);
+  });
   final file = File('${dir.path}/tone.wav')..writeAsBytesSync(bytes);
   return file.path;
 }
