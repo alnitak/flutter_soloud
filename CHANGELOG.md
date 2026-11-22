@@ -1,5 +1,6 @@
-## 5.3.2 (unreleased)
+## 5.3.2 (22 Nov 2026)
 - fix macOS: an app that quit without ever using SoLoud crashed in `applicationWillTerminate` (EXC_BAD_ACCESS at 0x0) #618
+- refactor: drop package:flutter imports from filters and vst3 for a future use in DartNative. Thanks to hectorAguero #616⁠
 
 ## 5.3.1 (18 Nov 2026)
 - fix: eliminate playback drift between LoadMode.memory and LoadMode.disk, fix seek/tell callbacks in WavStream, and fix MemoryFile::seek boundary clamping. Thanks to @Solido #580
