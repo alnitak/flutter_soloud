@@ -90,6 +90,9 @@ if (-not $SkipCMake) {
         }
         if ($LASTEXITCODE -ne 0) {
             Write-Output "CMake suite with /fsanitize=address: FAILED, log: $cmakeLog"
+            # The failing tests' own output (ctest --output-on-failure) is above the tail.
+            Get-Content $cmakeLog | Select-String -Pattern 'FAIL|error C\d|ERROR: AddressSanitizer|SUMMARY: AddressSanitizer' |
+                Select-Object -First 40 | ForEach-Object { Write-Output "    $($_.Line)" }
             Get-Content $cmakeLog -Tail 30 | ForEach-Object { Write-Output "    $_" }
             $status = 1
         } else {
