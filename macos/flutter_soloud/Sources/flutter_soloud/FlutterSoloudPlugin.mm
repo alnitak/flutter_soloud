@@ -1,5 +1,7 @@
 #import "FlutterSoloudPlugin.h"
 
+#include <dlfcn.h>
+
 #include "engine_lifecycle.h"
 
 /// The engine-local channel Dart uses to hand this plugin its engine id.
@@ -65,7 +67,17 @@ static const int64_t kNoEngineId = -1;
   }
   // Synchronously unload all hosted VST3 plugins before exit() invokes C++
   // static destructors in reverse load order.
-  soloud_vst3HostUnloadAll();
+  //
+  // Looked up at run time instead of called directly: the function lives in
+  // the native code asset, which is loaded only when Dart first uses SoLoud.
+  // In an app that quits without ever using it the symbol is unresolved, and
+  // a direct call jumps to address 0. The VST3 host can be used without
+  // init(), so `_hasEngineId` is not the right guard either.
+  void (*unloadAll)(void) =
+      (void (*)(void))dlsym(RTLD_DEFAULT, "soloud_vst3HostUnloadAll");
+  if (unloadAll != NULL) {
+    unloadAll();
+  }
 }
 
 - (void)handleMethodCall:(FlutterMethodCall *)call
