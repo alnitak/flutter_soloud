@@ -262,10 +262,11 @@ std::vector<float> mixPaced(SoLoud::Soloud &soloud, const std::vector<SoLoud::ha
                     if (b != last) {
                         last = b;
                         idleSince = Clock::now();
-                    } else if (msSince(idleSince) > (b == 0 ? 1000 : 100)) {
-                        // Nothing buffered may be a codec still starting up
-                        // (slow on emulators); a partly filled ring that
-                        // stopped growing is the end of the stream.
+                    } else if (msSince(idleSince) > (b < n ? 1000 : 100)) {
+                        // Less than this block buffered may be a codec still
+                        // starting up (slow on emulators) or a worker that a
+                        // sanitizer slows down; a ring that holds this block
+                        // and stopped growing is the end of the stream.
                         break;
                     }
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));

@@ -51,6 +51,12 @@ for dir in "${DIRS[@]}"; do
         else
             FAILED+=("$dir/$name")
             echo "FAIL ($(( $(date +%s) - start ))s), log: $log"
+            # The failure lines first: they are often above the last 20 lines.
+            if grep -q 'FAIL' "$log"; then
+                echo "    -- lines with FAIL --"
+                grep 'FAIL' "$log" | head -40 | sed 's/^/    /'
+                echo "    -- last 20 lines --"
+            fi
             tail -20 "$log" | sed 's/^/    /'
         fi
     done

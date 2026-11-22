@@ -47,6 +47,13 @@ function Report([string]$Name, [int]$Status, [string]$Log, [double]$Seconds) {
         $script:passed.Add($Name); Write-Output ($line + ('PASS ({0:N0}s)' -f $Seconds))
     } else {
         $script:failed.Add($Name); Write-Output ($line + ('FAIL ({0:N0}s), log: {1}' -f $Seconds, $Log))
+        # The failure lines first: they are often above the last 20 lines.
+        $fails = @(Get-Content $Log | Select-String -Pattern 'FAIL' | Select-Object -First 40)
+        if ($fails.Count -gt 0) {
+            Write-Output '    -- lines with FAIL --'
+            $fails | ForEach-Object { Write-Output "    $($_.Line)" }
+            Write-Output '    -- last 20 lines --'
+        }
         Get-Content $Log -Tail 20 | ForEach-Object { Write-Output "    $_" }
     }
 }

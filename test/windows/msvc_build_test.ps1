@@ -48,7 +48,7 @@ $warned = 0
 $index = 0
 foreach ($src in $sources) {
     $rel = $src.Substring($RepoRoot.Length + 1)
-    $vendored = $rel -like 'src\soloud\*' -or $rel -like 'src\pffft\*'
+    $vendored = $rel -like 'src\soloud\*' -or $rel -like 'src\pffft\*' -or $rel -like 'src\filters\signalsmith-*'
     $obj = Join-Path $objDir ('{0:D3}.obj' -f $index)
     $index++
     # A one-element array assigned from `if` collapses to a string, which @splat
@@ -58,7 +58,9 @@ foreach ($src in $sources) {
         # Vendored headers included from plugin files are not ours: /external
         # keeps their warnings out of /WX.
         @("/W$WarningLevel", '/WX', '/external:W0', ('/external:I' + (Join-Path $RepoRoot 'src\soloud')),
-          ('/external:I' + (Join-Path $RepoRoot 'src\pffft')))
+          ('/external:I' + (Join-Path $RepoRoot 'src\pffft')),
+          ('/external:I' + (Join-Path $RepoRoot 'src\filters\signalsmith-stretch')),
+          ('/external:I' + (Join-Path $RepoRoot 'src\filters\signalsmith-linear')))
     })
     $out = & cl.exe @common @lang @warn "/Fo$obj" $src 2>&1 | Where-Object { $_ -notmatch '^\S+\.(c|cpp)$' }
     if ($LASTEXITCODE -ne 0) {
