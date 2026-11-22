@@ -522,6 +522,13 @@ public:
   /// @return zero for invalid parameters or while visualization is disabled.
   float getApproximateVolume(unsigned int channel);
 
+  /// @brief Hold sounds_mutex while the returned lock lives. For code that
+  /// walks a sound's voice list (Filters) and must not race the audio
+  /// thread's removeHandle().
+  std::unique_lock<std::recursive_mutex> lockSounds() const {
+    return std::unique_lock<std::recursive_mutex>(sounds_mutex);
+  }
+
   /// @brief The number of voices [sound] has, read under sounds_mutex.
   size_t voiceCount(ActiveSound &sound);
 

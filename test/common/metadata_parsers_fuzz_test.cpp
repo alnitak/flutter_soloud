@@ -492,6 +492,18 @@ static void testValid() {
 // Runs [fn] in a child with a time limit; returns "" or the problem.
 static std::string inChild(const std::function<std::string()> &fn) {
   std::fflush(stdout);
+#if defined(__SANITIZE_THREAD__)
+#define FUZZ_TSAN 1
+#elif defined(__has_feature)
+#if __has_feature(thread_sanitizer)
+#define FUZZ_TSAN 1
+#endif
+#endif
+#if defined(FUZZ_TSAN)
+  // fork() from a process with threads under ThreadSanitizer can deadlock the
+  // child (and the parent waits for it): run in-process; TSan reports the races.
+  return fn();
+#endif
   int fds[2];
   if (pipe(fds) != 0) return fn();
   const pid_t pid = fork();

@@ -280,6 +280,30 @@ DecodedAudioData NativeAudioDecoder::decodeFile(const char *filePath) {
 
     IMFSourceReader *pReader = nullptr;
     HRESULT hr = MFCreateSourceReaderFromURL(wPath.data(), nullptr, &pReader);
+    if ((FAILED(hr) || !pReader) && wcsncmp(wPath.data(), L"\\\\?\\", 4) == 0) {
+        // Media Foundation treats the argument as a URL and does not accept
+        // the \\?\ (long path) prefix: decode a copy under a short temporary
+        // path with the same extension.
+        wchar_t tempPath[MAX_PATH];
+        wchar_t tempFile[MAX_PATH];
+        if (GetTempPathW(MAX_PATH, tempPath) > 0 && GetTempFileNameW(tempPath, L"sld", 0, tempFile) > 0) {
+            const wchar_t *dot = wcsrchr(wPath.data(), L'.');
+            const wchar_t *sep = wcsrchr(wPath.data(), L'\\');
+            std::wstring copy = tempFile;
+            if (dot && (!sep || dot > sep)) copy += dot;
+            DeleteFileW(tempFile);
+            if (CopyFileW(wPath.data(), copy.c_str(), FALSE)) {
+                pReader = nullptr;
+                hr = MFCreateSourceReaderFromURL(copy.c_str(), nullptr, &pReader);
+                if (SUCCEEDED(hr) && pReader) {
+                    result = decodeFromReader(pReader);
+                    pReader->Release();
+                }
+                DeleteFileW(copy.c_str());
+                if (SUCCEEDED(hr)) return result;
+            }
+        }
+    }
     if (FAILED(hr) || !pReader) {
         result.errorMessage = "MFCreateSourceReaderFromURL failed with HRESULT: " + std::to_string(hr);
         return result;

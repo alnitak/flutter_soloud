@@ -4182,7 +4182,7 @@ extern "C"
       if (s == nullptr)
         return soundHashNotFound;
       return noThrow([&]
-                   { return s->filters->addFilter(filterType); });
+                   { auto lk = player.get()->lockSounds(); return s->filters->addFilter(filterType); });
     }
     else
     {
@@ -4223,7 +4223,7 @@ extern "C"
         auto const s = player.get()->findByHash(soundHash);
         if (s == nullptr)
           return soundHashNotFound;
-        if (!s->filters->removeFilter(filterType))
+        if (auto lk = player.get()->lockSounds(); !s->filters->removeFilter(filterType))
           return filterNotFound;
       }
       else
@@ -4504,7 +4504,7 @@ extern "C"
       if (s == nullptr)
         return soundHashNotFound;
       return noThrow([&]
-                   { return s->filters->addFilter(FilterType::CustomFilter, customFilterId); });
+                   { auto lk = player.get()->lockSounds(); return s->filters->addFilter(FilterType::CustomFilter, customFilterId); });
     }
     else
     {
@@ -4536,7 +4536,7 @@ extern "C"
       auto const s = player.get()->findByHash(soundHash);
       if (s == nullptr)
         return soundHashNotFound;
-      if (!s->filters->removeFilter(FilterType::CustomFilter, customFilterId))
+      if (auto lk = player.get()->lockSounds(); !s->filters->removeFilter(FilterType::CustomFilter, customFilterId))
         return filterNotFound;
     }
     else
