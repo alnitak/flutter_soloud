@@ -834,7 +834,14 @@ void testOutputLatencyStaysWithinTheRing()
             while (w > seen && !worst.compare_exchange_weak(seen, w)) {
             }
         });
+    // At least 400 ms, then until the device has read enough to make the race
+    // likely: four spinning observers can starve the device and the worker
+    // on a small runner (MSVC ASan on GitHub's Windows images).
+    const auto start = std::chrono::steady_clock::now();
     std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    while (engine.mRenderRing.getReadPosition() <= 100 * kShortQuantum &&
+           std::chrono::steady_clock::now() - start < std::chrono::seconds(5))
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     stop.store(true);
     for (auto& o : observers)
         o.join();
