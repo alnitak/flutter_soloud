@@ -1,0 +1,158 @@
+name: Tests
+
+# See test/README.md for the layout. CI runners have no audio output device,
+# so Dart tests tagged `device` are excluded and the native suite uses the
+# null backend. Android and iOS tests need a device/simulator and are run by
+# hand (test/android/all.sh, test/ios/all.sh).
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Native tests that currently fail because of open bugs in src/ (see
+  # test/KNOWN_BUGS.md). Remove a name once its bug is fixed.
+  KNOWN_FAILING_NATIVE: ""
+
+jobs:
+  dart:
+    name: Dart (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libpulse-dev
+      - run: flutter pub get
+      - name: flutter test (no audio device)
+        run: flutter test -x device test/common test/android test/ios test/linux
+
+  web:
+    name: Dart web (${{ matrix.flavor }})
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [js, wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: flutter test --platform chrome
+        shell: bash
+        run: |
+          EXTRA=""
+          [ "${{ matrix.flavor }}" == "wasm" ] && EXTRA="--wasm"
+          flutter test --platform chrome $EXTRA test/web
+      - name: test/common in Chrome, real WASM build
+        shell: bash
+        run: |
+          EXTRA=""
+          [ "${{ matrix.flavor }}" == "wasm" ] && EXTRA="--wasm"
+          ./test/support/web_tests.sh $EXTRA test/common
+
+  native:
+    name: Native (${{ matrix.os }}${{ matrix.sanitize && format(', {0}', matrix.sanitize) || '' }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+          - os: windows-latest
+          - os: ubuntu-latest
+            sanitize: address
+          - os: macos-latest
+            sanitize: thread
+          # The Linux backends and decoders run their own threads (libpulse's
+          # mainloop, the FFmpeg decoders, the device coordinator).
+          - os: ubuntu-latest
+            sanitize: thread
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Xiph libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libogg-dev libvorbis-dev libopus-dev libflac-dev \
+            libasound2-dev libpulse-dev
+      - name: FFmpeg runtime libraries (Linux)
+        # The Linux decoders dlopen() libavformat/libavcodec: with the runtime
+        # libraries test/linux/os_decoder_linux_test also checks real
+        # decoding (without them it only checks the "no FFmpeg" path). Only
+        # the runtime packages, whatever FFmpeg version the image ships.
+        if: runner.os == 'Linux'
+        run: |
+          pkgs=""
+          for lib in libavformat libavcodec; do
+            # pkgnames lists real package names only (`search` also matches
+            # the libavcodec-extra* packages, which provide libavcodecN).
+            pkg="$(apt-cache pkgnames "$lib" | grep -E "^${lib}[0-9]+\$" | sort -V | tail -1)"
+            [ -n "$pkg" ] || { echo "no $lib runtime package found"; exit 1; }
+            pkgs="$pkgs $pkg"
+          done
+          echo "Installing:$pkgs"
+          sudo apt-get install -y --no-install-recommends $pkgs
+      - name: Xiph libraries (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libogg libvorbis opus flac
+      - name: TSan memory layout (Linux)
+        # Recent runner kernels randomize mmap with 32 bits, which TSan's
+        # shadow memory layout does not accept ("unexpected memory mapping").
+        if: runner.os == 'Linux' && matrix.sanitize == 'thread'
+        run: sudo sysctl vm.mmap_rnd_bits=28
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S test -B build/native_tests -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DSOLOUD_TEST_SANITIZE=${{ matrix.sanitize || '' }}
+      - name: Build
+        run: cmake --build build/native_tests --config RelWithDebInfo --parallel 4
+      - name: ctest
+        shell: bash
+        env:
+          # Races inside uninstrumented system libraries (libpulse) only.
+          TSAN_OPTIONS: suppressions=${{ github.workspace }}/test/support/tsan.supp halt_on_error=0 second_deadlock_stack=1
+        run: |
+          EXCLUDE="$(echo "$KNOWN_FAILING_NATIVE" | tr ' ' '|')"
+          ctest --test-dir build/native_tests -C RelWithDebInfo -j4 \
+            --output-on-failure ${EXCLUDE:+-E "($EXCLUDE)"}
+      - name: Platform-specific native tests (Linux)
+        if: runner.os == 'Linux' && !matrix.sanitize
+        run: ./test/support/run_native_tests.sh test/linux
+      - name: Platform-specific native tests (macOS)
+        if: runner.os == 'macOS' && !matrix.sanitize
+        run: ./test/support/run_native_tests.sh test/macos
+      - name: Platform-specific native tests (Windows)
+        if: runner.os == 'Windows' && !matrix.sanitize
+        shell: pwsh
+        run: ./test/windows/all.ps1 -SkipCMake
+
+  coverage:
+    name: Coverage
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: brew install libogg libvorbis opus flac lcov
+      - run: flutter pub get
+      - run: ./test/support/coverage.sh -- -x device
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
