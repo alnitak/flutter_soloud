@@ -34,10 +34,11 @@ A bug-fix release: a new, much larger test suite found many bugs, now fixed.
 - **Recording (mixer output)**: correct channel order for 6/8-channel Vorbis and FLAC; valid WAV files over 4 GB.
 - **Linux devices**: a failed backend switch keeps the previous backend; the device recovers when PulseAudio comes back; the VST3 editor's close button works.
 - **Robustness**: invalid arguments and out-of-memory no longer crash the app, and several crashes, deadlocks and data races are fixed.
+- fix android: getHardwareOutputLatency drifts when the AAudio position rate differs. Thanks to @dotkebi #621
 
 ## 5.3.2 (22 Nov 2026)
-- fix macOS: an app that quit without ever using SoLoud crashed in `applicationWillTerminate` (EXC_BAD_ACCESS at 0x0) #618
-- refactor: drop package:flutter imports from filters and vst3 for a future use in DartNative. Thanks to hectorAguero #616⁠
+- fix macOS: an app that quit without ever using SoLoud crashed in `applicationWillTerminate` (EXC_BAD_ACCESS at 0x0). Thanks to @akaita #618
+- refactor: drop package:flutter imports from filters and vst3 for a future use in DartNative. Thanks to @hectorAguero #616⁠
 
 ## 5.3.1 (18 Nov 2026)
 - fix: eliminate playback drift between LoadMode.memory and LoadMode.disk, fix seek/tell callbacks in WavStream, and fix MemoryFile::seek boundary clamping. Thanks to @Solido #580
