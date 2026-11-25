@@ -437,11 +437,12 @@ interface class SoLoud {
       _controller.soLoudFFI.isInited() &&
       _loader.isInitialized;
 
-  /// Backing of [activeSounds].
-  final List<AudioSource> _activeSounds = [];
+  /// Backing of [activeSounds], by sound hash and in loading order. Every
+  /// `play*()` looks its sound up here, so this is a map and not a list.
+  final Map<SoundHash, AudioSource> _activeSounds = {};
 
   /// The sounds that are _currently being loaded_.
-  Iterable<AudioSource> get activeSounds => _activeSounds;
+  Iterable<AudioSource> get activeSounds => _activeSounds.values;
 
   /// The current load counter to build a unique loading key
   int _currentLoadCounter = 0;
@@ -1160,9 +1161,29 @@ interface class SoLoud {
     throw const SoLoudInitializationStoppedByDeinitException();
   }
 
+  /// Adds [handle] to the playing instances of [sound] after a `play*()`.
+  ///
+  /// Throws [SoLoudSoundHashNotFoundDartException] if [sound] is not loaded.
+  void _registerHandle(
+    AudioSource sound,
+    SoundHandle handle, {
+    required String from,
+  }) {
+    final activeSound = _activeSounds[sound.soundHash];
+    if (activeSound == null) {
+      _log.severe(() => '$from: soundHash ${sound.soundHash} not found');
+      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
+    }
+    // At the voice limit the engine can return a handle that addresses no
+    // voice: do not register it.
+    if (_controller.soLoudFFI.getIsValidVoiceHandle(handle)) {
+      activeSound.handlesInternal.add(handle);
+    }
+  }
+
   /// Find the [AudioSource] which owns the given [handle].
   AudioSource? findAudioSourceByHandle(SoundHandle handle) {
-    for (final sound in _activeSounds) {
+    for (final sound in _activeSounds.values) {
       if (sound.handlesInternal.contains(handle)) return sound;
     }
     return null;
@@ -1257,7 +1278,7 @@ interface class SoLoud {
           );
           _logPlayerError(error, from: 'loadFile() result');
           if (error == PlayerErrors.noError) {
-            _activeSounds.add(newSound);
+            _activeSounds[newSound.soundHash] = newSound;
           } else if (error == PlayerErrors.fileAlreadyLoaded) {
             // If we are here, the file has been already loaded on C++ side.
             // Add it anyway and display the warning.
@@ -1267,7 +1288,7 @@ interface class SoLoud {
                   'loaded. Prefer loading only once, and reusing the loaded '
                   'sound when playing.',
             );
-            _activeSounds.add(newSound);
+            _activeSounds[newSound.soundHash] = newSound;
           } else {
             // Other errors are not recoverable. `completeError()` is the only
             // channel that reaches the caller: this runs in a stream listener,
@@ -1369,7 +1390,7 @@ interface class SoLoud {
     final newSound = AudioSource(SoundHash(hash), soundPath: completeFileName);
     _logPlayerError(error, from: 'loadFile() result');
     if (error == PlayerErrors.noError) {
-      _activeSounds.add(newSound);
+      _activeSounds[newSound.soundHash] = newSound;
     } else if (error == PlayerErrors.fileAlreadyLoaded) {
       // If we are here, the file has been already loaded on C++ side.
       // Add it anyway and display the warning.
@@ -1379,7 +1400,7 @@ interface class SoLoud {
             'loaded. Prefer loading only once, and reusing the loaded '
             'sound when playing.',
       );
-      _activeSounds.add(newSound);
+      _activeSounds[newSound.soundHash] = newSound;
     }
     return newSound;
   }
@@ -2463,7 +2484,7 @@ interface class SoLoud {
 
     if (ret.error == PlayerErrors.noError) {
       final newSound = AudioSource(ret.soundHash);
-      _activeSounds.add(newSound);
+      _activeSounds[newSound.soundHash] = newSound;
       return newSound;
     }
     _logPlayerError(ret.error, from: 'loadWaveform() result');
@@ -2560,7 +2581,7 @@ interface class SoLoud {
     _logPlayerError(ret.error, from: 'speechText() result');
     if (ret.error == PlayerErrors.noError) {
       final newSound = AudioSource(SoundHash(ret.handle.id));
-      _activeSounds.add(newSound);
+      _activeSounds[newSound.soundHash] = newSound;
       return newSound;
     }
     throw SoLoudCppException.fromPlayerError(ret.error);
@@ -2695,20 +2716,7 @@ interface class SoLoud {
       return ret.newHandle;
     }
 
-    final filtered = _activeSounds
-        .where((s) => s.soundHash == sound.soundHash)
-        .toSet();
-    if (filtered.isEmpty) {
-      _log.severe(() => 'play(): soundHash ${sound.soundHash} not found');
-      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
-    }
-
-    assert(filtered.length == 1, 'Duplicate sounds found');
-    for (final activeSound in filtered) {
-      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
-        activeSound.handlesInternal.add(ret.newHandle);
-      }
-    }
+    _registerHandle(sound, ret.newHandle, from: 'play()');
 
     return ret.newHandle;
   }
@@ -2845,22 +2853,7 @@ interface class SoLoud {
       return ret.newHandle;
     }
 
-    final filtered = _activeSounds
-        .where((s) => s.soundHash == sound.soundHash)
-        .toSet();
-    if (filtered.isEmpty) {
-      _log.severe(
-        () => 'playClocked(): soundHash ${sound.soundHash} not found',
-      );
-      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
-    }
-
-    assert(filtered.length == 1, 'Duplicate sounds found');
-    for (final activeSound in filtered) {
-      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
-        activeSound.handlesInternal.add(ret.newHandle);
-      }
-    }
+    _registerHandle(sound, ret.newHandle, from: 'playClocked()');
 
     return ret.newHandle;
   }
@@ -3143,22 +3136,7 @@ interface class SoLoud {
       return ret.newHandle;
     }
 
-    final filtered = _activeSounds
-        .where((s) => s.soundHash == sound.soundHash)
-        .toSet();
-    if (filtered.isEmpty) {
-      _log.severe(
-        () => 'playScheduled(): soundHash ${sound.soundHash} not found',
-      );
-      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
-    }
-
-    assert(filtered.length == 1, 'Duplicate sounds found');
-    for (final activeSound in filtered) {
-      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
-        activeSound.handlesInternal.add(ret.newHandle);
-      }
-    }
+    _registerHandle(sound, ret.newHandle, from: 'playScheduled()');
 
     return ret.newHandle;
   }
@@ -3506,9 +3484,7 @@ interface class SoLoud {
     await source.soundEventsController.close();
 
     /// remove the sound with [soundHash]
-    _activeSounds.removeWhere((element) {
-      return element.soundHash == source.soundHash;
-    });
+    _activeSounds.remove(source.soundHash);
   }
 
   /// Disposes all audio sources that are currently loaded.
@@ -3528,7 +3504,7 @@ interface class SoLoud {
     }
     _controller.soLoudFFI.disposeAllSound();
 
-    for (final sound in _activeSounds) {
+    for (final sound in _activeSounds.values) {
       sound.soundEventsController.add((
         event: SoundEventType.soundDisposed,
         sound: sound,
@@ -3544,7 +3520,7 @@ interface class SoLoud {
   /// Query whether [source] is a valid audio source.
   ///
   bool isValidAudioSource(AudioSource source) {
-    return _activeSounds.contains(source);
+    return identical(_activeSounds[source.soundHash], source);
   }
 
   /// Query whether a sound (supplied via [handle]) is set to loop.
@@ -4799,20 +4775,7 @@ interface class SoLoud {
       return ret.newHandle;
     }
 
-    final filtered = _activeSounds
-        .where((s) => s.soundHash == sound.soundHash)
-        .toSet();
-    if (filtered.isEmpty) {
-      _log.severe(() => 'play3d(): soundHash ${sound.soundHash} not found');
-      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
-    }
-
-    assert(filtered.length == 1, 'Duplicate sounds found');
-    for (final activeSound in filtered) {
-      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
-        activeSound.handlesInternal.add(ret.newHandle);
-      }
-    }
+    _registerHandle(sound, ret.newHandle, from: 'play3d()');
     return ret.newHandle;
   }
 
@@ -4938,22 +4901,7 @@ interface class SoLoud {
       return ret.newHandle;
     }
 
-    final filtered = _activeSounds
-        .where((s) => s.soundHash == sound.soundHash)
-        .toSet();
-    if (filtered.isEmpty) {
-      _log.severe(
-        () => 'play3dClocked(): soundHash ${sound.soundHash} not found',
-      );
-      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
-    }
-
-    assert(filtered.length == 1, 'Duplicate sounds found');
-    for (final activeSound in filtered) {
-      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
-        activeSound.handlesInternal.add(ret.newHandle);
-      }
-    }
+    _registerHandle(sound, ret.newHandle, from: 'play3dClocked()');
     return ret.newHandle;
   }
 
@@ -5084,22 +5032,7 @@ interface class SoLoud {
       return ret.newHandle;
     }
 
-    final filtered = _activeSounds
-        .where((s) => s.soundHash == sound.soundHash)
-        .toSet();
-    if (filtered.isEmpty) {
-      _log.severe(
-        () => 'play3dScheduled(): soundHash ${sound.soundHash} not found',
-      );
-      throw SoLoudSoundHashNotFoundDartException(sound.soundHash);
-    }
-
-    assert(filtered.length == 1, 'Duplicate sounds found');
-    for (final activeSound in filtered) {
-      if (_controller.soLoudFFI.getIsValidVoiceHandle(ret.newHandle)) {
-        activeSound.handlesInternal.add(ret.newHandle);
-      }
-    }
+    _registerHandle(sound, ret.newHandle, from: 'play3dScheduled()');
     return ret.newHandle;
   }
 
