@@ -1018,6 +1018,19 @@ public:
   /// @brief apply change to voices when changing some 3d audio params.
   void update3dAudio();
 
+  /// @brief Calls update3dAudio() only while the automatic 3D update is
+  /// enabled. The 3D setters exported to Dart call this after storing their
+  /// values.
+  void autoUpdate3dAudio();
+
+  /// @brief Enable or disable the automatic 3D update done by every 3D
+  /// setter. While disabled the setters only store their values and
+  /// update3dAudio() applies them. Enabling it applies the stored values.
+  void set3dAutoUpdate(bool enabled);
+
+  /// @brief Whether every 3D setter applies its change at once.
+  bool get3dAutoUpdate();
+
   /// @brief play3d() is the 3d version of the play() call.
   /// @param looping whether to start the sound in looping state.
   /// @param loopingStartAt If looping is enabled, the loop point is, by
@@ -1185,6 +1198,11 @@ public:
   /// True when the backend is initialized. This is read by the FFI thread,
   /// lifecycle scheduler, and teardown path.
   std::atomic<bool> mInited{false};
+
+  /// True when every 3D setter recomputes the 3D state of the voices at
+  /// once. False when the caller batches them with update3dAudio(). Reset to
+  /// true by init().
+  std::atomic<bool> m3dAutoUpdate{true};
 
   /// main SoLoud engine
   SoLoud::Soloud soloud;

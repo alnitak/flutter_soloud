@@ -315,6 +315,94 @@ void main() {
     });
   });
 
+  group('deferred update (set3dAutoUpdate)', () {
+    test('is automatic by default, and init() restores the default', () async {
+      expect(soloud.get3dAutoUpdate(), isTrue);
+      soloud.set3dAutoUpdate(false);
+      expect(soloud.get3dAutoUpdate(), isFalse);
+      soloud.deinit();
+      await initTestEngine(globalVolume: 0.05);
+      expect(soloud.get3dAutoUpdate(), isTrue);
+    });
+
+    test('a setter waits for update3dAudio', () async {
+      soloud.set3dAutoUpdate(false);
+      final h = soloud.play3d(tone, -5, 0, 0, looping: true);
+      soloud.set3dSourcePosition(h, 5, 0, 0);
+      final before = await captureOutput();
+      soloud.update3dAudio();
+      final after = await captureOutput();
+      await soloud.stop(h);
+      // Still heard where play3d put it, on the left.
+      expect(before.rms(0), greaterThan(before.rms(1) * 2));
+      // After the update it is on the right.
+      expect(after.rms(1), greaterThan(after.rms(0) * 2));
+    });
+
+    test(
+      'one update3dAudio applies the listener and several sources',
+      () async {
+        soloud.set3dAutoUpdate(false);
+        final left = soloud.play3d(tone, -5, 0, 0, looping: true);
+        final right = soloud.play3d(tone, 5, 0, 0, looping: true);
+        // Mute the right one with distance, and turn the listener around.
+        soloud
+          ..set3dSourceAttenuation(right, _linearDistance, 1)
+          ..set3dSourceMinMaxDistance(right, 1, 2)
+          ..set3dListenerAt(0, 0, 1)
+          ..update3dAudio();
+        final out = await captureOutput();
+        await soloud.stop(left);
+        await soloud.stop(right);
+        // Only the source at x = -5 is heard, and with the listener turned
+        // around it is on the right.
+        expect(out.rms(1), greaterThan(out.rms(0) * 2));
+      },
+    );
+
+    test('a listener change waits for update3dAudio', () async {
+      soloud.set3dAutoUpdate(false);
+      final h = soloud.play3d(tone, 5, 0, 0, looping: true);
+      soloud.set3dListenerAt(0, 0, 1);
+      final before = await captureOutput();
+      soloud.update3dAudio();
+      final after = await captureOutput();
+      await soloud.stop(h);
+      expect(before.rms(1), greaterThan(before.rms(0) * 2));
+      expect(after.rms(0), greaterThan(after.rms(1) * 2));
+    });
+
+    test('play3d places a new voice without an update', () async {
+      soloud.set3dAutoUpdate(false);
+      final h = soloud.play3d(tone, 5, 0, 0, looping: true);
+      final out = await captureOutput();
+      await soloud.stop(h);
+      expect(out.rms(1), greaterThan(out.rms(0) * 2));
+    });
+
+    test('enabling the automatic update applies the stored values', () async {
+      soloud.set3dAutoUpdate(false);
+      final h = soloud.play3d(tone, -5, 0, 0, looping: true);
+      soloud
+        ..set3dSourcePosition(h, 5, 0, 0)
+        ..set3dAutoUpdate(true);
+      final out = await captureOutput();
+      await soloud.stop(h);
+      expect(out.rms(1), greaterThan(out.rms(0) * 2));
+    });
+
+    test(
+      'update3dAudio with the automatic update enabled is harmless',
+      () async {
+        final h = soloud.play3d(tone, 5, 0, 0, looping: true);
+        soloud.update3dAudio();
+        final out = await captureOutput();
+        await soloud.stop(h);
+        expect(out.rms(1), greaterThan(out.rms(0) * 2));
+      },
+    );
+  });
+
   test('play3d honours its volume and position', () async {
     final h = soloud.play3d(tone, 5, 0, 0, volume: 0.5, looping: true);
     expect(soloud.getVolume(h), closeTo(0.5, 1e-6));

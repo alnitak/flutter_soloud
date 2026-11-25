@@ -532,6 +532,10 @@ external void freeListPlaybackDevices(
   int n_devices,
 );
 
+/// Whether every 3D setter applies its change at once (the default).
+@ffi.Native<ffi.Bool Function()>()
+external bool get3dAutoUpdate();
+
 /// Get the sound speed
 @ffi.Native<ffi.Float Function()>()
 external double get3dSoundSpeed();
@@ -2352,6 +2356,17 @@ PlayerErrors seek(int handle, double time) {
   return PlayerErrors.fromValue(_seek(handle, time));
 }
 
+/// Enable or disable the automatic 3D update. By default every 3D setter
+/// (listener, source, sound speed) recomputes the 3D state of all the 3D
+/// voices before it returns. With many moving sources that is one full
+/// pass per call. When disabled the setters only store their values and
+/// [update3dAudio] applies all of them in one pass.
+///
+/// Enabling it again applies the values stored in the meantime.
+/// init() restores the default (enabled).
+@ffi.Native<ffi.Void Function(ffi.Bool)>()
+external void set3dAutoUpdate(bool enabled);
+
 /// You can set the "at" vector parameter of the 3d audio listener
 @ffi.Native<ffi.Void Function(ffi.Float, ffi.Float, ffi.Float)>()
 external void set3dListenerAt(double atX, double atY, double atZ);
@@ -3816,6 +3831,12 @@ external ffi.Pointer<ffi.UnsignedChar> takeMixerOutputPacket(
   ffi.Pointer<ffi.UnsignedInt> captureId,
   ffi.Pointer<ffi.Size> length,
 );
+
+/// Recompute the 3D state (panning, attenuation, doppler) of all the 3D
+/// voices from the values stored by the 3D setters. Needed only while the
+/// automatic 3D update is disabled with [set3dAutoUpdate].
+@ffi.Native<ffi.Void Function()>()
+external void update3dAudio();
 
 /// Native: Dart is done with a visualization packet it was handed. Frees it
 /// and lets the source that sent it send the next one: each source has at

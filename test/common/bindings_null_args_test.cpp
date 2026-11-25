@@ -1084,6 +1084,16 @@ CASE("listener3d") {
   CALL((set3dListenerVelocity(kNaN, 0, 0), 0));
   set3dSoundSpeed(343.0f);
 }
+CASE("update3d") {
+  // Deferred mode: the setters store, update3dAudio() applies.
+  CALL((set3dAutoUpdate(false), 0));
+  CALL(get3dAutoUpdate());
+  CALL((set3dListenerPosition(1, 2, 3), 0));
+  CALL((update3dAudio(), 0));
+  CALL((set3dAutoUpdate(true), 0));
+  CALL(get3dAutoUpdate());
+  CALL((update3dAudio(), 0));
+}
 CASE("source3d") {
   FOR_HANDLES {
     CALL((set3dSourceParameters(h, kNaN, 0, 0, 0, 0, 0), 0));

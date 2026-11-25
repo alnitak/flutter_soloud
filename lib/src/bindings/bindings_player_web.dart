@@ -2303,6 +2303,21 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
     return wasmSet3dSourceDopplerFactor(handle.id, dopplerFactor);
   }
 
+  @override
+  void set3dAutoUpdate(bool enabled) {
+    return wasmSet3dAutoUpdate(enabled ? 1 : 0);
+  }
+
+  @override
+  bool get3dAutoUpdate() {
+    return wasmGet3dAutoUpdate() == 1;
+  }
+
+  @override
+  void update3dAudio() {
+    return wasmUpdate3dAudio();
+  }
+
   // ///////////////////////////////////////
   // waveform audio data
   // ///////////////////////////////////////

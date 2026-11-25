@@ -160,6 +160,9 @@ final Map<String, _Call> _calls = {
       s.set3dSourceMinMaxDistance(h, 1, 10),
   'set3dSourceAttenuation': (s, _, h) => s.set3dSourceAttenuation(h, 1, 1),
   'set3dSourceDopplerFactor': (s, _, h) => s.set3dSourceDopplerFactor(h, 1),
+  'set3dAutoUpdate': (s, _, _) => s.set3dAutoUpdate(true),
+  'get3dAutoUpdate': (s, _, _) => s.get3dAutoUpdate(),
+  'update3dAudio': (s, _, _) => s.update3dAudio(),
 };
 
 /// Members that, by design, do not throw SoLoudNotInitializedException.

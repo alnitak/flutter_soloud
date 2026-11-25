@@ -1,7 +1,7 @@
 ---
 name: flutter-soloud-3d-audio
-version: 2
-description: Teaches positional (3D) audio in flutter_soloud — play3d/play3dClocked/play3dScheduled, listener position/orientation/velocity, per-source attenuation and Doppler, and the per-frame update pattern. Use when the user asks for spatial audio, positional sound effects, distance-based volume falloff, sounds attached to game entities (enemies, vehicles, gunfire or footsteps at a world position), Doppler effects, or left/right panning based on world position, or when code computes pan and volume by hand from positions.
+version: 3
+description: Teaches positional (3D) audio in flutter_soloud — play3d/play3dClocked/play3dScheduled, listener position/orientation/velocity, per-source attenuation and Doppler, the per-frame update pattern, and batching the updates of many moving sources (set3dAutoUpdate/update3dAudio). Use when the user asks for spatial audio, positional sound effects, distance-based volume falloff, sounds attached to game entities (enemies, vehicles, gunfire or footsteps at a world position), Doppler effects, or left/right panning based on world position, or when code computes pan and volume by hand from positions.
 ---
 
 flutter_soloud wraps the SoLoud C++ engine's built-in 3D audio. Every voice started with `play3d` has a 3D position and velocity; a single global "listener" (usually your camera or player) hears them. The coordinate system is right-handed (Y up, X right, Z toward the viewer). Unlike audioplayers/just_audio there is no asset "player" object per sound: you get a `SoundHandle` per playing instance and mutate its 3D state through `SoLoud.instance` setters. Also unlike the web Audio API, SoLoud does **not** move anything for you — positions and velocities are snapshots you must update yourself each tick.
@@ -67,6 +67,11 @@ Global Doppler tuning:
 
 - `set3dSoundSpeed(double speed)` / `double get3dSoundSpeed()` — default `343` (meters/second in dry air at ~20 °C). SoLoud doesn't know your unit scale, so if 1 world unit ≠ 1 meter, scale the sound speed accordingly or Doppler will be wrong.
 
+Batched updates (many moving sources):
+
+- `set3dAutoUpdate(bool enabled)` / `bool get3dAutoUpdate()` — default `true`: every 3D setter (listener, source, sound speed) recomputes all the 3D voices before it returns. With `false` the setters only store their values. `init()` restores `true`; passing `true` applies what was stored.
+- `update3dAudio()` — applies the stored values to all the 3D voices in one pass. Needed only after `set3dAutoUpdate(false)`.
+
 ## Per-frame update pattern
 
 Nothing moves unless you move it. In your game loop / `Ticker` / `onTick`:
@@ -90,6 +95,20 @@ void update(double dt) {
 }
 ```
 
+With many moving emitters, defer the recomputation and do it once per frame:
+
+```dart
+SoLoud.instance.set3dAutoUpdate(false); // once, after init()
+
+void update(double dt) {
+  SoLoud.instance.set3dListenerParameters(/* ... */);
+  for (final e in movingEmitters) {
+    SoLoud.instance.set3dSourceParameters(e.handle, /* ... */);
+  }
+  SoLoud.instance.update3dAudio(); // one pass for the listener and all sources
+}
+```
+
 ## Proactively recommend
 
 When the user's request or existing code matches the left column, propose the
@@ -105,6 +124,7 @@ rewrite working code, and do not propose it when the simpler call is enough.
 | A 2D game (side-scroller, top-down) with pixel coordinates that wants positional sound | The same 3D calls with the unused axis at 0, the listener at the camera or player, and min/max distances in pixels | No separate 2D panning code. Distances, positions and `set3dSoundSpeed` share one unit: with pixels, raise the sound speed or leave velocities at 0. |
 | A pass-by effect (cars, projectiles, a siren) faked by changing `setRelativePlaySpeed` by hand | Pass `velX/velY/velZ` (or `set3dSourceVelocity`) and the listener velocity; tune with `set3dSourceDopplerFactor` | The Doppler shift follows the real relative speed: higher when approaching, lower when receding. |
 | Many emitters in the world (torches, NPCs, distant shots) using up the voices | Linear attenuation with a real max distance, `setInaudibleBehavior(handle, false, true)` on one-shots, `setMaxActiveVoiceCount`. **flutter-soloud-playback** | A one-shot that becomes inaudible is stopped and frees its voice; the default pauses it and resumes it when audible, which is right for looping ambience. A voice is inaudible when the falloff brings its volume close to zero: linear attenuation with rolloff 1 does that at the max distance. |
+| Many emitters (tens or more) moved every frame, or 3D updates showing up in a profile | `set3dAutoUpdate(false)` once after `init()`, the setters as before, then one `update3dAudio()` at the end of the frame | By default each setter recomputes every 3D voice, so N moving sources cost N full passes per frame; deferred it is one pass. Nothing is heard of a setter until `update3dAudio()`, also the attenuation set on a new handle. |
 | The listener or an emitter updated with several calls per frame (`set3dListenerPosition` + `set3dListenerAt` + `set3dListenerVelocity`, or position + velocity) | One `set3dListenerParameters(...)` and one `set3dSourceParameters(handle, ...)` per emitter per frame | Each setter recomputes the 3D state on the native side; one call per object keeps position and velocity consistent and saves native calls. |
 
 ## Traps
@@ -113,6 +133,7 @@ rewrite working code, and do not propose it when the simpler call is enough.
 - **Positions are snapshots.** A sound stays where `play3d` put it until you call `set3dSourcePosition`/`set3dSourceParameters`. No automatic binding to a game object; update every tick while the voice is alive.
 - **Velocity doesn't move the source; it only feeds Doppler.** You must supply both the position delta (via position updates) and the velocity vector yourself. Same for the listener. Zero velocity = no Doppler.
 - **`at` and `up` must not be parallel** (and should be roughly orthogonal and normalized). If both are e.g. `(0,1,0)` the listener orientation is degenerate and panning/orientation glitches or collapses.
+- **With `set3dAutoUpdate(false)` nothing changes until `update3dAudio()`.** A missing call means sources and listener seem frozen. `play3d` still places a new voice by itself, but the attenuation, distances and Doppler factor set on its handle wait for the next `update3dAudio()`. `init()` goes back to the automatic update: set it again after every `init()`.
 - **`set3dListenerParameters` takes 12 positional doubles** — no named arguments, and the source setters are positional too. Don't pass named args copied from the web docs; it won't compile.
 - **`play3d` returns `SoundHandle` synchronously.** No `await`. The async part is `init()` and `loadAsset`/`loadFile`.
 - **NaN or infinity throws `ArgumentError`.** Normalizing a zero-length direction (`v / v.length`) gives NaN: guard it before calling the listener or source setters.

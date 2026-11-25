@@ -1555,6 +1555,18 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor);
 
+  /// Enable or disable the 3D update done by every 3D setter.
+  @mustBeOverridden
+  void set3dAutoUpdate(bool enabled);
+
+  /// Whether every 3D setter applies its change at once.
+  @mustBeOverridden
+  bool get3dAutoUpdate();
+
+  /// Apply the values stored by the 3D setters to all the 3D voices.
+  @mustBeOverridden
+  void update3dAudio();
+
   // ///////////////////////////////////////
   // waveform audio data
   // ///////////////////////////////////////

@@ -464,6 +464,8 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         mInterruptionActive.store(false, std::memory_order_release);
         soloud.setAudioInterruptionCallback(
             &Player::audioInterruptionCallback, this);
+        // A new engine starts with the default 3D update mode.
+        m3dAutoUpdate.store(true, std::memory_order_relaxed);
         // Publish initialized state only after all lifecycle support,
         // including interruption routing, is ready.
         mInited.store(true, std::memory_order_release);
@@ -3804,6 +3806,27 @@ void Player::oscillateGlobalVolume(float from, float to, float time)
 void Player::update3dAudio()
 {
     soloud.update3dAudio();
+}
+
+void Player::autoUpdate3dAudio()
+{
+    if (m3dAutoUpdate.load(std::memory_order_relaxed))
+        soloud.update3dAudio();
+}
+
+void Player::set3dAutoUpdate(bool enabled)
+{
+    const bool wasEnabled =
+        m3dAutoUpdate.exchange(enabled, std::memory_order_relaxed);
+    // Values stored while the update was deferred must not wait for the next
+    // setter call.
+    if (enabled && !wasEnabled)
+        soloud.update3dAudio();
+}
+
+bool Player::get3dAutoUpdate()
+{
+    return m3dAutoUpdate.load(std::memory_order_relaxed);
 }
 
 PlayerErrors Player::play3d(

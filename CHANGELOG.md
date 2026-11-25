@@ -1,6 +1,9 @@
 ## 5.4.0 (XX Xxx 2026)
 A bug-fix release: a new, much larger test suite found many bugs, now fixed.
 
+### Added
+- `set3dAutoUpdate`, `get3dAutoUpdate` and `update3dAudio`: with the automatic update disabled the 3D setters only store their values, and one `update3dAudio()` per frame applies them to all the 3D voices. By default every setter still recomputes all the 3D voices, which is one full pass per call with many moving sources.
+
 ### Behaviour changes
 - `Bus` equality is now identity (`==`/`hashCode` removed), and every bus becomes invalid after `deinit()`.
 - Setters (volume, pan, speed, fades, oscillations, 3D, `play*()` arguments, filter parameter fades, ...) throw `ArgumentError` for NaN or infinite values.

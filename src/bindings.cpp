@@ -4968,7 +4968,7 @@ extern "C"
     if (!allFinite(speed))
       return;
     player.get()->set3dSoundSpeed(speed);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// Get the sound speed
@@ -4994,7 +4994,7 @@ extern "C"
     player.get()->set3dListenerParameters(posX, posY, posZ, atX, atY, atZ, upX,
                                           upY, upZ, velocityX, velocityY,
                                           velocityZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the position parameter of the 3d audio listener
@@ -5006,7 +5006,7 @@ extern "C"
     if (!allFinite(posX, posY, posZ))
       return;
     player.get()->set3dListenerPosition(posX, posY, posZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the "at" vector parameter of the 3d audio listener
@@ -5017,7 +5017,7 @@ extern "C"
     if (!allFinite(atX, atY, atZ))
       return;
     player.get()->set3dListenerAt(atX, atY, atZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the "up" vector parameter of the 3d audio listener
@@ -5028,7 +5028,7 @@ extern "C"
     if (!allFinite(upX, upY, upZ))
       return;
     player.get()->set3dListenerUp(upX, upY, upZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the listener's velocity vector parameter
@@ -5040,7 +5040,7 @@ extern "C"
     if (!allFinite(velocityX, velocityY, velocityZ))
       return;
     player.get()->set3dListenerVelocity(velocityX, velocityY, velocityZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the position and velocity parameters of a live
@@ -5056,7 +5056,7 @@ extern "C"
       return;
     player.get()->set3dSourceParameters(handle, posX, posY, posZ, velocityX,
                                         velocityY, velocityZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the position parameters of a live 3d audio source
@@ -5068,7 +5068,7 @@ extern "C"
     if (!allFinite(posX, posY, posZ))
       return;
     player.get()->set3dSourcePosition(handle, posX, posY, posZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the velocity parameters of a live 3d audio source
@@ -5080,7 +5080,7 @@ extern "C"
     if (!allFinite(velocityX, velocityY, velocityZ))
       return;
     player.get()->set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the minimum and maximum distance parameters
@@ -5094,7 +5094,7 @@ extern "C"
     if (!allFinite(minDistance, maxDistance))
       return;
     player.get()->set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can change the attenuation model and rolloff factor parameters of
@@ -5115,7 +5115,7 @@ extern "C"
       return;
     player.get()->set3dSourceAttenuation(handle, attenuationModel,
                                          attenuationRolloffFactor);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can change the doppler factor of a live 3d audio source
@@ -5127,6 +5127,39 @@ extern "C"
     if (!allFinite(dopplerFactor))
       return;
     player.get()->set3dSourceDopplerFactor(handle, dopplerFactor);
+    player.get()->autoUpdate3dAudio();
+  }
+
+  /// Enable or disable the automatic 3D update. By default every 3D setter
+  /// (listener, source, sound speed) recomputes the 3D state of all the 3D
+  /// voices before it returns. With many moving sources that is one full
+  /// pass per call. When disabled the setters only store their values and
+  /// [update3dAudio] applies all of them in one pass.
+  ///
+  /// Enabling it again applies the values stored in the meantime.
+  /// init() restores the default (enabled).
+  FFI_PLUGIN_EXPORT void set3dAutoUpdate(bool enabled)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->set3dAutoUpdate(enabled);
+  }
+
+  /// Whether every 3D setter applies its change at once (the default).
+  FFI_PLUGIN_EXPORT bool get3dAutoUpdate()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return true;
+    return player.get()->get3dAutoUpdate();
+  }
+
+  /// Recompute the 3D state (panning, attenuation, doppler) of all the 3D
+  /// voices from the values stored by the 3D setters. Needed only while the
+  /// automatic 3D update is disabled with [set3dAutoUpdate].
+  FFI_PLUGIN_EXPORT void update3dAudio()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
     player.get()->update3dAudio();
   }
 

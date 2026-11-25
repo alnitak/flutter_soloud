@@ -5411,6 +5411,72 @@ interface class SoLoud {
     _controller.soLoudFFI.set3dSourceDopplerFactor(handle, dopplerFactor);
   }
 
+  /// Sets whether every 3D setter applies its change at once.
+  ///
+  /// By default (`true`) each 3D setter (the `set3dListener*` and
+  /// `set3dSource*` methods and [set3dSoundSpeed]) recomputes the panning,
+  /// attenuation and doppler of all the 3D voices before it returns. A game
+  /// that moves many sources calls these setters many times per frame, and
+  /// each call is a full pass over the 3D voices.
+  ///
+  /// With `false` the setters only store their values, and nothing is heard
+  /// of them until [update3dAudio] is called. Call it once per frame, after
+  /// the listener and all the sources have been updated:
+  ///
+  /// ```dart
+  /// SoLoud.instance.set3dAutoUpdate(false); // once, after init()
+  ///
+  /// void update(double dt) {
+  ///   SoLoud.instance.set3dListenerParameters(/* ... */);
+  ///   for (final e in movingEmitters) {
+  ///     SoLoud.instance.set3dSourceParameters(e.handle, /* ... */);
+  ///   }
+  ///   SoLoud.instance.update3dAudio(); // one pass for all of them
+  /// }
+  /// ```
+  ///
+  /// A voice started with `play3d` and its variants is placed with the values
+  /// passed to that call and the listener values set so far, in both modes.
+  /// What is set on its handle afterwards (attenuation, distances, doppler
+  /// factor) waits for [update3dAudio] like any other setter.
+  ///
+  /// Passing `true` applies the values stored in the meantime.
+  /// [init] restores the default.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void set3dAutoUpdate(bool enabled) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.set3dAutoUpdate(enabled);
+  }
+
+  /// Whether every 3D setter applies its change at once.
+  ///
+  /// See [set3dAutoUpdate] for details.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  bool get3dAutoUpdate() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    return _controller.soLoudFFI.get3dAutoUpdate();
+  }
+
+  /// Applies the values stored by the 3D setters to all the 3D voices, in
+  /// one pass.
+  ///
+  /// Needed only after `set3dAutoUpdate(false)`: see [set3dAutoUpdate]. With
+  /// the automatic update enabled every setter has already done it.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  void update3dAudio() {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    _controller.soLoudFFI.update3dAudio();
+  }
+
   // ///////////////////////////////////////
   // waveform audio data
   // ///////////////////////////////////////

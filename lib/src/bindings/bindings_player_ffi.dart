@@ -2116,6 +2116,21 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
     return native.set3dSourceDopplerFactor(handle.id, dopplerFactor);
   }
 
+  @override
+  void set3dAutoUpdate(bool enabled) {
+    return native.set3dAutoUpdate(enabled);
+  }
+
+  @override
+  bool get3dAutoUpdate() {
+    return native.get3dAutoUpdate();
+  }
+
+  @override
+  void update3dAudio() {
+    return native.update3dAudio();
+  }
+
   // ///////////////////////////////////////
   // waveform audio data
   // ///////////////////////////////////////
