@@ -15,7 +15,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
@@ -33,12 +33,8 @@ jobs:
         fi
 
     - name: "Run Dart Analyze"
-      uses: invertase/github-action-dart-analyzer@v3
-      with:
-        fatal-infos: true
-        fatal-warnings: true
-        annotate: true
-        working-directory: lib/
+      # Infos and warnings fail the job, as errors do.
+      run: dart analyze --fatal-infos lib/
 
     - name: Check Code formatting
       run: dart format -o none --set-exit-if-changed .

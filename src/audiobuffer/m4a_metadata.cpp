@@ -166,26 +166,38 @@ static void parseStsdEntry(const unsigned char *data, size_t size, M4aMetadata &
         uint32_t subBoxSize = readBe32(data + subOffset);
         if (subBoxSize < 8 || !metadataHasBytes(size, subOffset, subBoxSize)) break;
         if (memcmp(data + subOffset + 4, "esds", 4) == 0) {
-            // elementary stream descriptor
-            // Scan for DecoderConfigDescr (tag 0x04) which contains avgBitrate & maxBitrate
-            for (size_t i = subOffset + 8; metadataHasBytes(subOffset + subBoxSize, i, 13); ++i) {
-                if (data[i] == 0x04) {
-                    // DecoderConfigDescr tag
-                    // Skip tag (1), length (1-4), objectTypeIndication (1), streamType (1), bufferSizeDB (3)
-                    size_t descOffset = i + 1;
-                    if (descOffset < subOffset + subBoxSize && (data[descOffset] & 0x80)) {
-                        while (descOffset < subOffset + subBoxSize && (data[descOffset] & 0x80)) descOffset++;
-                        descOffset++;
-                    } else {
-                        descOffset++;
-                    }
-                    if (metadataHasBytes(subOffset + subBoxSize, descOffset, 10)) {
-                        uint32_t avgBitrate = readBe32(data + descOffset + 6);
-                        if (avgBitrate > 0) {
-                            meta.bitrate = avgBitrate;
+            // Elementary stream descriptor: version/flags (4), then the
+            // ES_Descriptor (tag 0x03) holding the DecoderConfigDescriptor
+            // (tag 0x04): objectTypeIndication (1), streamType (1),
+            // bufferSizeDB (3), maxBitrate (4), avgBitrate (4). Walked
+            // descriptor by descriptor: a byte scan for 0x04 can stop
+            // inside ES_ID or a length.
+            const size_t end = subOffset + subBoxSize;
+            size_t p = subOffset + 12;
+            // Skips an expandable descriptor length (1 to 4 bytes).
+            auto skipLength = [&](size_t &q) {
+                for (int n = 0; n < 4 && q < end; ++n) {
+                    if (!(data[q++] & 0x80)) return true;
+                }
+                return false;
+            };
+            if (p < end && data[p] == 0x03) {
+                ++p;
+                if (skipLength(p) && metadataHasBytes(end, p, 3)) {
+                    const unsigned char esFlags = data[p + 2];
+                    p += 3;
+                    if (esFlags & 0x80) p += 2;  // dependsOn_ES_ID
+                    if ((esFlags & 0x40) && p < end) p += 1 + data[p];  // URL
+                    if (esFlags & 0x20) p += 2;  // OCR_ES_Id
+                    if (p < end && data[p] == 0x04) {
+                        ++p;
+                        if (skipLength(p) && metadataHasBytes(end, p, 13)) {
+                            uint32_t avgBitrate = readBe32(data + p + 9);
+                            if (avgBitrate > 0) {
+                                meta.bitrate = avgBitrate;
+                            }
                         }
                     }
-                    break;
                 }
             }
         }
@@ -215,7 +227,8 @@ static void scanBoxes(const unsigned char *data, size_t size, M4aMetadata &meta,
             boxSize = static_cast<uint32_t>(largeSize);
             headerSize = 16;
         } else if (boxSize == 0) {
-            boxSize = size - offset;
+            const size_t rest = size - offset;
+            boxSize = rest > 0xFFFFFFFFu ? 0xFFFFFFFFu : static_cast<uint32_t>(rest);
         }
 
         if (boxSize < headerSize || !metadataHasBytes(size, offset, boxSize)) break;

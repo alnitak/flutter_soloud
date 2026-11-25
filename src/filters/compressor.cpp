@@ -7,7 +7,7 @@
 CompressorInstance::CompressorInstance(Compressor *aParent)
 {
     mParent = aParent;
-    initParams(8);
+    initParams(7);
     mParam[Compressor::WET] = aParent->mWet;
     mParam[Compressor::THRESHOLD] = aParent->mThreshold;
     mParam[Compressor::MAKEUP_GAIN] = aParent->mMakeupGain;
@@ -211,7 +211,7 @@ SoLoud::result Compressor::setParam(unsigned int aParamIndex, float aValue)
 
 int Compressor::getParamCount()
 {
-    return 8;
+    return 7; // WET..RELEASE_TIME
 }
 
 const char *Compressor::getParamName(unsigned int aParamIndex)

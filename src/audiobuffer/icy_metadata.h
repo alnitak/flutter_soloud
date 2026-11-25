@@ -89,8 +89,13 @@ inline void stripIcyMetadata(const std::vector<unsigned char> &buffer,
                              int icyMetaInt, IcyStripState &state,
                              std::vector<unsigned char> &cleanOut,
                              OnStreamTitle &&onStreamTitle) {
+  // stripIcyMetadataEx reports title or URL changes; forward only the
+  // blocks whose title differs from the last one reported.
+  std::string lastTitle = state.streamTitle;
   stripIcyMetadataEx(buffer, icyMetaInt, state, cleanOut,
                      [&](const std::string &title, const std::string & /*url*/) {
+                       if (title == lastTitle) return;
+                       lastTitle = title;
                        onStreamTitle(title);
                      });
 }

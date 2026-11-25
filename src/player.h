@@ -180,6 +180,10 @@ public:
   /// new unique hash is assigned anyway), or [pending]'s decode error.
   PlayerErrors registerSound(PendingSound pending, unsigned int &hash);
 
+  /// @brief List [sound], already built in full, under its soundHash. If an
+  /// allocation fails it throws and lists nothing.
+  void addSound(std::unique_ptr<ActiveSound> sound);
+
   /// @brief Load two sounds stored into [mem1] and [mem2], convert them to mono
   /// if needed, resample them to the engine's sample rate, and join them into a
   /// single stereo AudioSource (left and right channels).
@@ -517,6 +521,27 @@ public:
   /// @param channel the channel.
   /// @return zero for invalid parameters or while visualization is disabled.
   float getApproximateVolume(unsigned int channel);
+
+  /// @brief Hold sounds_mutex while the returned lock lives. For code that
+  /// walks a sound's voice list (Filters) and must not race the audio
+  /// thread's removeHandle().
+  std::unique_lock<std::recursive_mutex> lockSounds() const {
+    return std::unique_lock<std::recursive_mutex>(sounds_mutex);
+  }
+
+  /// @brief The number of voices [sound] has, read under sounds_mutex.
+  size_t voiceCount(ActiveSound &sound);
+
+  /// @brief At the active voice limit, stop the oldest unprotected voice of
+  /// [sound] to make room for a new one.
+  /// @return false if the limit is reached and no voice of [sound] can be
+  /// stopped.
+  bool makeRoomForVoice(ActiveSound &sound);
+
+  /// @brief Record the new voice [handle] of [sound]. If an allocation fails
+  /// the voice is stopped and the exception rethrown.
+  void registerVoice(ActiveSound &sound, SoLoud::handle handle,
+                     bool userPaused);
 
   /// @brief Play already loaded sound identified by [soundHash].
   /// @param soundHash the unique hash of the sound to play.
@@ -993,6 +1018,19 @@ public:
   /// @brief apply change to voices when changing some 3d audio params.
   void update3dAudio();
 
+  /// @brief Calls update3dAudio() only while the automatic 3D update is
+  /// enabled. The 3D setters exported to Dart call this after storing their
+  /// values.
+  void autoUpdate3dAudio();
+
+  /// @brief Enable or disable the automatic 3D update done by every 3D
+  /// setter. While disabled the setters only store their values and
+  /// update3dAudio() applies them. Enabling it applies the stored values.
+  void set3dAutoUpdate(bool enabled);
+
+  /// @brief Whether every 3D setter applies its change at once.
+  bool get3dAutoUpdate();
+
   /// @brief play3d() is the 3d version of the play() call.
   /// @param looping whether to start the sound in looping state.
   /// @param loopingStartAt If looping is enabled, the loop point is, by
@@ -1108,6 +1146,22 @@ public:
                               float attenuationRolloffFactor);
   void set3dSourceDopplerFactor(unsigned int handle, float dopplerFactor);
 
+  /// @brief Set the minimum and maximum distance every voice started later
+  /// from the sound [soundHash] begins with. Voices already playing keep
+  /// theirs.
+  void set3dDefaultMinMaxDistance(unsigned int soundHash, float minDistance,
+                                  float maxDistance);
+
+  /// @brief Set the attenuation model and rolloff factor every voice started
+  /// later from the sound [soundHash] begins with.
+  void set3dDefaultAttenuation(unsigned int soundHash,
+                               unsigned int attenuationModel,
+                               float attenuationRolloffFactor);
+
+  /// @brief Set the doppler factor every voice started later from the sound
+  /// [soundHash] begins with.
+  void set3dDefaultDopplerFactor(unsigned int soundHash, float dopplerFactor);
+
   /////////////////////////////////////////
   /// Mixing Bus
   /// https://solhsa.com/soloud/mixbus.html
@@ -1161,11 +1215,13 @@ public:
   /// lifecycle scheduler, and teardown path.
   std::atomic<bool> mInited{false};
 
+  /// True when every 3D setter recomputes the 3D state of the voices at
+  /// once. False when the caller batches them with update3dAudio(). Reset to
+  /// true by init().
+  std::atomic<bool> m3dAutoUpdate{true};
+
   /// main SoLoud engine
   SoLoud::Soloud soloud;
-
-  /// speech object
-  SoLoud::Speech speech;
 
   /// Global filters
   Filters mFilters;

@@ -1,7 +1,7 @@
 ---
 name: flutter-soloud-custom-dsp
-version: 1
-description: Teaches how to build, compile, and bind custom synchronous C/C++/Rust audio generators (SoLoudSourceDspCallback_t) and real-time DSP filter effects (SoLoudFilterDspCallback_t) in flutter_soloud using Dart Native Assets (hook/build.dart), manual CMake/Cargo compilation, package:ffigen, and Web dart:js_interop. Use when the user asks to write custom DSP algorithms, custom synthesizers/oscillators in C or Rust, compile native audio callbacks with build hooks, generate FFI bindings with ffigen, or create custom audio sources or custom filter slots (createCustomAudioSource, filters.customFilter).
+version: 3
+description: Teaches how to build, compile, and bind custom synchronous C/C++/Rust audio generators (SoLoudSourceDspCallback_t) and real-time DSP filter effects (SoLoudFilterDspCallback_t) in flutter_soloud using Dart Native Assets (hook/build.dart), manual CMake/Cargo compilation, package:ffigen, and Web dart:js_interop. Use when the user asks to write custom DSP algorithms or effects the built-in filters do not provide (custom distortion, bit crusher, ring modulator, physical-model or chiptune synth, engine/weapon sound generator), custom synthesizers/oscillators in C or Rust, compile native audio callbacks with build hooks, generate FFI bindings with ffigen, or create custom audio sources or custom filter slots (createCustomAudioSource, filters.customFilter).
 ---
 
 # Custom Audio Sources & Custom DSP Filters in flutter_soloud
@@ -209,9 +209,9 @@ Used to process audio in real-time (distortion, saturation, custom biquads, ring
 | `aChannels` | `unsigned int` | Number of audio channels passing through this filter. |
 | `aSamplerate` | `float` | Audio sample rate in Hz. |
 | `aTime` | `double` | Current audio engine time in seconds. |
-| `aParams` | `const float*` | Parameter values: `aParams[0]` is "Wet" ($0.0 \dots 1.0$), `aParams[1..7]` are user parameters from `CustomFilterParamSpec`. |
+| `aParams` | `const float*` | Parameter values: `aParams[0]` is "Wet" ($0.0 \dots 1.0$), `aParams[1..15]` are user parameters from `CustomFilterParamSpec`. |
 | `aParamChangedMask` | `uint64_t` | Bitmask of changed parameters (bit 0 = Wet changed, bit 1 = param 1 changed, etc.). |
-| `aParamCount` | `unsigned int` | Total count of valid parameter entries in `aParams`. |
+| `aParamCount` | `unsigned int` | Total count of valid parameter entries in `aParams`. Check an index against it before reading; from Dart only indices `0..7` can be set. |
 | `aUserData` | `void*` | Optional state pointer passed into `slot.setNativeCallback(userdataAddress: ...)`. |
 
 #### C / C++
@@ -238,7 +238,7 @@ MY_EXPORT void myCustomFilterDspCallback(
     void *aUserData)
 {
     // aParams[0] is always "Wet" (0.0 to 1.0) - SoLoud handles wet/dry bypass automatically.
-    // aParams[1..7] are your user-defined parameters configured via Dart CustomFilterParamSpec.
+    // aParams[1..15] are your user-defined parameters configured via Dart CustomFilterParamSpec.
     float drive = (aParamCount > 1) ? aParams[1] : 2.5f;
 
     // Check if parameter 1 changed since the last buffer:
@@ -331,8 +331,12 @@ final int sourceAddress = getSourceAddr().address;
 ### Option C: Web Platform Support (`dart:js_interop`)
 On Web (Wasm), C pointers cannot be passed across memory spaces. Instead, register functions on `globalThis` using `dart:js_interop`:
 
+> **Single-threaded WASM build only.** The multi-threaded build (used automatically when the page is cross-origin isolated) renders audio in an AudioWorklet, which does not see the page's `globalThis`, so a function registered this way is never called there: the source stays silent and the filter has no effect (a warning is logged). Set `self.flutter_soloud_force_single_threaded = true` in `web/index.html` before loading `init_soloud.js` to use the single-threaded build.
+
 ```dart
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe'; // for `_globalThis['name'] = ...`
+import 'dart:typed_data';
 
 @JS('globalThis')
 external JSObject get _globalThis;
@@ -341,11 +345,12 @@ external JSObject get _globalThis;
 external JSFloat32Array get _heapF32;
 
 void registerWebDspCallbacks() {
-  // 1. Audio Source Generator
+  // 1. Audio Source Generator: same 9 arguments as the C callback.
+  // Pointers are byte offsets into the WASM heap (>> 2 for a float index).
   _globalThis['customDspSynth'] = ((
     JSNumber bufferPtr,
     JSNumber samplesToRead,
-    JSNumber bufferSize,
+    JSNumber bufferSize, // channel stride
     JSNumber channels,
     JSNumber sampleRate,
     JSNumber streamTime,
@@ -353,34 +358,60 @@ void registerWebDspCallbacks() {
     JSNumber outHasEndedPtr,
     JSAny? userData,
   ) {
-    final int count = samplesToRead.toDartInt;
-    final int f32Offset = bufferPtr.toDartInt >> 2;
+    final count = samplesToRead.toDartInt;
+    final stride = bufferSize.toDartInt;
+    final chs = channels.toDartInt;
+    final f32Offset = bufferPtr.toDartInt >> 2;
+    // Take the view on every call: it is invalidated when the heap grows.
+    final Float32List heap = _heapF32.toDart;
 
-    for (int i = 0; i < count; i++) {
-      _heapF32[f32Offset + i] = 0.25.toJS;
+    for (var ch = 0; ch < chs; ch++) {
+      for (var i = 0; i < count; i++) {
+        heap[f32Offset + ch * stride + i] = 0.25; // planar layout
+      }
     }
-    return samplesToRead;
+    return samplesToRead; // frames rendered
   }).toJS;
 
-  // 2. Audio Filter Effect
+  // 2. Audio Filter Effect: 11 arguments. The 64-bit changed mask of the C
+  // callback arrives as two 32-bit halves (maskLo, maskHi).
   _globalThis['customDspFilter'] = ((
     JSNumber bufferPtr,
     JSNumber samples,
-    JSNumber bufferSize,
+    JSNumber bufferSize, // channel stride
     JSNumber channels,
     JSNumber sampleRate,
     JSNumber time,
     JSNumber paramsPtr,
+    JSNumber maskLo,
+    JSNumber maskHi,
     JSNumber numParams,
+    JSAny? userData,
   ) {
-    // Process buffer in-place on _heapF32
+    final count = samples.toDartInt;
+    final stride = bufferSize.toDartInt;
+    final chs = channels.toDartInt;
+    final f32Offset = bufferPtr.toDartInt >> 2;
+    final pOffset = paramsPtr.toDartInt >> 2;
+    final Float32List heap = _heapF32.toDart;
+
+    // heap[pOffset] is Wet, heap[pOffset + 1..15] are the user parameters.
+    final drive = numParams.toDartInt > 1 ? heap[pOffset + 1] : 2.5;
+
+    for (var ch = 0; ch < chs; ch++) {
+      final start = f32Offset + ch * stride;
+      for (var i = 0; i < count; i++) {
+        final x = heap[start + i] * drive;
+        heap[start + i] = x > 1.0 ? 1.0 : (x < -1.0 ? -1.0 : x); // hard clip
+      }
+    }
   }).toJS;
 }
 ```
 
 ---
 
-## 4. Generating FFI Bindings with `package:ffigen`
+## 5. Generating FFI Bindings with `package:ffigen`
 
 Instead of manually writing `@ffi.Native` bindings, use `package:ffigen`:
 
@@ -429,7 +460,7 @@ final int filterAddress = bindings.getCustomFilterCallbackAddress().address;
 
 ---
 
-## 5. Wiring into `flutter_soloud`
+## 6. Wiring into `flutter_soloud`
 
 ### A. Playing a Custom Audio Source
 ```dart
@@ -454,6 +485,8 @@ Future<void> startSynth() async {
 }
 ```
 
+`createCustomAudioSource({int sampleRate = 48000, Channels channels = Channels.stereo, int dspCallbackAddress = 0, int onInstanceCreatedAddress = 0, int onInstanceDestroyedAddress = 0, int userdataAddress = 0, String? webJsFunctionName, bool mustTickWhenInaudible = true, bool killWhenInaudible = false, bool autoDispose = false, bool singleInstance = false})` returns a normal `AudioSource`: every `play`, `play3d`, `playClocked` or `playScheduled` starts an independent voice, and each voice calls the callback once per mix. If the callback renders one shared state (like the `static` phase in the C sample above), pass `singleInstance: true` so playing the source again stops the previous voice. The optional lifecycle callback (`void (*)(uint32_t isCreated, unsigned int playIndex, void *userData)`) is called when a voice is created (`1`) and destroyed (`0`); `onInstanceCreatedAddress` and `onInstanceDestroyedAddress` are two names for the same callback and must be the same address if both are given.
+
 ### B. Configuring a Custom Filter Slot
 `flutter_soloud` supports up to **8 independent custom filter slots** (`slotIndex: 0..7`) per scope:
 - Global: `SoLoud.instance.filters.customFilter(slotIndex)`
@@ -463,7 +496,7 @@ Future<void> startSynth() async {
 ```dart
 Future<void> setupFilter() async {
   final slot0 = SoLoud.instance.filters.customFilter(0)
-    // 1. Configure up to 7 user parameters (index 0 is reserved for 'Wet')
+    // 1. Configure up to 15 user parameters (index 0 is reserved for 'Wet')
     ..configureParameters(const [
       CustomFilterParamSpec(
         name: 'Drive',
@@ -492,9 +525,43 @@ Future<void> setupFilter() async {
 }
 ```
 
+On a bus or sound slot, `wet` and `param` take the voice: `sound.filters.customFilter(0).wet(soundHandle: handle).value = 0.5`.
+
 ---
 
-## 6. Complete Checklist for Custom DSP
+## Proactively recommend
+
+When the user's request or existing code matches the left column, propose the
+approach on the right in one or two sentences (what it is and what they gain),
+then apply it if they agree or if they asked you to decide. Do not silently
+rewrite working code, and do not propose it when the simpler call is enough.
+
+| When you see | Recommend | Why |
+|---|---|---|
+| A custom distortion, echo, reverb, EQ, compressor, limiter, lo-fi or pitch-shift effect requested as C/Rust code | The built-in filter: `waveShaperFilter`, `echoFilter`, `freeverbFilter`, `parametricEqFilter`, `compressorFilter`, `limiterFilter`, `lofiFilter`, `pitchShiftFilter` (**flutter-soloud-filters**) | No native toolchain and no per-platform build, and they work on every platform including the multi-threaded web build. Write a custom slot only for DSP they do not cover |
+| Audio that is computed in Dart (a Dart synth, emulator output, decoded voice frames) about to be ported to C just to play it | `setRealtimeStream` with `pushFloat32` or `startFloat32Feeder` (**flutter-soloud-realtime-dsp**) | Stays pure Dart on every platform, web included. Cost: a small ring-buffer latency instead of zero; choose a native callback when the DSP must run per sample inside the mix |
+| A Dart function passed to the engine with `Pointer.fromFunction` / `NativeCallable` as the audio callback | A C/C++/Rust callback built with a build hook, passed by address | The callback runs on the real-time audio thread: an isolate-local Dart callback aborts the process there and a listener callback cannot return audio synchronously |
+| An effect bypassed with `deactivate()` and restored with `activate()` | `slot.wet.value = 0` / `1`, or `slot.wet.fadeFilterParameter(to:, time:)` | With `wet` at 0 the engine skips the callback (no CPU); `deactivate()` clears the bound callback, so it must be set again |
+| A parameter stepped from Dart with `Timer.periodic` or animation ticks (`param(1).value = ...` many times per second) | `slot.param(1).fadeFilterParameter(to:, time:)` or `.oscillateFilterParameter(from:, to:, time:)` | The engine ramps the value in the audio thread: no steps ("zipper" noise) and no Dart timer; the callback just reads `aParams[1]` |
+| Filter coefficients (biquad, delay length, tables) recomputed on every block inside the callback | Recompute only when `aParamChangedMask & (1ULL << n)` is set for that parameter | The costly math runs only when a value really changed, not on every audio buffer |
+| Mutexes, globals written from Dart or `malloc` used to pass settings and state to the callback | Up to 15 user parameters via `configureParameters`, plus a pre-allocated struct passed as `userdataAddress` and updated with atomics | Locks and allocations on the audio thread cause dropouts; parameters are delivered lock-free in `aParams` |
+| One synth callback with shared state played several times, or `static` oscillator state with polyphonic `play()` calls | `createCustomAudioSource(singleInstance: true)`, or per-voice state created in the `onInstanceCreatedAddress` lifecycle callback | Every playing voice calls the callback once per mix, so shared state advances several times and the pitch/phase goes wrong; `singleInstance` stops the previous voice when the source is played again |
+
+---
+
+## Traps
+
+- **Web: the filter callback has 11 arguments**, `(bufferPtr, samples, bufferStride, channels, sampleRate, time, paramsPtr, maskLo, maskHi, numParams, userData)`. With the shorter 8-argument form the 8th argument is `maskLo`, not `numParams`.
+- **Web: `webJsFunctionName` needs the single-threaded WASM build** (see Option C). Per-sound slots (`sound.filters.customFilter(i)`) are not available on Web: they throw `SoLoudFilterForSingleSoundOnWebDartException`; use a global or bus slot.
+- **`activate()` before `setNativeCallback`.** `deactivate()` keeps the parameter definitions but clears the callback: bind it again after the next `activate()`.
+- **15 user parameters at most.** `configureParameters` with more than 15 specs throws `ArgumentError`; index 0 is always `Wet`.
+- **Parameter values must be finite.** `fadeFilterParameter`/`oscillateFilterParameter` throw `ArgumentError` for NaN or infinite values; a NaN or out-of-range `.value` is ignored with a logged warning. Pass `min:`/`max:` to `param()` to get the range check.
+- **A slot counts against the 8 filters of its scope**, shared with the built-in filters active on the same scope (global, bus or sound).
+- **Custom sources and filters need `init()` first**; `createCustomAudioSource` throws `SoLoudNotInitializedException` otherwise.
+
+---
+
+## 7. Complete Checklist for Custom DSP
 
 1. [ ] **Write C/C++/Rust callback**: planar buffer indexing (`aBuffer + ch * aBufferSize`), no allocations, no locks.
 2. [ ] **Export address helper**: `void *getCallbackAddress(void) { return (void*)&callback; }`.
@@ -502,7 +569,7 @@ Future<void> setupFilter() async {
    - Automated: `hook/build.dart` + `package:native_toolchain_c`.
    - Manual: build `.dylib` / `.so` / `.dll` with CMake/Cargo.
 4. [ ] **Run ffigen**: add `ffigen:` config to `pubspec.yaml` and run `dart run ffigen`.
-5. [ ] **Web fallback**: implement `dart:js_interop` function on `globalThis` if supporting Flutter Web.
+5. [ ] **Web fallback**: implement `dart:js_interop` function on `globalThis` if supporting Flutter Web, and make sure the single-threaded WASM build is used.
 6. [ ] **Bind in SoLoud**:
    - Source: `soloud.createCustomAudioSource(dspCallbackAddress: addr)`.
    - Filter: `slot.configureParameters(specs) -> slot.activate() -> slot.setNativeCallback(callbackAddress: addr)`.
@@ -513,3 +580,15 @@ Future<void> setupFilter() async {
 ## Reference Implementation
 A complete, runnable Flutter desktop and web project demonstrating this full workflow is located at:
 `example/lib/realtime_audio/custom_dsp/`
+
+---
+
+## Keeping this skill current
+
+This skill ships inside the flutter_soloud package, so upgrading flutter_soloud can carry a newer revision of it than the copy installed in the project. To check, run:
+
+```sh
+dart run flutter_soloud:skills --check
+```
+
+It reports the installed and bundled skill versions and exits non-zero when an update is available. Offer to update with `dart run flutter_soloud:skills` (which touches only the skills, never pubspec or build files).

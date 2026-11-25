@@ -58,6 +58,8 @@ namespace SoLoud
 			drwav *mWav;
 		} mCodec;
 		bool mStreamEnded; // Set to true when decoder reaches end of stream
+		// Opens mCodec on mFile (constructor body; may throw std::bad_alloc).
+		void openCodec_internal();
 		
 	public:
 		WavStreamInstance(WavStream *aParent);

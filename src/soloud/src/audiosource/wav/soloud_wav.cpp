@@ -113,9 +113,12 @@ result WavInstance::seek(double aSeconds, float *mScratch,
   if (mParent == NULL || mBaseSamplerate <= 0.0f) {
     return INVALID_PARAMETER;
   }
-  unsigned int pos = (unsigned int)floor(mBaseSamplerate * aSeconds + 0.5);
-  if (pos > mParent->mActualSampleCount) {
-    pos = mParent->mActualSampleCount;
+  // flutter_soloud: clamped before the conversion, which is undefined for a
+  // value past the range of unsigned int (or a NaN).
+  const double target = floor(mBaseSamplerate * aSeconds + 0.5);
+  unsigned int pos = mParent->mActualSampleCount;
+  if (target < (double)mParent->mActualSampleCount) {
+    pos = (unsigned int)target;
   }
   mOffset = pos;
   mStreamPosition = float(pos / mBaseSamplerate);
@@ -359,6 +362,16 @@ result Wav::loadmp3(MemoryFile *aReader) {
   return SO_NO_ERROR;
 }
 
+// ###### flutter_soloud local patch (flac load) ######
+// Closes the dr_flac decoder on every return, and when an allocation below
+// throws std::bad_alloc.
+namespace {
+struct DrflacCloser {
+  drflac *mDecoder;
+  ~DrflacCloser() { drflac_close(mDecoder); }
+};
+} // namespace
+
 result Wav::loadflac(MemoryFile *aReader) {
   drflac *decoder =
       drflac_open_memory(aReader->mDataPtr, aReader->mDataLength, NULL);
@@ -366,48 +379,77 @@ result Wav::loadflac(MemoryFile *aReader) {
   if (!decoder) {
     return FILE_LOAD_FAILED;
   }
+  DrflacCloser closer = {decoder};
 
-  drflac_uint64 samples = decoder->totalPCMFrameCount;
-
-  if (!samples || decoder->channels == 0) {
-    drflac_close(decoder);
+  if (decoder->channels == 0) {
     return FILE_LOAD_FAILED;
   }
 
   mChannels =
       decoder->channels > MAX_CHANNELS ? MAX_CHANNELS : decoder->channels;
+  constexpr unsigned int kChunkFrames = 1024;
+  std::vector<float> tmp((size_t)kChunkFrames * decoder->channels);
+
+  // A total sample count of 0 in STREAMINFO means "unknown" (streaming
+  // encoders): decode to the end of the data.
+  drflac_uint64 samples = decoder->totalPCMFrameCount;
+  if (samples == 0) {
+    std::vector<float> chBuffers[MAX_CHANNELS];
+    while (true) {
+      unsigned int got = (unsigned int)drflac_read_pcm_frames_f32(
+          decoder, kChunkFrames, tmp.data());
+      if (got == 0) {
+        break;
+      }
+      if (chBuffers[0].size() + got > 0xFFFFFFFFu) {
+        return FILE_LOAD_FAILED;
+      }
+      for (unsigned int k = 0; k < mChannels; k++) {
+        for (unsigned int j = 0; j < got; j++) {
+          chBuffers[k].push_back(tmp[(size_t)j * decoder->channels + k]);
+        }
+      }
+    }
+    const size_t total = chBuffers[0].size();
+    if (total == 0) {
+      return FILE_LOAD_FAILED;
+    }
+    mData = new float[total * mChannels];
+    mBaseSamplerate = (float)decoder->sampleRate;
+    mSampleCount = (unsigned int)total;
+    mActualSampleCount = (unsigned int)total;
+    for (unsigned int k = 0; k < mChannels; k++) {
+      memcpy(mData + (size_t)k * total, chBuffers[k].data(),
+             total * sizeof(float));
+    }
+    return SO_NO_ERROR;
+  }
+
+  if (samples > 0xFFFFFFFFu) {
+    return FILE_LOAD_FAILED;
+  }
   mData = new float[(size_t)samples * mChannels];
   mBaseSamplerate = (float)decoder->sampleRate;
   mSampleCount = (unsigned int)samples;
-  mActualSampleCount = (unsigned int)samples;
   drflac_seek_to_pcm_frame(decoder, 0);
 
-  constexpr unsigned int kChunkFrames = 1024;
-  if (decoder->channels <= MAX_CHANNELS) {
-    float tmp[kChunkFrames * MAX_CHANNELS];
-    for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
-      unsigned int blockSize =
-          (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
-      unsigned int got =
-          (unsigned int)drflac_read_pcm_frames_f32(decoder, blockSize, tmp);
-      if (got < blockSize) {
-        memset(tmp + (size_t)got * decoder->channels, 0,
-               sizeof(float) * (blockSize - got) * decoder->channels);
-      }
-      deinterleaveFloatsToPlanar(tmp, mData + i, mSampleCount, blockSize,
-                                 mChannels);
+  // A truncated file decodes fewer frames than STREAMINFO promises: the
+  // rest is zeroed, and a voice ends at the frames actually decoded (as in
+  // loadmp3 and loadogg).
+  unsigned int decodedSamples = 0;
+  for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
+    unsigned int blockSize =
+        (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
+    unsigned int got = (unsigned int)drflac_read_pcm_frames_f32(
+        decoder, blockSize, tmp.data());
+    if (got < blockSize) {
+      memset(tmp.data() + (size_t)got * decoder->channels, 0,
+             sizeof(float) * (blockSize - got) * decoder->channels);
     }
-  } else {
-    std::vector<float> tmp((size_t)kChunkFrames * decoder->channels);
-    for (unsigned int i = 0; i < mSampleCount; i += kChunkFrames) {
-      unsigned int blockSize =
-          (mSampleCount - i) > kChunkFrames ? kChunkFrames : mSampleCount - i;
-      unsigned int got = (unsigned int)drflac_read_pcm_frames_f32(
-          decoder, blockSize, tmp.data());
-      if (got < blockSize) {
-        memset(tmp.data() + (size_t)got * decoder->channels, 0,
-               sizeof(float) * (blockSize - got) * decoder->channels);
-      }
+    if (decoder->channels <= MAX_CHANNELS) {
+      deinterleaveFloatsToPlanar(tmp.data(), mData + i, mSampleCount,
+                                 blockSize, mChannels);
+    } else {
       for (unsigned int j = 0; j < blockSize; j++) {
         for (unsigned int k = 0; k < mChannels; k++) {
           mData[(size_t)k * mSampleCount + i + j] =
@@ -415,8 +457,18 @@ result Wav::loadflac(MemoryFile *aReader) {
         }
       }
     }
+    decodedSamples += got;
+    if (got < blockSize) {
+      break;
+    }
   }
-  drflac_close(decoder);
+  if (decodedSamples < mSampleCount) {
+    for (unsigned int ch = 0; ch < mChannels; ch++) {
+      memset(mData + (size_t)ch * mSampleCount + decodedSamples, 0,
+             sizeof(float) * (mSampleCount - decodedSamples));
+    }
+  }
+  mActualSampleCount = decodedSamples;
 
   return SO_NO_ERROR;
 }
@@ -429,8 +481,11 @@ static result adoptNativeDecoded(Wav *aWav, DecodedAudioData aDecoded) {
       aDecoded.channels > MAX_CHANNELS || !(aDecoded.sampleRate > 0.0f)) {
     if (!aDecoded.errorMessage.empty())
       printf("[Wav::loadnative] %s\n", aDecoded.errorMessage.c_str());
+    const bool unsupported = !aDecoded.success && aDecoded.formatNotSupported;
     aDecoded.freeSamples();
-    return FILE_LOAD_FAILED;
+    // No decoder for the format here (e.g. no FFmpeg on Linux): say so, as
+    // the streaming path does, rather than report a corrupt file.
+    return unsupported ? FORMAT_NOT_SUPPORTED : FILE_LOAD_FAILED;
   }
 
   delete[] aWav->mData;
@@ -463,6 +518,7 @@ result Wav::testAndLoadFile(MemoryFile *aReader) {
   delete[] mData;
   mData = 0;
   mSampleCount = 0;
+  mActualSampleCount = 0;
   mChannels = 1;
   int tag = aReader->read32();
   if (tag == MAKEDWORD('O', 'g', 'g', 'S')) {
@@ -478,8 +534,17 @@ result Wav::testAndLoadFile(MemoryFile *aReader) {
 
   // Fallback to native OS decoder for M4A, MP4, AAC, AC3/EAC3, ALAC, etc.
   aReader->seek(0);
-  if (loadnative(aReader) == SO_NO_ERROR) {
+  const result nativeResult = loadnative(aReader);
+  if (nativeResult == SO_NO_ERROR) {
     return SO_NO_ERROR;
+  }
+  // Only data that looks like a native format is "not supported here";
+  // anything else is a file that could not be loaded.
+  if (nativeResult == FORMAT_NOT_SUPPORTED &&
+      NativeAudioDecoder::isSupportedNativeFormat(aReader->getMemPtr(),
+                                                  aReader->length())) {
+    printf("[Wav::testAndLoadFile] -> FORMAT_NOT_SUPPORTED\n");
+    return FORMAT_NOT_SUPPORTED;
   }
 
   printf("[Wav::testAndLoadFile] -> FILE_LOAD_FAILED\n");

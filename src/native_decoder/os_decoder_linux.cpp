@@ -2,6 +2,7 @@
 
 #include "native_audio_decoder.h"
 #include "../audiobuffer/m4a_metadata.h"
+#include "../native_stream/m4a_gapless.h"
 #include "../audiobuffer/aac_stream_decoder.h"
 #include <dlfcn.h>
 #include <unistd.h>
@@ -34,6 +35,7 @@ typedef int (*pfn_avformat_find_stream_info)(struct AVFormatContext *ic, void **
 typedef void (*pfn_avformat_close_input)(struct AVFormatContext **s);
 typedef int (*pfn_av_read_frame)(struct AVFormatContext *s, struct AVPacket *pkt);
 typedef unsigned (*pfn_avformat_version)(void);
+typedef unsigned (*pfn_avcodec_version)(void);
 typedef int (*pfn_av_find_best_stream)(struct AVFormatContext *ic, int type, int wanted_stream_nb, int related_stream, const struct AVCodec **decoder_ret, int flags);
 
 typedef const struct AVCodec* (*pfn_avcodec_find_decoder)(int id);
@@ -63,6 +65,7 @@ struct FFmpegLoader {
     pfn_avformat_version avformat_version = nullptr;
     pfn_av_find_best_stream av_find_best_stream = nullptr;
 
+    pfn_avcodec_version avcodec_version = nullptr;
     pfn_avcodec_find_decoder avcodec_find_decoder = nullptr;
     pfn_avcodec_alloc_context3 avcodec_alloc_context3 = nullptr;
     pfn_avcodec_parameters_to_context avcodec_parameters_to_context = nullptr;
@@ -134,6 +137,7 @@ struct FFmpegLoader {
         avformat_version = reinterpret_cast<pfn_avformat_version>(dlsym(hFormat, "avformat_version"));
         av_find_best_stream = reinterpret_cast<pfn_av_find_best_stream>(dlsym(hFormat, "av_find_best_stream"));
 
+        avcodec_version = reinterpret_cast<pfn_avcodec_version>(dlsym(hCodec, "avcodec_version"));
         LOAD_SYM(hCodec, avcodec_find_decoder);
         LOAD_SYM(hCodec, avcodec_alloc_context3);
         LOAD_SYM(hCodec, avcodec_parameters_to_context);
@@ -199,20 +203,63 @@ struct DummyAVFormatContext {
     void **streams;
 };
 
+// AVStream field offsets (LP64), per libavformat major, taken from the
+// installed headers of each release (offsetof):
+//                       codecpar  time_base  duration
+//   lavf 58 (FFmpeg 4.x)   208        24        40
+//   lavf 59 (FFmpeg 5.x)   208        16        32
+//   lavf 60+ (FFmpeg 6+)    16        32        48
+// lavf 60 moved codecpar right after av_class/index/id. An unknown version
+// (no avformat_version) is treated as the newest layout.
+struct AVStreamOffsets {
+    size_t codecpar;
+    size_t timeBase;
+    size_t duration;
+};
+
+static AVStreamOffsets avStreamOffsets(unsigned int lavfMajor) {
+    if (lavfMajor == 58) return {208, 24, 40};
+    if (lavfMajor == 59) return {208, 16, 32};
+    return {16, 32, 48};
+}
+
 static DummyAVCodecParameters* getStreamCodecPar(void *streamPtr, unsigned int lavfMajor) {
     if (!streamPtr) return nullptr;
     const uint8_t *bytes = reinterpret_cast<const uint8_t*>(streamPtr);
-    if (lavfMajor >= 59 || lavfMajor == 0) {
-        // FFmpeg 5.0+ (lavf 59..63+):
-        // offset 0: av_class (8)
-        // offset 8: index (4)
-        // offset 12: id (4)
-        // offset 16: codecpar (8)
-        return *reinterpret_cast<DummyAVCodecParameters* const *>(bytes + 16);
+    return *reinterpret_cast<DummyAVCodecParameters* const *>(
+        bytes + avStreamOffsets(lavfMajor).codecpar);
+}
+
+// AVCodecParameters channel count and sample rate offsets (LP64), per
+// libavcodec version, from the installed headers (offsetof / sizeof):
+//                             channels  ch_layout.nb_channels  sample_rate  sizeof
+//   lavc 58     (FFmpeg 4.x)     112            -                  116        144
+//   lavc 59.37  (FFmpeg 5.1)     112           148                 116        168
+//   lavc 60     (FFmpeg 6.x)     112           148                 116        192
+//   lavc 61, 62 (FFmpeg 7, 8)     -            132                 152        176
+// ch_layout exists from lavc 59.24; the old `channels` field is gone in 61.
+// Only offsets inside the struct of that version are read.
+static void readCodecParAudio(const DummyAVCodecParameters *par, unsigned int lavcVer,
+                              int &channels, int &sampleRate) {
+    channels = 0;
+    sampleRate = 0;
+    if (!par) return;
+    const uint8_t *bytes = reinterpret_cast<const uint8_t *>(par);
+    auto readInt = [bytes](size_t offset) {
+        return *reinterpret_cast<const int *>(bytes + offset);
+    };
+    const unsigned int major = lavcVer >> 16;
+    const unsigned int minor = (lavcVer >> 8) & 0xFF;
+    if (major == 0 || major >= 61) {
+        channels = readInt(132);
+        sampleRate = readInt(152);
+    } else if (major >= 59) {
+        sampleRate = readInt(116);
+        if (major > 59 || minor >= 24) channels = readInt(148);
+        if (channels <= 0) channels = readInt(112);
     } else {
-        // FFmpeg 4.x (lavf 58):
-        // offset 208: codecpar (8)
-        return *reinterpret_cast<DummyAVCodecParameters* const *>(bytes + 208);
+        channels = readInt(112);
+        sampleRate = readInt(116);
     }
 }
 
@@ -252,12 +299,14 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     DecodedAudioData result;
     if (!gFFmpeg.init()) {
         result.errorMessage = "FFmpeg libraries (libavformat/libavcodec) not available on system";
+        result.formatNotSupported = true;
         return result;
     }
 
     // Step 1: Probe file header for accurate audio metadata
     int probedSampleRate = 0;
     int probedChannels = 0;
+    bool isMp4 = false;
     FILE *probeFp = fopen(filePath, "rb");
     if (probeFp) {
         unsigned char probeBuf[16384];
@@ -268,6 +317,7 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
             const unsigned char *payload = probeBuf + id3Skip;
             const size_t payloadLen = n - id3Skip;
             if (NativeAudioDecoder::isM4aOrMp4(probeBuf, n)) {
+                isMp4 = true;
                 M4aMetadata m4a;
                 if (parseM4aMetadata(probeBuf, n, m4a)) {
                     if (m4a.sampleRate > 0) probedSampleRate = m4a.sampleRate;
@@ -342,6 +392,20 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
         return result;
     }
 
+    // AVStream.time_base and .duration (see avStreamOffsets). Read before
+    // the context is closed.
+    double audioStreamSeconds = 0.0;
+    {
+        const AVStreamOffsets off = avStreamOffsets(lavfMajor);
+        const uint8_t *st = reinterpret_cast<const uint8_t *>(dummyCtx->streams[audioStreamIndex]);
+        const int tbNum = *reinterpret_cast<const int *>(st + off.timeBase);
+        const int tbDen = *reinterpret_cast<const int *>(st + off.timeBase + 4);
+        const int64_t duration = *reinterpret_cast<const int64_t *>(st + off.duration);
+        if (tbNum > 0 && tbDen > 0 && duration > 0) {
+            audioStreamSeconds = static_cast<double>(duration) * tbNum / tbDen;
+        }
+    }
+
     if (!codec) {
         int codecId = *reinterpret_cast<const int *>(reinterpret_cast<const uint8_t *>(codecPar) + 4);
         codec = gFFmpeg.avcodec_find_decoder(codecId);
@@ -349,6 +413,7 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     if (!codec) {
         gFFmpeg.avformat_close_input(&fmtCtx);
         result.errorMessage = "Codec decoder not found for audio stream";
+        result.formatNotSupported = true;
         return result;
     }
 
@@ -378,20 +443,12 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
     int channels = probedChannels;
 
     if (sampleRate <= 0 || channels <= 0) {
-        const uint8_t *parBytes = reinterpret_cast<const uint8_t *>(codecPar);
-        const std::pair<int, int> candidateOffsets[] = {
-            {132, 152}, // FFmpeg 7+ (ch_layout.nb_channels, sample_rate)
-            {108, 128}, // FFmpeg 5.1 - 6.x
-            {112, 116}  // FFmpeg 4.x - 5.0
-        };
-        for (const auto &pair : candidateOffsets) {
-            int ch = *reinterpret_cast<const int *>(parBytes + pair.first);
-            int sr = *reinterpret_cast<const int *>(parBytes + pair.second);
-            if (ch >= 1 && ch <= 32 && sr >= 4000 && sr <= 384000) {
-                if (channels <= 0) channels = ch;
-                if (sampleRate <= 0) sampleRate = sr;
-                break;
-            }
+        const unsigned int lavcVer = gFFmpeg.avcodec_version ? gFFmpeg.avcodec_version() : 0;
+        int ch = 0, sr = 0;
+        readCodecParAudio(codecPar, lavcVer, ch, sr);
+        if (ch >= 1 && ch <= 32 && sr >= 4000 && sr <= 384000) {
+            if (channels <= 0) channels = ch;
+            if (sampleRate <= 0) sampleRate = sr;
         }
     }
 
@@ -612,6 +669,24 @@ DecodedAudioData decodeFilePathWithFFmpeg(const char *filePath) {
 
     channels = actualChannels;
     size_t totalFrames = planarChannelData[0].size();
+
+    // libavformat drops the encoder delay that the edit list or iTunSMPB
+    // declares, but before FFmpeg 7.1 the mov demuxer does not discard the
+    // padding at the end (no discard_padding on the last packet), so the
+    // decode runs up to one AAC frame long. Stop at the valid length.
+    if (isMp4) {
+        M4aGaplessInfo gapless;
+        uint64_t delayFrames = 0, validFrames = 0;
+        if (!parseM4aGapless(std::string(filePath), gapless) ||
+            !gapless.resolve(static_cast<double>(sampleRate), delayFrames, validFrames)) {
+            // A damaged container libavformat still opened: its stream
+            // duration (the edit list's, when there is one) is the bound.
+            validFrames = static_cast<uint64_t>(audioStreamSeconds * sampleRate + 0.5);
+        }
+        if (validFrames > 0 && totalFrames > validFrames) {
+            totalFrames = static_cast<size_t>(validFrames);
+        }
+    }
     for (int c = 1; c < channels; c++) {
         if (planarChannelData[c].size() < totalFrames) {
             planarChannelData[c].resize(totalFrames, 0.0f);
@@ -669,20 +744,29 @@ DecodedAudioData NativeAudioDecoder::decodeMemory(const unsigned char *bytes, si
         ext = ".eac3";
     }
 
-    char tempPath[128];
-    snprintf(tempPath, sizeof(tempPath), "/tmp/soloud_media_XXXXXX%s", ext);
-    int fd = mkstemps(tempPath, static_cast<int>(std::strlen(ext)));
+    // Honor TMPDIR like mkstemp(3) users are expected to (sandboxes and
+    // read-only roots often have no writable /tmp).
+    std::string tempDir = "/tmp";
+    if (const char *envTmp = std::getenv("TMPDIR")) {
+        if (envTmp[0] != '\0') tempDir = envTmp;
+    }
+    while (tempDir.size() > 1 && tempDir.back() == '/') tempDir.pop_back();
+    std::string pattern = tempDir + "/soloud_media_XXXXXX" + ext;
+    std::vector<char> tempPathBuf(pattern.begin(), pattern.end());
+    tempPathBuf.push_back('\0');
+    int fd = mkstemps(tempPathBuf.data(), static_cast<int>(std::strlen(ext)));
     if (fd < 0) {
         // Fallback to mkstemp if mkstemps fails
-        char fallbackPath[] = "/tmp/soloud_media_XXXXXX";
-        fd = mkstemp(fallbackPath);
+        pattern = tempDir + "/soloud_media_XXXXXX";
+        tempPathBuf.assign(pattern.begin(), pattern.end());
+        tempPathBuf.push_back('\0');
+        fd = mkstemp(tempPathBuf.data());
         if (fd < 0) {
-            result.errorMessage = "Failed to create temporary file for Linux decoding";
+            result.errorMessage = "Failed to create temporary file in " + tempDir + " for Linux decoding";
             return result;
         }
-        std::strncpy(tempPath, fallbackPath, sizeof(tempPath) - 1);
-        tempPath[sizeof(tempPath) - 1] = '\0';
     }
+    const char *tempPath = tempPathBuf.data();
 
     size_t written = write(fd, bytes, length);
     close(fd);

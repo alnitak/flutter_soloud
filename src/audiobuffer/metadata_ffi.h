@@ -181,3 +181,26 @@ struct AudioMetadataFFI
 
 // callback to tell dart the metadata
 typedef void (*dartOnMetadataCallback_t)(struct AudioMetadataFFI metadata);
+
+#ifdef __cplusplus
+#include <cstring>
+#include <string>
+
+/// Copy [src] into the metadata field [dst], NUL terminated. A string longer
+/// than the field (MAX_STRING_LENGTH - 1 bytes) is cut at the start of a
+/// UTF-8 character, never inside one: Dart decodes the field as UTF-8.
+inline void copyMetadataString(char *dst, const std::string &src)
+{
+    size_t n = src.size();
+    if (n > MAX_STRING_LENGTH - 1)
+    {
+        n = MAX_STRING_LENGTH - 1;
+        // Back up over continuation bytes (10xxxxxx) to the lead byte of the
+        // character that does not fit, and cut before it.
+        while (n > 0 && (static_cast<unsigned char>(src[n]) & 0xC0) == 0x80)
+            --n;
+    }
+    std::memcpy(dst, src.data(), n);
+    dst[n] = '\0';
+}
+#endif

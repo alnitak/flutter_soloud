@@ -14,7 +14,7 @@ enum Limiter {
 
   final List<double> _mins = const [0, -60, -60, 0, 1, 0.1];
   final List<double> _maxs = const [1, 0, 0, 30, 1000, 200];
-  final List<double> _defs = const [1, -3, -1, 2, 100, 1];
+  final List<double> _defs = const [1, -3, -1, 6, 50, 1];
 
   double get min => _mins[index];
   double get max => _maxs[index];
@@ -46,7 +46,7 @@ abstract class _LimiterInternal extends FilterBase {
 class LimiterSingle extends _LimiterInternal {
   LimiterSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -55,7 +55,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.wet.max,
   );
 
-  FilterParam threshold({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam threshold({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -64,7 +64,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.threshold.max,
   );
 
-  FilterParam outputCeiling({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam outputCeiling({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -73,7 +73,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.outputCeiling.max,
   );
 
-  FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam kneeWidth({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -82,7 +82,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.kneeWidth.max,
   );
 
-  FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam releaseTime({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -91,7 +91,7 @@ class LimiterSingle extends _LimiterInternal {
     Limiter.releaseTime.max,
   );
 
-  FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam attackTime({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

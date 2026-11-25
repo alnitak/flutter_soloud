@@ -53,6 +53,12 @@ private:
   /// Target sample (interleaved samples) to seek to after the next decoder
   /// initialization.
   uint64_t mPendingSeekTargetSample = 0;
+
+  /// Byte offset in the file of the first data byte fed after the seek.
+  uint64_t mPendingSeekByteOffset = 0;
+
+  /// The "data" chunk size is 0xFFFFFFFF: the length is not known.
+  bool mUnknownLength = false;
 };
 
 #endif // WAV_STREAM_DECODER_H

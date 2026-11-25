@@ -1,0 +1,15 @@
+# Test runner configuration for `flutter test` / `dart test`.
+#
+# Layout (see test/README.md):
+#   test/common   any host; test/android, test/ios, test/linux, test/macos,
+#   test/windows  code paths for that platform; test/web  @TestOn('browser').
+#
+# Tags:
+#   device  starts the real engine, so it opens an audio output device.
+#           Skip on machines without one: flutter test -x device
+#   slow    takes more than a few seconds.
+tags:
+  device:
+    timeout: 2x
+  slow:
+    timeout: 4x

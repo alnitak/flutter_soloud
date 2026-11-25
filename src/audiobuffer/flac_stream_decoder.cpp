@@ -4,6 +4,7 @@
 #include "metadata_bounds.h"
 #include "../soloud_common.h"
 #include "../simd/simd_pcm.h"
+#include <algorithm>
 #include <cstring> // For memcpy
 
 namespace
@@ -112,6 +113,7 @@ bool FlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineChann
     FLAC__stream_decoder_set_metadata_respond_all(m_pFlacDecoder);
 
     m_streamStartOffset = 0;
+    m_decodedUpTo = 0;
     FLAC__StreamDecoderInitStatus init_status = FLAC__stream_decoder_init_stream(
         m_pFlacDecoder,
         read_callback,
@@ -164,8 +166,24 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
     }
     buffer.clear(); // Clear the original buffer as it has been processed
 
+    // The format and the header are checked on the first 4 bytes: wait for
+    // them, or libFLAC would start reading the metadata from a partial
+    // delivery and abort.
+    if (mHeader.empty() && m_audioData.size() < 4)
+    {
+        if (m_dataEnded)
+        {
+            const bool empty = m_audioData.empty();
+            m_audioData.clear();
+            m_read_pos = 0;
+            m_drained = true;
+            return {{}, empty ? DecoderError::NoError : DecoderError::CodecError};
+        }
+        return {{}, DecoderError::NoError};
+    }
+
     // Capture the FLAC header on the first decode if we haven't already.
-    if (mHeader.empty() && m_audioData.size() >= 4 &&
+    if (mHeader.empty() &&
         m_audioData[0] == 'f' && m_audioData[1] == 'L' &&
         m_audioData[2] == 'a' && m_audioData[3] == 'C')
     {
@@ -239,57 +257,51 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         }
     }
 
+    // libFLAC buffers input in its bit reader, so m_read_pos can be ahead of
+    // what it has decoded. When the read callback aborts for lack of data,
+    // libFLAC is left ABORTED with a partial block in the bit reader: roll the
+    // read position back to the end of the last decoded block and flush, so
+    // the next call re-reads that block from its start once more data is
+    // there. process_single() returns true or false on an abort, depending on
+    // where the read happened, so check the state in both cases.
+    auto rollBackAndFlush = [this]() {
+        m_read_pos = m_decodedUpTo >= m_streamStartOffset
+                         ? static_cast<size_t>(m_decodedUpTo - m_streamStartOffset)
+                         : 0;
+        if (m_read_pos > m_audioData.size())
+            m_read_pos = m_audioData.size();
+        FLAC__stream_decoder_flush(m_pFlacDecoder);
+    };
+
     unsigned int processCount = 0;
-    size_t last_successful_read_pos = m_read_pos;
     while ((m_read_pos < m_audioData.size() || m_dataEnded) && processCount < 100000)
     {
-        if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
-        {
-            FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
-            if (state == FLAC__STREAM_DECODER_ABORTED)
-            {
-                // read_callback returned ABORT because the buffer is temporarily
-                // exhausted but more data is expected. Roll back m_read_pos to
-                // the last successful frame boundary, and flush the decoder so it
-                // transitions to SEARCH_FOR_FRAME_SYNC and can resume on the
-                // next decode() call.
-                m_read_pos = last_successful_read_pos;
-                FLAC__stream_decoder_flush(m_pFlacDecoder);
-                SOLOUD_DEBUG_LOG("[FlacDecoderWrapper::decode] flushed decoder after temporary buffer exhaustion\n");
-                break;
-            }
-            if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
-            {
-                m_drained = true;
-                break;
-            }
-            // For other decoder errors, attempt recovery by flushing and rolling back
-            m_read_pos = last_successful_read_pos;
-            FLAC__stream_decoder_flush(m_pFlacDecoder);
-            break;
-        }
-
-        FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
+        const bool ok = FLAC__stream_decoder_process_single(m_pFlacDecoder);
+        const FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
         if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
         {
             m_drained = true;
             break;
         }
+        if (!ok || state == FLAC__STREAM_DECODER_ABORTED)
+        {
+            // ABORTED: the buffer is temporarily exhausted but more data is
+            // expected. Other errors: attempt recovery the same way.
+            rollBackAndFlush();
+            // Once the data has ended reads no longer abort, so this is a
+            // fatal error: end the stream, or a drain loop would never end.
+            if (m_dataEnded && state != FLAC__STREAM_DECODER_ABORTED)
+                m_drained = true;
+            SOLOUD_DEBUG_LOG("[FlacDecoderWrapper::decode] flushed decoder (state %d)\n", (int)state);
+            break;
+        }
 
-        // Query the exact byte position processed by the decoder (excluding lookahead FIFO)
+        // The exact byte position decoded so far (excluding the bit reader).
         FLAC__uint64 absolute_pos = 0;
         if (FLAC__stream_decoder_get_decode_position(m_pFlacDecoder, &absolute_pos))
-        {
-            if (absolute_pos >= m_streamStartOffset)
-            {
-                last_successful_read_pos = absolute_pos - m_streamStartOffset;
-            }
-        }
+            m_decodedUpTo = absolute_pos;
         else
-        {
-            // Fallback during metadata phase
-            last_successful_read_pos = m_read_pos;
-        }
+            m_decodedUpTo = m_streamStartOffset + m_read_pos;
         processCount++;
 
         if (maxOutputSamples > 0 && m_decodedPcm.size() >= maxOutputSamples)
@@ -298,25 +310,27 @@ std::pair<std::vector<float>, DecoderError> FlacDecoderWrapper::decode(std::vect
         }
     }
 
-    if (m_read_pos > 0)
+    // Drop the bytes libFLAC has decoded. Bytes it has only read into its bit
+    // reader stay, since a later abort rolls back to them.
+    size_t decodedRel = m_decodedUpTo > m_streamStartOffset
+                            ? static_cast<size_t>(m_decodedUpTo - m_streamStartOffset)
+                            : 0;
+    if (decodedRel > m_read_pos)
+        decodedRel = m_read_pos;
+    if (decodedRel > 0)
     {
-        if (m_read_pos >= m_audioData.size())
+        if (decodedRel >= m_audioData.size())
         {
-            m_streamStartOffset += m_read_pos;
+            m_streamStartOffset += decodedRel;
             m_audioData.clear();
             m_read_pos = 0;
         }
-        else if (m_read_pos >= 65536 && m_read_pos * 2 >= m_audioData.size())
+        else if (decodedRel >= 65536 && decodedRel * 2 >= m_audioData.size())
         {
-            m_streamStartOffset += m_read_pos;
-            m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
-            m_read_pos = 0;
+            m_streamStartOffset += decodedRel;
+            m_audioData.erase(m_audioData.begin(), m_audioData.begin() + decodedRel);
+            m_read_pos -= decodedRel;
         }
-    }
-
-    if (m_dataEnded && m_read_pos >= m_audioData.size())
-    {
-        m_drained = true;
     }
 
     *sampleRate = m_samplerate;
@@ -428,6 +442,21 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
                             ? (1.0f / static_cast<float>(1u << (bps - 1)))
                             : ((bps == 32) ? (1.0f / 2147483648.0f) : 1.0f);
 
+    // The output has the STREAMINFO channel count (reported to the caller
+    // and used for seeking). A frame with another count is mapped to it: its
+    // last channel is repeated, or its extra channels are dropped. libFLAC
+    // gives only the frame's channel buffers.
+    const unsigned frameChannels = frame->header.channels;
+    if (frameChannels == 0 || channels > FLAC__MAX_CHANNELS)
+    {
+        return FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE;
+    }
+    const FLAC__int32 *planes[FLAC__MAX_CHANNELS];
+    for (unsigned c = 0; c < channels; ++c)
+    {
+        planes[c] = buffer[std::min(c, frameChannels - 1)];
+    }
+
     const size_t frameTotalSamples = num_samples * channels;
     const uint64_t frameStartSample =
         static_cast<uint64_t>(frame->header.number.sample_number) * channels;
@@ -449,7 +478,7 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
         const size_t oldSize = self->m_decodedPcm.size();
         self->m_decodedPcm.resize(oldSize + frameTotalSamples);
         SoLoud::interleavePlanarInt32ToFloats(
-            reinterpret_cast<const int32_t *const *>(buffer),
+            reinterpret_cast<const int32_t *const *>(planes),
             self->m_decodedPcm.data() + oldSize,
             static_cast<unsigned int>(num_samples), channels, scale);
     }
@@ -465,7 +494,7 @@ FLAC__StreamDecoderWriteStatus FlacDecoderWrapper::write_callback(const FLAC__St
             const unsigned firstChannel = (i == startFrame) ? startChannel : 0;
             for (unsigned channel = firstChannel; channel < channels; ++channel)
             {
-                self->m_decodedPcm.push_back(static_cast<float>(buffer[channel][i]) * scale);
+                self->m_decodedPcm.push_back(static_cast<float>(planes[channel][i]) * scale);
             }
         }
     }
@@ -529,6 +558,7 @@ void FlacDecoderWrapper::prepareForSeek(uint64_t targetSample, uint64_t byteOffs
     m_decodedPcm.clear();
     m_dataEnded = false;
     m_drained = false;
+    m_decodedUpTo = 0;
     mPendingSkipTargetSample = targetSample;
     SOLOUD_DEBUG_LOG("[FlacDecoderWrapper] prepareForSeek targetSample=%llu\n",
            static_cast<unsigned long long>(targetSample));

@@ -12,6 +12,32 @@
 #include <vorbis/vorbisenc.h>
 #endif
 
+namespace {
+
+// Vorbis channel index for each SoLoud input channel (Vorbis I spec,
+// section 4.3.9). SoLoud's 5.1 order is FL FR C LFE BL BR and its 7.1 order
+// is FL FR C LFE SL SR BL BR (see the speaker positions in soloud.cpp);
+// Vorbis wants FL C FR BL BR LFE and FL C FR SL SR BL BR LFE. Without this
+// remap SoLoud's back-right channel would land in the Vorbis LFE slot (and
+// be band-limited by libvorbis for 5.1), and C/FR, LFE/BL would be swapped. Mono, stereo and quad
+// (FL FR BL BR) already match. SoLoud never produces 3, 5 or 7 channels, so
+// those counts are passed through unchanged.
+constexpr int kSoLoudToVorbis51[6] = {0, 2, 1, 5, 3, 4};
+constexpr int kSoLoudToVorbis71[8] = {0, 2, 1, 7, 3, 4, 5, 6};
+
+const int *soloudToVorbisMap(int channels) {
+  switch (channels) {
+    case 6:
+      return kSoLoudToVorbis51;
+    case 8:
+      return kSoLoudToVorbis71;
+    default:
+      return nullptr;
+  }
+}
+
+}  // namespace
+
 VorbisOutputEncoder::VorbisOutputEncoder() = default;
 
 VorbisOutputEncoder::~VorbisOutputEncoder() {
@@ -234,9 +260,23 @@ bool VorbisOutputEncoder::encode(const float *input, size_t samples,
       done += chunk;
     }
   } else {
+    const int *map = soloudToVorbisMap(m_channels);
+    for (int ch = 0; ch < m_channels; ++ch) {
+      float *dst = buffer[map != nullptr ? map[ch] : ch];
+      const float *src = input + ch;
+      for (size_t frame = 0; frame < frames; ++frame) {
+        dst[frame] = src[frame * m_channels];
+      }
+    }
+  }
+
+  // NaN samples become 0, as in the WAV and FLAC encoders: libvorbis would
+  // spread a NaN over the whole block (huge peaks or non-finite output).
+  for (int ch = 0; ch < m_channels; ++ch) {
+    float *dst = buffer[ch];
     for (size_t frame = 0; frame < frames; ++frame) {
-      for (int ch = 0; ch < m_channels; ++ch) {
-        buffer[ch][frame] = input[frame * m_channels + ch];
+      if (dst[frame] != dst[frame]) {
+        dst[frame] = 0.0f;
       }
     }
   }

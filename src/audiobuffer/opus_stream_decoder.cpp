@@ -4,7 +4,9 @@
 #include "opus_stream_decoder.h"
 #include "../soloud_common.h"
 #include <algorithm>
+#include <climits>
 #include <cmath>
+#include <cstdint>
 
 OpusDecoderWrapper::OpusDecoderWrapper()
     : decoder(nullptr),
@@ -12,6 +14,7 @@ OpusDecoderWrapper::OpusDecoderWrapper()
       engineChannels(2),
       decodingSamplerate(48000),
       decodingChannels(2),
+      sourceChannels(2),
       syncInitialized(false),
       streamInitialized(false),
       headerParsed(false),
@@ -28,7 +31,7 @@ OpusDecoderWrapper::~OpusDecoderWrapper()
 {
     if (decoder)
     {
-        opus_decoder_destroy(decoder);
+        opus_multistream_decoder_destroy(decoder);
         decoder = nullptr;
     }
 
@@ -42,7 +45,73 @@ OpusDecoderWrapper::~OpusDecoderWrapper()
     }
 }
 
-bool OpusDecoderWrapper::ensureDecoder(int newSampleRate, int newChannels)
+namespace {
+
+// Stereo downmix of mapping family 1 (Vorbis channel order), RFC 7845
+// section 5.1.1.5 (the same matrices as opusfile), for 3 to 8 channels.
+const float kStereoDownmix[6][8][2] = {
+    // 3.0: L, C, R
+    {{0.5858f, 0.0f}, {0.4142f, 0.4142f}, {0.0f, 0.5858f}},
+    // quadraphonic: FL, FR, RL, RR
+    {{0.4226f, 0.0f}, {0.0f, 0.4226f}, {0.366f, 0.2114f}, {0.2114f, 0.366f}},
+    // 5.0: FL, C, FR, RL, RR
+    {{0.651f, 0.0f}, {0.46f, 0.46f}, {0.0f, 0.651f}, {0.5636f, 0.3254f},
+     {0.3254f, 0.5636f}},
+    // 5.1: FL, C, FR, RL, RR, LFE
+    {{0.529f, 0.0f}, {0.3741f, 0.3741f}, {0.0f, 0.529f}, {0.4582f, 0.2645f},
+     {0.2645f, 0.4582f}, {0.3741f, 0.3741f}},
+    // 6.1: FL, C, FR, SL, SR, RC, LFE
+    {{0.4553f, 0.0f}, {0.322f, 0.322f}, {0.0f, 0.4553f}, {0.3943f, 0.2277f},
+     {0.2277f, 0.3943f}, {0.2788f, 0.2788f}, {0.322f, 0.322f}},
+    // 7.1: FL, C, FR, SL, SR, RL, RR, LFE
+    {{0.3886f, 0.0f}, {0.2748f, 0.2748f}, {0.0f, 0.3886f}, {0.3366f, 0.1943f},
+     {0.1943f, 0.3366f}, {0.3366f, 0.1943f}, {0.1943f, 0.3366f},
+     {0.2748f, 0.2748f}},
+};
+
+bool isOpusHead(const ogg_packet &p)
+{
+    return p.bytes >= 8 && std::memcmp(p.packet, "OpusHead", 8) == 0;
+}
+
+// Granule (48 kHz) of the first sample of the first packet that starts on
+// [page]: the page's granule minus the durations of the packets that end on
+// it. A packet continued from the previous page is not decoded after a seek
+// (libogg drops it), so it does not count.
+ogg_int64_t pageStartGranule(const ogg_page &page)
+{
+    const ogg_int64_t granule = ogg_page_granulepos(&page);
+    const unsigned char *header = page.header;
+    const int segments = header[26];
+    bool skipping = ogg_page_continued(&page) != 0;
+    ogg_int64_t total = 0;
+    long pos = 0;
+    long len = 0;
+    for (int i = 0; i < segments && 27 + i < page.header_len; ++i)
+    {
+        const int v = header[27 + i];
+        len += v;
+        if (v < 255)
+        {
+            if (!skipping && len > 0 && pos + len <= page.body_len)
+            {
+                const int n = opus_packet_get_nb_samples(page.body + pos,
+                                                         static_cast<opus_int32>(len),
+                                                         48000);
+                if (n > 0)
+                    total += n;
+            }
+            skipping = false;
+            pos += len;
+            len = 0;
+        }
+    }
+    return granule - total;
+}
+
+} // namespace
+
+bool OpusDecoderWrapper::ensureDecoder(int newSampleRate, const OpusInfo &head)
 {
     if (newSampleRate <= 0)
         newSampleRate = 48000;
@@ -59,36 +128,61 @@ bool OpusDecoderWrapper::ensureDecoder(int newSampleRate, int newChannels)
         newSampleRate = 48000;
     }
 
-    if (newChannels <= 0)
-        newChannels = 1;
-    if (newChannels > 2)
-        newChannels = 2;
-
-    if (decoder &&
-        newSampleRate == decodingSamplerate &&
-        newChannels == decodingChannels)
+    // The stream layout: family 0 is one stream of 1 or 2 channels; the
+    // other families give the streams and the channel mapping (RFC 7845).
+    int channels = head.channels;
+    int streams = 1;
+    int coupled = 0;
+    std::vector<unsigned char> mapping;
+    if (head.mapping_family == 0 || head.channel_mapping.empty())
     {
-        opus_decoder_ctl(decoder, OPUS_RESET_STATE);
+        if (channels <= 0)
+            channels = 1;
+        if (channels > 2)
+            channels = 2;
+        coupled = channels - 1;
+        mapping = {0, 1};
+        mapping.resize(channels);
+    }
+    else
+    {
+        streams = head.stream_count;
+        coupled = head.coupled_count;
+        mapping.assign(head.channel_mapping.begin(), head.channel_mapping.end());
+    }
+
+    if (decoder && newSampleRate == decodingSamplerate &&
+        channels == sourceChannels && streams == decoderStreams &&
+        coupled == decoderCoupled && mapping == decoderMapping)
+    {
+        downmixFamily1 = head.mapping_family == 1;
+        opus_multistream_decoder_ctl(decoder, OPUS_RESET_STATE);
         return true;
     }
 
     if (decoder)
     {
-        opus_decoder_destroy(decoder);
+        opus_multistream_decoder_destroy(decoder);
         decoder = nullptr;
     }
 
     int error = OPUS_OK;
-    decoder = opus_decoder_create(newSampleRate, newChannels, &error);
+    decoder = opus_multistream_decoder_create(newSampleRate, channels, streams,
+                                              coupled, mapping.data(), &error);
     if (error != OPUS_OK || decoder == nullptr)
     {
         decoder = nullptr;
         return false;
     }
 
+    decoderStreams = streams;
+    decoderCoupled = coupled;
+    decoderMapping = mapping;
+    downmixFamily1 = head.mapping_family == 1;
     decodingSamplerate = newSampleRate;
-    decodingChannels = newChannels;
-    opus_decoder_ctl(decoder, OPUS_RESET_STATE);
+    sourceChannels = channels;
+    decodingChannels = std::min(channels, 2);
+    opus_multistream_decoder_ctl(decoder, OPUS_RESET_STATE);
     return true;
 }
 
@@ -146,10 +240,12 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerateIn, int engineCha
     engineSamplerate = engineSamplerateIn;
     engineChannels = engineChannelsIn;
 
-    const int initialChannels = std::max(1, std::min(engineChannelsIn > 0 ? engineChannelsIn : 2, 2));
+    OpusInfo initialHead {};
+    initialHead.channels = static_cast<uint8_t>(
+        std::max(1, std::min(engineChannelsIn > 0 ? engineChannelsIn : 2, 2)));
     const int initialSampleRate = 48000;
 
-    if (!ensureDecoder(initialSampleRate, initialChannels))
+    if (!ensureDecoder(initialSampleRate, initialHead))
     {
         return false;
     }
@@ -172,10 +268,38 @@ bool OpusDecoderWrapper::initializeDecoder(int engineSamplerateIn, int engineCha
     totalSamplesExpected = -1;
     mDataEnded = false;
     mDrained = false;
+    mLinkStart = 0;
+    mLinkPreSkip = 0;
+    mLinkLastGranule = 0;
+    mSeekResync = false;
+    mSeekIndex.clear();
 
     ogg_sync_init(&oy);
     syncInitialized = true;
     return true;
+}
+
+ogg_int64_t OpusDecoderWrapper::timelineGranule(ogg_int64_t granule) const
+{
+    if (granule < 0)
+        return -1;
+    return mLinkStart + std::max<ogg_int64_t>(0, granule - mLinkPreSkip);
+}
+
+int OpusDecoderWrapper::decodeNextPacket(std::vector<float> &out)
+{
+    ogg_packet p;
+    const int r = ogg_stream_packetpeek(&os, &p);
+    if (r == 0)
+        return 0;
+    if (r < 0)
+        return 1; // A hole (lost or skipped data); peeking consumed it.
+    // A new link starts: one call returns one link, with its channel count.
+    if (!out.empty() && isOpusHead(p))
+        return -1;
+    ogg_stream_packetout(&os, &p);
+    decodePacket(&p, out);
+    return 1;
 }
 
 std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vector<unsigned char>& buffer, int* samplerate, int* channels, size_t maxOutputSamples)
@@ -185,7 +309,9 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
     {
         decodedData.reserve(maxOutputSamples);
     }
-    bool eos_seen = false;
+    const auto capped = [&]() {
+        return maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples;
+    };
 
     // Feed any newly arrived data into the Ogg sync buffer. If [buffer] is empty,
     // we still need to process pages that were already buffered by a previous
@@ -199,23 +325,25 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
         buffer.clear();
     }
 
-    // First, drain any packets left in [os] from a previous bounded decode pass
+    bool newLink = false;
+
+    // First, drain any packets left in [os] from a previous bounded decode
+    // pass, or held back because they start a new link.
     if (streamInitialized)
     {
-        while (ogg_stream_packetout(&os, &op) == 1)
+        int r;
+        while (!capped() && (r = decodeNextPacket(decodedData)) != 0)
         {
-            decodePacket(&op, decodedData);
-            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples)
+            if (r < 0)
             {
-                *samplerate = decodingSamplerate;
-                *channels = decodingChannels;
-                return {std::move(decodedData), DecoderError::NoError};
+                newLink = true;
+                break;
             }
         }
     }
 
     // Read and process pages, tracking byte offsets for seeking.
-    while (true)
+    while (!capped() && !newLink)
     {
         long ret = ogg_sync_pageseek(&oy, &og);
         if (ret == 0)
@@ -235,11 +363,34 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
             continue;
         }
 
-        mSeekIndex.trackPage(ret, og);
+        // Check if this is a new stream (different serial number)
+        if (streamInitialized && ogg_page_serialno(&og) != os.serialno)
+        {
+            ogg_stream_clear(&os);
+            streamInitialized = false;
+            headerParsed = false;
+            packetCount = 0;
+            skipSamplesPending = 0;
+            totalOutputSamples = 0;
+            totalSamplesExpected = -1;
+            if (decoder)
+            {
+                opus_multistream_decoder_ctl(decoder, OPUS_RESET_STATE);
+            }
+            // The next link starts where this one ends on the timeline.
+            mLinkStart += std::max<int64_t>(0, mLinkLastGranule - mLinkPreSkip);
+            mLinkLastGranule = 0;
+            mLinkPreSkip = 0;
+            mSeekResync = false;
+        }
+
+        const ogg_int64_t granule = ogg_page_granulepos(&og);
+        mSeekIndex.trackPage(ret, og, timelineGranule(granule));
+        if (granule > mLinkLastGranule)
+            mLinkLastGranule = granule;
 
         if (ogg_page_eos(&og))
         {
-            const ogg_int64_t granule = ogg_page_granulepos(&og);
             if (granule >= 0)
             {
                 if (headerParsed)
@@ -254,32 +405,6 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
                     totalSamplesExpected = (granule * decodingSamplerate + 47999) / 48000;
                 }
             }
-            eos_seen = true;
-        }
-
-        if (!streamInitialized)
-        {
-            if (ogg_stream_init(&os, ogg_page_serialno(&og)))
-            {
-                return {decodedData, DecoderError::FailedToCreateDecoder};
-            }
-            streamInitialized = true;
-        }
-
-        // Check if this is a new stream (different serial number)
-        if (streamInitialized && ogg_page_serialno(&og) != os.serialno)
-        {
-            ogg_stream_clear(&os);
-            streamInitialized = false;
-            headerParsed = false;
-            packetCount = 0;
-            skipSamplesPending = 0;
-            totalOutputSamples = 0;
-            totalSamplesExpected = -1;
-            if (decoder)
-            {
-                opus_decoder_ctl(decoder, OPUS_RESET_STATE);
-            }
         }
 
         if (!streamInitialized)
@@ -291,46 +416,30 @@ std::pair<std::vector<float>, DecoderError> OpusDecoderWrapper::decode(std::vect
             streamInitialized = true;
         }
 
+        if (mSeekResync && headerParsed && granule >= 0)
+        {
+            resyncAfterSeek(og);
+        }
+
         if (ogg_stream_pagein(&os, &og) < 0)
         {
             continue;  // Skip corrupted page
         }
 
         // Extract packets from page
-        while (ogg_stream_packetout(&os, &op) == 1)
+        int r;
+        while (!capped() && (r = decodeNextPacket(decodedData)) != 0)
         {
-            decodePacket(&op, decodedData);
-            if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples)
+            if (r < 0)
             {
+                newLink = true;
                 break;
             }
-        }
-        if (maxOutputSamples > 0 && decodedData.size() >= maxOutputSamples)
-        {
-            break;
         }
     }
 
     *samplerate = decodingSamplerate;
     *channels = decodingChannels;
-
-    if (eos_seen)
-    {
-        const size_t fade_samples = static_cast<size_t>(decodingSamplerate * 0.005); // 5ms fade
-        if (fade_samples > 0 && decodingChannels > 0)
-        {
-            const size_t fade_floats = fade_samples * decodingChannels;
-            if (decodedData.size() > fade_floats)
-            {
-                size_t start_fade = decodedData.size() - fade_floats;
-                for (size_t i = 0; i < fade_floats; ++i)
-                {
-                    float multiplier = 1.0f - (float)(i / decodingChannels) / (float)fade_samples;
-                    decodedData[start_fade + i] *= multiplier;
-                }
-            }
-        }
-    }
 
     return {std::move(decodedData), DecoderError::NoError};
 }
@@ -410,16 +519,11 @@ void OpusDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& ou
                 desiredSampleRate = 48000;
             }
 
-            int desiredChannels = opusInfo.channels > 0 ? opusInfo.channels : decodingChannels;
-            if (desiredChannels <= 0)
-                desiredChannels = 1;
-            if (desiredChannels > 2)
-                desiredChannels = 2;
-
-            if (!ensureDecoder(desiredSampleRate, desiredChannels))
+            if (!ensureDecoder(desiredSampleRate, opusInfo))
             {
                 return;
             }
+            mLinkPreSkip = opusInfo.pre_skip;
 
             skipSamplesPending = static_cast<int>(
                 (static_cast<int64_t>(opusInfo.pre_skip) * decodingSamplerate + 47999) / 48000);
@@ -446,15 +550,15 @@ void OpusDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& ou
     // Opus can handle frame sizes from 2.5ms to 60ms. The scratch buffer is
     // sized for the largest possible frame and reused across packets.
     const int maxFrameSize = decodingSamplerate * 60 / 1000; // 60ms frame size
-    mOutputScratch.resize(static_cast<size_t>(maxFrameSize) * decodingChannels);
+    mOutputScratch.resize(static_cast<size_t>(maxFrameSize) * sourceChannels);
 
     // Try decoding the packet
-    int samples = opus_decode_float(decoder,
-                                    packet->packet,
-                                    static_cast<opus_int32>(packet->bytes),
-                                    mOutputScratch.data(),
-                                    maxFrameSize,
-                                    0);
+    int samples = opus_multistream_decode_float(decoder,
+                                                packet->packet,
+                                                static_cast<opus_int32>(packet->bytes),
+                                                mOutputScratch.data(),
+                                                maxFrameSize,
+                                                0);
 
     if (samples < 0)
     {
@@ -498,12 +602,53 @@ void OpusDecoderWrapper::decodePacket(ogg_packet* packet, std::vector<float>& ou
             return;
         }
 
-        const size_t startIndex = static_cast<size_t>(skippedSamples) * decodingChannels;
-        const size_t floatsToCopy = static_cast<size_t>(allowedSamples) * decodingChannels;
+        // A 5 ms fade over the last frames of the stream, once its end is
+        // known, wherever the decode() calls are cut.
+        const int64_t fadeFrames = decodingSamplerate / 200;
+        const int64_t fadeStart = totalSamplesExpected >= 0
+            ? totalSamplesExpected - fadeFrames
+            : INT64_MAX;
 
-        out.insert(out.end(),
-                   mOutputScratch.begin() + startIndex,
-                   mOutputScratch.begin() + startIndex + floatsToCopy);
+        const int inCh = sourceChannels;
+        const int outCh = decodingChannels;
+        const float(*matrix)[2] =
+            downmixFamily1 && inCh >= 3 && inCh <= 8 ? kStereoDownmix[inCh - 3] : nullptr;
+        const size_t base = out.size();
+        out.resize(base + static_cast<size_t>(allowedSamples) * outCh);
+        float *dst = out.data() + base;
+        for (int64_t i = 0; i < allowedSamples; ++i)
+        {
+            const float *src =
+                mOutputScratch.data() + static_cast<size_t>(skippedSamples + i) * inCh;
+            float l = 0.0f;
+            float r = 0.0f;
+            if (matrix)
+            {
+                for (int c = 0; c < inCh; ++c)
+                {
+                    l += src[c] * matrix[c][0];
+                    r += src[c] * matrix[c][1];
+                }
+            }
+            else
+            {
+                // One or two channels, or a layout without a known downmix:
+                // the first channels.
+                l = src[0];
+                if (outCh > 1)
+                    r = src[1];
+            }
+            const int64_t pos = totalOutputSamples + i;
+            if (pos >= fadeStart && fadeFrames > 0)
+            {
+                const float m = 1.0f - (float)(pos - fadeStart) / (float)fadeFrames;
+                l *= m;
+                r *= m;
+            }
+            dst[i * outCh] = l;
+            if (outCh > 1)
+                dst[i * outCh + 1] = r;
+        }
         totalOutputSamples += allowedSamples;
     }
 }
@@ -523,11 +668,45 @@ void OpusDecoderWrapper::prepareForSeek(uint64_t targetSample, uint64_t byteOffs
     // The data fed next starts at [byteOffset] in the file, so the pages
     // indexed from here on are counted from there.
     mSeekIndex.clear(byteOffset);
+    if (decoder)
+    {
+        opus_multistream_decoder_ctl(decoder, OPUS_RESET_STATE);
+    }
+    // [targetSample] counts interleaved output samples from the start of the
+    // file (PullBufferStream passes seconds * rate * channels).
+    mSeekTarget = static_cast<int64_t>(
+        targetSample / static_cast<uint64_t>(std::max(1, decodingChannels)));
+    mSeekResync = true;
     skipSamplesPending = 0;
-    totalOutputSamples = static_cast<int64_t>(targetSample);
+    totalOutputSamples =
+        std::max<int64_t>(0, mSeekTarget - mLinkStart * decodingSamplerate / 48000);
     packetCount = 2; // OpusHead and OpusTags have already been parsed.
     mDataEnded = false;
     mDrained = false;
+}
+
+void OpusDecoderWrapper::resyncAfterSeek(const ogg_page &page)
+{
+    mSeekResync = false;
+    // Decoding resumes at the first packet that starts on [page]: drop the
+    // samples up to the target, and count from where decoding resumes.
+    const int64_t rate = decodingSamplerate;
+    const int64_t start48 = pageStartGranule(page) - opusInfo.pre_skip;
+    const int64_t startOut = start48 >= 0 ? start48 * rate / 48000
+                                          : -((-start48 * rate + 47999) / 48000);
+    const int64_t targetOut =
+        std::max<int64_t>(0, mSeekTarget - mLinkStart * rate / 48000);
+    if (targetOut > startOut)
+    {
+        skipSamplesPending = static_cast<int>(
+            std::min<int64_t>(targetOut - startOut, INT32_MAX));
+        totalOutputSamples = targetOut;
+    }
+    else
+    {
+        skipSamplesPending = 0;
+        totalOutputSamples = startOut;
+    }
 }
 
 bool OpusDecoderWrapper::hasPendingData() const
@@ -559,8 +738,9 @@ bool OpusDecoderWrapper::canSeekToTime(double seconds) const
 {
     if (!headerParsed || seconds <= 0.0)
         return false;
+    // The index holds times from the start of the file (48 kHz).
     const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
-        std::floor(seconds * 48000.0)) + opusInfo.pre_skip;
+        std::floor(seconds * 48000.0));
     return mSeekIndex.covers(targetGranule);
 }
 
@@ -569,7 +749,7 @@ uint64_t OpusDecoderWrapper::timeToByteOffset(double seconds)
     if (!headerParsed || seconds <= 0.0)
         return 0;
     const ogg_int64_t targetGranule = static_cast<ogg_int64_t>(
-        std::floor(seconds * 48000.0)) + opusInfo.pre_skip;
+        std::floor(seconds * 48000.0));
     return mSeekIndex.byteOffsetFor(targetGranule);
 }
 

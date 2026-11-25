@@ -166,7 +166,7 @@ enum PlayerErrors {
       case PlayerErrors.maxNumberOfFiltersReached:
         return 'The maximum number of filters has been reached (default is 8)!';
       case PlayerErrors.filterAlreadyAdded:
-        return 'Filter not found!';
+        return 'Filter already added!';
       case PlayerErrors.playerAlreadyInited:
         return 'The player has already been inited!';
       case PlayerErrors.soundHandleNotFound:

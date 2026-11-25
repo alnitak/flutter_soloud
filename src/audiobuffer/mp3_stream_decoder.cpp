@@ -71,6 +71,28 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
 
     size_t pos = 10; // Skip ID3v2 header
 
+    // Skip the extended header (flag 0x40). Its size is a synchsafe integer
+    // that counts the size field itself in ID3v2.4, and a plain big-endian
+    // integer that does not in ID3v2.3.
+    if ((rawData[5] & 0x40) != 0 && rawData[3] >= 3) {
+      if (!metadataHasBytes(totalTagSize, pos, 4))
+        return;
+      uint64_t extSize;
+      if (rawData[3] >= 4) {
+        extSize = ((rawData[pos] & 0x7f) << 21) |
+                  ((rawData[pos + 1] & 0x7f) << 14) |
+                  ((rawData[pos + 2] & 0x7f) << 7) | (rawData[pos + 3] & 0x7f);
+      } else {
+        extSize = 4 + ((static_cast<uint64_t>(rawData[pos]) << 24) |
+                       (static_cast<uint64_t>(rawData[pos + 1]) << 16) |
+                       (static_cast<uint64_t>(rawData[pos + 2]) << 8) |
+                       static_cast<uint64_t>(rawData[pos + 3]));
+      }
+      if (!metadataHasBytes(totalTagSize, pos, extSize))
+        return;
+      pos += static_cast<size_t>(extSize);
+    }
+
     while (metadataHasBytes(totalTagSize, pos, 11)) {
       char frame_id[5] = {0};
       memcpy(frame_id, rawData + pos, 4);
@@ -126,16 +148,8 @@ void MP3DecoderWrapper::on_meta(void *pUserData,
       } else if (strcmp(frame_id, "COMM") == 0) {
         // COMM frame: 1 byte encoding, 3 bytes language, short description, comment text
         if (frame_size > 4) {
-          size_t text_start = pos + 4;
-          while (text_start < pos + frame_size && rawData[text_start] != 0) {
-            text_start++;
-          }
-          if (text_start < pos + frame_size) text_start++; // Skip null terminator
-          if (text_start < pos + frame_size) {
-            decoder->mCachedMp3Metadata.comment = std::string(
-                reinterpret_cast<const char *>(rawData + text_start),
-                (pos + frame_size) - text_start);
-          }
+          decoder->mCachedMp3Metadata.comment =
+              id3CommentToUtf8(rawData + pos, frame_size);
         }
       }
 
@@ -239,6 +253,9 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
   // When mDataEnded is true and decoder is initialized, dr_mp3 may still have
   // data in its internal buffer that needs to be flushed.
   if (audioData.empty() && (!isInitialized || !mDataEnded)) {
+    // No data and none will come: a decoder that never initialized is done.
+    if (!isInitialized && mDataEnded)
+      mDrained = true;
     return {{}, DecoderError::NoError};
   }
 
@@ -255,19 +272,56 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
 
         // If we don't have the full tag yet, return and wait for more data.
         if (audioData.size() < m_id3Size) {
+          if (mDataEnded) {
+            // The data ended inside the tag: there is no audio.
+            audioData.clear();
+            m_read_pos = 0;
+            mDrained = true;
+          }
           return {{}, DecoderError::NoError};
         }
       }
     }
 
+    // drmp3_init decodes the first frame. When the data starts (after the
+    // ID3 tags) with a frame header, wait until that frame and the next
+    // header are there: minimp3 would skip the bytes of a partial frame and
+    // could sync on a false header inside it.
+    if (!mDataEnded) {
+      size_t start = 0;
+      while (start + 10 <= audioData.size() &&
+             memcmp(audioData.data() + start, "ID3", 3) == 0) {
+        const unsigned char *h = audioData.data() + start;
+        start += 10 + (((h[6] & 0x7f) << 21) | ((h[7] & 0x7f) << 14) |
+                       ((h[8] & 0x7f) << 7) | (h[9] & 0x7f)) +
+                 ((h[5] & 0x10) ? 10 : 0);
+      }
+      if (start + 4 > audioData.size())
+        return {{}, DecoderError::NoError};
+      const size_t first = mpegFrameBytes(audioData.data() + start);
+      if (first > 0 && start + first + 4 > audioData.size())
+        return {{}, DecoderError::NoError};
+    }
+
     // drmp3_init will read some initial data via the on_read callback to find
     // the first valid frame and initialize the decoder with stream info
     // (channels, sample rate).
+    const size_t readPosBeforeInit = m_read_pos;
     if (!drmp3_init(&decoder, MP3DecoderWrapper::on_read,
                     MP3DecoderWrapper::on_seek, nullptr,
                     MP3DecoderWrapper::on_meta, this, nullptr)) {
       // If init fails, it might be because there's not enough data to find a
       // valid frame yet. This is not a fatal error in a streaming context.
+      // The failed attempt has read the buffered bytes through on_read:
+      // rewind, so the next attempt starts again from the same byte.
+      m_read_pos = readPosBeforeInit;
+      if (mDataEnded) {
+        // No more data will come, so the decoder can never initialize: end
+        // the stream, or a drain loop on hasPendingData() never ends.
+        audioData.clear();
+        m_read_pos = 0;
+        mDrained = true;
+      }
       return {{}, DecoderError::NoError};
     }
     isInitialized = true;
@@ -318,6 +372,34 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
           std::min(framesToRequest, static_cast<int>(remainingFrames));
     }
 
+    // A read decodes a new MP3 frame once the PCM frames dr_mp3 holds are
+    // used up (and while it skips the encoder delay). Until the data has
+    // ended, read only what dr_mp3 holds, and decode a new frame only when
+    // it has fully arrived: minimp3 drops the bytes of a partial frame.
+    if (!mDataEnded) {
+      const uint64_t cached = decoder.pcmFramesRemainingInMP3Frame;
+      const uint64_t toSkip =
+          decoder.currentPCMFrame < decoder.delayInPCMFrames
+              ? decoder.delayInPCMFrames - decoder.currentPCMFrame
+              : 0;
+      if (cached > toSkip) {
+        framesToRequest = static_cast<int>(
+            std::min<uint64_t>(framesToRequest, cached - toSkip));
+      } else {
+        if (!wholeFramesAvailable(toSkip - cached + 1)) {
+          break;
+        }
+        framesToRequest = 1;
+      }
+    }
+
+    // dr_mp3 sets atEnd the first time a read finds no data, and then never
+    // reads again. In a stream that only means "not yet": clear it while
+    // there are bytes left to decode.
+    if (decoder.dataSize > 0 || m_read_pos < audioData.size()) {
+      decoder.atEnd = DRMP3_FALSE;
+    }
+
     frames_read =
         drmp3_read_pcm_frames_f32(&decoder, framesToRequest, pcm_frames);
     if (frames_read > 0) {
@@ -331,14 +413,6 @@ MP3DecoderWrapper::decode(std::vector<unsigned char> &buffer, int *samplerate,
       break;
     }
 
-    // If the read position has reached the end of internal buffer and data
-    // is NOT ended, we must stop and wait for more data. The next on_read()
-    // call would return 0 and stop decoding.
-    // When mDataEnded is true, we continue the loop to let dr_mp3 fully
-    // drain its internal buffers.
-    if (m_read_pos >= audioData.size() && !mDataEnded) {
-      break;
-    }
   }
 
   *samplerate = decoder.sampleRate;
@@ -388,6 +462,25 @@ void MP3DecoderWrapper::buildSeekTable() {
   std::vector<drmp3_seek_point> seekPoints(desiredCount);
   if (drmp3_calculate_seek_points(&decoder, &desiredCount, seekPoints.data())) {
     seekPoints.resize(desiredCount);
+    // dr_mp3 places each point DRMP3_SEEK_LEADING_MP3_FRAMES (16) frames
+    // before the frame that holds its target, for a decoder that then
+    // discards those frames. A pull stream restarts the decoder at the
+    // offset and labels the first output with the target time, so 16 frames
+    // (~0.4 s) of preroll would make it play early. Keep one frame of
+    // preroll (for the bit reservoir) and move the point to it.
+    constexpr drmp3_uint16 kPrerollFrames = 1;
+    for (drmp3_seek_point &sp : seekPoints) {
+      size_t pos = static_cast<size_t>(sp.seekPosInBytes);
+      while (sp.mp3FramesToDiscard > kPrerollFrames &&
+             pos + 4 <= audioData.size()) {
+        const size_t bytes = mpegFrameBytes(audioData.data() + pos);
+        if (bytes == 0 || pos + bytes + 4 > audioData.size())
+          break;
+        pos += bytes;
+        --sp.mp3FramesToDiscard;
+      }
+      sp.seekPosInBytes = pos;
+    }
     mSeekPoints = std::move(seekPoints);
     drmp3_bind_seek_table(
         &decoder,
@@ -463,6 +556,68 @@ bool MP3DecoderWrapper::initializeDecoder(int engineSamplerate,
                                           int engineChannels) {
   // Initialization is now done lazily in the decode function.
   return true;
+}
+
+size_t MP3DecoderWrapper::mpegFrameBytes(const unsigned char *h,
+                                         int *pcmFrames) {
+  if (h[0] != 0xFF || (h[1] & 0xE0) != 0xE0) return 0;
+  const int version = (h[1] >> 3) & 3; // 0 = 2.5, 1 = reserved, 2 = 2, 3 = 1
+  const int layer = (h[1] >> 1) & 3;   // 0 = reserved, 1 = III, 2 = II, 3 = I
+  const int bitrateIndex = (h[2] >> 4) & 0xF;
+  const int rateIndex = (h[2] >> 2) & 3;
+  if (version == 1 || layer == 0 || bitrateIndex == 0 || bitrateIndex == 0xF ||
+      rateIndex == 3)
+    return 0;
+  static const int kRates[3] = {44100, 48000, 32000};
+  static const int kBitrates[2][3][16] = {
+      {// MPEG-1: layer III, II, I
+       {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0},
+       {0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0},
+       {0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0}},
+      {// MPEG-2/2.5: layer III, II, I
+       {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0},
+       {0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0},
+       {0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256, 0}}};
+  const bool mpeg1 = version == 3;
+  const int sampleRate = kRates[rateIndex] >> (mpeg1 ? 0 : (version == 2 ? 1 : 2));
+  const int bitrate = kBitrates[mpeg1 ? 0 : 1][layer - 1][bitrateIndex] * 1000;
+  const int padding = (h[2] >> 1) & 1;
+  if (layer == 3) { // Layer I
+    if (pcmFrames) *pcmFrames = 384;
+    return static_cast<size_t>((12 * bitrate / sampleRate + padding) * 4);
+  }
+  const bool half = layer == 1 && !mpeg1; // Layer III, MPEG-2/2.5
+  if (pcmFrames) *pcmFrames = half ? 576 : 1152;
+  return static_cast<size_t>((half ? 72 : 144) * bitrate / sampleRate + padding);
+}
+
+bool MP3DecoderWrapper::wholeFramesAvailable(uint64_t pcmFrames) const {
+  const size_t inDecoder = decoder.pData != nullptr ? decoder.dataSize : 0;
+  const size_t total = inDecoder + (audioData.size() - m_read_pos);
+  auto byteAt = [&](size_t i) -> unsigned char {
+    return i < inDecoder ? decoder.pData[decoder.dataConsumed + i]
+                         : audioData[m_read_pos + (i - inDecoder)];
+  };
+  // Bytes that are not a frame header where one is expected (garbage, a
+  // trailing tag, a free-format stream): minimp3 has to search for the next
+  // sync, so give it plenty of data.
+  constexpr size_t kResyncBytes = 16 * 1024;
+  size_t pos = 0;
+  uint64_t frames = 0;
+  // Walk the frames to decode, then check the header after them: minimp3
+  // confirms a frame with the header of the next one, and resyncs when
+  // that is not a header.
+  while (true) {
+    if (pos + 4 > total) return false;
+    const unsigned char h[4] = {byteAt(pos), byteAt(pos + 1), byteAt(pos + 2),
+                                byteAt(pos + 3)};
+    int perFrame = 0;
+    const size_t bytes = mpegFrameBytes(h, &perFrame);
+    if (bytes == 0) return total >= pos + kResyncBytes;
+    if (frames >= pcmFrames) return true;
+    pos += bytes;
+    frames += static_cast<uint64_t>(perFrame);
+  }
 }
 
 bool MP3DecoderWrapper::checkForValidFrames(

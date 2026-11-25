@@ -348,7 +348,7 @@ extern "C"
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
   /// Test-only entry points, compiled out of every shipping build. See
-  /// `test/engine_lifecycle_test.cpp`. Not visible to ffigen.
+  /// `test/common/engine_lifecycle_test.cpp`. Not visible to ffigen.
 
   /// Peak number of deferred idle-timeout workers alive at once.
   FFI_PLUGIN_EXPORT int soloudTestIdleTimeoutWorkerPeak();
@@ -500,8 +500,8 @@ extern "C"
   /// of a stream.
   ///
   /// [hash] the hash of the stream sound.
-  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
-  /// is the most used value.
+  /// [icyMetaInt] the icy metadata integer value. There is no default:
+  /// nothing is stripped until it is set (16000 is a common value).
   FFI_PLUGIN_EXPORT enum PlayerErrors setBufferIcyMetaInt(unsigned int hash,
                                                           int icyMetaInt);
 
@@ -1547,6 +1547,46 @@ extern "C"
   /// You can change the doppler factor of a live 3d audio source
   FFI_PLUGIN_EXPORT void set3dSourceDopplerFactor(unsigned int handle,
                                                   float dopplerFactor);
+
+  /// Set the minimum and maximum distance that every voice started later
+  /// from the sound [soundHash] begins with. Voices already playing keep
+  /// theirs (see [set3dSourceMinMaxDistance]).
+  /// The default values are 1 and 1000000.
+  FFI_PLUGIN_EXPORT void set3dDefaultMinMaxDistance(unsigned int soundHash,
+                                                    float minDistance,
+                                                    float maxDistance);
+
+  /// Set the attenuation model and rolloff factor that every voice started
+  /// later from the sound [soundHash] begins with. Voices already playing
+  /// keep theirs (see [set3dSourceAttenuation]).
+  /// The default values are NO_ATTENUATION and 1.
+  FFI_PLUGIN_EXPORT void set3dDefaultAttenuation(
+      unsigned int soundHash, unsigned int attenuationModel,
+      float attenuationRolloffFactor);
+
+  /// Set the doppler factor that every voice started later from the sound
+  /// [soundHash] begins with. Voices already playing keep theirs (see
+  /// [set3dSourceDopplerFactor]). The default value is 1.
+  FFI_PLUGIN_EXPORT void set3dDefaultDopplerFactor(unsigned int soundHash,
+                                                   float dopplerFactor);
+
+  /// Enable or disable the automatic 3D update. By default every 3D setter
+  /// (listener, source, sound speed) recomputes the 3D state of all the 3D
+  /// voices before it returns. With many moving sources that is one full
+  /// pass per call. When disabled the setters only store their values and
+  /// [update3dAudio] applies all of them in one pass.
+  ///
+  /// Enabling it again applies the values stored in the meantime.
+  /// init() restores the default (enabled).
+  FFI_PLUGIN_EXPORT void set3dAutoUpdate(bool enabled);
+
+  /// Whether every 3D setter applies its change at once (the default).
+  FFI_PLUGIN_EXPORT bool get3dAutoUpdate();
+
+  /// Recompute the 3D state (panning, attenuation, doppler) of all the 3D
+  /// voices from the values stored by the 3D setters. Needed only while the
+  /// automatic 3D update is disabled with [set3dAutoUpdate].
+  FFI_PLUGIN_EXPORT void update3dAudio();
 
   /////////////////////////////////////////
   /// waveform audio data

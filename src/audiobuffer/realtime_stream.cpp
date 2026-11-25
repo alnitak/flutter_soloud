@@ -383,6 +383,7 @@ PlayerErrors RealtimeStream::init(Soloud *aEngine, unsigned int sampleRate,
     if (mEngine->mSamplerate > 0 && sampleRate > mEngine->mSamplerate) {
       window = window * sampleRate / static_cast<double>(mEngine->mSamplerate);
     }
+    window = std::min(window, static_cast<double>(kMaxRingFrames) + 1.0);
     history = std::max<size_t>(
         history,
         static_cast<size_t>(std::ceil(window)) + SAMPLE_GRANULARITY * 2);
@@ -397,9 +398,17 @@ PlayerErrors RealtimeStream::init(Soloud *aEngine, unsigned int sampleRate,
     if (mEngine->mSamplerate > 0) {
       quantum = quantum * sampleRate / static_cast<double>(mEngine->mSamplerate);
     }
+    quantum = std::min(quantum, static_cast<double>(kMaxRingFrames));
     capacity = std::max<size_t>(
         capacity, static_cast<size_t>(std::ceil(2.0 * quantum)) +
                       SAMPLE_GRANULARITY);
+  }
+  // The ring is allocated up front, so an absurd capacity (a negative Dart
+  // int arrives as about 4 billion frames, and a huge sample rate scales the
+  // quantum above) would reserve gigabytes, or abort the WASM module.
+  if (capacity > kMaxRingFrames || history > kMaxRingFrames ||
+      capacity + history > kMaxRingFrames) {
+    return PlayerErrors::invalidParameter;
   }
   mRingBuffer.init(channels, capacity, history);
   return PlayerErrors::noError;

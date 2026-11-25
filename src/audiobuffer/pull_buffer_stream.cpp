@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <optional>
 
 #include "../device_lifecycle_test_hooks.h"
 #include "../soloud_common.h"
@@ -106,7 +108,10 @@ PullBufferStreamInstance::PullBufferStreamInstance(PullBufferStream *aParent)
     : mParent(aParent) {
   if (mParent != nullptr) {
     // Seed the format so the first callbacks use valid values even when the
-    // decode mutex is contended (see getAudio).
+    // decode mutex is contended (see getAudio). A delivery's first decode
+    // sets it under the decode mutex; play() creates the instance before it
+    // takes the audio mutex, so it may wait for that decode here.
+    std::lock_guard<std::mutex> lock(mParent->mDecodeMutex);
     mBaseSamplerate = static_cast<float>(mParent->mPCMformat.sampleRate);
     mSamplerate = mBaseSamplerate;
     mChannels = mParent->mPCMformat.channels;
@@ -222,7 +227,7 @@ unsigned int PullBufferStreamInstance::getAudio(float *aBuffer,
   // is currently calling getAudio(). Buffering checks are done when the user
   // adds data or marks the end of the stream (main thread).
   mParent->requestMoreDataIfNeeded(/*aFromMixer*/ true);
-  return readFrames;
+  return static_cast<unsigned int>(readFrames);
 }
 
 result PullBufferStreamInstance::seek(double aSeconds, float *aScratch,
@@ -264,9 +269,11 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
     aSeconds = totalLength;
   }
 
+  // Seek to the start of a frame: a time between two frames must not move
+  // the read position into the middle of one, which swaps the channels.
   const size_t targetSample = static_cast<size_t>(
-      std::floor(aSeconds * mParent->mPCMformat.sampleRate *
-                 mParent->mPCMformat.channels));
+      std::floor(aSeconds * mParent->mPCMformat.sampleRate) *
+      mParent->mPCMformat.channels);
 
   bool didInBufferSeek = false;
 
@@ -290,8 +297,8 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
   // to prevent seeking into stale decoded audio.
   const uint64_t logicalStartSamples = mParent->mBufferStartTime > 0.0
       ? static_cast<uint64_t>(std::floor(mParent->mBufferStartTime *
-                                         mParent->mPCMformat.sampleRate *
-                                         mParent->mPCMformat.channels))
+                                         mParent->mPCMformat.sampleRate) *
+                                  mParent->mPCMformat.channels)
       : 0;
   const uint64_t effectiveStart = std::max(bufferedStart, logicalStartSamples);
 
@@ -350,9 +357,18 @@ void PullBufferStreamInstance::seekLocked(double aSeconds) {
       mParent->mDataIsEnded.store(false);
       mParent->mWaitingForData.store(false);
       mParent->resetDecoderForSeek(targetSample, newOffset);
-      // The buffer was just discarded, so this leaves the seek pending
-      // until data at the target has been decoded.
-      mParent->applyPendingSeek(/*aUnderAudioMutex*/ true);
+      if (mParent->mAudioSizeBytes > 0 &&
+          newOffset >= mParent->mAudioSizeBytes) {
+        // A seek to (or past) the end: there is no data to request at or
+        // past the declared size, so nothing would complete the seek. End
+        // the data instead, so the voice ends.
+        mParent->mPendingSeek.store(false);
+        mParent->mDataIsEnded.store(true);
+      } else {
+        // The buffer was just discarded, so this leaves the seek pending
+        // until data at the target has been decoded.
+        mParent->applyPendingSeek(/*aUnderAudioMutex*/ true);
+      }
     }
   }
 
@@ -466,6 +482,7 @@ void PullBufferStream::resetProbeState() {
   mDurationProbeTailRangeStart = 0;
   mDurationProbeTailRangeEnd = 0;
   mNextTailOffset = 0;
+  mTailProbeMisses = 0;
   mSeekTableBuildChunks = 0;
   mTailProbeBuffer.clear();
 }
@@ -498,8 +515,10 @@ PlayerErrors PullBufferStream::setPullBufferStream(
   if (aPlayer == nullptr || aParent == nullptr) {
     return PlayerErrors::nullPointer;
   }
-  if (bufferSizeBytes == 0 || bufferTriggerPosition < 0.0 ||
-      bufferTriggerPosition > 1.0) {
+  // Written so a NaN position fails too. A size past INT32_MAX is a negative
+  // Dart int: allocating it would reserve gigabytes (and abort on the web).
+  if (bufferSizeBytes == 0 || bufferSizeBytes > INT32_MAX ||
+      !(bufferTriggerPosition >= 0.0 && bufferTriggerPosition <= 1.0)) {
     return PlayerErrors::invalidParameter;
   }
   if (sampleRate == 0 || channels == 0) {
@@ -759,13 +778,14 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
 
     isSequential = (aOffset == 0 || aOffset == mSequentialReadOffset);
 
-    // Once the duration has been found, discard late tail chunks that were
-    // already in flight when the probe finished. They are not needed for
-    // playback and would otherwise be fed to the main decoder out of order.
-    // Sequential data that happens to fall in the tail range (e.g. after a
-    // seek or when normal playback reaches the end of the file) must still be
-    // accepted.
-    if (mDurationProbeState == DurationProbeState::Done &&
+    // Once the duration has been found, or the probe has given up, discard
+    // late tail chunks that were already in flight when the probe finished.
+    // They are not needed for playback and would otherwise be fed to the main
+    // decoder out of order. Sequential data that happens to fall in the tail
+    // range (e.g. after a seek or when normal playback reaches the end of the
+    // file) must still be accepted. (Without a probe the range is empty.)
+    if ((mDurationProbeState == DurationProbeState::Done ||
+         mDurationProbeState == DurationProbeState::None) &&
         aOffset >= mDurationProbeTailRangeStart.load() &&
         aOffset < mDurationProbeTailRangeEnd.load() && !isSequential) {
       lock.unlock();
@@ -779,24 +799,27 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
       effectiveOffset = mSequentialReadOffset;
     }
 
-    // If this chunk falls inside the requested Ogg tail-probe range, do not
-    // store it in the circular buffer; accumulate it in a temporary probe
-    // buffer and discard it once the duration is known.
+    const auto *bytes = static_cast<const unsigned char *>(aData);
+
+    // A chunk inside the requested Ogg tail-probe range that does not
+    // continue the sequential feed is the probe's alone: it is not stored in
+    // the circular buffer, only read for the duration and discarded. One that
+    // does continue the feed is played like any other, wherever it lies, and
+    // read for the duration too if it holds what the probe is waiting for
+    // (below): taking it for the probe's alone would leave the feed waiting
+    // for the same offset without end.
     if (mDurationProbeState == DurationProbeState::TailRequested &&
-        aOffset >= mDurationProbeTailRangeStart.load() &&
+        !isSequential && aOffset >= mDurationProbeTailRangeStart.load() &&
         aOffset < mDurationProbeTailRangeEnd.load()) {
-      const auto *bytes = static_cast<const unsigned char *>(aData);
-      mTailProbeBuffer.insert(mTailProbeBuffer.end(), bytes, bytes + aDataLen);
       mTotalReceivedBytes += aDataLen;
-      if (aOffset == mNextTailOffset.load()) {
-        mNextTailOffset.store(aOffset + aDataLen);
-      }
+      feedTailProbe(bytes, aDataLen, aOffset, /*aProbeOnly*/ true);
       SOLOUD_DEBUG_LOG(
           "[PullBuffer] addAudioData tail probe len=%u offset=%llu "
           "nextTailOffset=%llu\n",
           aDataLen, static_cast<unsigned long long>(aOffset),
           static_cast<unsigned long long>(mNextTailOffset));
-      probeDurationFromOggTail(aOffset);
+      // A seek that was waiting for the duration to find its byte offset.
+      applyPendingSeek();
       DeferredCallbacks callbacks = takeDeferredCallbacksLocked();
       lock.unlock();
       deliverDeferredCallbacks(callbacks);
@@ -805,11 +828,17 @@ PlayerErrors PullBufferStream::addAudioData(const void *aData,
       return PlayerErrors::noError;
     }
 
-    const auto *bytes = static_cast<const unsigned char *>(aData);
     mEncodedBuffer.insert(mEncodedBuffer.end(), bytes, bytes + aDataLen);
     mTotalReceivedBytes += aDataLen;
     if (isSequential && effectiveOffset == mSequentialReadOffset) {
       mSequentialReadOffset += aDataLen;
+    }
+    if (mDurationProbeState == DurationProbeState::TailRequested &&
+        isSequential) {
+      feedTailProbe(bytes, aDataLen, effectiveOffset, /*aProbeOnly*/ false);
+      // A seek that was waiting for the duration to find its byte offset.
+      // It discards this chunk and asks for the data at its target.
+      if (mDurationProbeState == DurationProbeState::Done) applyPendingSeek();
     }
     if (mDurationProbeState == DurationProbeState::BuildingSeekTable) {
       ++mSeekTableBuildChunks;
@@ -935,6 +964,39 @@ static double extractOggDurationFromTail(const std::vector<unsigned char> &tail,
 }
 #endif
 
+void PullBufferStream::feedTailProbe(const unsigned char *aData,
+                                     unsigned int aDataLen, uint64_t aOffset,
+                                     bool aProbeOnly) {
+  if (mDurationProbeState != DurationProbeState::TailRequested) return;
+  // The probe reads the tail in order: only the bytes from the offset it is
+  // waiting for are of use. They can start anywhere in a chunk of the
+  // sequential feed.
+  const uint64_t next = mNextTailOffset.load();
+  const uint64_t end = aOffset + aDataLen;
+  if (aOffset <= next && next < end) {
+    mTailProbeBuffer.insert(mTailProbeBuffer.end(), aData + (next - aOffset),
+                            aData + aDataLen);
+    mNextTailOffset.store(end);
+    mTailProbeMisses = 0;
+    probeDurationFromOggTail(aOffset);
+  } else if (aProbeOnly) {
+    // An answer the probe cannot use (a repeated chunk, one out of order).
+    ++mTailProbeMisses;
+  }
+  if (mDurationProbeState != DurationProbeState::TailRequested) return;
+  // The probe must end, or its tail would be asked for, and the chunks in
+  // its range taken for it, for as long as the stream lives: when the whole
+  // tail has arrived without the last page (a truncated file, or not Ogg
+  // data), or the answers keep being of no use, the duration stays unknown
+  // and the stream plays on to the end of its data.
+  if (mNextTailOffset.load() >= mDurationProbeTailRangeEnd.load() ||
+      mTailProbeMisses >= kMaxTailProbeMisses) {
+    mTailProbeBuffer.clear();
+    mTailProbeBuffer.shrink_to_fit();
+    mDurationProbeState = DurationProbeState::None;
+  }
+}
+
 void PullBufferStream::probeDurationFromOggTail(uint64_t aOffset) {
   (void)aOffset;
 #if !defined(NO_XIPH_LIBS)
@@ -1047,6 +1109,12 @@ void PullBufferStream::decodePendingDataLocked(bool aUnderAudioMutex) {
 
     if (!decoded.empty()) {
       if (!mMetadataReceived.load()) {
+        // A play() of this stream reads the format while it creates the
+        // voice: PullBufferStreamInstance's constructor under the decode
+        // mutex, and SoLoud's AudioSourceInstance::init() under the audio
+        // mutex. It is taken after the decode mutex, as in reset().
+        std::optional<AudioMutexLock> audioLock;
+        if (!aUnderAudioMutex) audioLock.emplace(mThePlayer->soloud);
         if (sampleRate != -1) {
           mPCMformat.sampleRate = static_cast<unsigned int>(sampleRate);
           mBaseSamplerate = static_cast<float>(sampleRate);
@@ -1176,8 +1244,8 @@ void PullBufferStream::applyPendingSeek(bool aUnderAudioMutex) {
     // The offset is now known. Move the play head to the target and reset the
     // decoder so that the next incoming data is decoded from the new offset.
     const uint64_t targetSample = static_cast<uint64_t>(
-        std::floor(mPendingSeekTime * mPCMformat.sampleRate *
-                   mPCMformat.channels));
+        std::floor(mPendingSeekTime * mPCMformat.sampleRate) *
+        mPCMformat.channels);
     resetBufferWindow(targetSample, targetSample, mPendingSeekTime, newOffset,
                       newOffset);
     if (aUnderAudioMutex) {
@@ -1266,6 +1334,23 @@ bool PullBufferStream::nextDataRequestLocked(uint64_t &aOffset) {
   // is known, mSequentialReadOffset is already set to that offset, so
   // requesting it continues the stream from the seek point.
   if (mPendingSeek.load()) {
+    // A seek whose byte offset is still unknown resolves once the duration
+    // is (see timeToEncodedByteOffsetLocked()), so the tail probe that finds
+    // it comes first. Sequential requests would not get there: the decoder
+    // only indexes what the full buffer lets it decode, and a chunk that
+    // reaches the tail range is taken for the probe's (see addAudioData()),
+    // so the same offset would be asked for again without end.
+    if (mPendingSeekByteOffset == 0 &&
+        mDurationProbeState == DurationProbeState::TailRequested &&
+        mNextTailOffset.load() < mDurationProbeTailRangeEnd.load()) {
+      aOffset = mNextTailOffset.load();
+      mWaitingForData.store(true);
+      SOLOUD_DEBUG_LOG(
+          "[PullBuffer] requestMoreDataIfNeeded tail for pending seek "
+          "offset=%llu\n",
+          static_cast<unsigned long long>(aOffset));
+      return true;
+    }
     aOffset = mSequentialReadOffset;
     mWaitingForData.store(true);
     SOLOUD_DEBUG_LOG(
@@ -1632,10 +1717,11 @@ uint64_t PullBufferStream::timeToEncodedByteOffsetLocked(double seconds) {
     }
     return 0;
   }
-  const double bytesPerSecond = static_cast<double>(mPCMformat.sampleRate) *
-                                static_cast<double>(mPCMformat.channels) *
-                                static_cast<double>(mPCMformat.bytesPerSample);
-  return static_cast<uint64_t>(seconds * bytesPerSecond);
+  // The offset of the frame that starts at or before [seconds]: raw PCM is
+  // framed from the first byte it receives.
+  const uint64_t frame = static_cast<uint64_t>(
+      std::floor(seconds * static_cast<double>(mPCMformat.sampleRate)));
+  return frame * mPCMformat.channels * mPCMformat.bytesPerSample;
 }
 
 AudioMetadataFFI
@@ -1677,34 +1763,22 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
     ffi.detectedType = DetectedTypeFFI::UNKNOWN;
   }
 
-  std::strncpy(ffi.mp3Metadata.title, metadata.mp3Metadata.title.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.artist, metadata.mp3Metadata.artist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.album_artist, metadata.mp3Metadata.albumArtist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.album, metadata.mp3Metadata.album.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.date, metadata.mp3Metadata.date.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.genre, metadata.mp3Metadata.genre.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.composer, metadata.mp3Metadata.composer.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.comment, metadata.mp3Metadata.comment.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.track, metadata.mp3Metadata.track.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.disc, metadata.mp3Metadata.disc.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.mp3Metadata.stream_url, metadata.mp3Metadata.streamUrl.c_str(),
-               MAX_STRING_LENGTH - 1);
+  copyMetadataString(ffi.mp3Metadata.title, metadata.mp3Metadata.title);
+  copyMetadataString(ffi.mp3Metadata.artist, metadata.mp3Metadata.artist);
+  copyMetadataString(ffi.mp3Metadata.album_artist, metadata.mp3Metadata.albumArtist);
+  copyMetadataString(ffi.mp3Metadata.album, metadata.mp3Metadata.album);
+  copyMetadataString(ffi.mp3Metadata.date, metadata.mp3Metadata.date);
+  copyMetadataString(ffi.mp3Metadata.genre, metadata.mp3Metadata.genre);
+  copyMetadataString(ffi.mp3Metadata.composer, metadata.mp3Metadata.composer);
+  copyMetadataString(ffi.mp3Metadata.comment, metadata.mp3Metadata.comment);
+  copyMetadataString(ffi.mp3Metadata.track, metadata.mp3Metadata.track);
+  copyMetadataString(ffi.mp3Metadata.disc, metadata.mp3Metadata.disc);
+  copyMetadataString(ffi.mp3Metadata.stream_url, metadata.mp3Metadata.streamUrl);
   ffi.mp3Metadata.sample_rate = metadata.mp3Metadata.sampleRate;
   ffi.mp3Metadata.channels = metadata.mp3Metadata.channels;
   ffi.mp3Metadata.bitrate = metadata.mp3Metadata.bitrate;
 
-  std::strncpy(ffi.oggMetadata.vendor, metadata.oggMetadata.vendor.c_str(),
-               MAX_STRING_LENGTH - 1);
+  copyMetadataString(ffi.oggMetadata.vendor, metadata.oggMetadata.vendor);
   ffi.oggMetadata.commentsCount =
       static_cast<int>(std::min(metadata.oggMetadata.comments.size(),
                                 static_cast<size_t>(MAX_COMMENTS)));
@@ -1712,10 +1786,8 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
   int i = 0;
   for (const auto &comment : metadata.oggMetadata.comments) {
     if (i >= MAX_COMMENTS) break;
-    std::strncpy(ffi.oggMetadata.comments[i].key, comment.first.c_str(),
-                 MAX_STRING_LENGTH - 1);
-    std::strncpy(ffi.oggMetadata.comments[i].value, comment.second.c_str(),
-                 MAX_STRING_LENGTH - 1);
+    copyMetadataString(ffi.oggMetadata.comments[i].key, comment.first);
+    copyMetadataString(ffi.oggMetadata.comments[i].value, comment.second);
     ++i;
   }
 
@@ -1756,28 +1828,17 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
       metadata.oggMetadata.flacInfo.total_samples};
 
   // Convert AAC metadata
-  std::strncpy(ffi.aacMetadata.title, metadata.aacMetadata.title.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.artist, metadata.aacMetadata.artist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.album_artist, metadata.aacMetadata.albumArtist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.album, metadata.aacMetadata.album.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.date, metadata.aacMetadata.date.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.genre, metadata.aacMetadata.genre.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.composer, metadata.aacMetadata.composer.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.comment, metadata.aacMetadata.comment.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.track, metadata.aacMetadata.track.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.disc, metadata.aacMetadata.disc.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.aacMetadata.stream_url, metadata.aacMetadata.streamUrl.c_str(),
-               MAX_STRING_LENGTH - 1);
+  copyMetadataString(ffi.aacMetadata.title, metadata.aacMetadata.title);
+  copyMetadataString(ffi.aacMetadata.artist, metadata.aacMetadata.artist);
+  copyMetadataString(ffi.aacMetadata.album_artist, metadata.aacMetadata.albumArtist);
+  copyMetadataString(ffi.aacMetadata.album, metadata.aacMetadata.album);
+  copyMetadataString(ffi.aacMetadata.date, metadata.aacMetadata.date);
+  copyMetadataString(ffi.aacMetadata.genre, metadata.aacMetadata.genre);
+  copyMetadataString(ffi.aacMetadata.composer, metadata.aacMetadata.composer);
+  copyMetadataString(ffi.aacMetadata.comment, metadata.aacMetadata.comment);
+  copyMetadataString(ffi.aacMetadata.track, metadata.aacMetadata.track);
+  copyMetadataString(ffi.aacMetadata.disc, metadata.aacMetadata.disc);
+  copyMetadataString(ffi.aacMetadata.stream_url, metadata.aacMetadata.streamUrl);
   ffi.aacMetadata.sample_rate = metadata.aacMetadata.sampleRate;
   ffi.aacMetadata.channels = metadata.aacMetadata.channels;
   std::strncpy(ffi.aacMetadata.profile, metadata.aacMetadata.profile.c_str(),
@@ -1786,26 +1847,16 @@ PullBufferStream::convertMetadataToFFI(const AudioMetadata &metadata) const {
   ffi.aacMetadata.frame_length = metadata.aacMetadata.frameLength;
 
   // Convert M4A metadata
-  std::strncpy(ffi.m4aMetadata.title, metadata.m4aMetadata.title.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.artist, metadata.m4aMetadata.artist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.album_artist, metadata.m4aMetadata.albumArtist.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.album, metadata.m4aMetadata.album.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.date, metadata.m4aMetadata.date.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.genre, metadata.m4aMetadata.genre.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.composer, metadata.m4aMetadata.composer.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.comment, metadata.m4aMetadata.comment.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.track, metadata.m4aMetadata.track.c_str(),
-               MAX_STRING_LENGTH - 1);
-  std::strncpy(ffi.m4aMetadata.disc, metadata.m4aMetadata.disc.c_str(),
-               MAX_STRING_LENGTH - 1);
+  copyMetadataString(ffi.m4aMetadata.title, metadata.m4aMetadata.title);
+  copyMetadataString(ffi.m4aMetadata.artist, metadata.m4aMetadata.artist);
+  copyMetadataString(ffi.m4aMetadata.album_artist, metadata.m4aMetadata.albumArtist);
+  copyMetadataString(ffi.m4aMetadata.album, metadata.m4aMetadata.album);
+  copyMetadataString(ffi.m4aMetadata.date, metadata.m4aMetadata.date);
+  copyMetadataString(ffi.m4aMetadata.genre, metadata.m4aMetadata.genre);
+  copyMetadataString(ffi.m4aMetadata.composer, metadata.m4aMetadata.composer);
+  copyMetadataString(ffi.m4aMetadata.comment, metadata.m4aMetadata.comment);
+  copyMetadataString(ffi.m4aMetadata.track, metadata.m4aMetadata.track);
+  copyMetadataString(ffi.m4aMetadata.disc, metadata.m4aMetadata.disc);
   std::strncpy(ffi.m4aMetadata.codec, metadata.m4aMetadata.codec.c_str(),
                sizeof(ffi.m4aMetadata.codec) - 1);
   ffi.m4aMetadata.sample_rate = metadata.m4aMetadata.sampleRate;

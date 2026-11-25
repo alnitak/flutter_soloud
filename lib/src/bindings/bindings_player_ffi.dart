@@ -1534,7 +1534,7 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   SoundHandle createVoiceGroup() {
     final ret = native.createVoiceGroup();
-    return SoundHandle(ret > 0 ? ret : -1);
+    return ret > 0 ? SoundHandle(ret) : const SoundHandle.error();
   }
 
   @override
@@ -2114,6 +2114,52 @@ class FlutterSoLoudFfi extends FlutterSoLoud {
   @override
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor) {
     return native.set3dSourceDopplerFactor(handle.id, dopplerFactor);
+  }
+
+  @override
+  void set3dDefaultMinMaxDistance(
+    SoundHash soundHash,
+    double minDistance,
+    double maxDistance,
+  ) {
+    return native.set3dDefaultMinMaxDistance(
+      soundHash.hash,
+      minDistance,
+      maxDistance,
+    );
+  }
+
+  @override
+  void set3dDefaultAttenuation(
+    SoundHash soundHash,
+    int attenuationModel,
+    double attenuationRolloffFactor,
+  ) {
+    return native.set3dDefaultAttenuation(
+      soundHash.hash,
+      attenuationModel,
+      attenuationRolloffFactor,
+    );
+  }
+
+  @override
+  void set3dDefaultDopplerFactor(SoundHash soundHash, double dopplerFactor) {
+    return native.set3dDefaultDopplerFactor(soundHash.hash, dopplerFactor);
+  }
+
+  @override
+  void set3dAutoUpdate(bool enabled) {
+    return native.set3dAutoUpdate(enabled);
+  }
+
+  @override
+  bool get3dAutoUpdate() {
+    return native.get3dAutoUpdate();
+  }
+
+  @override
+  void update3dAudio() {
+    return native.update3dAudio();
   }
 
   // ///////////////////////////////////////

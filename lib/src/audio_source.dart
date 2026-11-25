@@ -28,7 +28,7 @@ enum SoundEventType {
 /// (via something like `SoLoud.loadFile()`, for example).
 /// Then they can be played once or several times.
 /// Finally, the need to be disposed with something like
-/// `SoLoud.disposeSound()` or `SoLoud.disposeAllSounds()`.
+/// `SoLoud.disposeSource()` or `SoLoud.disposeAllSources()`.
 ///
 /// Audio sources are uniquely identified by their [soundHash], which is
 /// what you pass to methods such as `SoLoud.play()`.
@@ -39,16 +39,15 @@ enum SoundEventType {
 ///
 /// You can listen to the broadcast stream of [soundEvents].
 ///
-/// Every [AudioSource] can have their own filters. You can add, remove and
-/// query wether a filter is active with `addFilter()`,
-/// `removeGlobalFilter()` and `isFilterActive()`, respectively. The effect must
-/// be set before playing the sound and parameters can be changed after having
-/// the a voice handle:
+/// Every [AudioSource] can have their own filters, available through
+/// [filters]. You can add, remove and query whether a filter is active with
+/// its `activate()`, `deactivate()` and `isActive`, respectively. Parameters
+/// are changed per voice, so after having a voice handle:
 /// ```dart
 ///   final sound = await SoLoud.instance.loadAsset('...');
-///   sound.addFilter(FilterType.echoFilter);
+///   sound.filters.echoFilter.activate();
 ///   final handle = SoLoud.instance.play(sound, paused: true);
-///   sound.setFilterParameter();
+///   sound.filters.echoFilter.delay(soundHandle: handle).value = 0.2;
 /// ```
 class AudioSource {
   /// Constructs an instance of [AudioSource].
@@ -119,12 +118,12 @@ class AudioSource {
   /// disposed. For example:
   ///
   /// ```dart
-  /// final source = soloud.loadAsset('...');
+  /// final source = await soloud.loadAsset('...');
   /// // Wait for the first time all the instances of the sound are finished
   /// // (finished playing or were stopped with soloud.stop()).
   /// source.allInstancesFinished.first.then(
   ///   // Dispose of the sound.
-  ///   (_) => soloud.disposeSound(source))
+  ///   (_) => soloud.disposeSource(source),
   /// );
   /// soloud.play(source);
   /// ```
@@ -137,8 +136,9 @@ class AudioSource {
   /// **IMPORTANT**: filters for individual sounds are not supported on the
   /// web platform.
   ///
-  /// **IMPORTANT**: the filter must be added before playing. Only voice handles
-  /// played after adding a filter will play with the filter chosen:
+  /// A filter can be activated before or while playing: activating it also
+  /// applies it to the voices of this sound that are already playing, and
+  /// deactivating it removes it from them.
   ///
   /// **IMPORTANT**: freeverb supports only 2 channels. So using freeverb as
   /// global filter, the engine should be inited using the default 2 channels
@@ -149,7 +149,7 @@ class AudioSource {
   /// /// activate the filter.
   /// sound.filters.pitchShiftFilter.activate();
   /// /// start playing it.
-  /// soundHandle = await SoLoud.instance.play(sound, looping: true);
+  /// final soundHandle = SoLoud.instance.play(sound, looping: true);
   /// /// deactivate it.
   /// sound.filters.pitchShiftFilter.deactivate();
   /// ```

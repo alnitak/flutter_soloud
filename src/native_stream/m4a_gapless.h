@@ -54,6 +54,9 @@ bool parseM4aGapless(FILE *file, M4aGaplessInfo &out);
 bool parseM4aGaplessFd(int fd, M4aGaplessInfo &out);
 #endif
 
+/// Same as [parseM4aGapless] for a whole MP4 file held in memory.
+bool parseM4aGaplessMemory(const unsigned char *data, size_t size, M4aGaplessInfo &out);
+
 /// Parses an in-memory `moov` box payload (without its 8-byte header).
 bool parseM4aGaplessMoov(const unsigned char *data, size_t size, M4aGaplessInfo &out);
 

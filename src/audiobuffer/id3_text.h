@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace id3_text_detail {
 inline void appendUtf8(std::string &out, uint32_t codepoint) {
@@ -92,6 +93,35 @@ inline std::string id3TextToUtf8(const unsigned char *data, size_t frameSize) {
     out.assign(reinterpret_cast<const char *>(text), length);
   }
   return out;
+}
+
+/// Converts the text of an ID3v2 COMM frame body (encoding byte, 3-byte
+/// language, description ended by a NUL in the frame's encoding, then the
+/// comment) to UTF-8, as id3TextToUtf8() does for text frames.
+inline std::string id3CommentToUtf8(const unsigned char *data, size_t frameSize) {
+  if (frameSize <= 4)
+    return {};
+  const uint8_t encoding = data[0];
+  const bool wide = encoding == 1 || encoding == 2;
+  size_t pos = 4;
+  // Skip the description and its terminator.
+  if (wide) {
+    while (metadataHasBytes(frameSize, pos, 2) &&
+           (data[pos] != 0 || data[pos + 1] != 0))
+      pos += 2;
+    pos = metadataHasBytes(frameSize, pos, 2) ? pos + 2 : frameSize;
+  } else {
+    while (pos < frameSize && data[pos] != 0)
+      ++pos;
+    pos = pos < frameSize ? pos + 1 : frameSize;
+  }
+  if (pos >= frameSize)
+    return {};
+  std::vector<unsigned char> text;
+  text.reserve(frameSize - pos + 1);
+  text.push_back(encoding);
+  text.insert(text.end(), data + pos, data + frameSize);
+  return id3TextToUtf8(text.data(), text.size());
 }
 
 #endif // ID3_TEXT_H

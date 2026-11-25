@@ -31,21 +31,59 @@ void StreamDecoder::setBufferIcyMetaInt(int icyMetaInt) {
 }
 
 // Helper to get the total size of all consecutive ID3v2 tags. Returns 0 if none.
-static size_t getID3TagSize(const std::vector<unsigned char>& buffer) {
+// [incomplete] is set when the buffer ends inside a tag (or inside the header
+// of one): the tags' size is then not known yet and the caller must wait.
+static size_t getID3TagSize(const std::vector<unsigned char>& buffer,
+                            bool* incomplete = nullptr) {
+    if (incomplete) *incomplete = false;
     size_t offset = 0;
-    while (offset + 10 <= buffer.size() && memcmp(buffer.data() + offset, "ID3", 3) == 0) {
-        uint32_t size = ((buffer[offset + 6] & 0x7f) << 21) |
-                       ((buffer[offset + 7] & 0x7f) << 14) |
-                       ((buffer[offset + 8] & 0x7f) << 7) |
-                       (buffer[offset + 9] & 0x7f);
+    while (offset < buffer.size()) {
+        const size_t left = buffer.size() - offset;
+        if (memcmp(buffer.data() + offset, "ID3", left < 3 ? left : 3) != 0)
+            break;
+        if (left < 10) {
+            // The start of a tag header ("ID3" or a prefix of it).
+            if (incomplete) *incomplete = true;
+            break;
+        }
+        const unsigned char* h = buffer.data() + offset;
+        // A real ID3v2 header: version bytes below 0xFF, synchsafe size.
+        if (h[3] == 0xFF || h[4] == 0xFF ||
+            ((h[6] | h[7] | h[8] | h[9]) & 0x80) != 0)
+            break;
+        uint32_t size = ((h[6] & 0x7f) << 21) |
+                       ((h[7] & 0x7f) << 14) |
+                       ((h[8] & 0x7f) << 7) |
+                       (h[9] & 0x7f);
         size_t total = 10 + size;
-        if ((buffer[offset + 5] & 0x10) != 0) {
+        if ((h[5] & 0x10) != 0) {
             total += 10;
         }
-        if (offset + total > buffer.size()) break;
+        if (total > left) {
+            if (incomplete) *incomplete = true;
+            break;
+        }
         offset += total;
     }
     return offset;
+}
+
+// True when the buffer starts with an MPEG audio frame header, but is too
+// short to hold that frame and the next header: checkForValidFrames() cannot
+// confirm such a frame yet. A free-format header (no frame size) waits for
+// up to 4 KB, like BufferStream's first delivery.
+static bool isPartialMpegFrame(const std::vector<unsigned char>& buffer) {
+    if (buffer.size() < 4) return false;
+    const unsigned char* h = buffer.data();
+    size_t frameBytes = MP3DecoderWrapper::mpegFrameBytes(h);
+    if (frameBytes == 0) {
+        const bool freeFormat = h[0] == 0xFF && (h[1] & 0xE0) == 0xE0 &&
+                                ((h[1] >> 3) & 3) != 1 && ((h[1] >> 1) & 3) != 0 &&
+                                (h[2] >> 4) == 0 && ((h[2] >> 2) & 3) != 3;
+        if (!freeFormat) return false;
+        frameBytes = 4096;
+    }
+    return buffer.size() < frameBytes + 4;
 }
 
 DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& inBuffer) {
@@ -126,7 +164,15 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
             // Move to next potential page
             scan_offset = payload_offset + payload_size;
         }
-        
+
+        // The data ends with the start of a page whose header is not complete
+        // yet (fewer than 28 bytes): wait for it.
+        if (scan_offset < size) {
+            const size_t left = size - scan_offset;
+            if (std::memcmp(buffer.data() + scan_offset, "OggS", left < 4 ? left : 4) == 0)
+                return DetectedType::BUFFER_NO_ENOUGH_DATA;
+        }
+
         // If we've checked all available data and found nothing, consider it unknown
         return DetectedType::BUFFER_UNKNOWN;
     }
@@ -142,8 +188,15 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     }
 
     // --- Detect ID3 (MP3 or AAC) ---
-    else if (size >= 3 && getID3TagSize(buffer) != 0) {
-        size_t id3Size = getID3TagSize(buffer);
+    // A tag that is not complete yet: its size, and what follows it, are not
+    // known. Probing the tag bytes (cover art...) as audio could match
+    // another format, so wait for the whole tag.
+    bool id3Incomplete = false;
+    const size_t id3Size = getID3TagSize(buffer, &id3Incomplete);
+    if (id3Incomplete) {
+        return DetectedType::BUFFER_NO_ENOUGH_DATA;
+    }
+    if (id3Size != 0) {
         if (size < id3Size + 4) {
             return DetectedType::BUFFER_NO_ENOUGH_DATA;
         }
@@ -172,6 +225,11 @@ DetectedType StreamDecoder::detectAudioFormat(const std::vector<unsigned char>& 
     } 
     else if (MP3DecoderWrapper::checkForValidFrames(buffer)) {
         return DetectedType::BUFFER_MP3_STREAM;
+    }
+
+    // An MPEG audio frame header whose frame is not complete yet: wait.
+    else if (isPartialMpegFrame(buffer)) {
+        return DetectedType::BUFFER_NO_ENOUGH_DATA;
     }
 
     // --- Detect M4A / MP4 ---

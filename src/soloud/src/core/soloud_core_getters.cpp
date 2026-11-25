@@ -68,6 +68,10 @@ namespace SoLoud
 
 		int ch = (aVoiceHandle & 0xfff) - 1;
 		unsigned int idx = aVoiceHandle >> 12;
+		// The 12-bit slot field can name up to 4095 slots, more than
+		// VOICE_COUNT: a made-up handle must not index past mVoice.
+		if (ch < 0 || ch >= VOICE_COUNT)
+			return -1;
 		if (mVoice[ch] &&
 			(mVoice[ch]->mPlayIndex & 0xfffff) == idx)
 		{

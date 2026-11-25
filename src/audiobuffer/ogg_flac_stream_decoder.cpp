@@ -69,6 +69,8 @@ bool OggFlacDecoderWrapper::initializeDecoder(int engineSamplerate, int engineCh
 
     m_drained = false;
     m_read_pos = 0;
+    m_decodedUpTo = 0;
+    m_headersComplete = false;
     m_streamInfoProcessed = false;
     m_pFlacDecoder = FLAC__stream_decoder_new();
     if (m_pFlacDecoder == nullptr)
@@ -166,6 +168,7 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
             {
                 FLAC__stream_decoder_reset(m_pFlacDecoder);
                 m_streamInfoProcessed = false;
+                m_headersComplete = false;
             }
         }
 
@@ -186,76 +189,85 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
                     // 'fLaC' signature, and STREAMINFO.
                     // We must skip the first 9 bytes of Ogg FLAC mapping headers
                     // to get the native FLAC signature ('fLaC') and STREAMINFO.
+                    const unsigned char *flac = op.packet;
+                    long flacBytes = op.bytes;
                     if (op.bytes >= 9 && op.packet[0] == 0x7F && memcmp(op.packet + 1, "FLAC", 4) == 0)
                     {
-                        m_audioData.insert(m_audioData.end(), op.packet + 9, op.packet + op.bytes);
+                        flac += 9;
+                        flacBytes -= 9;
                     }
-                    else
-                    {
-                        m_audioData.insert(m_audioData.end(), op.packet, op.packet + op.bytes);
-                    }
+                    m_audioData.insert(m_audioData.end(), flac, flac + flacBytes);
+                    // 'fLaC' + STREAMINFO block header: is it the last block?
+                    if (flacBytes >= 5 && (flac[4] & 0x80))
+                        m_headersComplete = true;
                 }
                 else
                 {
                     // Subsequent packets contain a native FLAC metadata block or frame.
                     m_audioData.insert(m_audioData.end(), op.packet, op.packet + op.bytes);
+                    // Last-metadata-block flag, or a frame sync code.
+                    if ((op.packet[0] & 0x80) != 0)
+                        m_headersComplete = true;
                 }
             }
         }
     }
 
+    // Feed libFLAC only once all the metadata blocks have arrived (or no
+    // more data will come): an abort inside the metadata cannot be resumed,
+    // since the flush below leaves libFLAC searching for a frame sync.
+    if (!m_headersComplete && !m_dataEnded)
+    {
+        *sampleRate = m_samplerate;
+        *channels = m_channels;
+        return {std::move(m_decodedPcm), DecoderError::NoError};
+    }
+
+    // libFLAC buffers input in its bit reader, so m_read_pos can be ahead of
+    // what it has decoded. When the read callback aborts for lack of data,
+    // libFLAC is left ABORTED with a partial block in the bit reader: roll the
+    // read position back to the end of the last decoded block and flush, so
+    // the next call re-reads that block from its start once more data is
+    // there. process_single() returns true or false on an abort, depending on
+    // where the read happened, so check the state in both cases.
+    auto rollBackAndFlush = [this]() {
+        m_read_pos = m_decodedUpTo >= m_streamStartOffset
+                         ? static_cast<size_t>(m_decodedUpTo - m_streamStartOffset)
+                         : 0;
+        if (m_read_pos > m_audioData.size())
+            m_read_pos = m_audioData.size();
+        FLAC__stream_decoder_flush(m_pFlacDecoder);
+    };
+
     unsigned int processCount = 0;
-    size_t last_successful_read_pos = m_read_pos;
     while ((m_read_pos < m_audioData.size() || m_dataEnded) && processCount < 100000)
     {
-        if (!FLAC__stream_decoder_process_single(m_pFlacDecoder))
-        {
-            FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
-            if (state == FLAC__STREAM_DECODER_ABORTED)
-            {
-                // read_callback returned ABORT because the buffer is temporarily
-                // exhausted but more data is expected. Roll back m_read_pos to
-                // the last successful frame boundary, and flush the decoder so it
-                // transitions to SEARCH_FOR_FRAME_SYNC and can resume on the
-                // next decode() call.
-                m_read_pos = last_successful_read_pos;
-                FLAC__stream_decoder_flush(m_pFlacDecoder);
-                SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper::decode] flushed decoder after temporary buffer exhaustion\n");
-                break;
-            }
-            if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
-            {
-                m_drained = true;
-                break;
-            }
-            // For other decoder errors, attempt recovery by flushing and rolling back
-            m_read_pos = last_successful_read_pos;
-            FLAC__stream_decoder_flush(m_pFlacDecoder);
-            SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper::decode] decoder error state %d, recovered & breaking\n", state);
-            break;
-        }
-
-        FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
+        const bool ok = FLAC__stream_decoder_process_single(m_pFlacDecoder);
+        const FLAC__StreamDecoderState state = FLAC__stream_decoder_get_state(m_pFlacDecoder);
         if (state == FLAC__STREAM_DECODER_END_OF_STREAM)
         {
             m_drained = true;
             break;
         }
+        if (!ok || state == FLAC__STREAM_DECODER_ABORTED)
+        {
+            // ABORTED: the buffer is temporarily exhausted but more data is
+            // expected. Other errors: attempt recovery the same way.
+            rollBackAndFlush();
+            // Once the data has ended reads no longer abort, so this is a
+            // fatal error: end the stream, or a drain loop would never end.
+            if (m_dataEnded && state != FLAC__STREAM_DECODER_ABORTED)
+                m_drained = true;
+            SOLOUD_DEBUG_LOG("[OggFlacDecoderWrapper::decode] flushed decoder (state %d)\n", (int)state);
+            break;
+        }
 
-        // Query the exact byte position processed by the decoder (excluding lookahead FIFO)
+        // The exact byte position decoded so far (excluding the bit reader).
         FLAC__uint64 absolute_pos = 0;
         if (FLAC__stream_decoder_get_decode_position(m_pFlacDecoder, &absolute_pos))
-        {
-            if (absolute_pos >= m_streamStartOffset)
-            {
-                last_successful_read_pos = absolute_pos - m_streamStartOffset;
-            }
-        }
+            m_decodedUpTo = absolute_pos;
         else
-        {
-            // Fallback during metadata phase
-            last_successful_read_pos = m_read_pos;
-        }
+            m_decodedUpTo = m_streamStartOffset + m_read_pos;
         processCount++;
 
         if (maxOutputSamples > 0 && m_decodedPcm.size() >= maxOutputSamples)
@@ -264,25 +276,30 @@ std::pair<std::vector<float>, DecoderError> OggFlacDecoderWrapper::decode(std::v
         }
     }
 
-    if (m_read_pos > 0)
+    // Drop the bytes libFLAC has decoded. Bytes it has only read into its bit
+    // reader stay, since a later abort rolls back to them. The stream ends
+    // only when libFLAC reports END_OF_STREAM (above), not when its reads
+    // reach the end of m_audioData: the last frames may still sit in its bit
+    // reader when the output cap stops the loop.
+    size_t decodedRel = m_decodedUpTo > m_streamStartOffset
+                            ? static_cast<size_t>(m_decodedUpTo - m_streamStartOffset)
+                            : 0;
+    if (decodedRel > m_read_pos)
+        decodedRel = m_read_pos;
+    if (decodedRel > 0)
     {
-        if (m_read_pos >= m_audioData.size())
+        if (decodedRel >= m_audioData.size())
         {
-            m_streamStartOffset += m_read_pos;
+            m_streamStartOffset += decodedRel;
             m_audioData.clear();
             m_read_pos = 0;
         }
-        else if (m_read_pos >= 65536 && m_read_pos * 2 >= m_audioData.size())
+        else if (decodedRel >= 65536 && decodedRel * 2 >= m_audioData.size())
         {
-            m_streamStartOffset += m_read_pos;
-            m_audioData.erase(m_audioData.begin(), m_audioData.begin() + m_read_pos);
-            m_read_pos = 0;
+            m_streamStartOffset += decodedRel;
+            m_audioData.erase(m_audioData.begin(), m_audioData.begin() + decodedRel);
+            m_read_pos -= decodedRel;
         }
-    }
-
-    if (m_dataEnded && m_read_pos >= m_audioData.size() && m_oy.fill == m_oy.returned)
-    {
-        m_drained = true;
     }
 
     *sampleRate = m_samplerate;

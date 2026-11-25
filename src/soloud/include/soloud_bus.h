@@ -84,6 +84,10 @@ namespace SoLoud
 	{
 	public:
 		Bus();
+		// ###### flutter_soloud local patch ######
+		// Stops the voices while this is still a Bus: ~BusInstance reads
+		// mParent's members, which ~AudioSource's stop() would do too late.
+		virtual ~Bus();
 		virtual BusInstance *createInstance();
 		// Set filter. Set to NULL to clear the filter.
 		virtual void setFilter(unsigned int aFilterId, Filter *aFilter);

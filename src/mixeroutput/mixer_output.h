@@ -157,6 +157,11 @@ class MixerOutput {
   /// Returns the cached WAV header, or an empty vector if no WAV capture has
   /// been started or if the encoder did not produce a header.
   const std::vector<uint8_t> &getWavHeader() const { return m_wavHeader; }
+  /// Forget the header of the last WAV capture. MixerOutput outlives the
+  /// engine, so the engine teardown calls this: a new engine session has
+  /// captured nothing. The caller must hold the lock start() and stop() are
+  /// serialized by.
+  void clearWavHeader() { m_wavHeader.clear(); }
 
  private:
   MixerOutput() = default;

@@ -31,10 +31,16 @@ struct OggSeekIndex {
   /// Account for one page returned by ogg_sync_pageseek ([pageSeekRet] is the
   /// return value of ogg_sync_pageseek: bytes skipped + page size).
   void trackPage(long pageSeekRet, const ogg_page &page) {
+    trackPage(pageSeekRet, page, ogg_page_granulepos(&page));
+  }
+
+  /// As above, indexing the page under [granule] instead of its own granule
+  /// (-1: not indexed). Chained streams restart their granules at each
+  /// link; the decoders index a time from the start of the file instead.
+  void trackPage(long pageSeekRet, const ogg_page &page, ogg_int64_t granule) {
     bytesConsumed += static_cast<uint64_t>(pageSeekRet);
     const long pageSize = page.header_len + page.body_len;
     if (pageSize <= 0) return;
-    const ogg_int64_t granule = ogg_page_granulepos(&page);
     if (granule >= 0 &&
         (entries.empty() || entries.back().granule != granule)) {
       entries.push_back({granule, bytesConsumed - static_cast<uint64_t>(pageSize)});

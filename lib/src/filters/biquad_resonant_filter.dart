@@ -28,8 +28,8 @@ enum BiquadResonantEnum {
   resonance;
 
   final List<double> _mins = const [0, 0.0, 10, 0.1];
-  final List<double> _maxs = const [1, 2.0, 16000, 20];
-  final List<double> _defs = const [1, 0.0, 1000, 0.1];
+  final List<double> _maxs = const [1, 2.0, 8000, 20];
+  final List<double> _defs = const [1, 0.0, 1000, 2];
 
   double get min => _mins[index];
   double get max => _maxs[index];
@@ -57,7 +57,7 @@ abstract class _BiquadResonantInternal extends FilterBase {
 class BiquadResonantSingle extends _BiquadResonantInternal {
   BiquadResonantSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -66,7 +66,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
     BiquadResonantEnum.wet.max,
   );
 
-  FilterParam type({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam type({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -75,7 +75,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
     BiquadResonantEnum.type.max,
   );
 
-  FilterParam frequency({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam frequency({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -84,7 +84,7 @@ class BiquadResonantSingle extends _BiquadResonantInternal {
     BiquadResonantEnum.frequency.max,
   );
 
-  FilterParam resonance({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam resonance({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

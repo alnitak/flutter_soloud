@@ -1356,6 +1356,7 @@ namespace SoLoud
 		case DLL_NOT_FOUND: return "DLL not found, or wrong DLL";
 		case OUT_OF_MEMORY: return "Out of memory";
 		case NOT_IMPLEMENTED: return "Feature not implemented";
+		case FORMAT_NOT_SUPPORTED: return "Audio format not supported on this system";
 		/*case UNKNOWN_ERROR: return "Other error";*/
 		}
 		return "Other error";
@@ -2788,7 +2789,9 @@ namespace SoLoud
 			{
 				float step = voice->mSamplerate / aSamplerate;
 				// avoid step overflow
-				if (step > (1 << (32 - FIXPOINT_FRAC_BITS)))
+				// flutter_soloud: written so a NaN step (a NaN sample rate)
+				// is caught too: converting it to int is undefined.
+				if (!(step <= (1 << (32 - FIXPOINT_FRAC_BITS))))
 					step = 0;
 				unsigned int step_fixed = (int)floor(step * FIXPOINT_FRAC_MUL);
 				unsigned int outofs = 0;
@@ -3411,9 +3414,16 @@ namespace SoLoud
 		time buffertime = (time)aSamples / (time)mSamplerate;
 
 		// Process faders. May change scratch size.
+		// ###### flutter_soloud local patch (virtual voice position) ######
+		// The stream position advances only for voices that are mixed this
+		// quantum (see below): a virtual voice (beyond the active voice
+		// count, or inaudible without ticking) is not read, and resumes where
+		// it stopped.
+		double positionStep[VOICE_COUNT];
 		int i;
 		for (i = 0; i < (signed)mHighestVoice; i++)
 		{
+			positionStep[i] = 0;
 			if (mVoice[i] && !(mVoice[i]->mFlags & AudioSourceInstance::PAUSED))
 			{
 				float volume[2];
@@ -3426,7 +3436,7 @@ namespace SoLoud
 				}
 
 				mVoice[i]->mStreamTime += buffertime;
-				mVoice[i]->mStreamPosition += (double)buffertime * (double)mVoice[i]->mOverallRelativePlaySpeed;
+				positionStep[i] = (double)buffertime * (double)mVoice[i]->mOverallRelativePlaySpeed;
 
 				// TODO: this is actually unstable, because mStreamTime depends on the relative
 				// play speed.
@@ -3541,6 +3551,11 @@ namespace SoLoud
 			memset(mixed, 0, mHighestVoice);
 			for (i = 0; i < (signed)mActiveVoiceCount; i++)
 				mixed[mActiveVoice[i]] = 1;
+			for (i = 0; i < (signed)mHighestVoice; i++)
+			{
+				if (mVoice[i] && mixed[i])
+					mVoice[i]->mStreamPosition += positionStep[i];
+			}
 			for (i = 0; i < (signed)mHighestVoice; i++)
 			{
 				AudioSourceInstance *voice = mVoice[i];

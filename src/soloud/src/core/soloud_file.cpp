@@ -91,6 +91,11 @@ mFileHandle(fp)
 	{
 		if (!mFileHandle)
 			return;
+		// ###### flutter_soloud local patch ######
+		// A negative offset leaves the position where it is. fseek() does
+		// that on POSIX, but the Windows C runtime moves the position.
+		if (aOffset < 0)
+			return;
 		fseek(mFileHandle, aOffset, SEEK_SET);
 	}
 
@@ -158,7 +163,9 @@ mFileHandle(fp)
 
 	unsigned int MemoryFile::read(unsigned char *aDst, unsigned int aBytes)
 	{
-		if (mOffset + aBytes >= mDataLength)
+		if (mOffset >= mDataLength)
+			return 0;
+		if (aBytes > mDataLength - mOffset)
 			aBytes = mDataLength - mOffset;
 
 		memcpy(aDst, mDataPtr + mOffset, aBytes);
@@ -228,20 +235,22 @@ mFileHandle(fp)
 		if (mDataOwned)
 			delete[] mDataPtr;
 		mDataPtr = 0;
+		mDataLength = 0;
 		mOffset = 0;
-
-		mDataLength = aDataLength;
+		mDataOwned = false;
 
 		if (aCopy)
 		{
-			mDataOwned = true;
 			mDataPtr = new unsigned char[aDataLength];
 			if (mDataPtr == NULL)
 				return OUT_OF_MEMORY;
+			mDataOwned = true;
+			mDataLength = aDataLength;
 			memcpy((void *)mDataPtr, aData, aDataLength);
 			return SO_NO_ERROR;
 		}
 
+		mDataLength = aDataLength;
 		mDataPtr = aData;
 		mDataOwned = aTakeOwnership;
 		return SO_NO_ERROR;
@@ -254,19 +263,23 @@ mFileHandle(fp)
 		if (mDataOwned)
 			delete[] mDataPtr;
 		mDataPtr = 0;
+		mDataLength = 0;
 		mOffset = 0;
+		mDataOwned = false;
 
 		DiskFile df;
 		int res = df.open(aFile);
 		if (res != SO_NO_ERROR)
 			return res;
 
-		mDataLength = df.length();
-		mDataPtr = new unsigned char[mDataLength];
+		unsigned int len = df.length();
+		mDataPtr = new unsigned char[len];
 		if (mDataPtr == NULL)
 			return OUT_OF_MEMORY;
-		df.read((unsigned char*)mDataPtr, mDataLength);
 		mDataOwned = true;
+		// Keep only what was actually read: a file truncated between
+		// length() and read() must not expose an uninitialised tail.
+		mDataLength = df.read((unsigned char*)mDataPtr, len);
 		return SO_NO_ERROR;
 	}
 
@@ -277,14 +290,17 @@ mFileHandle(fp)
 		if (mDataOwned)
 			delete[] mDataPtr;
 		mDataPtr = 0;
+		mDataLength = 0;
 		mOffset = 0;
+		mDataOwned = false;
 
-		mDataLength = aFile->length();
-		mDataPtr = new unsigned char[mDataLength];
+		unsigned int len = aFile->length();
+		mDataPtr = new unsigned char[len];
 		if (mDataPtr == NULL)
 			return OUT_OF_MEMORY;
-		aFile->read((unsigned char*)mDataPtr, mDataLength);
 		mDataOwned = true;
+		// Keep only what was actually read (see openToMem).
+		mDataLength = aFile->read((unsigned char*)mDataPtr, len);
 		return SO_NO_ERROR;
 	}
 

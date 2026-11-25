@@ -15,6 +15,9 @@ struct DecodedAudioData {
     unsigned int channels = 0;       // Number of audio channels
     float sampleRate = 0.0f;         // Sample rate in Hz
     bool success = false;
+    // Set when no decoder for the data's format is available on this system
+    // (for example FFmpeg missing on Linux), as opposed to a corrupt file.
+    bool formatNotSupported = false;
     std::string errorMessage;
 
     void freeSamples() {

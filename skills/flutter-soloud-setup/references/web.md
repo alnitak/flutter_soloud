@@ -15,12 +15,21 @@ This loader picks the right WASM build at runtime. The older two-tag form that a
 - **Multi-threaded (AudioWorklet)** — used when the page is **cross-origin isolated**, i.e. served with:
   ```http
   Cross-Origin-Opener-Policy: same-origin
-  Cross-Embedder-Policy: require-corp
+  Cross-Origin-Embedder-Policy: require-corp
   ```
-  Mixing runs on a dedicated real-time thread; UI jank and GC pauses don't cause crackles. Strictly better whenever you control the headers.
+  Mixing runs on a dedicated real-time thread; UI jank and GC pauses don't cause crackles. Better whenever you control the headers, unless you use `webJsFunctionName` DSP callbacks (see below).
 - **Single-threaded (ScriptProcessorNode)** — fallback everywhere else. Works on any static hosting (CrazyGames, Poki, etc. that can't send COOP/COEP), but mixing shares the main thread with Flutter rendering, so heavy UI can glitch audio. ScriptProcessorNode is deprecated and may eventually be removed from browsers.
 
 Missing headers are not an error: the plugin silently falls back to single-threaded.
+
+To force the single-threaded build on a cross-origin isolated page, set the flag before the loader script:
+
+```html
+<script>self.flutter_soloud_force_single_threaded = true;</script>
+<script src="assets/packages/flutter_soloud/web/init_soloud.js" defer></script>
+```
+
+This is required for custom DSP callbacks passed by `webJsFunctionName` (`createCustomAudioSource`, `customFilter(i).setNativeCallback`): the AudioWorklet of the multi-threaded build cannot see the page's `globalThis`, so there the source is silent and the filter has no effect (a warning is logged).
 
 ## Dev-server combinations
 
@@ -47,8 +56,8 @@ Release: `flutter build web [--wasm]` — the build command is unrelated to head
 - Cross-origin isolation requires a **secure context**: deploy over HTTPS.
 - With `require-corp`, cross-origin resources (CDN assets, fonts, third-party APIs) must send `Cross-Origin-Resource-Policy: cross-origin` or be fetched via CORS, otherwise the browser blocks them. COOP/COEP also breaks some popup flows (certain Google Auth popups) and cross-origin ad iframes.
 - **`loadUrl()` hits CORS** if the server doesn't send `Access-Control-Allow-Origin`. For local experiments only: `flutter run -d chrome --web-browser-flag '--disable-web-security' --release`.
-- **No local file access on web**: `loadFile()` on a local path is impossible. Use `loadMem()` with the bytes instead. Note: on web `loadMem()` ignores its `mode` parameter (`LoadMode.disk` is not possible); the data is fed to the engine in 128 KB chunks yielding to the event loop, so large files don't freeze the UI.
-- **AC-3 and E-AC-3 (Dolby Digital) are NOT supported on Web**: No web browser supports raw AC-3 or E-AC-3 elementary streams (Chrome and Firefox lack Dolby licensing; Safari's WebCodecs engine rejects raw AC-3 frames with Cocoa decoding errors). Attempting to load or stream AC-3/E-AC-3 on Web returns `PlayerErrors.audioFormatNotSupported`. For cross-browser web audio, use AAC (ADTS), Opus, MP3, FLAC, WAV, or PCM.
+- **No local file access on web**: `loadFile()` on a local path is impossible. Use `loadMem()` with the bytes instead. Note: on web `loadMem()` ignores its `mode` parameter (`LoadMode.disk` is not possible); the data is fed to the engine in 128 KB chunks yielding to the event loop, so large files don't freeze the UI. Bytes that cannot be decoded make `loadMem()`/`loadUrl()`/`loadAsset()` throw `SoLoudFileLoadFailedException`.
+- **AC-3 and E-AC-3 (Dolby Digital) are NOT supported on Web**: No web browser supports raw AC-3 or E-AC-3 elementary streams (Chrome and Firefox lack Dolby licensing; Safari's WebCodecs engine rejects raw AC-3 frames with Cocoa decoding errors). Attempting to load or stream AC-3/E-AC-3 on Web throws `SoLoudAudioFormatNotSupportedCppException`. For cross-browser web audio, use AAC (ADTS), Opus, MP3, FLAC, WAV, or PCM.
 - Native-only `init()` options are silently ignored on web: `lowLatency`, `androidAAudioAttributes`, `devicePeriodFrames`, `renderAheadFrames`. So is `setAudioDeviceIdleTimeout` (the web device is always kept running).
 - Only the default output device exists on web: `listPlaybackDevices()` returns it, and `changeDevice()` can only go back to default.
 - `changeDevice()` on web is async because the AudioWorklet build must do an async ccall (miniaudio spin-waits while the worklet thread starts).

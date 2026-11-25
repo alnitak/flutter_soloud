@@ -5,7 +5,8 @@
 // every decoded frame and does no trimming of its own (whether and how it
 // trims varies across Android releases). Each output buffer is placed on the
 // timeline from its presentation time instead, relative to the first sample,
-// which also covers extractors that shift timestamps by the edit list. The
+// which also covers extractors that shift timestamps by the edit list
+// (timestamps a decoder clamped to 0 are placed by the next real one). The
 // encoder delay and the playable length come from the container itself
 // (m4a_gapless), so priming and padding are dropped here and positions match
 // the Apple backend and the full decode.
@@ -25,6 +26,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <dlfcn.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -49,8 +51,41 @@ constexpr int64_t kDequeueTimeoutUs = 10000;
 constexpr auto kStallTimeout = std::chrono::seconds(3);
 // Frames decoded before a seek target and dropped, so the codec's
 // overlap-add state is settled when the target frame comes out (two AAC
-// frames, more than one AC-3 frame).
+// frames).
 constexpr uint64_t kSeekPrerollFrames = 2048;
+// The same for AC-3/E-AC-3: Dolby's decoder (c2.dolby.eac3.decoder, Galaxy
+// S22) outputs silence for the first ~5250 frames after a flush and then
+// fades in (~250 frames): eight AC-3 frames.
+constexpr uint64_t kSeekPrerollFramesAc3 = 8 * 1536;
+// Dolby's decoder holds one frame back and drops it at end of stream. The
+// last access unit is queued again this many times before the end-of-stream
+// flag so the real frames come out; what the copies decode to lies past the
+// playable length and is never read.
+constexpr int kAc3DrainRepeats = 3;
+// Output buffers with a clamped timestamp held back while waiting for the
+// first one that has a real timestamp (see pump()).
+constexpr size_t kMaxBacklogFrames = 16 * 1536;
+
+bool isAc3Family(const std::string &mime) {
+    return mime == "audio/ac3" || mime == "audio/eac3" || mime == "audio/eac3-joc";
+}
+
+/// Dolby's decoders on Samsung devices run Dolby Atmos processing (DAX) on
+/// the decoded PCM by default, a volume leveler whose gain depends on
+/// seconds of what was decoded before: the PCM after a seek then never
+/// matches the PCM at that position. The vendor parameter only exists on
+/// those decoders; AMediaCodec_setParameters is API 26 (minSdk is 21).
+void disableDolbyProcessing(AMediaCodec *codec) {
+    using SetParametersFn = media_status_t (*)(AMediaCodec *, const AMediaFormat *);
+    static const auto setParameters =
+        reinterpret_cast<SetParametersFn>(dlsym(RTLD_DEFAULT, "AMediaCodec_setParameters"));
+    if (!setParameters) return;
+    AMediaFormat *params = AMediaFormat_new();
+    if (!params) return;
+    AMediaFormat_setInt32(params, "vendor.dolby.dax-state.value", 0);
+    setParameters(codec, params); // unknown keys are ignored
+    AMediaFormat_delete(params);
+}
 
 class AndroidStreamDecoder : public NativeStreamDecoder {
 public:
@@ -60,6 +95,7 @@ public:
             AMediaCodec_delete(mCodec);
         }
         if (mExtractor) AMediaExtractor_delete(mExtractor);
+        if (mTrackFormat) AMediaFormat_delete(mTrackFormat);
         if (mFd >= 0) close(mFd);
     }
 
@@ -131,13 +167,17 @@ public:
             error = "No decoder for " + mime;
             return false;
         }
-        media_status_t status = AMediaCodec_configure(mCodec, trackFormat.get(), nullptr, nullptr, 0);
-        trackFormat.reset();
-        if (status != AMEDIA_OK || AMediaCodec_start(mCodec) != AMEDIA_OK) {
+        mAc3 = isAc3Family(mime);
+        if (!startCodec(trackFormat.get())) {
             error = "Failed to start the decoder for " + mime;
             return false;
         }
-        mStarted = true;
+        if (mAc3) {
+            // Kept for recreateCodec().
+            mMime = mime;
+            mTrackFormat = trackFormat.release();
+        }
+        trackFormat.reset();
 
         // The output format (HE-AAC doubles the rate, for one) is only known
         // once the codec produced output.
@@ -182,10 +222,12 @@ public:
             return true;
         }
         const uint64_t raw = frame + static_cast<uint64_t>(mDelayFrames);
-        const uint64_t rawStart = raw > kSeekPrerollFrames ? raw - kSeekPrerollFrames : 0;
+        const uint64_t preroll = mAc3 ? kSeekPrerollFramesAc3 : kSeekPrerollFrames;
+        const uint64_t rawStart = raw > preroll ? raw - preroll : 0;
         const int64_t timeUs = mFirstSampleUs +
             static_cast<int64_t>(std::floor(static_cast<double>(rawStart) * 1e6 / mFormat.sampleRate));
-        if (rawStart == 0 || timeUs < 0) {
+        const bool fromStart = rawStart == 0 || timeUs < 0;
+        if (fromStart) {
             // Extractors that apply the edit list give the priming samples
             // negative timestamps, and seekTo() can't reach those (it doesn't
             // move, or fails once the end was reached). Start over instead.
@@ -194,12 +236,22 @@ public:
             LOGE("AMediaExtractor_seekTo(%lld) failed", static_cast<long long>(timeUs));
             return false;
         }
-        if (AMediaCodec_flush(mCodec) != AMEDIA_OK) {
+        if (mAc3 && fromStart) {
+            // No room for the preroll that covers the silence Dolby's decoder
+            // outputs after a flush (see kSeekPrerollFramesAc3); a new codec
+            // decodes the start just like the first time.
+            if (!recreateCodec()) return false;
+        } else if (AMediaCodec_flush(mCodec) != AMEDIA_OK) {
             LOGE("AMediaCodec_flush failed");
             return false;
         }
         mPendingFrames = 0;
         mPendingOffset = 0;
+        mBacklog.clear();
+        mBacklogFrames = 0;
+        mAnchored = false;
+        mLastSample.clear();
+        mDrainRepeats = 0;
         mInputEOS = false;
         mOutputEOS = false;
         mNext = frame;
@@ -249,6 +301,30 @@ public:
     }
 
 private:
+    bool startCodec(AMediaFormat *format) {
+        if (AMediaCodec_configure(mCodec, format, nullptr, nullptr, 0) != AMEDIA_OK ||
+            AMediaCodec_start(mCodec) != AMEDIA_OK) {
+            return false;
+        }
+        mStarted = true;
+        if (mAc3) disableDolbyProcessing(mCodec);
+        return true;
+    }
+
+    /// Replaces the codec with a new one (stop() and start() keep the state
+    /// of Dolby's decoder).
+    bool recreateCodec() {
+        if (mStarted) AMediaCodec_stop(mCodec);
+        mStarted = false;
+        AMediaCodec_delete(mCodec);
+        mCodec = AMediaCodec_createDecoderByType(mMime.c_str());
+        if (!mCodec || !startCodec(mTrackFormat)) {
+            LOGE("Failed to recreate the decoder for %s", mMime.c_str());
+            return false;
+        }
+        return true;
+    }
+
     bool restartExtractor() {
         AMediaExtractor *extractor = AMediaExtractor_new();
         if (!extractor || AMediaExtractor_setDataSourceFd(extractor, mFd, 0, mFileSize) != AMEDIA_OK ||
@@ -263,8 +339,23 @@ private:
     }
 
     int64_t pendingFrame() const {
-        const double raw = static_cast<double>(mPendingPtsUs - mFirstSampleUs) * mFormat.sampleRate / 1e6;
-        return static_cast<int64_t>(std::llround(raw)) - mDelayFrames + static_cast<int64_t>(mPendingOffset);
+        return mPendingRaw - mDelayFrames + static_cast<int64_t>(mPendingOffset);
+    }
+
+    /// Frames from the first sample to the start of an output buffer.
+    int64_t rawFrameAt(int64_t ptsUs) const {
+        return static_cast<int64_t>(
+            std::llround(static_cast<double>(ptsUs - mFirstSampleUs) * mFormat.sampleRate / 1e6));
+    }
+
+    /// Makes the held-back output (mBacklog) the pending PCM.
+    void takeBacklog() {
+        mPending.swap(mBacklog);
+        mPendingFrames = mBacklogFrames;
+        mPendingOffset = 0;
+        mPendingRaw = mBacklogRaw;
+        mBacklog.clear();
+        mBacklogFrames = 0;
     }
 
     bool applyOutputFormat() {
@@ -295,8 +386,8 @@ private:
     }
 
     /// Queues all the input the codec takes, then waits briefly for one
-    /// output buffer and stores it as the pending PCM (the previous pending
-    /// PCM must be consumed). Returns false on a codec error.
+    /// output buffer and stores it as the pending PCM, or holds it back (the
+    /// previous pending PCM must be consumed). Returns false on a codec error.
     bool pump() {
         while (!mInputEOS) {
             const ssize_t index = AMediaCodec_dequeueInputBuffer(mCodec, 0);
@@ -306,6 +397,18 @@ private:
             uint8_t *buffer = AMediaCodec_getInputBuffer(mCodec, static_cast<size_t>(index), &capacity);
             if (!buffer) return false;
             const ssize_t size = AMediaExtractor_readSampleData(mExtractor, buffer, capacity);
+            if (size < 0 && mAc3 && mDrainRepeats < kAc3DrainRepeats && !mLastSample.empty() &&
+                mLastSample.size() <= capacity) {
+                // See kAc3DrainRepeats.
+                std::memcpy(buffer, mLastSample.data(), mLastSample.size());
+                mLastSampleUs += mLastSampleDurationUs;
+                mDrainRepeats++;
+                if (AMediaCodec_queueInputBuffer(mCodec, static_cast<size_t>(index), 0, mLastSample.size(),
+                                                 static_cast<uint64_t>(mLastSampleUs), 0) != AMEDIA_OK) {
+                    return false;
+                }
+                continue;
+            }
             if (size < 0) {
                 mInputEOS = true;
                 if (AMediaCodec_queueInputBuffer(mCodec, static_cast<size_t>(index), 0, 0, 0,
@@ -315,6 +418,11 @@ private:
                 break;
             }
             const int64_t timeUs = AMediaExtractor_getSampleTime(mExtractor);
+            if (mAc3) {
+                if (!mLastSample.empty() && timeUs > mLastSampleUs) mLastSampleDurationUs = timeUs - mLastSampleUs;
+                mLastSample.assign(buffer, buffer + size);
+                mLastSampleUs = timeUs;
+            }
             if (AMediaCodec_queueInputBuffer(mCodec, static_cast<size_t>(index), 0, static_cast<size_t>(size),
                                              static_cast<uint64_t>(timeUs), 0) != AMEDIA_OK) {
                 return false;
@@ -348,30 +456,45 @@ private:
                 } else {
                     const size_t frames = static_cast<size_t>(info.size) / bytesPerFrame;
                     const size_t samples = frames * mFormat.channels;
-                    mPending.resize(samples);
+                    // Timestamps before the first sample's come out clamped
+                    // to 0 from some decoders (Dolby's): those buffers are
+                    // held back and placed right before the first buffer
+                    // with a real timestamp (decoded PCM is contiguous).
+                    const bool clamped = !mAnchored && mFirstSampleUs < 0 && info.presentationTimeUs <= 0;
+                    const size_t base = mBacklog.size();
+                    mBacklog.resize(base + samples);
+                    float *dst = mBacklog.data() + base;
                     const uint8_t *src = buffer + info.offset;
                     if (mEncoding == kPcmEncodingFloat) {
-                        std::memcpy(mPending.data(), src, samples * sizeof(float));
+                        std::memcpy(dst, src, samples * sizeof(float));
                     } else if ((reinterpret_cast<uintptr_t>(src) & 1u) == 0u &&
                                samples <= UINT_MAX) {
                         SoLoud::convertInt16ToFloats(
                             reinterpret_cast<const int16_t *>(src),
-                            mPending.data(),
+                            dst,
                             static_cast<unsigned int>(samples));
                     } else {
                         for (size_t i = 0; i < samples; i++) {
                             int16_t s;
                             std::memcpy(&s, src + i * sizeof(int16_t), sizeof(s));
-                            mPending[i] = s * (1.0f / 32768.0f);
+                            dst[i] = s * (1.0f / 32768.0f);
                         }
                     }
-                    mPendingFrames = frames;
-                    mPendingOffset = 0;
-                    mPendingPtsUs = info.presentationTimeUs;
+                    if (clamped && mBacklogFrames == 0) mBacklogRaw = rawFrameAt(info.presentationTimeUs);
+                    mBacklogFrames += frames;
+                    if (!clamped) {
+                        mBacklogRaw = rawFrameAt(info.presentationTimeUs) - static_cast<int64_t>(base / mFormat.channels);
+                        mAnchored = true;
+                    }
+                    if (!clamped || mBacklogFrames >= kMaxBacklogFrames) takeBacklog();
                     mOutputBuffers++;
                 }
             }
-            if ((info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0) mOutputEOS = true;
+            if ((info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0) {
+                mOutputEOS = true;
+                // Never got a real timestamp: place them by the first one.
+                if (mBacklogFrames > 0) takeBacklog();
+            }
             AMediaCodec_releaseOutputBuffer(mCodec, static_cast<size_t>(index), false);
             return ok;
         }
@@ -391,11 +514,25 @@ private:
     int64_t mFirstSampleUs = 0;
     int64_t mDelayFrames = 0;
 
+    bool mAc3 = false; // AC-3/E-AC-3, see kSeekPrerollFramesAc3, kAc3DrainRepeats
+    std::string mMime;                    // AC-3 only, for recreateCodec()
+    AMediaFormat *mTrackFormat = nullptr; // AC-3 only, for recreateCodec()
+
     std::vector<float> mPending; // interleaved output of the last buffer
     size_t mPendingFrames = 0;
     size_t mPendingOffset = 0;
-    int64_t mPendingPtsUs = 0;
+    int64_t mPendingRaw = 0; // frames from the first sample to mPending[0]
     uint64_t mOutputBuffers = 0;
+
+    std::vector<float> mBacklog; // output with clamped timestamps, see pump()
+    size_t mBacklogFrames = 0;
+    int64_t mBacklogRaw = 0;
+    bool mAnchored = false; // a buffer with a real timestamp came out
+
+    std::vector<uint8_t> mLastSample; // AC-3 only, see kAc3DrainRepeats
+    int64_t mLastSampleUs = 0;
+    int64_t mLastSampleDurationUs = 0;
+    int mDrainRepeats = 0;
 
     uint64_t mNext = 0; // next playable frame read() returns
     bool mInputEOS = false;

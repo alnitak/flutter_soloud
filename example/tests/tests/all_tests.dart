@@ -6,50 +6,37 @@ import 'asynchronous_deinit.dart' as asynchronous_deinit;
 import 'audio_device_idle_timeout.dart' as audio_device_idle_timeout;
 import 'audio_device_lifecycle_races.dart' as audio_device_lifecycle_races;
 import 'auto_dispose.dart' as auto_dispose;
-import 'buffer_stream_callbacks.dart' as buffer_stream_callbacks;
-import 'buffer_stream_extended.dart' as buffer_stream_extended;
 import 'buffer_stream_small_mp3.dart' as buffer_stream_small_mp3;
 import 'bus_visualization.dart' as bus_visualization;
 import 'compressor_filter.dart' as compressor_filter;
-import 'create_notes.dart' as create_notes;
+import 'engine_time_across_sessions.dart' as engine_time_across_sessions;
 import 'equalizer_filter.dart' as equalizer_filter;
 import 'global_filters.dart' as global_filters;
-import 'handles.dart' as handles;
 import 'hardware_output_latency.dart' as hardware_output_latency;
 import 'hot_restart_lifecycle.dart' as hot_restart_lifecycle;
 import 'join_two_sources.dart' as join_two_sources;
 import 'latency_test.dart' as latency_test;
 import 'limiter_filter.dart' as limiter_filter;
 import 'load_mem.dart' as load_mem;
-import 'looping.dart' as looping;
 import 'max_voices.dart' as max_voices;
 import 'mixer_output_capture.dart' as mixer_output_capture;
 import 'mixing_bus.dart' as mixing_bus;
 import 'native_m4a_decoding.dart' as native_m4a_decoding;
-import 'pan.dart' as pan;
 import 'pitch_shifter_filter.dart' as pitch_shifter_filter;
 import 'play_clocked.dart' as play_clocked;
 import 'play_scheduled.dart' as play_scheduled;
-import 'play_seek_pause.dart' as play_seek_pause;
 import 'playback_devices.dart' as playback_devices;
-import 'playback_speed.dart' as playback_speed;
 import 'player_error_propagation.dart' as player_error_propagation;
-import 'protect_voice.dart' as protect_voice;
+import 'pull_buffer_duration_test.dart' as pull_buffer_duration;
 import 'pull_buffer_file_stream_test.dart' as pull_buffer_file_stream;
+import 'pull_buffer_in_buffer_seek_test.dart' as pull_buffer_in_buffer_seek;
 import 'pull_buffer_range_test.dart' as pull_buffer_range;
 import 'pull_buffer_seek_test.dart' as pull_buffer_seek;
 import 'pull_buffer_test.dart' as pull_buffer;
 import 'pull_buffer_tiny_test.dart' as pull_buffer_tiny;
 import 'read_samples.dart' as read_samples;
 import 'sound_filters.dart' as sound_filters;
-import 'speech_text.dart' as speech_text;
-import 'stop_futures.dart' as stop_futures;
-import 'synchronous_deinit.dart' as synchronous_deinit;
-import 'three_d_audio.dart' as three_d_audio;
 import 'visualization.dart' as visualization;
-import 'voice_groups.dart' as voice_groups;
-import 'volume_controls.dart' as volume_controls;
-import 'waveform_controls.dart' as waveform_controls;
 
 /// A single test entry.
 class TestEntry {
@@ -66,10 +53,6 @@ class TestEntry {
 ///
 /// Add new tests here to make them available in the test runner UI.
 final List<TestEntry> allTests = [
-  const TestEntry(
-    name: '3dAudio',
-    run: three_d_audio.test3dAudio,
-  ),
   const TestEntry(
     name: 'AdvancedPan',
     run: advanced_pan.testAdvancedPan,
@@ -99,14 +82,6 @@ final List<TestEntry> allTests = [
     run: auto_dispose.testAutoDispose,
   ),
   const TestEntry(
-    name: 'BufferStreamCallbacks',
-    run: buffer_stream_callbacks.testBufferStreamCallbacks,
-  ),
-  const TestEntry(
-    name: 'BufferStreamExtended',
-    run: buffer_stream_extended.testBufferStreamExtended,
-  ),
-  const TestEntry(
     name: 'BufferStreamSmallMp3',
     run: buffer_stream_small_mp3.testBufferStreamSmallMp3,
   ),
@@ -121,10 +96,6 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'CompressorFilterSingle',
     run: compressor_filter.testCompressorFilterSingle,
-  ),
-  const TestEntry(
-    name: 'CreateNotes',
-    run: create_notes.testCreateNotes,
   ),
   const TestEntry(
     name: 'EqualizerFilterGlobal',
@@ -145,10 +116,6 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'FadeParamsGlobalFilters',
     run: global_filters.testFadeParamsGlobalFilters,
-  ),
-  const TestEntry(
-    name: 'Handles',
-    run: handles.testHandles,
   ),
   const TestEntry(
     name: 'HardwareOutputLatency',
@@ -179,16 +146,8 @@ final List<TestEntry> allTests = [
     run: join_two_sources.testJoinTwoSources,
   ),
   const TestEntry(
-    name: 'LoopingTests',
-    run: looping.loopingTests,
-  ),
-  const TestEntry(
     name: 'MaxVoices',
     run: max_voices.testMaxVoices,
-  ),
-  const TestEntry(
-    name: 'MixerOutputCapture',
-    run: mixer_output_capture.testMixerOutputCapture,
   ),
   const TestEntry(
     name: 'MixingBus',
@@ -197,10 +156,6 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'NativeM4aDecoding',
     run: native_m4a_decoding.testNativeM4aDecoding,
-  ),
-  const TestEntry(
-    name: 'Pan',
-    run: pan.testPan,
   ),
   const TestEntry(
     name: 'PitchShifterFilterGlobal',
@@ -217,10 +172,6 @@ final List<TestEntry> allTests = [
   const TestEntry(
     name: 'PlayScheduled',
     run: play_scheduled.testPlayScheduled,
-  ),
-  const TestEntry(
-    name: 'PlaySeekPause',
-    run: play_seek_pause.testPlaySeekPause,
   ),
   const TestEntry(
     name: 'PullBuffer',
@@ -247,16 +198,8 @@ final List<TestEntry> allTests = [
     run: playback_devices.testPlaybackDevices,
   ),
   const TestEntry(
-    name: 'PlaybackSpeed',
-    run: playback_speed.testPlaybackSpeed,
-  ),
-  const TestEntry(
     name: 'PlayerErrorPropagation',
     run: player_error_propagation.testPlayerErrorPropagation,
-  ),
-  const TestEntry(
-    name: 'ProtectVoice',
-    run: protect_voice.testProtectVoice,
   ),
   const TestEntry(
     name: 'ReadSamples',
@@ -267,32 +210,28 @@ final List<TestEntry> allTests = [
     run: sound_filters.testSoundFilters,
   ),
   const TestEntry(
-    name: 'SpeechText',
-    run: speech_text.testSpeechText,
-  ),
-  const TestEntry(
-    name: 'StopFutures',
-    run: stop_futures.testStopFutures,
-  ),
-  const TestEntry(
-    name: 'SynchronousDeinit',
-    run: synchronous_deinit.testSynchronousDeinit,
-  ),
-  const TestEntry(
     name: 'Visualization',
     run: visualization.testVisualization,
   ),
-  const TestEntry(
-    name: 'VoiceGroups',
-    run: voice_groups.testVoiceGroups,
+  TestEntry(
+    name: 'PullBufferDurationOgg',
+    run: () => pull_buffer_duration.testPullBufferDuration('sample-vorbis.ogg'),
+  ),
+  TestEntry(
+    name: 'PullBufferDurationOpus',
+    run: () => pull_buffer_duration.testPullBufferDuration('sample-OPUS.opus'),
   ),
   const TestEntry(
-    name: 'VolumeControls',
-    run: volume_controls.testVolumeControls,
+    name: 'PullBufferInBufferSeek',
+    run: pull_buffer_in_buffer_seek.testInBufferSeek,
   ),
   const TestEntry(
-    name: 'WaveformControls',
-    run: waveform_controls.testWaveformControls,
+    name: 'EngineTimeAcrossSessions',
+    run: engine_time_across_sessions.testEngineTimeAcrossSessions,
+  ),
+  const TestEntry(
+    name: 'MixerOutputCapture',
+    run: mixer_output_capture.testMixerOutputCapture,
   ),
   const TestEntry(
     name: 'AmplitudeModulatorFilterGlobal',

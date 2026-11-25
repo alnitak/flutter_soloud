@@ -2,15 +2,19 @@
 
 #include "native_audio_decoder.h"
 #include "../audiobuffer/aac_stream_decoder.h"
+#include "../native_stream/m4a_gapless.h"
 #include <android/log.h>
 #include <media/NdkMediaCodec.h>
 #include <media/NdkMediaExtractor.h>
 #include <media/NdkMediaFormat.h>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <dlfcn.h>
 #include <exception>
 #include <fcntl.h>
 #include <memory>
@@ -51,6 +55,32 @@ constexpr int64_t kTruncationSlackUs = 50000;
 // Decoded audio beyond the container duration is trimmed only up to this many
 // frames (AAC end padding the extractor did not report as encoder-padding).
 constexpr size_t kMaxTrailingPaddingFrames = 4096;
+// Dolby's AC-3/E-AC-3 decoder (c2.dolby.eac3.decoder, Samsung) holds one
+// frame back and drops it at end of stream. The last access unit is queued
+// again this many times before the end-of-stream flag so the real frames
+// come out; what the copies decode to lies past the valid length and is cut.
+// Same as the streaming decoder (native_stream_decoder_android.cpp).
+constexpr int kAc3DrainRepeats = 3;
+
+bool isAc3Family(const std::string &mime) {
+    return mime == "audio/ac3" || mime == "audio/eac3" || mime == "audio/eac3-joc";
+}
+
+/// Dolby's decoders on Samsung devices run Dolby Atmos processing (DAX) on
+/// the decoded PCM by default, a volume leveler. Turned off so memory and
+/// disk mode play the same PCM. AMediaCodec_setParameters is API 26 (minSdk
+/// is 21); unknown keys are ignored by other decoders.
+void disableDolbyProcessing(AMediaCodec *codec) {
+    using SetParametersFn = media_status_t (*)(AMediaCodec *, const AMediaFormat *);
+    static const auto setParameters =
+        reinterpret_cast<SetParametersFn>(dlsym(RTLD_DEFAULT, "AMediaCodec_setParameters"));
+    if (!setParameters) return;
+    AMediaFormat *params = AMediaFormat_new();
+    if (!params) return;
+    AMediaFormat_setInt32(params, "vendor.dolby.dax-state.value", 0);
+    setParameters(codec, params);
+    AMediaFormat_delete(params);
+}
 
 struct ExtractorDeleter {
     void operator()(AMediaExtractor *e) const { AMediaExtractor_delete(e); }
@@ -128,6 +158,20 @@ public:
 
     void truncate(size_t frames) {
         if (frames < mFrames) mFrames = frames;
+    }
+
+    /// Removes the first [frames] frames.
+    void dropFront(size_t frames) {
+        if (frames == 0) return;
+        if (frames >= mFrames) {
+            mFrames = 0;
+            return;
+        }
+        for (unsigned int c = 0; c < mChannels; ++c) {
+            float *ch = mData + c * mCapacity;
+            std::memmove(ch, ch + frames, (mFrames - frames) * sizeof(float));
+        }
+        mFrames -= frames;
     }
 
     bool appendPcm16(const uint8_t *src, size_t frameCount, std::string &error) {
@@ -247,7 +291,9 @@ private:
     unsigned int mChannels = 0;
 };
 
-DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
+// [gapless]: the container's edit list / iTunSMPB, when it is an MP4 that
+// declares one (nullptr otherwise).
+DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor, const M4aGaplessInfo *gapless) {
     if (!extractor) return failure("Invalid AMediaExtractor");
 
     const size_t numTracks = AMediaExtractor_getTrackCount(extractor);
@@ -286,6 +332,21 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
     status = AMediaCodec_start(codec.get());
     if (status != AMEDIA_OK) return failure("AMediaCodec_start failed: " + std::to_string(status));
     codec.setStarted();
+
+    // AC-3/E-AC-3 output is placed by its timestamps, like the streaming
+    // decoder does: Dolby's decoder keeps its own delay and clamps the
+    // timestamps of the first buffers to 0, so the codec's output does not
+    // start at the first playable frame.
+    const bool ac3 = isAc3Family(mime);
+    if (ac3) disableDolbyProcessing(codec.get());
+    int64_t firstSampleUs = AMediaExtractor_getSampleTime(extractor);
+    if (firstSampleUs < 0 && AMediaExtractor_getSampleTrackIndex(extractor) < 0) firstSampleUs = 0;
+    std::vector<uint8_t> lastSample; // AC-3 only, see kAc3DrainRepeats
+    int64_t lastQueuedUs = 0;
+    int64_t lastQueuedDurationUs = 0;
+    int drainRepeats = 0;
+    bool anchored = false;     // an output buffer with a real timestamp came out
+    int64_t firstOutputRaw = 0; // frames from the first sample to pcm frame 0
 
     PlanarPcmBuffer pcm;
     std::string error;
@@ -366,6 +427,21 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
             ssize_t sampleSize = AMediaExtractor_readSampleData(extractor, inBuf, inBufSize);
             int64_t presentationTimeUs = 0;
             uint32_t flags = 0;
+            if (sampleSize < 0 && ac3 && drainRepeats < kAc3DrainRepeats && !lastSample.empty() &&
+                lastSample.size() <= inBufSize &&
+                AMediaExtractor_getSampleTrackIndex(extractor) < 0) {
+                // See kAc3DrainRepeats.
+                std::memcpy(inBuf, lastSample.data(), lastSample.size());
+                lastQueuedUs += lastQueuedDurationUs;
+                drainRepeats++;
+                status = AMediaCodec_queueInputBuffer(codec.get(), static_cast<size_t>(inIndex), 0,
+                                                      lastSample.size(), static_cast<uint64_t>(lastQueuedUs), 0);
+                if (status != AMEDIA_OK) {
+                    return failure("AMediaCodec_queueInputBuffer failed: " + std::to_string(status));
+                }
+                progressed = true;
+                continue;
+            }
             if (sampleSize < 0) {
                 // A pending sample that cannot be read means truncated media or
                 // an oversized sample, not a clean end of stream.
@@ -385,7 +461,16 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
                 flags = AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM;
             } else {
                 presentationTimeUs = AMediaExtractor_getSampleTime(extractor);
-                if (presentationTimeUs < 0) presentationTimeUs = 0;
+                if (ac3) {
+                    // Real (possibly negative) timestamps, as the streaming
+                    // decoder queues them, so the output can be placed.
+                    if (!lastSample.empty() && presentationTimeUs > lastQueuedUs) {
+                        lastQueuedDurationUs = presentationTimeUs - lastQueuedUs;
+                    }
+                    lastSample.assign(inBuf, inBuf + sampleSize);
+                    lastQueuedUs = presentationTimeUs;
+                }
+                if (presentationTimeUs < 0 && !ac3) presentationTimeUs = 0;
                 if (lastSampleTimeUs >= 0 && presentationTimeUs - lastSampleTimeUs > maxSampleDeltaUs) {
                     maxSampleDeltaUs = presentationTimeUs - lastSampleTimeUs;
                 }
@@ -442,6 +527,16 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
                 } else {
                     const uint8_t *src = outBuf + info.offset;
                     const size_t frameCount = static_cast<size_t>(info.size) / bytesPerFrame;
+                    // Buffers before the first sample's time come out with
+                    // the timestamp clamped to 0; the first real one places
+                    // all of the (contiguous) output before it.
+                    const bool clamped = firstSampleUs < 0 && info.presentationTimeUs <= 0;
+                    if (ac3 && !anchored && (!clamped || pcm.frames() == 0)) {
+                        firstOutputRaw = static_cast<int64_t>(std::llround(
+                            static_cast<double>(info.presentationTimeUs - firstSampleUs) * sampleRate / 1e6)) -
+                            static_cast<int64_t>(pcm.frames());
+                        if (!clamped) anchored = true;
+                    }
                     if (encoding == kPcmEncodingFloat) {
                         pcm.appendFloat(src, frameCount, error);
                     } else {
@@ -470,15 +565,31 @@ DecodedAudioData decodeFromExtractor(AMediaExtractor *extractor) {
     if (!outputConfigured || pcm.frames() == 0) return failure("No audio frames decoded from stream");
 
     // Priming is trimmed by the codec (encoder-delay), but end padding is only
-    // trimmed when the container reports encoder-padding (iTunSMPB). Fall back
-    // to the container duration (e.g. an MP4 edit list) for small excesses.
-    if (durationUs > 0) {
+    // trimmed when the extractor reports encoder-padding (iTunSMPB). For an
+    // MP4 the valid length is the edit list's (or iTunSMPB's); otherwise fall
+    // back to the extractor's duration, which for an MP4 is the media
+    // duration, priming and padding included. Only small excesses are cut.
+    size_t expectedFrames = 0;
+    uint64_t delayFrames = 0, validFrames = 0;
+    const bool haveGapless = gapless != nullptr &&
+        gapless->resolve(static_cast<double>(sampleRate), delayFrames, validFrames) && validFrames > 0;
+    if (haveGapless) {
+        expectedFrames = static_cast<size_t>(validFrames);
+    } else if (durationUs > 0) {
         const double expected = static_cast<double>(durationUs) * sampleRate / 1e6;
-        const size_t expectedFrames = static_cast<size_t>(expected + 0.5);
-        if (expectedFrames > 0 && pcm.frames() > expectedFrames &&
-            pcm.frames() - expectedFrames <= kMaxTrailingPaddingFrames) {
-            pcm.truncate(expectedFrames);
-        }
+        expectedFrames = static_cast<size_t>(expected + 0.5);
+    }
+    if (ac3) {
+        // pcm frame 0 is firstOutputRaw frames after the first sample, and
+        // the playable audio starts delayFrames after it (the streaming
+        // decoder's mapping). The drain copies (kAc3DrainRepeats) are cut by
+        // the valid length whatever their size.
+        const int64_t skip = static_cast<int64_t>(delayFrames) - firstOutputRaw;
+        if (skip > 0) pcm.dropFront(static_cast<size_t>(skip));
+        if (expectedFrames > 0) pcm.truncate(expectedFrames);
+    } else if (expectedFrames > 0 && pcm.frames() > expectedFrames &&
+               pcm.frames() - expectedFrames <= kMaxTrailingPaddingFrames) {
+        pcm.truncate(expectedFrames);
     }
 
     DecodedAudioData result;
@@ -499,7 +610,9 @@ DecodedAudioData decodeFromFd(int fd, off64_t length) {
         return failure("AMediaExtractor_setDataSourceFd failed (unsupported or corrupt media): " +
                        std::to_string(status));
     }
-    return decodeFromExtractor(extractor.get());
+    M4aGaplessInfo gapless;
+    const bool isMp4 = parseM4aGaplessFd(fd, gapless);
+    return decodeFromExtractor(extractor.get(), isMp4 ? &gapless : nullptr);
 }
 
 DecodedAudioData decodeElementaryStream(std::vector<unsigned char> buffer, DetectedType type) {

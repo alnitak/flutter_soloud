@@ -47,9 +47,38 @@ namespace SoLoud
 		{
 			return -1;
 		}
+		// ###### flutter_soloud local patch (filter instance allocation) ######
+		// Create the filter instances before anything is changed: this runs
+		// with the audio mutex held, and a createInstance() that throws
+		// (std::bad_alloc) must neither leave the mutex locked in the caller
+		// nor a half-initialized voice behind. The failure is reported like
+		// "no free voice" (the caller deletes aInstance).
+		FilterInstance *filters[FILTERS_PER_STREAM] = {};
+		try
+		{
+			for (int i = 0; i < FILTERS_PER_STREAM; i++)
+			{
+				if (aSound.mFilter[i])
+				{
+					filters[i] = aSound.mFilter[i]->createInstance();
+				}
+			}
+		}
+		catch (...)
+		{
+			for (int i = 0; i < FILTERS_PER_STREAM; i++)
+			{
+				delete filters[i];
+			}
+			return -1;
+		}
 		int ch = findFreeVoice_internal();
 		if (ch < 0)
 		{
+			for (int i = 0; i < FILTERS_PER_STREAM; i++)
+			{
+				delete filters[i];
+			}
 			return -1;
 		}
 		if (!aSound.mAudioSourceID)
@@ -97,9 +126,9 @@ namespace SoLoud
 
 		for (i = 0; i < FILTERS_PER_STREAM; i++)
 		{
-			if (aSound.mFilter[i])
+			if (filters[i])
 			{
-				mVoice[ch]->mFilter[i] = aSound.mFilter[i]->createInstance();
+				mVoice[ch]->mFilter[i] = filters[i];
 			}
 		}
 
@@ -205,10 +234,15 @@ namespace SoLoud
 		}
 		else
 		{
-			long long expected = mClockedAnchorSample +
-				(long long)floor((aSoundTime - mClockedAnchorTime) * mSamplerate + 0.5);
-			delay = expected - now;
-			if (delay < -2 * (long long)mSamplerate ||
+			// flutter_soloud: an offset out of the range of long long (or a
+			// NaN) is a jump like any other; converting it is undefined.
+			const double offset =
+				floor((aSoundTime - mClockedAnchorTime) * mSamplerate + 0.5);
+			const bool offsetInRange = offset > -1e15 && offset < 1e15;
+			if (offsetInRange)
+				delay = mClockedAnchorSample + (long long)offset - now;
+			if (!offsetInRange ||
+				delay < -2 * (long long)mSamplerate ||
 				delay > 2 * (long long)mSamplerate)
 			{
 				// The caller's clock jumped (eg the app was paused):
@@ -356,13 +390,17 @@ namespace SoLoud
 		// anchor and no re-anchor guard: the given time is already on the
 		// engine's own clock, so sounds can be scheduled arbitrarily far
 		// in the future.
-		long long delay = (long long)floor((aEngineTime - mStreamTime) * mSamplerate + 0.5);
-		if (delay < 0)
+		// flutter_soloud: clamped in floating point, because converting a
+		// NaN or out-of-range value to an integer is undefined.
+		const double delay = floor((aEngineTime - mStreamTime) * mSamplerate + 0.5);
+		if (!(delay > 0))
 		{
-			// The scheduled time is already in the past: play as soon
-			// as possible.
-			delay = 0;
+			// The scheduled time is already in the past (or NaN): play as
+			// soon as possible.
+			return 0;
 		}
+		if (delay >= 4294967295.0)
+			return 0xFFFFFFFFu;
 		return (unsigned int)delay;
 	}
 
@@ -474,8 +512,14 @@ namespace SoLoud
 			singleres = mVoice[ch]->seek(aSeconds, mScratch.mData, mScratchSize);
 		if (singleres == SO_NO_ERROR)
 		{
-			mVoice[ch]->mSourceSamplePosition = (uint64_t)floor(
-				aSeconds * mVoice[ch]->mBaseSamplerate);
+			// flutter_soloud: clamped before the conversion, which is
+			// undefined for a negative, huge or NaN value.
+			const double samplePosition =
+				floor(aSeconds * mVoice[ch]->mBaseSamplerate);
+			mVoice[ch]->mSourceSamplePosition =
+				!(samplePosition > 0) ? 0
+				: samplePosition >= 18446744073709549568.0 ? UINT64_MAX
+				: (uint64_t)samplePosition;
 		}
 		// ###### flutter_soloud local patch (retroactive re-mix) ######
 		// A rollback restores the source position from before the seek.
@@ -511,6 +555,12 @@ namespace SoLoud
 				if (mVoice[i] && mVoice[i]->mAudioSourceID == aSound.mAudioSourceID)
 				{
 					stopVoice_internal(i);
+				}
+				else if (mVoice[i])
+				{
+					// ###### flutter_soloud local patch (queued source lifetime) ######
+					// Instances waiting in a Queue read their source too.
+					mVoice[i]->stopChildAudioSource_internal(aSound.mAudioSourceID);
 				}
 			}
 			unlockAudioMutex_internal();

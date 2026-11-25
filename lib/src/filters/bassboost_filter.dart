@@ -34,7 +34,7 @@ abstract class _BassBoostInternal extends FilterBase {
 class BassBoostSingle extends _BassBoostInternal {
   BassBoostSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -43,7 +43,7 @@ class BassBoostSingle extends _BassBoostInternal {
     BassBoostEnum.wet.max,
   );
 
-  FilterParam boost({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam boost({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

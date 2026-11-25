@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <atomic>
 #include <climits>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
 #include <map>
@@ -48,7 +49,16 @@
 #include <mutex>
 #include <shared_mutex>
 #include <stdio.h>
+#include <string.h>
 #include <thread>
+
+// Strings handed to Dart, which frees them with free(). MSVC deprecates the
+// POSIX name (C4996); _strdup allocates with malloc() as well.
+#if defined(_MSC_VER)
+#define soloud_strdup _strdup
+#else
+#define soloud_strdup strdup
+#endif
 
 #if defined(__ANDROID__)
 #include <jni.h>
@@ -232,6 +242,41 @@ namespace
     if (nativeInitOwnerEngineId == claim.ownerEngineId &&
         engineInitGeneration == claim.generation)
       nativeInitOwnerEngineId = kNoEngineId;
+  }
+
+  /// Whether every one of [values] is a finite number. Dart doubles can be
+  /// NaN or infinite; SoLoud converts some of them to integers, which is
+  /// undefined for those values, and mixes the others straight into the
+  /// output.
+  template <typename... T>
+  bool allFinite(T... values)
+  {
+    return (std::isfinite(static_cast<double>(values)) && ...);
+  }
+
+  /// Run [body], the work of an export that returns PlayerErrors, so that no
+  /// C++ exception leaves it: Dart calls the exports through FFI, where an
+  /// exception aborts the process.
+  template <typename F>
+  PlayerErrors noThrow(F &&body) noexcept
+  {
+    try
+    {
+      return body();
+    }
+    catch (const std::bad_alloc &)
+    {
+      return outOfMemory;
+    }
+    catch (const std::length_error &)
+    {
+      // A size beyond what a container can hold.
+      return outOfMemory;
+    }
+    catch (...)
+    {
+      return unknownError;
+    }
   }
 } // namespace
 
@@ -574,6 +619,8 @@ extern "C"
   /// different web worker).
   FFI_PLUGIN_EXPORT void voiceEndedCallback(unsigned int *handle)
   {
+    if (handle == nullptr)
+      return;
 #if defined(__EMSCRIPTEN__) && defined(MA_ENABLE_AUDIO_WORKLETS)
     if (!emscripten_is_main_browser_thread())
     {
@@ -624,7 +671,7 @@ extern "C"
     // [e,name,n] pointers must be deleted on Dart.
     PlayerErrors *e = (PlayerErrors *)malloc(sizeof(PlayerErrors));
     *e = error;
-    char *name = strdup(completeFileName);
+    char *name = soloud_strdup(completeFileName);
     unsigned int *n = (unsigned int *)malloc(sizeof(unsigned int));
     *n = *hash;
     uint64_t *ts = (uint64_t *)malloc(sizeof(uint64_t));
@@ -868,6 +915,11 @@ extern "C"
   {
     if (captureId != nullptr)
       *captureId = 0;
+    // Dart passes the format as a plain integer and the sizes as signed ones:
+    // a negative size would become a huge size_t below.
+    if (format < MIXER_OUTPUT_PCM_F32LE || format > MIXER_OUTPUT_WAV ||
+        bufferSizeBytes <= 0 || notificationThresholdBytes <= 0)
+      return invalidParameter;
     MixerOutputFormat outputFormat = static_cast<MixerOutputFormat>(format);
 
     // The capture copies the engine's own mix as the device callback hands it
@@ -966,11 +1018,12 @@ extern "C"
     }
 #endif
 
-    const PlayerErrors result = capture.start(
-        outputFormat, sr, ch,
-        static_cast<size_t>(bufferSizeBytes),
-        static_cast<size_t>(notificationThresholdBytes),
-        chunkPCMFrames);
+    const PlayerErrors result = noThrow([&]
+                                        { return capture.start(
+                                              outputFormat, sr, ch,
+                                              static_cast<size_t>(bufferSizeBytes),
+                                              static_cast<size_t>(notificationThresholdBytes),
+                                              chunkPCMFrames); });
 #ifndef __EMSCRIPTEN__
     if (result != noError && port != nullptr)
     {
@@ -1760,8 +1813,11 @@ extern "C"
                                                     int *n_devices,
                                                     int capacity)
   {
+    if (n_devices == nullptr)
+      return;
     *n_devices = 0;
-    if (capacity <= 0)
+    if (capacity <= 0 || devicesName == nullptr || deviceId == nullptr ||
+        isDefault == nullptr)
       return;
 
     // Deliberately not routed through the global `player`: `dispose()` now runs
@@ -1795,7 +1851,7 @@ extern "C"
       if (hasSpecialChar)
         continue;
 
-      devicesName[numDevices] = strdup(d[i].name.c_str());
+      devicesName[numDevices] = soloud_strdup(d[i].name.c_str());
       isDefault[numDevices] = (int *)malloc(sizeof(int));
       *isDefault[numDevices] = d[i].isDefault;
       deviceId[numDevices] = (int *)malloc(sizeof(int));
@@ -1867,9 +1923,12 @@ extern "C"
   {
     for (int i = 0; i < n_devices; i++)
     {
-      free(deviceId[i]);
-      free(isDefault[i]);
-      free(devicesName[i]);
+      if (deviceId != nullptr)
+        free(deviceId[i]);
+      if (isDefault != nullptr)
+        free(isDefault[i]);
+      if (devicesName != nullptr)
+        free(devicesName[i]);
     }
   }
 
@@ -1895,6 +1954,11 @@ extern "C"
       clearDartCallbackPointersLocked();
     }
     stopCaptureThreads();
+    {
+      // The capture's header belongs to this engine session.
+      std::lock_guard<std::mutex> mixerGuard(mixer_lifecycle_mutex);
+      MixerOutput::instance().clearWavHeader();
+    }
 
     // Nothing is left for a FlutterEngine to own. A detach arriving after this
     // finds no claim and correctly declines to tear anything down; the next
@@ -2114,7 +2178,7 @@ extern "C"
 
 #if defined(SOLOUD_LIFECYCLE_TEST_HOOKS)
   /// Test-only entry points, compiled out of every shipping build. See
-  /// `test/engine_lifecycle_test.cpp`.
+  /// `test/common/engine_lifecycle_test.cpp`.
   ///
   /// The interleavings that matter on this path are between a lifecycle hook
   /// running on the platform thread and native work that already holds
@@ -2489,11 +2553,22 @@ extern "C"
              "Please report the bug.\n");
       return;
     }
-
-    Player::PendingSound pending = Player::decodeFile(
-        completeFileName, loadIntoMem, ticket.sampleRate, ticket.channels);
+    char noName[] = "";
     unsigned int hash = 0;
-    PlayerErrors error = finishSoundLoad(ticket, std::move(pending), hash);
+    if (completeFileName == nullptr)
+    {
+      fileLoadedCallback(invalidParameter, noName, &hash, counter,
+                         ticket.callbackGeneration);
+      return;
+    }
+
+    const PlayerErrors error = noThrow([&]
+                                       { return finishSoundLoad(
+                                             ticket,
+                                             Player::decodeFile(completeFileName, loadIntoMem,
+                                                                ticket.sampleRate,
+                                                                ticket.channels),
+                                             hash); });
     fileLoadedCallback(error, completeFileName, (unsigned int *)&hash, counter,
                        ticket.callbackGeneration);
   }
@@ -2518,16 +2593,21 @@ extern "C"
                                               int loadIntoMem,
                                               unsigned int *hash)
   {
-    *hash = 0;
+    if (hash != nullptr)
+      *hash = 0;
     SoundLoadTicket ticket;
     // this check is already been done in Dart
     if (!beginSoundLoad(ticket))
       return backendNotInited;
-    return finishSoundLoad(
-        ticket,
-        Player::decodeMem(uniqueName, buffer, length, loadIntoMem != 0,
-                          ticket.sampleRate, ticket.channels),
-        *hash);
+    if (hash == nullptr || uniqueName == nullptr)
+      return nullPointer;
+    return noThrow([&]
+                   { return finishSoundLoad(
+                         ticket,
+                         Player::decodeMem(uniqueName, buffer, length,
+                                           loadIntoMem != 0, ticket.sampleRate,
+                                           ticket.channels),
+                         *hash); });
   }
 
   /// Load 2 audios, convert to mono if needed, and join them into a single stereo AudioSource.
@@ -2539,15 +2619,20 @@ extern "C"
                                                      int length2,
                                                      unsigned int *hash)
   {
-    *hash = 0;
+    if (hash != nullptr)
+      *hash = 0;
     SoundLoadTicket ticket;
     if (!beginSoundLoad(ticket))
       return backendNotInited;
-    return finishSoundLoad(
-        ticket,
-        Player::decodeJoinedSources(uniqueName, mem1, mem2, length1, length2,
-                                    ticket.sampleRate),
-        *hash);
+    if (hash == nullptr || uniqueName == nullptr)
+      return nullPointer;
+    return noThrow([&]
+                   { return finishSoundLoad(
+                         ticket,
+                         Player::decodeJoinedSources(uniqueName, mem1, mem2,
+                                                     length1, length2,
+                                                     ticket.sampleRate),
+                         *hash); });
   }
 
   /// Set up an audio stream.
@@ -2589,10 +2674,23 @@ extern "C"
                   dartOnBufferingCallback_t onBufferingCallback,
                   dartOnMetadataCallback_t onMetadataCallback)
   {
+    if (hash != nullptr)
+      *hash = 0;
     std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (hash == nullptr)
+      return nullPointer;
+    // The enums travel as plain integers. Every format needs a frame size
+    // (the buffer is cut to whole frames), so 0 channels would divide by 0.
+    if (maxBufferSize == 0 ||
+        (bufferingType != BufferingType::PRESERVED &&
+         bufferingType != BufferingType::RELEASED) ||
+        !(bufferingTimeNeeds >= 0 && std::isfinite(bufferingTimeNeeds)) ||
+        format < BufferType::PCM_F32LE || format > BufferType::AUTO ||
+        sampleRate == 0 || channels == 0 || channels > MAX_CHANNELS)
+      return invalidParameter;
     unsigned int bytesPerSample = 4; // Default to 4 bytes for PCM_F32LE
     switch (format)
     {
@@ -2615,10 +2713,11 @@ extern "C"
     }
     PCMformat dataType = {sampleRate, channels, bytesPerSample,
                           (BufferType)format};
-    PlayerErrors e = (PlayerErrors)player.get()->setBufferStream(
-        *hash, maxBufferSize, (BufferingType)bufferingType, bufferingTimeNeeds,
-        dataType, onBufferingCallback, onMetadataCallback);
-    return e;
+    return noThrow([&]
+                   { return player.get()->setBufferStream(
+                         *hash, maxBufferSize, (BufferingType)bufferingType,
+                         bufferingTimeNeeds, dataType, onBufferingCallback,
+                         onMetadataCallback); });
   }
 
   // Resets the buffer of the data stream.
@@ -2627,7 +2726,8 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    return player.get()->resetBufferStream(hash);
+    return noThrow([&]
+                   { return player.get()->resetBufferStream(hash); });
   }
 
   /// Get the time consumed by the stream of a type `BufferingType.RELEASED`with
@@ -2675,8 +2775,8 @@ extern "C"
   ///   ```
   ///
   /// [hash] the hash of the stream sound.
-  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
-  /// is the most used value.
+  /// [icyMetaInt] the icy metadata integer value. There is no default:
+  /// nothing is stripped until it is set (16000 is a common value).
   FFI_PLUGIN_EXPORT enum PlayerErrors setBufferIcyMetaInt(unsigned int hash,
                                                           int icyMetaInt)
   {
@@ -2684,7 +2784,8 @@ extern "C"
       return backendNotInited;
     if (icyMetaInt < 0)
       icyMetaInt = 0;
-    return player.get()->setBufferIcyMetaInt(hash, icyMetaInt);
+    return noThrow([&]
+                   { return player.get()->setBufferIcyMetaInt(hash, icyMetaInt); });
   }
 
   /// [audioSizeBytes] the total size in **bytes** of the original encoded or
@@ -2712,22 +2813,33 @@ extern "C"
       dartOnMoreDataIsNeededCallback_t onMoreDataIsNeededCallback,
       dartOnAudioDurationCallback_t onAudioDurationCallback)
   {
+    if (hash != nullptr)
+      *hash = 0;
     std::lock_guard<std::mutex> guard_init(init_deinit_mutex);
     std::lock_guard<std::mutex> guard_load(loadMutex);
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    PlayerErrors e = (PlayerErrors)player.get()->setPullBufferStream(
-        *hash, bufferSizeBytes, bufferTriggerPosition, sampleRate, channels,
-        (BufferType)format, audioSizeBytes, onBufferingCallback,
-        onMetadataCallback, onMoreDataIsNeededCallback, onAudioDurationCallback);
-    return e;
+    if (hash == nullptr)
+      return nullPointer;
+    // The format travels as a plain integer.
+    if (format < BufferType::PCM_F32LE || format > BufferType::AUTO ||
+        channels > MAX_CHANNELS)
+      return invalidParameter;
+    return noThrow([&]
+                   { return player.get()->setPullBufferStream(
+                         *hash, bufferSizeBytes, bufferTriggerPosition,
+                         sampleRate, channels, (BufferType)format,
+                         audioSizeBytes, onBufferingCallback,
+                         onMetadataCallback, onMoreDataIsNeededCallback,
+                         onAudioDurationCallback); });
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors resetPullBufferStream(unsigned int hash)
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    return player.get()->resetPullBufferStream(hash);
+    return noThrow([&]
+                   { return player.get()->resetPullBufferStream(hash); });
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
@@ -2736,7 +2848,11 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    return player.get()->addPullBufferDataStream(hash, data, aDataLen, offset);
+    if (data == nullptr && aDataLen > 0)
+      return nullPointer;
+    return noThrow([&]
+                   { return player.get()->addPullBufferDataStream(
+                         hash, data, aDataLen, offset); });
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
@@ -2753,7 +2869,11 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    return player.get()->addAudioDataStream(hash, data, aDataLen);
+    if (data == nullptr && aDataLen > 0)
+      return nullPointer;
+    return noThrow([&]
+                   { return player.get()->addAudioDataStream(hash, data,
+                                                             aDataLen); });
   }
 
   // Set the end of the data stream.
@@ -2762,7 +2882,8 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    return player.get()->setDataIsEnded(hash);
+    return noThrow([&]
+                   { return player.get()->setDataIsEnded(hash); });
   }
 
   // Get the current buffer size in bytes of this sound with hash [hash].
@@ -2770,8 +2891,12 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors getBufferSize(unsigned int hash,
                                                     unsigned int *sizeInBytes)
   {
+    if (sizeInBytes != nullptr)
+      *sizeInBytes = 0;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (sizeInBytes == nullptr)
+      return nullPointer;
     return player.get()->getBufferSize(hash, sizeInBytes);
   }
 
@@ -2795,10 +2920,17 @@ extern "C"
                                                    float scale, float detune,
                                                    unsigned int *hash)
   {
+    if (hash != nullptr)
+      *hash = 0;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    return (PlayerErrors)player.get()->loadWaveform(waveform, superWave, scale,
-                                                    detune, *hash);
+    if (hash == nullptr)
+      return nullPointer;
+    if (!allFinite(scale, detune))
+      return invalidParameter;
+    return noThrow([&]
+                   { return player.get()->loadWaveform(waveform, superWave,
+                                                       scale, detune, *hash); });
   }
 
   /// Set the scale of an already loaded waveform identified by [hash]
@@ -2810,6 +2942,8 @@ extern "C"
     if (player.get() == nullptr || !player.get()->isInited())
       return;
 
+    if (!allFinite(newScale))
+      return;
     player.get()->setWaveformScale(hash, newScale);
   }
 
@@ -2822,6 +2956,8 @@ extern "C"
     if (player.get() == nullptr || !player.get()->isInited())
       return;
 
+    if (!allFinite(newDetune))
+      return;
     player.get()->setWaveformDetune(hash, newDetune);
   }
 
@@ -2880,9 +3016,14 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors speechText(char *textToSpeech,
                                                  unsigned int *handle)
   {
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    return (PlayerErrors)player.get()->textToSpeech(textToSpeech, *handle);
+    if (textToSpeech == nullptr || handle == nullptr)
+      return nullPointer;
+    return noThrow([&]
+                   { return player.get()->textToSpeech(textToSpeech, *handle); });
   }
 
   /// Switch pause state for an already loaded sound identified by [handle]
@@ -2943,6 +3084,8 @@ extern "C"
     if (player.get() == nullptr || !player.get()->isInited() ||
         !player.get()->isValidHandle(handle))
       return;
+    if (!allFinite(speed))
+      return;
     player.get()->setRelativePlaySpeed(handle, speed);
   }
 
@@ -2993,13 +3136,19 @@ extern "C"
       int loopingStartOffsetAt, int loopingEndOffsetAt,
       float scale, unsigned int *handle)
   {
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    PlayerErrors result = player.get()->play(
-        soundHash, *handle, busId, volume, pan,
-        paused, looping, loopingStartAt, loopingEndAt,
-        loopingStartOffsetAt, loopingEndOffsetAt, scale);
-    return result;
+    if (handle == nullptr)
+      return nullPointer;
+    if (!allFinite(volume, pan, loopingStartAt, loopingEndAt, scale))
+      return invalidParameter;
+    return noThrow([&]
+                   { return player.get()->play(
+                         soundHash, *handle, busId, volume, pan,
+                         paused, looping, loopingStartAt, loopingEndAt,
+                         loopingStartOffsetAt, loopingEndOffsetAt, scale); });
   }
 
   /// Variant of [play] that takes an additional parameter, the time offset
@@ -3032,13 +3181,20 @@ extern "C"
       int loopingStartOffsetAt, int loopingEndOffsetAt,
       unsigned int *handle)
   {
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    PlayerErrors result = player.get()->playClocked(
-        soundHash, *handle, soundTime, busId, volume, pan, scale,
-        looping, loopingStartAt, loopingEndAt,
-        loopingStartOffsetAt, loopingEndOffsetAt);
-    return result;
+    if (handle == nullptr)
+      return nullPointer;
+    if (!allFinite(soundTime, volume, pan, scale, loopingStartAt,
+                   loopingEndAt))
+      return invalidParameter;
+    return noThrow([&]
+                   { return player.get()->playClocked(
+                         soundHash, *handle, soundTime, busId, volume, pan,
+                         scale, looping, loopingStartAt, loopingEndAt,
+                         loopingStartOffsetAt, loopingEndOffsetAt); });
   }
 
   /// Set the number of samples to delay before starting to play a sound.
@@ -3161,13 +3317,20 @@ extern "C"
       int loopingStartOffsetAt, int loopingEndOffsetAt,
       unsigned int *handle)
   {
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    PlayerErrors result = player.get()->playScheduled(
-        soundHash, *handle, atTime, duration, busId, volume, pan, scale,
-        looping, loopingStartAt, loopingEndAt,
-        loopingStartOffsetAt, loopingEndOffsetAt);
-    return result;
+    if (handle == nullptr)
+      return nullPointer;
+    if (!allFinite(atTime, duration, volume, pan, scale, loopingStartAt,
+                   loopingEndAt))
+      return invalidParameter;
+    return noThrow([&]
+                   { return player.get()->playScheduled(
+                         soundHash, *handle, atTime, duration, busId, volume,
+                         pan, scale, looping, loopingStartAt, loopingEndAt,
+                         loopingStartOffsetAt, loopingEndOffsetAt); });
   }
 
   /// Stop a sound at an absolute engine time (see [getEngineTime]).
@@ -3368,14 +3531,18 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    // The kind travels as a plain integer.
+    if (kind < VISUALIZATION_WAVE || kind > VISUALIZATION_WAVE_AND_FFT)
+      return invalidParameter;
     Analyzer::setDataCallback(dispatchVisualizationToDart);
     const int engineChannels = player.get()->soloud.getBackendChannels();
-    return Analyzer::instance().setVisualizationEnabled(
+    return noThrow([&]
+                   { return Analyzer::instance().setVisualizationEnabled(
         enabled,
         windowSize,
         static_cast<VisualizationKind>(kind),
         channel,
-        engineChannels);
+        engineChannels); });
   }
 
   /// Get the visualization state of the engine output
@@ -3396,12 +3563,16 @@ extern "C"
   /// 1 = full smooth
   FFI_PLUGIN_EXPORT void setFftSmoothing(float smooth)
   {
+    if (!allFinite(smooth))
+      return;
     Analyzer::setSmoothing(smooth);
   }
 
   /// Set the FFT decibel range, of the engine output and of every bus.
   FFI_PLUGIN_EXPORT void setFftDecibelRange(float minDecibels, float maxDecibels)
   {
+    if (!allFinite(minDecibels, maxDecibels))
+      return;
     Analyzer::setMinMaxDecibels(minDecibels, maxDecibels);
   }
 
@@ -3437,7 +3608,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    return (PlayerErrors)player.get()->seek(handle, time);
+    if (!allFinite(time))
+      return invalidParameter;
+    // Before the start is the start.
+    return (PlayerErrors)player.get()->seek(handle, std::max(time, 0.0f));
   }
 
   /// Get current sound position  in seconds
@@ -3469,6 +3643,8 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!allFinite(volume))
+      return invalidParameter;
     player.get()->setGlobalVolume(volume);
     return noError;
   }
@@ -3493,6 +3669,8 @@ extern "C"
       return backendNotInited;
     if (!player.get()->isValidHandle(handle))
       return soundHandleNotFound;
+    if (!allFinite(volume))
+      return invalidParameter;
     player.get()->setVolume(handle, volume);
     return noError;
   }
@@ -3520,7 +3698,9 @@ extern "C"
     if (player.get() == nullptr || !player.get()->isInited())
       return;
     // Rounding to 6 decimal to work around the float to double precision.
-    player.get()->setPan(handle, pan);
+    if (!allFinite(pan))
+      return;
+    player.get()->setPan(handle, static_cast<float>(pan));
   }
 
   /// Set the left/right volumes directly.
@@ -3534,7 +3714,9 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return;
-    player.get()->setPanAbsolute(handle, panLeft, panRight);
+    if (!allFinite(panLeft, panRight))
+      return;
+    player.get()->setPanAbsolute(handle, static_cast<float>(panLeft), static_cast<float>(panRight));
   }
 
   /// Check if a handle is still valid.
@@ -3653,8 +3835,10 @@ extern "C"
   /// Used to create a new voice group. Returns 0 if not successful.
   FFI_PLUGIN_EXPORT unsigned int createVoiceGroup()
   {
+    // 0 is SoLoud's "no group" value; -1 would wrap to a valid-looking
+    // 0xffffffff handle in this unsigned return.
     if (player.get() == nullptr || !player.get()->isInited())
-      return -1;
+      return 0;
     auto ret = player.get()->createVoiceGroup();
     return ret;
   }
@@ -3716,6 +3900,8 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!allFinite(to, time))
+      return invalidParameter;
     player.get()->fadeGlobalVolume(to, time);
     return noError;
   }
@@ -3726,6 +3912,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!player.get()->isValidHandle(handle))
+      return soundHandleNotFound;
+    if (!allFinite(to, time))
+      return invalidParameter;
     player.get()->fadeVolume(handle, to, time);
     return noError;
   }
@@ -3736,6 +3926,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!player.get()->isValidHandle(handle))
+      return soundHandleNotFound;
+    if (!allFinite(to, time))
+      return invalidParameter;
     player.get()->fadePan(handle, to, time);
     return noError;
   }
@@ -3746,6 +3940,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!player.get()->isValidHandle(handle))
+      return soundHandleNotFound;
+    if (!allFinite(to, time))
+      return invalidParameter;
     player.get()->fadeRelativePlaySpeed(handle, to, time);
     return noError;
   }
@@ -3756,6 +3954,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!player.get()->isValidHandle(handle))
+      return soundHandleNotFound;
+    if (!allFinite(time))
+      return invalidParameter;
     player.get()->schedulePause(handle, time);
     return noError;
   }
@@ -3766,6 +3968,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!player.get()->isValidHandle(handle))
+      return soundHandleNotFound;
+    if (!allFinite(time))
+      return invalidParameter;
     player.get()->scheduleStop(handle, time);
     return noError;
   }
@@ -3776,6 +3982,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!player.get()->isValidHandle(handle))
+      return soundHandleNotFound;
+    if (!allFinite(from, to, time))
+      return invalidParameter;
     player.get()->oscillateVolume(handle, from, to, time);
     return noError;
   }
@@ -3786,6 +3996,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!player.get()->isValidHandle(handle))
+      return soundHandleNotFound;
+    if (!allFinite(from, to, time))
+      return invalidParameter;
     player.get()->oscillatePan(handle, from, to, time);
     return noError;
   }
@@ -3797,6 +4011,10 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!player.get()->isValidHandle(handle))
+      return soundHandleNotFound;
+    if (!allFinite(from, to, time))
+      return invalidParameter;
     player.get()->oscillateRelativePlaySpeed(handle, from, to, time);
     return noError;
   }
@@ -3807,6 +4025,8 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!allFinite(from, to, time))
+      return invalidParameter;
     player.get()->oscillateGlobalVolume(from, to, time);
     return noError;
   }
@@ -3814,6 +4034,46 @@ extern "C"
   /////////////////////////////////////////
   /// Filters
   /////////////////////////////////////////
+
+  /// Dart passes the filter type as a plain integer.
+  static bool isValidFilterType(FilterType filterType)
+  {
+    return filterType >= BiquadResonantFilter && filterType <= CustomFilter;
+  }
+
+  /// The filters a parameter operation on [handle] / [busId] addresses, and
+  /// the voice handle to give them. Both 0 address the global filters. A bus
+  /// that has not been played has no live filter instance to reach (see
+  /// BusData::handle).
+  static PlayerErrors filterParamTarget(unsigned int handle,
+                                        unsigned int busId, Filters *&filters,
+                                        unsigned int &target)
+  {
+    filters = nullptr;
+    target = 0;
+    if (handle == 0 && busId == 0)
+    {
+      filters = &player.get()->mFilters;
+      return noError;
+    }
+    if (busId > 0)
+    {
+      auto *busFilters = player.get()->findBusData(busId);
+      if (busFilters == nullptr)
+        return busIdNotFound;
+      if (busFilters->handle == 0)
+        return soundHandleNotFound;
+      filters = &busFilters->filters;
+      target = handle > 0 ? handle : busFilters->handle;
+      return noError;
+    }
+    auto *const s = player.get()->findByHandle(handle);
+    if (s == nullptr)
+      return soundHandleNotFound;
+    filters = s->filters.get();
+    target = handle;
+    return noError;
+  }
 
   /// Check if the given filter is active or not.
   ///
@@ -3826,9 +4086,14 @@ extern "C"
   FFI_PLUGIN_EXPORT enum PlayerErrors
   isFilterActive(unsigned int soundHash, unsigned int busId, enum FilterType filterType, int *index)
   {
-    *index = -1;
+    if (index != nullptr)
+      *index = -1;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (index == nullptr)
+      return nullPointer;
+    if (!isValidFilterType(filterType))
+      return invalidParameter;
 
     if (soundHash == 0 && busId == 0)
       *index = player.get()->mFilters.isFilterActive(filterType);
@@ -3881,9 +4146,12 @@ extern "C"
   getFilterParamNamesBounded(enum FilterType filterType, int *paramsCount,
                              char **names, int capacity)
   {
-    *paramsCount = 0;
+    if (paramsCount != nullptr)
+      *paramsCount = 0;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (paramsCount == nullptr)
+      return nullPointer;
     if (capacity < 0 || (capacity > 0 && names == nullptr))
       return invalidParameter;
     std::vector<std::string> pNames =
@@ -3892,7 +4160,7 @@ extern "C"
     const int n = std::min(*paramsCount, capacity);
     for (int i = 0; i < n; i++)
     {
-      names[i] = strdup(pNames[i].c_str());
+      names[i] = soloud_strdup(pNames[i].c_str());
     }
     return noError;
   }
@@ -3911,22 +4179,27 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!isValidFilterType(filterType))
+      return invalidParameter;
     if (soundHash == 0 && busId == 0)
-      return player.get()->mFilters.addFilter(filterType);
+      return noThrow([&]
+                   { return player.get()->mFilters.addFilter(filterType); });
 
     if (soundHash != 0)
     {
       auto const s = player.get()->findByHash(soundHash);
       if (s == nullptr)
         return soundHashNotFound;
-      return s->filters->addFilter(filterType);
+      return noThrow([&]
+                   { auto lk = player.get()->lockSounds(); return s->filters->addFilter(filterType); });
     }
     else
     {
       auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr)
         return busIdNotFound;
-      return busFilters->filters.addFilter(filterType);
+      return noThrow([&]
+                   { return busFilters->filters.addFilter(filterType); });
     }
     return PlayerErrors::noError;
   }
@@ -3945,6 +4218,8 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    if (!isValidFilterType(filterType))
+      return invalidParameter;
     if (soundHash == 0 && busId == 0)
     {
       if (!player.get()->mFilters.removeFilter(filterType))
@@ -3957,7 +4232,7 @@ extern "C"
         auto const s = player.get()->findByHash(soundHash);
         if (s == nullptr)
           return soundHashNotFound;
-        if (!s->filters->removeFilter(filterType))
+        if (auto lk = player.get()->lockSounds(); !s->filters->removeFilter(filterType))
           return filterNotFound;
       }
       else
@@ -3992,46 +4267,16 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    /// Not important to call the [SoLoud::AudioSource].setFilterParams() here,
-    /// SoLoud will set the param globally or by [handle] if  [handle] is not ==0.
-    if (handle == 0 && busId == 0)
-    {
-      player.get()->mFilters.setFilterParams(handle, filterType, attributeId, value);
-    }
-    else
-    {
-      if (busId > 0)
-      {
-        auto *busFilters = player.get()->findBusData(busId);
-        if (busFilters == nullptr)
-        {
-          return busIdNotFound;
-        }
-        else if (busFilters->handle == 0)
-        {
-          // The bus has not been played, so its filters have no live
-          // instance to reach (see BusData::handle).
-          return soundHandleNotFound;
-        }
-        else
-        {
-          busFilters->filters.setFilterParams(handle > 0 ? handle : busFilters->handle, filterType, attributeId, value);
-        }
-      }
-      else if (handle > 0)
-      {
-        auto const &s = player.get()->findByHandle(handle);
-        if (s == nullptr)
-        {
-          return soundHandleNotFound;
-        }
-        else
-        {
-          s->filters.get()->setFilterParams(handle, filterType, attributeId, value);
-        }
-      }
-    }
-    return PlayerErrors::noError;
+    if (!isValidFilterType(filterType))
+      return invalidParameter;
+    Filters *filters = nullptr;
+    unsigned int target = 0;
+    const PlayerErrors e = filterParamTarget(handle, busId, filters, target);
+    if (e != noError)
+      return e;
+    if (!allFinite(value))
+      return invalidParameter;
+    return filters->setFilterParams(target, filterType, attributeId, value);
   }
 
   /// Get the effect parameter with id [attributeId] of [filterType].
@@ -4050,65 +4295,27 @@ extern "C"
                                                       int attributeId,
                                                       float *filterValue)
   {
-    *filterValue = 9999.0f;
+    if (filterValue != nullptr)
+      *filterValue = 9999.0f;
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    /// If [handle] == 0 get the parameter from global filters else from
-    /// the sound which owns [handle].
-    if (handle == 0 && busId == 0)
-    {
-      if (!player.get()->mFilters.getFilterParams(handle, filterType,
-                                                  attributeId, filterValue))
-        return filterNotFound;
-      if (!isfinite(*filterValue))
-        return filterParameterGetError;
-      return noError;
-    }
-    else
-    {
-      if (busId > 0)
-      {
-        auto *busFilters = player.get()->findBusData(busId);
-        if (busFilters == nullptr)
-        {
-          return busIdNotFound;
-        }
-        else if (busFilters->handle == 0)
-        {
-          // The bus has not been played, so its filters have no live
-          // instance to reach (see BusData::handle).
-          return soundHandleNotFound;
-        }
-        else
-        {
-          if (!busFilters->filters.getFilterParams(
-                  handle > 0 ? handle : busFilters->handle, filterType,
-                  attributeId, filterValue))
-            return filterNotFound;
-          // Zero is a valid parameter value (a completely dry filter, say);
-          // only a NaN or infinite one is an error.
-          if (!isfinite(*filterValue))
-            return filterParameterGetError;
-          return noError;
-        }
-      }
-      else
-      {
-        auto const &s = player.get()->findByHandle(handle);
-        if (s == nullptr)
-          return soundHandleNotFound;
-        else
-        {
-          if (!s->filters.get()->getFilterParams(handle, filterType,
-                                                 attributeId, filterValue))
-            return filterNotFound;
-          if (!isfinite(*filterValue))
-            return filterParameterGetError;
-          return noError;
-        }
-      }
-    }
-    return PlayerErrors::noError;
+    if (filterValue == nullptr)
+      return nullPointer;
+    if (!isValidFilterType(filterType))
+      return invalidParameter;
+    Filters *filters = nullptr;
+    unsigned int target = 0;
+    PlayerErrors e = filterParamTarget(handle, busId, filters, target);
+    if (e != noError)
+      return e;
+    e = filters->getFilterParams(target, filterType, attributeId, filterValue);
+    if (e != noError)
+      return e;
+    // Zero is a valid parameter value (a completely dry filter, say); only a
+    // NaN or infinite one is an error.
+    if (!isfinite(*filterValue))
+      return filterParameterGetError;
+    return noError;
   }
 
   /// Fades a parameter of a filter.
@@ -4128,48 +4335,17 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    if (handle == 0 && busId == 0)
-    {
-      player.get()->mFilters.fadeFilterParameter(handle, filterType, attributeId,
-                                                 to, time);
-    }
-    else
-    {
-      if (busId > 0)
-      {
-        auto *busFilters = player.get()->findBusData(busId);
-        if (busFilters == nullptr)
-        {
-          return busIdNotFound;
-        }
-        else if (busFilters->handle == 0)
-        {
-          // The bus has not been played, so its filters have no live
-          // instance to reach (see BusData::handle).
-          return soundHandleNotFound;
-        }
-        else
-        {
-          busFilters->filters.fadeFilterParameter(handle > 0 ? handle : busFilters->handle,
-                                                  filterType, attributeId, to,
-                                                  time);
-        }
-      }
-      else
-      {
-        auto const &s = player.get()->findByHandle(handle);
-        if (s == nullptr)
-        {
-          return soundHandleNotFound;
-        }
-        else
-        {
-          s->filters.get()->fadeFilterParameter(handle, filterType, attributeId, to,
-                                                time);
-        }
-      }
-    }
-    return noError;
+    if (!isValidFilterType(filterType))
+      return invalidParameter;
+    Filters *filters = nullptr;
+    unsigned int target = 0;
+    const PlayerErrors e = filterParamTarget(handle, busId, filters, target);
+    if (e != noError)
+      return e;
+    if (!allFinite(to, time))
+      return invalidParameter;
+    return filters->fadeFilterParameter(target, filterType, attributeId, to,
+                                        time);
   }
 
   /// Oscillate a parameter of a filter.
@@ -4190,48 +4366,17 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
-    if (handle == 0 && busId == 0)
-    {
-      player.get()->mFilters.oscillateFilterParameter(
-          handle, filterType, attributeId, from, to, time);
-    }
-    else
-    {
-      if (busId > 0)
-      {
-        auto *busFilters = player.get()->findBusData(busId);
-        if (busFilters == nullptr)
-        {
-          return busIdNotFound;
-        }
-        else if (busFilters->handle == 0)
-        {
-          // The bus has not been played, so its filters have no live
-          // instance to reach (see BusData::handle).
-          return soundHandleNotFound;
-        }
-        else
-        {
-          busFilters->filters.oscillateFilterParameter(handle > 0 ? handle : busFilters->handle,
-                                                       filterType, attributeId,
-                                                       from, to, time);
-        }
-      }
-      else
-      {
-        auto const &s = player.get()->findByHandle(handle);
-        if (s == nullptr)
-        {
-          return soundHandleNotFound;
-        }
-        else
-        {
-          s->filters.get()->oscillateFilterParameter(handle, filterType,
-                                                     attributeId, from, to, time);
-        }
-      }
-    }
-    return noError;
+    if (!isValidFilterType(filterType))
+      return invalidParameter;
+    Filters *filters = nullptr;
+    unsigned int target = 0;
+    const PlayerErrors e = filterParamTarget(handle, busId, filters, target);
+    if (e != noError)
+      return e;
+    if (!allFinite(from, to, time))
+      return invalidParameter;
+    return filters->oscillateFilterParameter(target, filterType, attributeId,
+                                             from, to, time);
   }
 
   /////////////////////////////////////////
@@ -4254,9 +4399,14 @@ extern "C"
       return backendNotInited;
     if (hash == nullptr)
       return nullPointer;
-    return p->setRealtimeStream(
-        *hash, sampleRate, channels, static_cast<BufferType>(format),
-        bufferCapacityFrames, historyFrames);
+    // The format travels as a plain integer.
+    if (format < BufferType::PCM_F32LE || format > BufferType::PCM_F32LE_PLANAR)
+      return invalidParameter;
+    return noThrow([&]
+                   { return p->setRealtimeStream(
+                         *hash, sampleRate, channels,
+                         static_cast<BufferType>(format),
+                         bufferCapacityFrames, historyFrames); });
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors resetRealtimeStream(unsigned int hash)
@@ -4264,7 +4414,8 @@ extern "C"
     PlayerLease p;
     if (!p)
       return backendNotInited;
-    return p->resetRealtimeStream(hash);
+    return noThrow([&]
+                   { return p->resetRealtimeStream(hash); });
   }
 
   FFI_PLUGIN_EXPORT unsigned int
@@ -4336,10 +4487,11 @@ extern "C"
       return backendNotInited;
     if (hash == nullptr)
       return nullPointer;
-    return player.get()->createCustomAudioSource(
+    return noThrow([&]
+                   { return player.get()->createCustomAudioSource(
         *hash, sampleRate, channels, callback, userData, lifecycleCallback,
         singleInstance, webJsCallbackName, mustTickWhenInaudible,
-        killWhenInaudible);
+        killWhenInaudible); });
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
@@ -4351,23 +4503,26 @@ extern "C"
     if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
       return invalidParameter;
     if (soundHash == 0 && busId == 0)
-      return player.get()->mFilters.addFilter(FilterType::CustomFilter,
-                                              customFilterId);
+      return noThrow([&]
+                   { return player.get()->mFilters.addFilter(FilterType::CustomFilter,
+                                              customFilterId); });
 
     if (soundHash != 0)
     {
       auto const s = player.get()->findByHash(soundHash);
       if (s == nullptr)
         return soundHashNotFound;
-      return s->filters->addFilter(FilterType::CustomFilter, customFilterId);
+      return noThrow([&]
+                   { auto lk = player.get()->lockSounds(); return s->filters->addFilter(FilterType::CustomFilter, customFilterId); });
     }
     else
     {
       auto *busFilters = player.get()->findBusData(busId);
       if (busFilters == nullptr)
         return busIdNotFound;
-      return busFilters->filters.addFilter(FilterType::CustomFilter,
-                                           customFilterId);
+      return noThrow([&]
+                   { return busFilters->filters.addFilter(FilterType::CustomFilter,
+                                           customFilterId); });
     }
   }
 
@@ -4390,7 +4545,7 @@ extern "C"
       auto const s = player.get()->findByHash(soundHash);
       if (s == nullptr)
         return soundHashNotFound;
-      if (!s->filters->removeFilter(FilterType::CustomFilter, customFilterId))
+      if (auto lk = player.get()->lockSounds(); !s->filters->removeFilter(FilterType::CustomFilter, customFilterId))
         return filterNotFound;
     }
     else
@@ -4551,33 +4706,15 @@ extern "C"
       return backendNotInited;
     if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
       return invalidParameter;
-
-    if (handle == 0 && busId == 0)
-    {
-      player.get()->mFilters.setFilterParams(
-          handle, FilterType::CustomFilter, attributeId, value, customFilterId);
-    }
-    else if (busId > 0)
-    {
-      auto *busFilters = player.get()->findBusData(busId);
-      if (busFilters == nullptr)
-        return busIdNotFound;
-      // The bus has not been played (see BusData::handle).
-      if (busFilters->handle == 0)
-        return soundHandleNotFound;
-      busFilters->filters.setFilterParams(
-          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
-          attributeId, value, customFilterId);
-    }
-    else if (handle > 0)
-    {
-      auto const &s = player.get()->findByHandle(handle);
-      if (s == nullptr)
-        return soundHandleNotFound;
-      s->filters.get()->setFilterParams(handle, FilterType::CustomFilter,
-                                        attributeId, value, customFilterId);
-    }
-    return PlayerErrors::noError;
+    Filters *filters = nullptr;
+    unsigned int target = 0;
+    const PlayerErrors e = filterParamTarget(handle, busId, filters, target);
+    if (e != noError)
+      return e;
+    if (!allFinite(value))
+      return invalidParameter;
+    return filters->setFilterParams(target, FilterType::CustomFilter,
+                                    attributeId, value, customFilterId);
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
@@ -4593,47 +4730,18 @@ extern "C"
       return nullPointer;
     if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
       return invalidParameter;
-
-    if (handle == 0 && busId == 0)
-    {
-      if (!player.get()->mFilters.getFilterParams(
-              handle, FilterType::CustomFilter, attributeId, filterValue,
-              customFilterId))
-        return filterNotFound;
-      if (!isfinite(*filterValue))
-        return filterParameterGetError;
-      return noError;
-    }
-    else if (busId > 0)
-    {
-      auto *busFilters = player.get()->findBusData(busId);
-      if (busFilters == nullptr)
-        return busIdNotFound;
-      // The bus has not been played (see BusData::handle).
-      if (busFilters->handle == 0)
-        return soundHandleNotFound;
-      if (!busFilters->filters.getFilterParams(
-              handle > 0 ? handle : busFilters->handle,
-              FilterType::CustomFilter, attributeId, filterValue,
-              customFilterId))
-        return filterNotFound;
-      if (!isfinite(*filterValue))
-        return filterParameterGetError;
-      return noError;
-    }
-    else
-    {
-      auto const &s = player.get()->findByHandle(handle);
-      if (s == nullptr)
-        return soundHandleNotFound;
-      if (!s->filters.get()->getFilterParams(handle, FilterType::CustomFilter,
-                                             attributeId, filterValue,
-                                             customFilterId))
-        return filterNotFound;
-      if (!isfinite(*filterValue))
-        return filterParameterGetError;
-      return noError;
-    }
+    Filters *filters = nullptr;
+    unsigned int target = 0;
+    PlayerErrors e = filterParamTarget(handle, busId, filters, target);
+    if (e != noError)
+      return e;
+    e = filters->getFilterParams(target, FilterType::CustomFilter, attributeId,
+                                 filterValue, customFilterId);
+    if (e != noError)
+      return e;
+    if (!isfinite(*filterValue))
+      return filterParameterGetError;
+    return noError;
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
@@ -4645,35 +4753,16 @@ extern "C"
       return backendNotInited;
     if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
       return invalidParameter;
-
-    if (handle == 0 && busId == 0)
-    {
-      player.get()->mFilters.fadeFilterParameter(
-          handle, FilterType::CustomFilter, attributeId, to, time,
-          customFilterId);
-    }
-    else if (busId > 0)
-    {
-      auto *busFilters = player.get()->findBusData(busId);
-      if (busFilters == nullptr)
-        return busIdNotFound;
-      // The bus has not been played (see BusData::handle).
-      if (busFilters->handle == 0)
-        return soundHandleNotFound;
-      busFilters->filters.fadeFilterParameter(
-          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
-          attributeId, to, time, customFilterId);
-    }
-    else
-    {
-      auto const &s = player.get()->findByHandle(handle);
-      if (s == nullptr)
-        return soundHandleNotFound;
-      s->filters.get()->fadeFilterParameter(handle, FilterType::CustomFilter,
-                                            attributeId, to, time,
-                                            customFilterId);
-    }
-    return noError;
+    Filters *filters = nullptr;
+    unsigned int target = 0;
+    const PlayerErrors e = filterParamTarget(handle, busId, filters, target);
+    if (e != noError)
+      return e;
+    if (!allFinite(to, time))
+      return invalidParameter;
+    return filters->fadeFilterParameter(target, FilterType::CustomFilter,
+                                        attributeId, to, time,
+                                        customFilterId);
   }
 
   FFI_PLUGIN_EXPORT enum PlayerErrors
@@ -4685,35 +4774,16 @@ extern "C"
       return backendNotInited;
     if (customFilterId < 0 || customFilterId >= FILTERS_PER_STREAM)
       return invalidParameter;
-
-    if (handle == 0 && busId == 0)
-    {
-      player.get()->mFilters.oscillateFilterParameter(
-          handle, FilterType::CustomFilter, attributeId, from, to, time,
-          customFilterId);
-    }
-    else if (busId > 0)
-    {
-      auto *busFilters = player.get()->findBusData(busId);
-      if (busFilters == nullptr)
-        return busIdNotFound;
-      // The bus has not been played (see BusData::handle).
-      if (busFilters->handle == 0)
-        return soundHandleNotFound;
-      busFilters->filters.oscillateFilterParameter(
-          handle > 0 ? handle : busFilters->handle, FilterType::CustomFilter,
-          attributeId, from, to, time, customFilterId);
-    }
-    else
-    {
-      auto const &s = player.get()->findByHandle(handle);
-      if (s == nullptr)
-        return soundHandleNotFound;
-      s->filters.get()->oscillateFilterParameter(
-          handle, FilterType::CustomFilter, attributeId, from, to, time,
-          customFilterId);
-    }
-    return noError;
+    Filters *filters = nullptr;
+    unsigned int target = 0;
+    const PlayerErrors e = filterParamTarget(handle, busId, filters, target);
+    if (e != noError)
+      return e;
+    if (!allFinite(from, to, time))
+      return invalidParameter;
+    return filters->oscillateFilterParameter(target, FilterType::CustomFilter,
+                                             attributeId, from, to, time,
+                                             customFilterId);
   }
 
   /////////////////////////////////////////
@@ -4737,15 +4807,22 @@ extern "C"
                                         bool looping, double loopingStartAt,
                                         unsigned int *handle)
   {
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
       return backendNotInited;
+    if (handle == nullptr)
+      return nullPointer;
+    if (!allFinite(posX, posY, posZ, velX, velY, velZ, volume,
+                   loopingStartAt))
+      return invalidParameter;
 
-    PlayerErrors result =
-        player.get()->play3d(soundHash, *handle, busId, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, looping, loopingStartAt,
-                             0, -1, -1, 1.0f);
-    return result;
+    return noThrow([&]
+                   { return player.get()->play3d(
+                         soundHash, *handle, busId, posX, posY, posZ, velX,
+                         velY, velZ, volume, paused, looping, loopingStartAt,
+                         0, -1, -1, 1.0f); });
   }
 
   /// Play a 3D sound with an optional bounded loop region.
@@ -4760,16 +4837,23 @@ extern "C"
       float volume, bool paused, bool looping, double loopingStartAt,
       double loopingEndAt, int loopingStartOffsetAt, int loopingEndOffsetAt, float scale, unsigned int *handle)
   {
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
       return backendNotInited;
+    if (handle == nullptr)
+      return nullPointer;
+    if (!allFinite(posX, posY, posZ, velX, velY, velZ, volume,
+                   loopingStartAt, loopingEndAt, scale))
+      return invalidParameter;
 
-    PlayerErrors result =
-        player.get()->play3d(soundHash, *handle, busId, posX, posY, posZ, velX, velY,
-                             velZ, volume, paused, looping, loopingStartAt,
-                             loopingEndAt, loopingStartOffsetAt,
-                             loopingEndOffsetAt, scale);
-    return result;
+    return noThrow([&]
+                   { return player.get()->play3d(
+                         soundHash, *handle, busId, posX, posY, posZ, velX,
+                         velY, velZ, volume, paused, looping, loopingStartAt,
+                         loopingEndAt, loopingStartOffsetAt,
+                         loopingEndOffsetAt, scale); });
   }
 
   /// play3dClocked() is the 3d version of the playClocked() call.
@@ -4797,17 +4881,23 @@ extern "C"
       int loopingStartOffsetAt, int loopingEndOffsetAt,
       unsigned int *handle)
   {
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
       return backendNotInited;
+    if (handle == nullptr)
+      return nullPointer;
+    if (!allFinite(soundTime, posX, posY, posZ, velX, velY, velZ, volume,
+                   scale, loopingStartAt, loopingEndAt))
+      return invalidParameter;
 
-    PlayerErrors result =
-        player.get()->play3dClocked(soundHash, *handle, soundTime, busId,
-                                    posX, posY, posZ, velX, velY, velZ,
-                                    volume, scale, looping,
-                                    loopingStartAt, loopingEndAt,
-                                    loopingStartOffsetAt, loopingEndOffsetAt);
-    return result;
+    return noThrow([&]
+                   { return player.get()->play3dClocked(
+                         soundHash, *handle, soundTime, busId, posX, posY,
+                         posZ, velX, velY, velZ, volume, scale, looping,
+                         loopingStartAt, loopingEndAt, loopingStartOffsetAt,
+                         loopingEndOffsetAt); });
   }
 
   /// play3dScheduled() is the 3d version of the playScheduled() call.
@@ -4842,17 +4932,23 @@ extern "C"
       int loopingStartOffsetAt, int loopingEndOffsetAt,
       unsigned int *handle)
   {
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr || !player.get()->isInited() ||
         player.get()->getSoundsCount() == 0)
       return backendNotInited;
+    if (handle == nullptr)
+      return nullPointer;
+    if (!allFinite(atTime, duration, posX, posY, posZ, velX, velY, velZ,
+                   volume, scale, loopingStartAt, loopingEndAt))
+      return invalidParameter;
 
-    PlayerErrors result =
-        player.get()->play3dScheduled(soundHash, *handle, atTime, duration, busId,
-                                      posX, posY, posZ, velX, velY, velZ,
-                                      volume, scale, looping,
-                                      loopingStartAt, loopingEndAt,
-                                      loopingStartOffsetAt, loopingEndOffsetAt);
-    return result;
+    return noThrow([&]
+                   { return player.get()->play3dScheduled(
+                         soundHash, *handle, atTime, duration, busId, posX,
+                         posY, posZ, velX, velY, velZ, volume, scale, looping,
+                         loopingStartAt, loopingEndAt, loopingStartOffsetAt,
+                         loopingEndOffsetAt); });
   }
 
   /// You can set and get the current value of the speed of
@@ -4867,18 +4963,18 @@ extern "C"
   /// and that the environment is dry air at around 20 degrees Celsius.
   FFI_PLUGIN_EXPORT void set3dSoundSpeed(float speed)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(speed))
       return;
     player.get()->set3dSoundSpeed(speed);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// Get the sound speed
   FFI_PLUGIN_EXPORT float get3dSoundSpeed()
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
       return 0.0f;
     return player.get()->get3dSoundSpeed();
   }
@@ -4890,55 +4986,61 @@ extern "C"
                           float atY, float atZ, float upX, float upY, float upZ,
                           float velocityX, float velocityY, float velocityZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(posX, posY, posZ, atX, atY, atZ, upX, upY, upZ, velocityX,
+                   velocityY, velocityZ))
       return;
     player.get()->set3dListenerParameters(posX, posY, posZ, atX, atY, atZ, upX,
                                           upY, upZ, velocityX, velocityY,
                                           velocityZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the position parameter of the 3d audio listener
   FFI_PLUGIN_EXPORT void set3dListenerPosition(float posX, float posY,
                                                float posZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(posX, posY, posZ))
       return;
     player.get()->set3dListenerPosition(posX, posY, posZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the "at" vector parameter of the 3d audio listener
   FFI_PLUGIN_EXPORT void set3dListenerAt(float atX, float atY, float atZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(atX, atY, atZ))
       return;
     player.get()->set3dListenerAt(atX, atY, atZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the "up" vector parameter of the 3d audio listener
   FFI_PLUGIN_EXPORT void set3dListenerUp(float upX, float upY, float upZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(upX, upY, upZ))
       return;
     player.get()->set3dListenerUp(upX, upY, upZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the listener's velocity vector parameter
   FFI_PLUGIN_EXPORT void set3dListenerVelocity(float velocityX, float velocityY,
                                                float velocityZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(velocityX, velocityY, velocityZ))
       return;
     player.get()->set3dListenerVelocity(velocityX, velocityY, velocityZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the position and velocity parameters of a live
@@ -4948,34 +5050,37 @@ extern "C"
                                                float velocityX, float velocityY,
                                                float velocityZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(posX, posY, posZ, velocityX, velocityY, velocityZ))
       return;
     player.get()->set3dSourceParameters(handle, posX, posY, posZ, velocityX,
                                         velocityY, velocityZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the position parameters of a live 3d audio source
   FFI_PLUGIN_EXPORT void set3dSourcePosition(unsigned int handle, float posX,
                                              float posY, float posZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(posX, posY, posZ))
       return;
     player.get()->set3dSourcePosition(handle, posX, posY, posZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the velocity parameters of a live 3d audio source
   FFI_PLUGIN_EXPORT void set3dSourceVelocity(unsigned int handle, float velocityX,
                                              float velocityY, float velocityZ)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(velocityX, velocityY, velocityZ))
       return;
     player.get()->set3dSourceVelocity(handle, velocityX, velocityY, velocityZ);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can set the minimum and maximum distance parameters
@@ -4984,11 +5089,12 @@ extern "C"
                                                    float minDistance,
                                                    float maxDistance)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(minDistance, maxDistance))
       return;
     player.get()->set3dSourceMinMaxDistance(handle, minDistance, maxDistance);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can change the attenuation model and rolloff factor parameters of
@@ -5003,22 +5109,102 @@ extern "C"
                                                 unsigned int attenuationModel,
                                                 float attenuationRolloffFactor)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(attenuationRolloffFactor))
       return;
     player.get()->set3dSourceAttenuation(handle, attenuationModel,
                                          attenuationRolloffFactor);
-    player.get()->update3dAudio();
+    player.get()->autoUpdate3dAudio();
   }
 
   /// You can change the doppler factor of a live 3d audio source
   FFI_PLUGIN_EXPORT void set3dSourceDopplerFactor(unsigned int handle,
                                                   float dopplerFactor)
   {
-    if (player.get() == nullptr || !player.get()->isInited() ||
-        player.get()->getSoundsCount() == 0)
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(dopplerFactor))
       return;
     player.get()->set3dSourceDopplerFactor(handle, dopplerFactor);
+    player.get()->autoUpdate3dAudio();
+  }
+
+  /// Set the minimum and maximum distance that every voice started later
+  /// from the sound [soundHash] begins with. Voices already playing keep
+  /// theirs (see [set3dSourceMinMaxDistance]).
+  /// The default values are 1 and 1000000.
+  FFI_PLUGIN_EXPORT void set3dDefaultMinMaxDistance(unsigned int soundHash,
+                                                    float minDistance,
+                                                    float maxDistance)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(minDistance, maxDistance))
+      return;
+    player.get()->set3dDefaultMinMaxDistance(soundHash, minDistance,
+                                             maxDistance);
+  }
+
+  /// Set the attenuation model and rolloff factor that every voice started
+  /// later from the sound [soundHash] begins with. Voices already playing
+  /// keep theirs (see [set3dSourceAttenuation]).
+  /// The default values are NO_ATTENUATION and 1.
+  FFI_PLUGIN_EXPORT void set3dDefaultAttenuation(
+      unsigned int soundHash, unsigned int attenuationModel,
+      float attenuationRolloffFactor)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(attenuationRolloffFactor))
+      return;
+    player.get()->set3dDefaultAttenuation(soundHash, attenuationModel,
+                                          attenuationRolloffFactor);
+  }
+
+  /// Set the doppler factor that every voice started later from the sound
+  /// [soundHash] begins with. Voices already playing keep theirs (see
+  /// [set3dSourceDopplerFactor]). The default value is 1.
+  FFI_PLUGIN_EXPORT void set3dDefaultDopplerFactor(unsigned int soundHash,
+                                                   float dopplerFactor)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(dopplerFactor))
+      return;
+    player.get()->set3dDefaultDopplerFactor(soundHash, dopplerFactor);
+  }
+
+  /// Enable or disable the automatic 3D update. By default every 3D setter
+  /// (listener, source, sound speed) recomputes the 3D state of all the 3D
+  /// voices before it returns. With many moving sources that is one full
+  /// pass per call. When disabled the setters only store their values and
+  /// [update3dAudio] applies all of them in one pass.
+  ///
+  /// Enabling it again applies the values stored in the meantime.
+  /// init() restores the default (enabled).
+  FFI_PLUGIN_EXPORT void set3dAutoUpdate(bool enabled)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    player.get()->set3dAutoUpdate(enabled);
+  }
+
+  /// Whether every 3D setter applies its change at once (the default).
+  FFI_PLUGIN_EXPORT bool get3dAutoUpdate()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return true;
+    return player.get()->get3dAutoUpdate();
+  }
+
+  /// Recompute the 3D state (panning, attenuation, doppler) of all the 3D
+  /// voices from the values stored by the 3D setters. Needed only while the
+  /// automatic 3D update is disabled with [set3dAutoUpdate].
+  FFI_PLUGIN_EXPORT void update3dAudio()
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
     player.get()->update3dAudio();
   }
 
@@ -5061,9 +5247,14 @@ extern "C"
   /// Returns a unique bus ID (>0) to reference this bus in other calls.
   FFI_PLUGIN_EXPORT unsigned int createBus()
   {
-    if (player.get() == nullptr)
+    if (player.get() == nullptr || !player.get()->isInited())
       return 0;
-    return player.get()->createBus();
+    unsigned int busId = 0;
+    noThrow([&]
+            {
+              busId = player.get()->createBus();
+              return noError; });
+    return busId;
   }
 
   /// Destroy a mixing bus by its ID.
@@ -5099,10 +5290,17 @@ extern "C"
     // it, but this early return would otherwise leave the caller's buffer
     // untouched. On the web that buffer comes from `_malloc()`, which does not
     // zero, so Dart would read uninitialized memory as a handle.
-    *handle = 0;
+    if (handle != nullptr)
+      *handle = 0;
     if (player.get() == nullptr)
       return backendNotInited;
-    return player.get()->busPlayOnEngine(busId, volume, paused, *handle);
+    if (handle == nullptr)
+      return nullPointer;
+    if (!allFinite(volume))
+      return invalidParameter;
+    return noThrow([&]
+                   { return player.get()->busPlayOnEngine(busId, volume,
+                                                          paused, *handle); });
   }
 
   /// Set the number of output channels for the bus (default is 2 = stereo).
@@ -5136,10 +5334,14 @@ extern "C"
   {
     if (player.get() == nullptr || !player.get()->isInited())
       return backendNotInited;
+    // The kind travels as a plain integer.
+    if (kind < VISUALIZATION_WAVE || kind > VISUALIZATION_WAVE_AND_FFT)
+      return invalidParameter;
     Analyzer::setDataCallback(dispatchVisualizationToDart);
-    return player.get()->busSetVisualizationEnabled(
+    return noThrow([&]
+                   { return player.get()->busSetVisualizationEnabled(
         busId, enabled, windowSize, static_cast<VisualizationKind>(kind),
-        channel);
+        channel); });
   }
 
   /// Get the visualization state of this bus.

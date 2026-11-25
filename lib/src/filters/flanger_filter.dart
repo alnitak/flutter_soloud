@@ -9,9 +9,9 @@ enum FlangerEnum {
   delay,
   freq;
 
-  final List<double> _mins = const [0, 0, -48];
-  final List<double> _maxs = const [1, 3, 48];
-  final List<double> _defs = const [1, 1, 0];
+  final List<double> _mins = const [0, 0.001, 0.001];
+  final List<double> _maxs = const [1, 0.1, 100];
+  final List<double> _defs = const [1, 0.005, 10];
 
   double get min => _mins[index];
   double get max => _maxs[index];
@@ -37,7 +37,7 @@ abstract class _FlangerInternal extends FilterBase {
 class FlangerSingle extends _FlangerInternal {
   FlangerSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -46,7 +46,7 @@ class FlangerSingle extends _FlangerInternal {
     FlangerEnum.wet.max,
   );
 
-  FilterParam delay({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam delay({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -55,7 +55,7 @@ class FlangerSingle extends _FlangerInternal {
     FlangerEnum.delay.max,
   );
 
-  FilterParam freq({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam freq({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

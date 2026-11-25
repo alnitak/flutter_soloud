@@ -464,8 +464,8 @@ abstract class FlutterSoLoud {
   /// metadata of a stream.
   ///
   /// [soundHash] the hash of the stream sound.
-  /// [icyMetaInt] the icy metadata integer value. Default is 16000 which
-  /// is the most used value.
+  /// [icyMetaInt] the icy metadata integer value (16000 is a common value).
+  /// There is no default: nothing is stripped until a value > 0 is set.
   @mustBeOverridden
   PlayerErrors setBufferIcyMetaInt(SoundHash soundHash, int icyMetaInt);
 
@@ -1554,6 +1554,38 @@ abstract class FlutterSoLoud {
   /// You can change the doppler factor of a live 3d audio source.
   @mustBeOverridden
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor);
+
+  /// Set the min and max distance the voices of a sound start with.
+  @mustBeOverridden
+  void set3dDefaultMinMaxDistance(
+    SoundHash soundHash,
+    double minDistance,
+    double maxDistance,
+  );
+
+  /// Set the attenuation model and rolloff the voices of a sound start with.
+  @mustBeOverridden
+  void set3dDefaultAttenuation(
+    SoundHash soundHash,
+    int attenuationModel,
+    double attenuationRolloffFactor,
+  );
+
+  /// Set the doppler factor the voices of a sound start with.
+  @mustBeOverridden
+  void set3dDefaultDopplerFactor(SoundHash soundHash, double dopplerFactor);
+
+  /// Enable or disable the 3D update done by every 3D setter.
+  @mustBeOverridden
+  void set3dAutoUpdate(bool enabled);
+
+  /// Whether every 3D setter applies its change at once.
+  @mustBeOverridden
+  bool get3dAutoUpdate();
+
+  /// Apply the values stored by the 3D setters to all the 3D voices.
+  @mustBeOverridden
+  void update3dAudio();
 
   // ///////////////////////////////////////
   // waveform audio data

@@ -1,25 +1,30 @@
 # Filter parameter reference
 
 All values verified against `lib/src/filters/*.dart` (each filter's enum holds the
-authoritative `min`/`max`/`def` lists). At global scope params are getters
-(`filters.echoFilter.delay`); at per-sound and per-bus scope they are methods
-(`sound.filters.echoFilter.delay(soundHandle: handle)`). Each filter also has a
-`queryXxx` getter per parameter exposing `min`, `max`, `def`, and a human-readable
-`toString()`.
+authoritative `min`/`max`/`def` lists, which match the native ranges). At global
+scope params are getters (`filters.echoFilter.delay`); at per-sound scope they are
+methods taking the voice handle (`sound.filters.echoFilter.delay(soundHandle: handle)`);
+at per-bus scope the same methods are called without arguments
+(`bus.filters.echoFilter.delay()`). Each filter also has a `queryXxx` getter per
+parameter exposing `min`, `max`, `def`, and a human-readable `toString()`
+(`parametricEq` and `customFilter` excepted, see their sections).
 
 All filters share `wet` (0–1, default 1): mix between dry and processed signal.
 
 ## biquadResonant
 
-Global getter `biquadResonantFilter`; single/bus getter `biquadFilter`.
+Getter `biquadResonantFilter` in every scope (on sounds and buses the old name `biquadFilter` still works but is deprecated).
 Multi-mode filter. `src/soloud` docs: <https://solhsa.com/soloud/biquadfilter.html>
 
 | Param | min | max | def | Notes |
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | |
 | type | 0 | 2 | 0 | 0 = lowpass, 1 = highpass, 2 = bandpass |
-| frequency | 10 | 16000 | 1000 | Hz |
-| resonance | 0.1 | 20 | 0.1 | |
+| frequency | 10 | 8000 | 1000 | Hz; clamped below Nyquist while processing |
+| resonance | 0.1 | 20 | 2 | sharpness of the cutoff |
+
+The cutoff cannot go above 8000 Hz: to "open" a low-pass completely, fade `wet`
+to 0 or deactivate the filter.
 
 ## echo
 
@@ -49,8 +54,8 @@ Bit depth / sample-rate reduction. <https://solhsa.com/soloud/lofifilter.html>
 | Param | min | max | def | Notes |
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | |
-| delay | 0 | 3 | 1 | |
-| freq | -48 | 48 | 0 | LFO frequency of the sweep |
+| delay | 0.001 | 0.1 | 0.005 | seconds |
+| freq | 0.001 | 100 | 10 | Hz; LFO frequency of the sweep |
 
 ## bassboost
 
@@ -78,7 +83,7 @@ Voice modulation. <https://solhsa.com/soloud/robotizefilter.html>
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | |
 | frequency | 0.1 | 100 | 30 | modulation frequency in Hz |
-| waveform | 0 | 6 | 0 | modulator waveform selector |
+| waveform | 0 | 6 | 0 | modulator waveform: 0 square, 1 saw, 2 sin, 3 triangle, 4 bounce, 5 jaws, 6 humps (the `WaveForm` enum order) |
 
 ## freeverb
 
@@ -102,14 +107,15 @@ Pitch shift without changing speed. Not part of stock SoLoud; implemented in
 | Param | min | max | def | Notes |
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | |
-| shift | 0 | 3 | 1 | frequency multiplier; 1 = no shift |
-| semitones | -36 | 36 | 0 | linked to shift: `semitones = 12 * log2(shift)`; setting one updates the other |
+| shift | 0.1 | 3 | 1 | frequency multiplier; 1 = no shift |
+| semitones | -39.863 | 19.0195 | 0 | the shift range in semitones; linked to shift: `semitones = 12 * log2(shift)`; setting one updates the other |
 
 Tempo-without-pitch-change:
 
 - Per-sound: `sound.filters.pitchShiftFilter.timeStretch(handle, speed)` sets
   `setRelativePlaySpeed(handle, speed)` and `shift = 1 / speed` in one call.
-  This method exists only on `PitchShiftSingle`.
+  This method exists only on `PitchShiftSingle`. `1 / speed` must fit the
+  shift range (speed from 1/3 to 10), otherwise the shift is not applied.
 - Global: do both steps manually
   (`SoLoud.instance.setRelativePlaySpeed(handle, speed)` then
   `filters.pitchShiftFilter.shift.value = 1 / speed`).
@@ -127,8 +133,8 @@ output.
 | wet | 0 | 1 | 1 | |
 | threshold | -60 | 0 | -3 | dB; signals above are reduced |
 | outputCeiling | -60 | 0 | -1 | dB; keep < 0 to prevent clipping |
-| kneeWidth | 0 | 30 | 2 | dB; larger = softer transition |
-| releaseTime | 1 | 1000 | 100 | ms |
+| kneeWidth | 0 | 30 | 6 | dB; larger = softer transition |
+| releaseTime | 1 | 1000 | 50 | ms |
 | attackTime | 0.1 | 200 | 1 | ms |
 
 Defaults are already a sensible anti-clip setting: just `activate()`.
@@ -164,13 +170,20 @@ N-band equalizer (1–64 bands), STFT-based. Source:
 | numBands | 1 | 64 | 3 | number of active bands |
 | bandGain(i) | 0 | 4 | 1 | per band `i` in 0..63; 1 = flat, >1 boost, <1 cut |
 | bandFreq(i) | 10 | 24000 | geometric | per band `i` center frequency (Hz); defaults to 30 Hz .. 12 kHz geometric distribution |
-| bandQ(i) | 0.1 | 20 | defaultQ | per band `i` Q factor (bell curve sharpness); defaults to spacing-based Q (~1.0) |
+| bandQ(i) | 0.1 | 20 | by band count | per band `i` Q factor (bell curve sharpness); the default makes adjacent bands overlap |
 
 Extra API: `bandFrequency(i)` returns the current center frequency (Hz) of band `i`
-(alias `bandFrequencyParam(i)` for `bandFreq(i)`). Bands use smooth Gaussian bell curves on
-a logarithmic frequency scale. Defaults distribute 30 Hz to 12 kHz (e.g. 3 bands: 30 Hz, 600 Hz, 12 kHz).
+(alias `bandFrequencyParam(i)` for `bandFreq(i)`). Defaults distribute 30 Hz to
+12 kHz (e.g. 3 bands: 30 Hz, 600 Hz, 12 kHz). With every gain at 1 the filter is
+transparent, and the bands together cover the whole spectrum.
 
-See `example/lib/filters/parametric_eq.dart`.
+There are no `queryXxx` getters, and the `ParametricEqParam` helper class is
+not exported by `package:flutter_soloud/flutter_soloud.dart`: take the ranges
+from this table or from `param.min`/`param.max`
+(`eq.bandGain(0).max`). Default band frequencies and Q depend on the band
+count; read the live values with `bandFrequency(i)` and `bandQ(i).value`. At
+per-sound scope the params take the handle after the band:
+`sound.filters.parametricEqFilter.bandGain(0, soundHandle: handle)`.
 
 ## amplitudeModulator
 
@@ -198,5 +211,10 @@ Up to 8 independent instances (`id` in `0..7`) can be activated on the same scop
 | Param | min | max | def | Notes |
 |---|---|---|---|---|
 | wet | 0 | 1 | 1 | `0.0` = hard bypass (callback not invoked); `1.0` = zero-copy in-place; `0 < wet < 1` = automatic dry/wet blend |
-| p1 .. p15 (`param(1)` .. `param(15)`) | 0 (customizable) | 1 (customizable) | 0 (customizable) | Use `defineParam(index, name: ..., min: ..., max: ..., def: ...)` before `activate()` |
+| `param(1)` .. `param(15)` | -1e9 (customizable) | 1e9 (customizable) | 0 (customizable) | Define name, range and default with `configureParameters(List<CustomFilterParamSpec>)` (first spec = parameter 1, at most 7); `param(i, min:, max:)` sets the range checked by `.value` on the Dart side |
 
+`wet` is a getter at global scope and a method at sound/bus scope, like the
+built-in filters; `param(i)` is a method everywhere (sound scope:
+`param(i, soundHandle: handle)`). `deactivate()` keeps the parameter
+definitions but clears the callback: call `setNativeCallback()` again after the
+next `activate()`. Details in **flutter-soloud-custom-dsp**.

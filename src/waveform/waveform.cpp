@@ -36,6 +36,18 @@ static wchar_t* utf8ToWide(const char* utf8Str)
 
 namespace Waveform
 {
+    /// [seconds] as a frame index at [sampleRate]. Clamped before the
+    /// conversion, which is undefined for a negative, NaN or too large value.
+    static ma_uint64 framesFromSeconds(float seconds, ma_uint32 sampleRate)
+    {
+        const double frames = static_cast<double>(seconds) * sampleRate;
+        if (!(frames > 0))
+            return 0;
+        if (frames >= 18446744073709549568.0)
+            return UINT64_MAX;
+        return static_cast<ma_uint64>(frames);
+    }
+
     ReadSamplesErrors readSamplesFromDecoder(
         ma_decoder *decoder,
         float startTime,
@@ -48,7 +60,7 @@ namespace Waveform
         ma_uint32 channels = decoder->outputChannels;
 
         // Calculate start and end frames based on startTime and endTime
-        ma_uint64 startFrame = (ma_uint64)(startTime * sampleRate);
+        ma_uint64 startFrame = framesFromSeconds(startTime, sampleRate);
         ma_uint64 endFrame;
         ma_uint64 totalFramesInFile;
         ma_result lengthResult = ma_decoder_get_length_in_pcm_frames(decoder, &totalFramesInFile);
@@ -56,7 +68,7 @@ namespace Waveform
         if (endTime == -1)
             endFrame = totalFramesInFile;
         else
-            endFrame = (ma_uint64)(endTime * sampleRate);
+            endFrame = framesFromSeconds(endTime, sampleRate);
         
         // Clamp endFrame to file length
         if (endFrame > totalFramesInFile && lengthResult == MA_SUCCESS)

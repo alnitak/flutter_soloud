@@ -4,9 +4,23 @@
 #include <cmath>
 #include <vector>
 
+namespace {
+// SHIFT and SEMITONES are two scales for the same value, so the SEMITONES
+// range is the SHIFT range expressed in semitones (12 * log2(shift)), and a
+// SEMITONES value maps back into the SHIFT range.
+constexpr float kMinShift = 0.1f;
+constexpr float kMaxShift = 3.f;
+
+float semitonesToShift(float semitones) {
+  const float shift = (float)pow(2., semitones / 12.);
+  return shift < kMinShift ? kMinShift : (shift > kMaxShift ? kMaxShift : shift);
+}
+} // namespace
+
 PitchShiftInstance::PitchShiftInstance(PitchShift *aParent) {
   mParent = aParent;
   initParams(3);
+  mParam[PitchShift::WET] = aParent->mWet;
   mParam[PitchShift::SHIFT] = aParent->mShift;
   mParam[PitchShift::SEMITONES] = aParent->mSemitones;
   mOutputBuffer.resize(SAMPLE_GRANULARITY * MAX_CHANNELS, 0.0f);
@@ -119,7 +133,7 @@ void PitchShiftInstance::setFilterParameter(unsigned int aAttributeId,
         aValue > mParent->getParamMax(PitchShift::SEMITONES))
       return;
     mParam[PitchShift::SEMITONES] = aValue;
-    mParam[PitchShift::SHIFT] = pow(2., aValue / 12.);
+    mParam[PitchShift::SHIFT] = semitonesToShift(aValue);
     break;
   }
 
@@ -143,7 +157,7 @@ SoLoud::result PitchShift::setParam(unsigned int aParamIndex, float aValue) {
     if (aValue < getParamMin(SEMITONES) || aValue > getParamMax(SEMITONES))
       return SoLoud::INVALID_PARAMETER;
     mSemitones = aValue;
-    mShift = pow(2., mSemitones / 12.);
+    mShift = semitonesToShift(mSemitones);
     break;
   }
   return SoLoud::SO_NO_ERROR;
@@ -172,9 +186,9 @@ float PitchShift::getParamMax(unsigned int aParamIndex) {
   case WET:
     return 1.f;
   case SHIFT:
-    return 3.f;
+    return kMaxShift;
   case SEMITONES:
-    return 36.f;
+    return 12.f * log2f(kMaxShift); // ~19.02
   }
   return 1;
 }
@@ -184,9 +198,9 @@ float PitchShift::getParamMin(unsigned int aParamIndex) {
   case WET:
     return 0.f;
   case SHIFT:
-    return 0.1f;
+    return kMinShift;
   case SEMITONES:
-    return -36.f;
+    return 12.f * log2f(kMinShift); // ~-39.86
   }
   return 1;
 }

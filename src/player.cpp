@@ -275,6 +275,8 @@ static PlayerErrors fromSoLoudError(SoLoud::result result)
         return outOfMemory;
     case SoLoud::NOT_IMPLEMENTED:
         return notImplemented;
+    case SoLoud::FORMAT_NOT_SUPPORTED:
+        return audioFormatNotSupported;
     default:
         return unknownError;
     }
@@ -462,6 +464,8 @@ PlayerErrors Player::init(unsigned int sampleRate, unsigned int bufferSize, unsi
         mInterruptionActive.store(false, std::memory_order_release);
         soloud.setAudioInterruptionCallback(
             &Player::audioInterruptionCallback, this);
+        // A new engine starts with the default 3D update mode.
+        m3dAutoUpdate.store(true, std::memory_order_relaxed);
         // Publish initialized state only after all lifecycle support,
         // including interruption routing, is ready.
         mInited.store(true, std::memory_order_release);
@@ -585,6 +589,7 @@ PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
     }
 
     bool shouldStartReplacement = false;
+    bool restoredPrevious = false;
     PlayerErrors changeResult = noError;
     {
         std::lock_guard<std::mutex> operationLock(
@@ -610,14 +615,21 @@ PlayerErrors Player::setLinuxAudioBackend(LinuxAudioBackend backend)
             soloud.miniaudio_changeLinuxBackend(static_cast<int>(backend));
 
         if (result != SoLoud::SO_NO_ERROR)
+        {
             changeResult = audioDeviceFailedToStart;
+            // The new backend could not be opened and the previous one was
+            // reopened (stopped): bring it back up as it was.
+            if (shouldStartReplacement &&
+                getAudioDeviceState() != audioDeviceUninitialized)
+                restoredPrevious = performAudioDeviceStart() == noError;
+        }
         else if (shouldStartReplacement)
         {
             changeResult = performAudioDeviceStart();
         }
     }
 
-    if (changeResult == noError && shouldStartReplacement)
+    if ((changeResult == noError || restoredPrevious) && shouldStartReplacement)
         evaluateAudioDeviceIdle();
     return changeResult;
 #else
@@ -906,6 +918,13 @@ Player::PendingSound Player::decodeMem(
     unsigned int engineChannels)
 {
     PendingSound pending;
+    // The decoders take the length unsigned: a negative one would read
+    // gigabytes past [mem].
+    if (mem == nullptr || length <= 0)
+    {
+        pending.error = invalidParameter;
+        return pending;
+    }
     pending.sound = std::make_unique<ActiveSound>();
     ActiveSound *newSound = pending.sound.get();
     newSound->completeFileName = uniqueName;
@@ -929,7 +948,7 @@ Player::PendingSound Player::decodeMem(
     }
 
     pending.error = fromSoLoudError(result);
-    if (result != SoLoud::SO_NO_ERROR && mem != nullptr && length > 0)
+    if (result != SoLoud::SO_NO_ERROR)
     {
         std::vector<unsigned char> bytes(mem, mem + length);
         if (isOggXiphBytes(bytes))
@@ -946,6 +965,25 @@ Player::PendingSound Player::decodeMem(
     }
 
     return pending;
+}
+
+void Player::addSound(std::unique_ptr<ActiveSound> sound)
+{
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    const unsigned int soundHash = sound->soundHash;
+    ActiveSound *const raw = sound.get();
+    mSoundByHash[soundHash] = raw;
+    try
+    {
+        sounds.push_back(std::move(sound));
+    }
+    catch (...)
+    {
+        // push_back() left [sound] untouched, and it is destroyed as this
+        // unwinds: the index must not keep pointing at it.
+        mSoundByHash.erase(soundHash);
+        throw;
+    }
 }
 
 PlayerErrors Player::registerSound(PendingSound pending, unsigned int &hash)
@@ -978,11 +1016,7 @@ PlayerErrors Player::registerSound(PendingSound pending, unsigned int &hash)
         static_cast<SoLoud::BufferStream *>(pending.sound->sound.get())->mThePlayer = this;
 
     pending.sound->filters = std::make_unique<Filters>(&soloud, pending.sound.get(), nullptr);
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        mSoundByHash[newHash] = pending.sound.get();
-        sounds.push_back(std::move(pending.sound));
-    }
+    addSound(std::move(pending.sound));
     hash = newHash;
 
     // Return fileAlreadyLoaded if the name hash was already in use,
@@ -1228,11 +1262,7 @@ PlayerErrors Player::setBufferStream(
     }
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        mSoundByHash[hash] = newSound.get();
-        sounds.push_back(std::move(newSound));
-    }
+    addSound(std::move(newSound));
 
     return e;
 }
@@ -1283,11 +1313,7 @@ PlayerErrors Player::setPullBufferStream(
     }
 
     newSound.get()->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        mSoundByHash[hash] = newSound.get();
-        sounds.push_back(std::move(newSound));
-    }
+    addSound(std::move(newSound));
 
     return e;
 }
@@ -1413,11 +1439,7 @@ PlayerErrors Player::setRealtimeStream(
     }
 
     newSound->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        mSoundByHash[hash] = newSound.get();
-        sounds.push_back(std::move(newSound));
-    }
+    addSound(std::move(newSound));
 
     return PlayerErrors::noError;
 }
@@ -1577,11 +1599,7 @@ PlayerErrors Player::createCustomAudioSource(
     newSound->soundType = SoundType::TYPE_CUSTOM_SOURCE;
     newSound->filters = std::make_unique<Filters>(&soloud, newSound.get(), nullptr);
 
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        mSoundByHash[hash] = newSound.get();
-        sounds.push_back(std::move(newSound));
-    }
+    addSound(std::move(newSound));
 
     return PlayerErrors::noError;
 }
@@ -1650,7 +1668,7 @@ PlayerErrors Player::getStreamTimeConsumed(unsigned int hash, float *timeConsume
     if (static_cast<SoLoud::BufferStream *>(s->sound.get())->getBufferingType() != BufferingType::RELEASED)
         return PlayerErrors::wrongBufferTypeToAskForTimeConsumed;
 
-    *timeConsumed = static_cast<SoLoud::BufferStream *>(s->sound.get())->getStreamTimeConsumed();
+    *timeConsumed = static_cast<float>(static_cast<SoLoud::BufferStream *>(s->sound.get())->getStreamTimeConsumed());
     return PlayerErrors::noError;
 }
 
@@ -1734,19 +1752,20 @@ PlayerErrors Player::loadWaveform(
         hash = dist(g);
     } while (findByHash(hash) != nullptr);
 
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        sounds.push_back(std::make_unique<ActiveSound>());
-        ActiveSound *added = sounds.back().get();
-        added->completeFileName = "";
-        added->soundHash = hash;
-        auto basicWave = std::make_unique<Basicwave>((SoLoud::Soloud::WAVEFORM)waveform, superWave, scale, detune);
-        basicWave->setSamplerate(mSampleRate);
-        added->sound = std::move(basicWave);
-        added->soundType = TYPE_SYNTH;
-        added->filters = std::make_unique<Filters>(&soloud, added, nullptr);
-        mSoundByHash[hash] = added;
-    }
+    // Built in full before it is listed, so an allocation that fails leaves
+    // nothing behind.
+    auto added = std::make_unique<ActiveSound>();
+    added->completeFileName = "";
+    added->soundHash = hash;
+    // [waveform] comes from Dart as a plain integer: it is stored as one (an
+    // unknown id plays as a square wave), not converted to the enum.
+    auto basicWave = std::make_unique<Basicwave>(SoLoud::Soloud::WAVE_SQUARE, superWave, scale, detune);
+    basicWave->setWaveform(waveform);
+    basicWave->setSamplerate(mSampleRate);
+    added->sound = std::move(basicWave);
+    added->soundType = TYPE_SYNTH;
+    added->filters = std::make_unique<Filters>(&soloud, added.get(), nullptr);
+    addSound(std::move(added));
 
     return noError;
 }
@@ -1778,7 +1797,7 @@ void Player::setWaveform(unsigned int soundHash, int newWaveform)
     if (s == nullptr || s->soundType != TYPE_SYNTH)
         return;
 
-    static_cast<Basicwave *>(s->sound.get())->setWaveform((SoLoud::Soloud::WAVEFORM)newWaveform);
+    static_cast<Basicwave *>(s->sound.get())->setWaveform(newWaveform);
 }
 
 void Player::setWaveformFreq(unsigned int soundHash, float newFreq)
@@ -1813,22 +1832,30 @@ void Player::applyPauseState(unsigned int handle, bool pause, bool isUserAction)
     // Track whether this handle was paused by the user, so the BufferStream
     // buffering logic does not automatically unpause it when data becomes
     // available. The user must explicitly unpause it again.
-    auto s = findByHandle(handle);
-    if (s != nullptr)
+    SoLoud::BufferStream *bufferStream = nullptr;
     {
-        for (size_t i = 0; i < s->handle.size(); i++)
+        // The voice-ended dispatch erases from the handle list concurrently
+        // (removeHandle).
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        auto s = findByHandle(handle);
+        if (s != nullptr)
         {
-            if (s->handle[i].handle == handle)
+            for (size_t i = 0; i < s->handle.size(); i++)
             {
-                s->handle[i].isUserPaused = pause && isUserAction;
-                break;
+                if (s->handle[i].handle == handle)
+                {
+                    s->handle[i].isUserPaused = pause && isUserAction;
+                    break;
+                }
             }
+            if (s->soundType == SoundType::TYPE_BUFFER_STREAM)
+                bufferStream = static_cast<SoLoud::BufferStream *>(s->sound.get());
         }
-        // The user decides over a buffering pause the mixer made before.
-        if (isUserAction && s->soundType == SoundType::TYPE_BUFFER_STREAM)
-            static_cast<SoLoud::BufferStream *>(s->sound.get())
-                ->takeBufferingPause(handle);
     }
+    // The user decides over a buffering pause the mixer made before. Outside
+    // sounds_mutex: this takes the audio mutex.
+    if (isUserAction && bufferStream != nullptr)
+        bufferStream->takeBufferingPause(handle);
 
     if (!pause)
     {
@@ -2606,8 +2633,8 @@ bool Player::getPause(unsigned int handle)
 
 void Player::setRelativePlaySpeed(unsigned int handle, float speed)
 {
-    if (speed < 0.05)
-        speed = 0.05;
+    if (speed < 0.05f)
+        speed = 0.05f;
     soloud.setRelativePlaySpeed(handle, speed);
 }
 
@@ -2629,7 +2656,7 @@ unsigned int Player::getActiveVoiceCount_internal()
     unsigned int count = 0;
     for (auto &s : sounds)
     {
-        count += s->handle.size();
+        count += static_cast<unsigned int>(s->handle.size());
     }
     return count;
 }
@@ -2652,6 +2679,65 @@ static PlayerErrors checkStreamedFile(const ActiveSound &sound)
     SoLoud::DiskFile file;
     return file.open(path) == SoLoud::SO_NO_ERROR ? PlayerErrors::noError
                                                   : PlayerErrors::fileNotFound;
+}
+
+size_t Player::voiceCount(ActiveSound &sound)
+{
+    // The voice-ended dispatch erases from the list concurrently.
+    std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+    return sound.handle.size();
+}
+
+bool Player::makeRoomForVoice(ActiveSound &sound)
+{
+    if (getActiveVoiceCount_internal() < getMaxActiveVoiceCount())
+        return true;
+    // Make room by stopping the oldest voice of this sound, as long as it is
+    // not protected: a protected voice must survive the limit.
+    std::vector<SoLoud::handle> handles;
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        for (const auto &h : sound.handle)
+            handles.push_back(h.handle);
+    }
+    // Asked without sounds_mutex: these take the audio mutex.
+    for (const SoLoud::handle h : handles)
+    {
+        if (soloud.isValidVoiceHandle(h) && !soloud.getProtectVoice(h))
+        {
+            stop(h);
+            return true;
+        }
+    }
+    return false;
+}
+
+void Player::registerVoice(ActiveSound &sound, SoLoud::handle handle,
+                           bool userPaused)
+{
+    try
+    {
+        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+        sound.handle.push_back({handle, MAX_DOUBLE, userPaused});
+        mSoundByHandle[handle] = &sound;
+    }
+    catch (...)
+    {
+        // Out of memory: the voice must not keep playing untracked.
+        {
+            std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
+            for (size_t i = 0; i < sound.handle.size(); ++i)
+            {
+                if (sound.handle[i].handle == handle)
+                {
+                    sound.handle.erase(sound.handle.begin() + i);
+                    break;
+                }
+            }
+        }
+        soloud.stop(handle);
+        throw;
+    }
 }
 
 PlayerErrors Player::play(
@@ -2686,7 +2772,7 @@ PlayerErrors Player::play(
     // A BufferStream using `release` buffer type can only have one instance.
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
         static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
-        sound->handle.size() > 0)
+        voiceCount(*sound) > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
     }
@@ -2699,17 +2785,8 @@ PlayerErrors Player::play(
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If no other instances are playing, this sound cannot be played and return an error.
     // Issue https://github.com/alnitak/flutter_soloud/issues/204
-    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
-    {
-        if (sound->handle.size() > 0)
-        {
-            stop(sound->handle[0].handle);
-        }
-        else
-        {
-            return PlayerErrors::maxActiveVoiceCountReached;
-        }
-    }
+    if (!makeRoomForVoice(*sound))
+        return PlayerErrors::maxActiveVoiceCountReached;
 
     // Create paused so the voice cannot render before its handle and initial
     // state have been registered, and so a voice requested `paused` (or a
@@ -2733,14 +2810,10 @@ PlayerErrors Player::play(
     if (newHandle == 0)
         return failedToStartPlayback;
 
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        // A voice the caller asked to start paused is user-paused: the
-        // BufferStream buffering logic must not silently unpause it once
-        // enough data has arrived.
-        sound->handle.push_back({newHandle, MAX_DOUBLE, paused});
-        mSoundByHandle[newHandle] = sound;
-    }
+    // A voice the caller asked to start paused is user-paused: the
+    // BufferStream buffering logic must not silently unpause it once
+    // enough data has arrived.
+    registerVoice(*sound, newHandle, paused);
 
     if (scale != 1.0f && scale > 0.0f)
     {
@@ -2816,7 +2889,7 @@ PlayerErrors Player::playClocked(
     // A BufferStream using `release` buffer type can only have one instance.
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
         static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
-        sound->handle.size() > 0)
+        voiceCount(*sound) > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
     }
@@ -2829,17 +2902,8 @@ PlayerErrors Player::playClocked(
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If no other instances are playing, this sound cannot be played and return an error.
     // Issue https://github.com/alnitak/flutter_soloud/issues/204
-    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
-    {
-        if (sound->handle.size() > 0)
-        {
-            stop(sound->handle[0].handle);
-        }
-        else
-        {
-            return PlayerErrors::maxActiveVoiceCountReached;
-        }
-    }
+    if (!makeRoomForVoice(*sound))
+        return PlayerErrors::maxActiveVoiceCountReached;
 
     SoLoud::handle newHandle = 0;
     if (busId == 0)
@@ -2863,11 +2927,7 @@ PlayerErrors Player::playClocked(
     if (newHandle == 0)
         return failedToStartPlayback;
 
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
-        mSoundByHandle[newHandle] = sound;
-    }
+    registerVoice(*sound, newHandle, false);
     // Check if this buffer has enough data to be played
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
     {
@@ -2952,7 +3012,7 @@ PlayerErrors Player::playScheduled(
     // A BufferStream using `release` buffer type can only have one instance.
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
         static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
-        sound->handle.size() > 0)
+        voiceCount(*sound) > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
     }
@@ -2965,17 +3025,8 @@ PlayerErrors Player::playScheduled(
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If no other instances are playing, this sound cannot be played and return an error.
     // Issue https://github.com/alnitak/flutter_soloud/issues/204
-    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
-    {
-        if (sound->handle.size() > 0)
-        {
-            stop(sound->handle[0].handle);
-        }
-        else
-        {
-            return PlayerErrors::maxActiveVoiceCountReached;
-        }
-    }
+    if (!makeRoomForVoice(*sound))
+        return PlayerErrors::maxActiveVoiceCountReached;
 
     SoLoud::handle newHandle = 0;
     if (busId == 0)
@@ -3001,11 +3052,7 @@ PlayerErrors Player::playScheduled(
 
     if (soloud.isValidVoiceHandle(newHandle))
     {
-        {
-            std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-            sound->handle.push_back({newHandle, MAX_DOUBLE, false});
-            mSoundByHandle[newHandle] = sound;
-        }
+        registerVoice(*sound, newHandle, false);
         if (duration > 0.0)
         {
             soloud.scheduleStopAt(newHandle, atTime + duration);
@@ -3388,13 +3435,16 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     if (!mInited.load(std::memory_order_acquire))
         return backendNotInited;
 
-    const SoLoud::result result = speech.setText(textToSpeech.c_str());
+    // Each speech gets its own source, owned by its ActiveSound, so that
+    // play() can replay it and a later speechText() doesn't stop it.
+    auto speech = std::make_unique<SoLoud::Speech>();
+    const SoLoud::result result = speech->setText(textToSpeech.c_str());
     if (result != SoLoud::SO_NO_ERROR)
         return fromSoLoudError(result);
 
     // Speech always begins unpaused, but create it paused until its handle is
     // known and registered.
-    const SoLoud::handle newHandle = soloud.play(speech, -1.0f, 0.0f, true);
+    const SoLoud::handle newHandle = soloud.play(*speech, -1.0f, 0.0f, true);
     // 0 is the invalid-handle sentinel: no voice could be allocated. Don't
     // create any bookkeeping for a sound that is not playing.
     if (newHandle == 0)
@@ -3403,6 +3453,7 @@ PlayerErrors Player::textToSpeech(const std::string &textToSpeech, unsigned int 
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
         auto activeSpeech = std::make_unique<ActiveSound>();
+        activeSpeech->sound = std::move(speech);
         activeSpeech->completeFileName = std::string("");
         activeSpeech->soundHash = newHandle;
         activeSpeech->soundType = TYPE_TEXT_TO_SPEECH;
@@ -3566,7 +3617,6 @@ int Player::countAudioSource(unsigned int soundHash)
     switch (s->soundType)
     {
     case TYPE_SYNTH:
-        return 0;
     case TYPE_WAV:
     case TYPE_WAVSTREAM:
     case TYPE_BUFFER_STREAM:
@@ -3758,6 +3808,27 @@ void Player::update3dAudio()
     soloud.update3dAudio();
 }
 
+void Player::autoUpdate3dAudio()
+{
+    if (m3dAutoUpdate.load(std::memory_order_relaxed))
+        soloud.update3dAudio();
+}
+
+void Player::set3dAutoUpdate(bool enabled)
+{
+    const bool wasEnabled =
+        m3dAutoUpdate.exchange(enabled, std::memory_order_relaxed);
+    // Values stored while the update was deferred must not wait for the next
+    // setter call.
+    if (enabled && !wasEnabled)
+        soloud.update3dAudio();
+}
+
+bool Player::get3dAutoUpdate()
+{
+    return m3dAutoUpdate.load(std::memory_order_relaxed);
+}
+
 PlayerErrors Player::play3d(
     unsigned int soundHash,
     unsigned int &handle,
@@ -3794,7 +3865,7 @@ PlayerErrors Player::play3d(
     // A BufferStream using `release` buffer type can only have one instance.
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
         static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
-        sound->handle.size() > 0)
+        voiceCount(*sound) > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
     }
@@ -3807,17 +3878,8 @@ PlayerErrors Player::play3d(
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If there are no other instances playing, this sound cannot be played and return an error.
     // Issue https://github.com/alnitak/flutter_soloud/issues/204
-    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
-    {
-        if (sound->handle.size() > 0)
-        {
-            stop(sound->handle[0].handle);
-        }
-        else
-        {
-            return PlayerErrors::maxActiveVoiceCountReached;
-        }
-    }
+    if (!makeRoomForVoice(*sound))
+        return PlayerErrors::maxActiveVoiceCountReached;
 
     // Create paused so the 3D voice and its initial state are fully registered
     // before it can render or request device startup, and so a voice requested
@@ -3849,14 +3911,10 @@ PlayerErrors Player::play3d(
     if (newHandle == 0)
         return failedToStartPlayback;
 
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        // A voice the caller asked to start paused is user-paused: the
-        // BufferStream buffering logic must not silently unpause it once
-        // enough data has arrived.
-        sound->handle.push_back({newHandle, MAX_DOUBLE, paused});
-        mSoundByHandle[newHandle] = sound;
-    }
+    // A voice the caller asked to start paused is user-paused: the
+    // BufferStream buffering logic must not silently unpause it once
+    // enough data has arrived.
+    registerVoice(*sound, newHandle, paused);
 
     if (scale != 1.0f && scale > 0.0f)
     {
@@ -3936,7 +3994,7 @@ PlayerErrors Player::play3dClocked(
     // A BufferStream using `release` buffer type can only have one instance.
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
         static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
-        sound->handle.size() > 0)
+        voiceCount(*sound) > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
     }
@@ -3949,17 +4007,8 @@ PlayerErrors Player::play3dClocked(
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If there are no other instances playing, this sound cannot be played and return an error.
     // Issue https://github.com/alnitak/flutter_soloud/issues/204
-    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
-    {
-        if (sound->handle.size() > 0)
-        {
-            stop(sound->handle[0].handle);
-        }
-        else
-        {
-            return PlayerErrors::maxActiveVoiceCountReached;
-        }
-    }
+    if (!makeRoomForVoice(*sound))
+        return PlayerErrors::maxActiveVoiceCountReached;
 
     SoLoud::handle newHandle = 0;
     if (busId == 0)
@@ -4002,11 +4051,7 @@ PlayerErrors Player::play3dClocked(
     if (newHandle == 0)
         return failedToStartPlayback;
 
-    {
-        std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
-        mSoundByHandle[newHandle] = sound;
-    }
+    registerVoice(*sound, newHandle, false);
     // Check if this buffer has enough data to be played
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM)
     {
@@ -4055,7 +4100,7 @@ PlayerErrors Player::play3dScheduled(
     // A BufferStream using `release` buffer type can only have one instance.
     if (sound->soundType == SoundType::TYPE_BUFFER_STREAM &&
         static_cast<SoLoud::BufferStream *>(sound->sound.get())->getBufferingType() == BufferingType::RELEASED &&
-        sound->handle.size() > 0)
+        voiceCount(*sound) > 0)
     {
         return bufferStreamCanBePlayedOnlyOnce;
     }
@@ -4068,17 +4113,8 @@ PlayerErrors Player::play3dScheduled(
     // check if [soudHash] has other instances playing. If true remove the first and play the new one.
     // If there are no other instances playing, this sound cannot be played and return an error.
     // Issue https://github.com/alnitak/flutter_soloud/issues/204
-    if (getActiveVoiceCount_internal() >= getMaxActiveVoiceCount())
-    {
-        if (sound->handle.size() > 0)
-        {
-            stop(sound->handle[0].handle);
-        }
-        else
-        {
-            return PlayerErrors::maxActiveVoiceCountReached;
-        }
-    }
+    if (!makeRoomForVoice(*sound))
+        return PlayerErrors::maxActiveVoiceCountReached;
 
     SoLoud::handle newHandle = 0;
     if (busId == 0)
@@ -4124,8 +4160,7 @@ PlayerErrors Player::play3dScheduled(
     if (soloud.isValidVoiceHandle(newHandle))
     {
         std::lock_guard<std::recursive_mutex> lock(sounds_mutex);
-        sound->handle.push_back({newHandle, MAX_DOUBLE, false});
-        mSoundByHandle[newHandle] = sound;
+        registerVoice(*sound, newHandle, false);
         if (duration > 0.0)
         {
             soloud.scheduleStopAt(newHandle, atTime + duration);
@@ -4191,7 +4226,7 @@ void Player::set3dListenerUp(float aUpX,
                              float aUpY,
                              float aUpZ)
 {
-    soloud.set3dListenerAt(aUpX, aUpY, aUpZ);
+    soloud.set3dListenerUp(aUpX, aUpY, aUpZ);
 }
 
 void Player::set3dListenerVelocity(float aVelocityX,
@@ -4250,6 +4285,42 @@ void Player::set3dSourceDopplerFactor(
     float aDopplerFactor)
 {
     soloud.set3dSourceDopplerFactor(aVoiceHandle, aDopplerFactor);
+}
+
+// The 3D defaults live in the SoLoud::AudioSource. A voice copies them when
+// it is created (AudioSourceInstance3dData::init, under the audio mutex), so
+// they are in place before its first 3D computation.
+
+void Player::set3dDefaultMinMaxDistance(
+    unsigned int soundHash,
+    float aMinDistance,
+    float aMaxDistance)
+{
+    auto const s = findByHash(soundHash);
+    if (s == nullptr || s->sound == nullptr)
+        return;
+    s->sound->set3dMinMaxDistance(aMinDistance, aMaxDistance);
+}
+
+void Player::set3dDefaultAttenuation(
+    unsigned int soundHash,
+    unsigned int aAttenuationModel,
+    float aAttenuationRolloffFactor)
+{
+    auto const s = findByHash(soundHash);
+    if (s == nullptr || s->sound == nullptr)
+        return;
+    s->sound->set3dAttenuation(aAttenuationModel, aAttenuationRolloffFactor);
+}
+
+void Player::set3dDefaultDopplerFactor(
+    unsigned int soundHash,
+    float aDopplerFactor)
+{
+    auto const s = findByHash(soundHash);
+    if (s == nullptr || s->sound == nullptr)
+        return;
+    s->sound->set3dDopplerFactor(aDopplerFactor);
 }
 
 /////////////////////////////////////////

@@ -371,7 +371,7 @@ final class FlacInfo {
       ..writeln('\tMaxFrameSize: $maxFrameSize')
       ..writeln('\tSampleRate: $sampleRate')
       ..writeln('\tChannels: $channels')
-      ..writeln('\tBitrate: $bitsPerSample')
+      ..writeln('\tBitsPerSample: $bitsPerSample')
       ..writeln('\tTotalSamples: $totalSamples');
     return buffer.toString();
   }
@@ -806,7 +806,11 @@ final class AudioMetadata {
     switch (detectedType) {
       case DetectedType.mp3WithId3:
       case DetectedType.mp3Stream:
-        buffer.writeln(mp3Metadata.toString());
+        if (mp3Metadata != null) {
+          buffer.writeln(mp3Metadata);
+        } else {
+          buffer.writeln('MP3 audio format');
+        }
       case DetectedType.oggOpus:
       case DetectedType.oggVorbis:
       case DetectedType.oggFlac:

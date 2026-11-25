@@ -1,3 +1,40 @@
+## 5.4.0 (XX Xxx 2026)
+A bug-fix release: a new, much larger test suite found many bugs, now fixed.
+
+### Added
+- `set3dAutoUpdate`, `get3dAutoUpdate` and `update3dAudio`: with the automatic update disabled the 3D setters only store their values, and one `update3dAudio()` per frame applies them to all the 3D voices. By default every setter still recomputes all the 3D voices, which is one full pass per call with many moving sources.
+- `set3dDefaultAttenuation`, `set3dDefaultMinMaxDistance` and `set3dDefaultDopplerFactor`: 3D settings of a sound that every voice started later from it begins with, from its first sample. The `set3dSource*` setters act on one voice after it has been created, so they had to be repeated after every `play3d`.
+
+### Behaviour changes
+- `Bus` equality is now identity (`==`/`hashCode` removed), and every bus becomes invalid after `deinit()`.
+- Setters (volume, pan, speed, fades, oscillations, 3D, `play*()` arguments, filter parameter fades, ...) throw `ArgumentError` for NaN or infinite values.
+- Voice groups, `createMixingBus`, the 3D methods and `setBufferIcyMetaInt` throw `SoLoudNotInitializedException` before `init()`, like the rest of the API.
+- Filters:
+  - Using a parameter of a filter that is not active throws `SoLoudFilterNotFoundException`; an invalid parameter index throws `SoLoudInvalidParameterException`.
+  - A sound's filter parameter used without `soundHandle` throws `ArgumentError` (it used to change the global filter).
+  - Parameter ranges now match the native ones (biquad, flanger, limiter, pitch shift, parametric EQ).
+  - EQ: transparent with all bands at 1, and the bands cover the whole spectrum, so existing EQ settings sound different.
+  - Custom filters expose 15 user parameters (it was 7).
+  - `biquadFilter` is deprecated: use `biquadResonantFilter`.
+- `Vst3Host.loadEffect` only supports global and bus slots, and throws `ArgumentError` for a single sound's slot.
+- Ogg Opus streams with 3 to 8 channels are downmixed to stereo.
+- Linux without FFmpeg: loading AAC/M4A/AC-3 throws `SoLoudAudioFormatNotSupportedCppException`.
+- Web: custom sources and filters with `webJsFunctionName` work only with the single-threaded WASM build; `loadMem`/`loadUrl` of undecodable data throw `SoLoudFileLoadFailedException`, and `addPullBufferDataStream` throws on errors.
+
+### Fixes
+- **Engine and 3D**: `speechText()` crash on `play()`; `set3dListenerUp`; distance attenuation applied twice; inverted Doppler shift; 3D settings lost before the first sound is loaded; NaN audio with min/max distance 0; `play()` at the voice limit stopping a protected voice.
+- **Filters**: waveshaper output growing without bound, bassboost boosting high frequencies, pitch shift semitones, biquad cutoff above Nyquist.
+- **Streams**: lost, duplicated or glitchy audio when data arrives in small chunks (MP3, FLAC, WAV, Vorbis, Opus, AAC, AC-3); more accurate seeking; chained Ogg streams; ICY metadata; `addAudioDataStream` and `setDataIsEnded` work again from worker isolates; a seek on an Ogg pull stream right after it starts no longer hangs, and an Ogg pull stream plays to its end when its duration cannot be read from the end of the file (a truncated file, a slow or missing answer).
+- **Decoding**:
+  - Apple: HE-AAC plays at full rate, the last AC-3 frame is no longer dropped.
+  - Android: AC-3/E-AC-3 in MP4 on devices with Dolby's decoder no longer cuts the start/end or applies the Atmos leveler.
+  - Linux: crashes and wrong lengths with FFmpeg 4.4/5.x fixed; decoding from memory honors `TMPDIR`.
+  - Windows: M4A files no longer start with the encoder delay or end with padding (gapless trim as on the other platforms); M4A paths longer than `MAX_PATH` (`\\?\` prefix) load.
+  - FLAC files without a total length load; M4A bitrate is correct.
+- **Recording (mixer output)**: correct channel order for 6/8-channel Vorbis and FLAC; valid WAV files over 4 GB.
+- **Linux devices**: a failed backend switch keeps the previous backend; the device recovers when PulseAudio comes back; the VST3 editor's close button works.
+- **Robustness**: invalid arguments and out-of-memory no longer crash the app, and several crashes, deadlocks and data races are fixed.
+
 ## 5.3.2 (22 Nov 2026)
 - fix macOS: an app that quit without ever using SoLoud crashed in `applicationWillTerminate` (EXC_BAD_ACCESS at 0x0) #618
 - refactor: drop package:flutter imports from filters and vst3 for a future use in DartNative. Thanks to hectorAguero #616⁠

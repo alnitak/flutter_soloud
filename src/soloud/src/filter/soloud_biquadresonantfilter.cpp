@@ -39,7 +39,14 @@ namespace SoLoud
 	{
 		mDirty = 0;
 
-		float omega = (float)((2.0f * M_PI * mParam[FREQUENCY]) / mSamplerate);
+		// flutter_soloud: FREQUENCY's range (up to 8000 Hz) is fixed, but the
+		// sample rate is not; at or above Nyquist the poles reach the unit
+		// circle and the output blows up to Inf. Keep the cutoff below it.
+		float frequency = mParam[FREQUENCY];
+		const float maxFrequency = 0.45f * mSamplerate;
+		if (frequency > maxFrequency)
+			frequency = maxFrequency;
+		float omega = (float)((2.0f * M_PI * frequency) / mSamplerate);
 		float sin_omega = sinf(omega);
 		float cos_omega = cosf(omega);
 		float alpha = sin_omega / (2.0f * mParam[RESONANCE]);

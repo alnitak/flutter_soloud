@@ -127,7 +127,8 @@ public:
 
 private:
   enum class DurationProbeState {
-    None,          ///< Duration is known at setup (PCM) or not applicable.
+    None,          ///< Duration is known at setup (PCM), not applicable, or
+                   ///< could not be found in the tail (it stays unknown).
     Probing,       ///< Waiting for the first chunk to detect format.
     BuildingSeekTable, ///< Ogg format: fetching a few more sequential chunks
                    ///< so the seek table covers short seeks before the tail probe.
@@ -171,6 +172,12 @@ private:
   void drainBacklogLocked();
   void probeDurationFromFirstChunk();
   void probeDurationFromOggTail(uint64_t aOffset);
+  /// Gives the tail probe the part of a chunk at [aOffset] that it is
+  /// waiting for, if the chunk holds it, and ends the probe when it cannot
+  /// find the duration. [aProbeOnly]: the chunk is not part of the
+  /// sequential feed.
+  void feedTailProbe(const unsigned char *aData, unsigned int aDataLen,
+                     uint64_t aOffset, bool aProbeOnly);
   /// Records the duration; the caller reports it once it has released
   /// mDecodeMutex (see DeferredCallbacks).
   void finishDurationProbe(double duration);
@@ -261,6 +268,8 @@ private:
   std::atomic<uint64_t> mDurationProbeTailRangeStart{0}; ///< First byte of the requested tail range.
   std::atomic<uint64_t> mDurationProbeTailRangeEnd{0};   ///< One past the last byte of the file.
   std::atomic<uint64_t> mNextTailOffset{0};              ///< Next tail byte to request.
+  int mTailProbeMisses = 0;                  ///< Tail chunks in a row the probe could not use.
+  static constexpr int kMaxTailProbeMisses = 4; ///< The probe gives up after this many.
   int mSeekTableBuildChunks = 0;             ///< Sequential chunks fed while building the Ogg seek table.
   static constexpr int kMaxSeekTableBuildChunks = 16; ///< Cap for seek-table pre-build phase.
   std::vector<unsigned char> mTailProbeBuffer; ///< Accumulated tail bytes for Ogg probe.

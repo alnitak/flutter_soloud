@@ -845,6 +845,35 @@ external void wasmSet3dSourceAttenuation(
 @JS('Module_soloud._set3dSourceDopplerFactor')
 external void wasmSet3dSourceDopplerFactor(int handle, double dopplerFactor);
 
+@JS('Module_soloud._set3dDefaultMinMaxDistance')
+external void wasmSet3dDefaultMinMaxDistance(
+  int soundHash,
+  double minDistance,
+  double maxDistance,
+);
+
+@JS('Module_soloud._set3dDefaultAttenuation')
+external void wasmSet3dDefaultAttenuation(
+  int soundHash,
+  int attenuationModel,
+  double attenuationRolloffFactor,
+);
+
+@JS('Module_soloud._set3dDefaultDopplerFactor')
+external void wasmSet3dDefaultDopplerFactor(
+  int soundHash,
+  double dopplerFactor,
+);
+
+@JS('Module_soloud._set3dAutoUpdate')
+external void wasmSet3dAutoUpdate(int enabled);
+
+@JS('Module_soloud._get3dAutoUpdate')
+external int wasmGet3dAutoUpdate();
+
+@JS('Module_soloud._update3dAudio')
+external void wasmUpdate3dAudio();
+
 @JS('Module_soloud._readSamplesFromMem')
 external int wasmReadSamplesFromMem(
   int bufferPtr,

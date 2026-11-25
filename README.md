@@ -134,4 +134,4 @@ A showcase of apps and games built with this plugin:
 
 ## License
 
-The Dart plugin is covered by the MIT license. For information about the underlying SoLoud engine license, see the [documentation](https://docs.page/alnitak/flutter_soloud/get_started/license).
+The Dart plugin is covered by the MIT license. For information about the underlying SoLoud engine license, see the [documentation](https://docs.page/alnitak/flutter_soloud_docs/get_started/license).

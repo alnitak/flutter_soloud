@@ -82,7 +82,7 @@ class ScopedFlushDenormals {
     mPrev = _mm_getcsr();
     constexpr unsigned int kFtzDaz = 0x8040u;  // FTZ (bit 15) | DAZ (bit 6)
     if ((mPrev & kFtzDaz) != kFtzDaz) {
-      _mm_setcsr(mPrev | kFtzDaz);
+      _mm_setcsr(static_cast<unsigned int>(mPrev | kFtzDaz));
       mChanged = true;
     }
 #elif defined(_MSC_VER) && (defined(_M_ARM64) || defined(_M_ARM64EC))
@@ -432,6 +432,25 @@ inline f32x4 max(f32x4 a, f32x4 b) noexcept {
 
 inline f32x4 clamp(f32x4 x, f32x4 lo, f32x4 hi) noexcept {
   return min(max(x, lo), hi);
+}
+
+/// NaN lanes -> +0.0f, other lanes unchanged. min/max/clamp treat NaN
+/// differently per ISA (SSE returns the second operand, NEON propagates it),
+/// so kernels that must not depend on the build zero NaNs first.
+inline f32x4 zero_nan(f32x4 a) noexcept {
+#if defined(SOLOUD_SIMD_SSE2)
+  return _mm_and_ps(a.v, _mm_cmpeq_ps(a.v, a.v));
+#elif defined(SOLOUD_SIMD_NEON)
+  return vreinterpretq_f32_u32(
+      vandq_u32(vreinterpretq_u32_f32(a.v), vceqq_f32(a.v, a.v)));
+#elif defined(SOLOUD_SIMD_WASM)
+  return wasm_v128_and(a.v, wasm_f32x4_eq(a.v, a.v));
+#else
+  return f32x4(a.v[0] == a.v[0] ? a.v[0] : 0.0f,
+               a.v[1] == a.v[1] ? a.v[1] : 0.0f,
+               a.v[2] == a.v[2] ? a.v[2] : 0.0f,
+               a.v[3] == a.v[3] ? a.v[3] : 0.0f);
+#endif
 }
 
 inline f32x4 div(f32x4 a, f32x4 b) noexcept {

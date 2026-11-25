@@ -688,28 +688,32 @@ inline double sumOfSquaresF32(const float *src, size_t count) noexcept {
   return total;
 }
 
+// NaN samples count as 0 (as in the WAV/FLAC encoders), in every build and
+// whether they land in the vector body or the scalar tail.
 inline float peakAbsF32(const float *src, size_t count) noexcept {
   soloud_simd::f32x4 m0 = soloud_simd::f32x4::zero();
   soloud_simd::f32x4 m1 = soloud_simd::f32x4::zero();
   size_t i = 0;
   for (; i + 8 <= count; i += 8) {
     m0 = soloud_simd::max(m0,
-                          soloud_simd::abs(soloud_simd::f32x4::loadu(src + i)));
+                          soloud_simd::abs(soloud_simd::zero_nan(soloud_simd::f32x4::loadu(src + i))));
     m1 = soloud_simd::max(
-        m1, soloud_simd::abs(soloud_simd::f32x4::loadu(src + i + 4)));
+        m1, soloud_simd::abs(soloud_simd::zero_nan(
+                soloud_simd::f32x4::loadu(src + i + 4))));
   }
   for (; i + 4 <= count; i += 4) {
     m0 = soloud_simd::max(m0,
-                          soloud_simd::abs(soloud_simd::f32x4::loadu(src + i)));
+                          soloud_simd::abs(soloud_simd::zero_nan(soloud_simd::f32x4::loadu(src + i))));
   }
   float peak = soloud_simd::reduce_max(soloud_simd::max(m0, m1));
   for (; i < count; ++i) {
     const float a = std::fabs(src[i]);
-    if (a > peak) peak = a;
+    if (a > peak) peak = a; // false for NaN
   }
   return peak;
 }
 
+// NaN samples become 0 (times postScale), as in the WAV/FLAC encoders.
 inline void clipHardInPlaceF32(float *buf, size_t count, float lo = -1.0f,
                                float hi = 1.0f,
                                float postScale = 1.0f) noexcept {
@@ -718,17 +722,22 @@ inline void clipHardInPlaceF32(float *buf, size_t count, float lo = -1.0f,
   if (postScale == 1.0f) {
     size_t i = 0;
     for (; i + 8 <= count; i += 8) {
-      soloud_simd::clamp(soloud_simd::f32x4::loadu(buf + i), vLo, vHi)
+      soloud_simd::clamp(soloud_simd::zero_nan(soloud_simd::f32x4::loadu(buf + i)),
+                           vLo, vHi)
           .storeu(buf + i);
-      soloud_simd::clamp(soloud_simd::f32x4::loadu(buf + i + 4), vLo, vHi)
+      soloud_simd::clamp(
+          soloud_simd::zero_nan(soloud_simd::f32x4::loadu(buf + i + 4)), vLo,
+          vHi)
           .storeu(buf + i + 4);
     }
     for (; i + 4 <= count; i += 4) {
-      soloud_simd::clamp(soloud_simd::f32x4::loadu(buf + i), vLo, vHi)
+      soloud_simd::clamp(soloud_simd::zero_nan(soloud_simd::f32x4::loadu(buf + i)),
+                           vLo, vHi)
           .storeu(buf + i);
     }
     for (; i < count; ++i) {
       float x = buf[i];
+      if (x != x) x = 0.0f; // NaN
       if (x < lo) x = lo;
       if (x > hi) x = hi;
       buf[i] = x;
@@ -738,22 +747,27 @@ inline void clipHardInPlaceF32(float *buf, size_t count, float lo = -1.0f,
     size_t i = 0;
     for (; i + 8 <= count; i += 8) {
       soloud_simd::mul(
-          soloud_simd::clamp(soloud_simd::f32x4::loadu(buf + i), vLo, vHi),
+          soloud_simd::clamp(soloud_simd::zero_nan(soloud_simd::f32x4::loadu(buf + i)),
+                           vLo, vHi),
           vScale)
           .storeu(buf + i);
       soloud_simd::mul(
-          soloud_simd::clamp(soloud_simd::f32x4::loadu(buf + i + 4), vLo, vHi),
+          soloud_simd::clamp(
+          soloud_simd::zero_nan(soloud_simd::f32x4::loadu(buf + i + 4)), vLo,
+          vHi),
           vScale)
           .storeu(buf + i + 4);
     }
     for (; i + 4 <= count; i += 4) {
       soloud_simd::mul(
-          soloud_simd::clamp(soloud_simd::f32x4::loadu(buf + i), vLo, vHi),
+          soloud_simd::clamp(soloud_simd::zero_nan(soloud_simd::f32x4::loadu(buf + i)),
+                           vLo, vHi),
           vScale)
           .storeu(buf + i);
     }
     for (; i < count; ++i) {
       float x = buf[i];
+      if (x != x) x = 0.0f; // NaN
       if (x < lo) x = lo;
       if (x > hi) x = hi;
       buf[i] = x * postScale;
@@ -763,6 +777,7 @@ inline void clipHardInPlaceF32(float *buf, size_t count, float lo = -1.0f,
 
 /// Vectorized in-place SoLoud roundoff clipper (`[-1.65f, 1.65f]` ->
 /// `0.87f * x - 0.1f * x^3`, clamped to `[-0.9862875f, 0.9862875f]`).
+/// NaN samples become 0 (as in the WAV/FLAC encoders) in every build.
 inline void clipRoundoffInPlaceF32(float *buf, size_t count,
                                    float postScale = 1.0f) noexcept {
   size_t i = 0;
@@ -776,6 +791,7 @@ inline void clipRoundoffInPlaceF32(float *buf, size_t count,
   const __m128 postscale = _mm_set1_ps(postScale);
   for (; i + 4 <= count; i += 4) {
     __m128 f = _mm_loadu_ps(buf + i);
+    f = _mm_and_ps(f, _mm_cmpeq_ps(f, f)); // NaN -> 0
     __m128 u = _mm_cmpgt_ps(f, negbound);
     __m128 o = _mm_cmplt_ps(f, posbound);
     __m128 lin = _mm_mul_ps(f, linearscale);
@@ -795,6 +811,8 @@ inline void clipRoundoffInPlaceF32(float *buf, size_t count,
   const float32x4_t postscale = vdupq_n_f32(postScale);
   for (; i + 4 <= count; i += 4) {
     float32x4_t f = vld1q_f32(buf + i);
+    f = vreinterpretq_f32_u32(
+        vandq_u32(vreinterpretq_u32_f32(f), vceqq_f32(f, f))); // NaN -> 0
     uint32x4_t u = vcgtq_f32(f, negbound);
     uint32x4_t o = vcltq_f32(f, posbound);
     float32x4_t lin = vmulq_f32(f, linearscale);
@@ -814,6 +832,7 @@ inline void clipRoundoffInPlaceF32(float *buf, size_t count,
   const v128_t postscale = wasm_f32x4_splat(postScale);
   for (; i + 4 <= count; i += 4) {
     v128_t f = wasm_v128_load(buf + i);
+    f = wasm_v128_and(f, wasm_f32x4_eq(f, f)); // NaN -> 0
     v128_t u = wasm_f32x4_gt(f, negbound);
     v128_t o = wasm_f32x4_lt(f, posbound);
     v128_t lin = wasm_f32x4_mul(f, linearscale);
@@ -827,7 +846,9 @@ inline void clipRoundoffInPlaceF32(float *buf, size_t count,
 #endif
   for (; i < count; ++i) {
     float c = buf[i];
-    if (c <= -1.65f) {
+    if (c != c) {
+      c = 0.0f; // NaN
+    } else if (c <= -1.65f) {
       c = -0.9862875f;
     } else if (c >= 1.65f) {
       c = 0.9862875f;

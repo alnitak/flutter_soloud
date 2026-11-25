@@ -37,7 +37,7 @@ abstract class _LofiInternal extends FilterBase {
 class LofiSingle extends _LofiInternal {
   LofiSingle(super.soundHash, super.busId);
 
-  FilterParam wet({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam wet({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -46,7 +46,7 @@ class LofiSingle extends _LofiInternal {
     LofiEnum.wet.max,
   );
 
-  FilterParam samplerate({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam samplerate({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,
@@ -55,7 +55,7 @@ class LofiSingle extends _LofiInternal {
     LofiEnum.samplerate.max,
   );
 
-  FilterParam bitdepth({SoundHandle? soundHandle}) => FilterParam(
+  FilterParam bitdepth({SoundHandle? soundHandle}) => FilterParam.ofSource(
     soundHandle,
     super.busId,
     filterType,

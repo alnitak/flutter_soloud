@@ -55,8 +55,8 @@ ParametricEqInstance::ParametricEqInstance(ParametricEq *aParent) {
   initBandParameters();
 
   mParam[0] = mParent->mWet;              // wet param (index 0)
-  mParam[1] = mWinSize; // window size param (index 1)
-  mParam[2] = mParent->mBands;            // band count param (index 2)
+  mParam[1] = static_cast<float>(mWinSize); // window size param (index 1)
+  mParam[2] = static_cast<float>(mParent->mBands); // band count param (index 2)
 }
 
 void ParametricEqInstance::comp2MagPhase(float *aFFTBuffer,
@@ -167,7 +167,7 @@ void ParametricEqInstance::initFFTBuffers() {
   mFFTWork = (float *)pffft_aligned_malloc(fftFloats * sizeof(float));
   mTemp = (float *)pffft_aligned_malloc(fftFloats * sizeof(float));
 
-  mParam[1] = mWinSize; // Update window size param (index 1)
+  mParam[1] = static_cast<float>(mWinSize); // Update window size param (index 1)
 }
 
 ParametricEqInstance::~ParametricEqInstance() {
@@ -233,7 +233,7 @@ void ParametricEqInstance::setFilterParameter(unsigned int aAttributeId,
     // sound) keep their own, consistent size; the parent's value is just the
     // default for instances created from now on.
     setWindowSize(requested);
-    mParam[1] = mWinSize;
+    mParam[1] = static_cast<float>(mWinSize);
     mParent->mSTFT_WINDOW_SIZE = mWinSize;
     mParent->mSTFT_WINDOW_HALF = mWinHalf;
     mParent->mSTFT_WINDOW_TWICE = mWinTwice;
@@ -246,7 +246,7 @@ void ParametricEqInstance::setFilterParameter(unsigned int aAttributeId,
     if (mParent->mBands == (unsigned int)aValue)
       return;
     mBands = mParent->mBands = (int)aValue;
-    mParam[2] = mBands;
+    mParam[2] = static_cast<float>(mBands);
     // Update parent's frequencies and Q defaults for the new band count
     mParent->setFreqs((unsigned int)aValue);
     // Refresh band parameters in mParam

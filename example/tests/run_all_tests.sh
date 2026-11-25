@@ -3,7 +3,9 @@
 # Usage: run_all_tests.sh <mt|st> [start_index] [end_index]
 MODE="$1"
 START="${2:-0}"
-END="${3:-48}"
+# Default end: the last index in tests/all_tests.dart.
+TEST_COUNT=$(grep -cE "^    name: '" "$(dirname "$0")/tests/all_tests.dart")
+END="${3:-$((TEST_COUNT - 1))}"
 RESULTS="/tmp/soloud_results_${MODE}.txt"
 : > "$RESULTS"
 
