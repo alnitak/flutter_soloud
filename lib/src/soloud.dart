@@ -1434,8 +1434,9 @@ interface class SoLoud {
   ///
   /// Throws [SoLoudFileLoadFailedException] if the file could not be loaded.
   ///
-  /// If the file is already loaded, this is a no-op (but a warning
-  /// will be produced in the log).
+  /// If the file is already loaded, it is loaded again as a second,
+  /// independent sound with its own memory (and a warning is produced in the
+  /// log). Prefer loading it once and reusing the returned [AudioSource].
   Future<AudioSource> loadFile(
     String path, {
     LoadMode mode = LoadMode.memory,
@@ -2374,8 +2375,9 @@ interface class SoLoud {
   ///
   /// Returns the new sound as [AudioSource].
   ///
-  /// If the file is already loaded, this is a no-op (but a warning
-  /// will be produced in the log).
+  /// If the file is already loaded, it is loaded again as a second,
+  /// independent sound with its own memory (and a warning is produced in the
+  /// log). Prefer loading it once and reusing the returned [AudioSource].
   Future<AudioSource> loadAsset(
     String key, {
     LoadMode mode = LoadMode.memory,
@@ -2428,8 +2430,9 @@ interface class SoLoud {
   ///
   /// Returns the new sound as [AudioSource].
   ///
-  /// If the file is already loaded, this is a no-op (but a warning
-  /// will be produced in the log).
+  /// If the file is already loaded, it is loaded again as a second,
+  /// independent sound with its own memory (and a warning is produced in the
+  /// log). Prefer loading it once and reusing the returned [AudioSource].
   Future<AudioSource> loadUrl(
     String url, {
     LoadMode mode = LoadMode.memory,

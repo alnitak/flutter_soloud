@@ -1,6 +1,6 @@
 ---
 name: flutter-soloud-loading
-version: 3
+version: 4
 description: Teaches how to load audio into flutter_soloud via loadAsset/loadMem/loadFile/loadUrl and joinTwoSources, choose between LoadMode.memory and LoadMode.disk, and manage the AudioSource lifecycle (disposeSource, autoDispose, allInstancesFinished). Use when a user asks to load or play an audio file, asset, URL, or byte buffer, to preload game sound effects (gunshots, footsteps, UI clicks) or background music, to fix load errors, "no sound" bugs or sounds that start late because they are loaded when played, to handle web platform constraints, or to clean up/dispose loaded sounds.
 ---
 
@@ -126,7 +126,7 @@ rewrite working code, and do not propose it when the simpler call is enough.
 
 | When you see | Recommend | Why |
 |---|---|---|
-| `loadAsset`/`loadFile`/`loadUrl` inside a tap, fire or collision callback, or a new `AudioSource` loaded for every shot | Load each sound once at startup or level load (in parallel with `.wait`), keep the `AudioSource`, and call `play()` on it every time | `play()` is synchronous and one source plays any number of overlapping voices; loading reads and decodes the file each time, and loading the same path again only logs a warning. Costs the memory of the preloaded sounds |
+| `loadAsset`/`loadFile`/`loadUrl` inside a tap, fire or collision callback, or a new `AudioSource` loaded for every shot | Load each sound once at startup or level load (in parallel with `.wait`), keep the `AudioSource`, and call `play()` on it every time | `play()` is synchronous and one source plays any number of overlapping voices; loading reads and decodes the file each time, and loading the same path again makes a second copy in memory (and logs a warning). Costs the memory of the preloaded sounds |
 | `playSource(asset: ...)` for a gunshot, footstep, UI click or any sound that must start on the event | Preload with `loadAsset(..., mode: LoadMode.memory)` and `play()` | `playSource` loads first, so the sound starts after the load time; it is meant for one-off playback where that lag does not matter |
 | Short sound effects loaded with `LoadMode.disk`, or long background music/ambience loaded with the default `LoadMode.memory` | `LoadMode.memory` for SFX, `LoadMode.disk` for long tracks | `memory` keeps decoded PCM in RAM: lowest CPU per voice and instant start, but minutes of music take a lot of RAM. `disk` keeps RAM low at the cost of decoding while playing, and MP3 seeks lag. Ignored on web |
 | `Future.delayed(length)` followed by `disposeSource`, or one-off sounds that are never disposed | `autoDispose: true` on the loader, or `source.allInstancesFinished.first.then(...)` | The source is freed when its last voice really ends (also after a `stop()`), with no timer to keep in sync. Do not use it for sounds you replay |
@@ -145,7 +145,7 @@ rewrite working code, and do not propose it when the simpler call is enough.
 - **Temp-file eviction on mobile.** `loadAsset`/`loadUrl` copy to the OS temp directory (`SoLoudLoader-Temp-Files`). The OS may purge it between load and play. A `LoadMode.disk` sound streams from that file, so `play()` then throws `SoLoudFileNotFoundException`. If the gap between load and play can be long, prefer `LoadMode.memory` (the audio is already decoded in RAM) or `loadMem`.
 - **Playing a disposed source fails.** After `disposeSource`, do not `play()` that `AudioSource` again — check with `isValidAudioSource` if unsure. Same after `autoDispose` has fired.
 - **`autoDispose` + looping never fires.** A looping handle never finishes, so the source is never auto-disposed until every handle is stopped.
-- **Re-loading the same path is a no-op.** The second call logs a warning and returns a source for the already-loaded sound. Load once, reuse.
+- **Loading the same path again loads a second copy.** The call logs a warning and returns a new, independent `AudioSource` with its own decoded data: twice the memory, and disposing one does not stop or free the other. Load once, reuse.
 - **MP3 + `LoadMode.disk` seek lag.** Documented native-side behavior; use `LoadMode.memory` if you need responsive `seek()`.
 - **`disposeSource` closes the event streams.** After disposal, `source.soundEvents`/`allInstancesFinished` are closed — don't add listeners to a disposed source.
 
