@@ -2998,7 +2998,10 @@ interface class SoLoud {
   ///
   /// Returns [Duration.zero] if the active backend does not support
   /// presentation timestamps, during initial stream warm-up before timestamps
-  /// become valid, or if the query fails.
+  /// become valid, or if the query fails. On Android, when the timestamps
+  /// become unavailable after the output device was stopped and started again
+  /// (some devices on the legacy AudioTrack path), it returns the last value
+  /// measured on the same stream.
   ///
   /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
   Duration getHardwareOutputLatency() {

@@ -10,9 +10,9 @@
 //
 // Build and run from the flutter_soloud repository root with:
 //
-//   ./test/run_aaudio_timestamp_latency_test.sh
+//   ./test/common/aaudio_timestamp_latency_test.sh
 
-#include "../src/soloud/src/backend/miniaudio/aaudio_timestamp_latency.h"
+#include "../../src/soloud/src/backend/miniaudio/aaudio_timestamp_latency.h"
 
 #include <cmath>
 #include <cstdint>
@@ -24,7 +24,14 @@ namespace {
 int gFailures = 0;
 int gAssertions = 0;
 
-#define EXPECT(condition, format, ...) do {     ++gAssertions;     if (!(condition)) {         ++gFailures;         std::printf("FAIL %s:%d: " format "\n", __FILE__, __LINE__, ##__VA_ARGS__);     } } while (0)
+#define EXPECT(condition, format, ...)                                            \
+    do {                                                                          \
+        ++gAssertions;                                                            \
+        if (!(condition)) {                                                       \
+            ++gFailures;                                                          \
+            std::printf("FAIL %s:%d: " format "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+        }                                                                         \
+    } while (0)
 
 struct Sample {
     int64_t framesWritten;
@@ -38,6 +45,13 @@ double plainLatency(const Sample &s, double sampleRate)
 {
     return (double)(s.framesWritten - s.framePosition) / sampleRate -
            (double)(s.nowNanos - s.timestampNanos) / 1e9;
+}
+
+// The plain formula as the helper returns it, negative values as 0.
+double plainResult(const Sample &s, double sampleRate)
+{
+    const double plain = plainLatency(s, sampleRate);
+    return plain > 0.0 ? plain : 0.0;
 }
 
 // Raw values read about every 0.4 s from a 44.1 kHz SoLoud stream on a
@@ -104,6 +118,8 @@ void testSmG991nLog()
                                             s.timestampNanos, s.nowNanos, sampleRate);
         if (i == 0)
         {
+            // The first sample comes 1.5 s into the stream, too late for the
+            // plain formula to be trusted during warm-up.
             EXPECT(value == 0.0, "first sample must be warm-up (0), got %f", value);
             continue;
         }
@@ -151,30 +167,55 @@ double ageAt(int i)
     return 0.005 + 0.010 * (i % 17);
 }
 
-void testConformingDeviceMatchesPlainFormula()
+// On a device whose counters agree the result is the plain formula, from the
+// first sample (no warm-up) and for the whole run, also when the first call
+// comes late and framesWritten moves in large bursts.
+void checkConformingDevice(SimStream sim, double firstSec, double durationSec, const char *label)
 {
-    SimStream sim;
     SoLoud::AAudioTimestampLatency latency;
     const int stream = 0;
     int compared = 0;
-    for (int i = 0; i < 200; ++i)
+    for (int i = 0; i * 0.1 <= durationSec; ++i)
     {
-        sim.runningSec = 0.2 + 0.1 * i;
+        sim.runningSec = firstSec + 0.1 * i;
         const Sample s = sim.read(ageAt(i));
         const double value = latency.update(&stream, s.framesWritten, s.framePosition,
                                             s.timestampNanos, s.nowNanos, sim.sampleRate);
-        if (sim.runningSec < 1.2 + 0.2)
-            continue; // warm-up
-        const double plain = plainLatency(s, sim.sampleRate);
-        EXPECT(std::fabs(value - (plain > 0.0 ? plain : 0.0)) < 1e-12,
-               "t=%.1f: %f != plain %f", sim.runningSec, value, plain);
+        const double plain = plainResult(s, sim.sampleRate);
+        if (firstSec > SoLoud::AAudioTimestampLatency::kPlainWarmUpMaxSec && i * 0.1 < 1.25)
+        {
+            // Late first call: 0 for the first second of measured frames
+            // (how much wall time that is depends on the timestamps' age).
+            EXPECT(value == 0.0 || (i * 0.1 > 0.95 && value == plain),
+                   "%s t=%.1f: late first call must warm up (0), got %f",
+                   label, sim.runningSec, value);
+            continue;
+        }
+        EXPECT(value == plain, "%s t=%.1f: %f != plain %f", label, sim.runningSec, value, plain);
         ++compared;
     }
-    EXPECT(compared > 150, "compared only %d samples", compared);
+    EXPECT(compared > durationSec * 10 - 20, "%s: compared only %d samples", label, compared);
 }
 
-void testWarmUpReturnsZero()
+void testConformingDeviceMatchesPlainFormula()
 {
+    SimStream sim;
+    checkConformingDevice(sim, 0.2, 120.0, "conforming");
+
+    // 2048-frame callbacks at 44.1 kHz (46 ms), as with bufferSize: 2048.
+    SimStream bursts;
+    bursts.sampleRate = 44100.0;
+    bursts.burstFrames = 2048;
+    bursts.latencySec = 0.080;
+    checkConformingDevice(bursts, 0.2, 120.0, "conforming, 2048-frame bursts");
+
+    checkConformingDevice(sim, 600.0, 60.0, "conforming, first call at 10 min");
+}
+
+void testWarmUp()
+{
+    // Early in the stream the ratio is not known yet, but the plain formula
+    // has had no time to drift: it is returned as is.
     SimStream sim;
     sim.positionRatio = 0.912;
     SoLoud::AAudioTimestampLatency latency;
@@ -185,7 +226,24 @@ void testWarmUpReturnsZero()
         const Sample s = sim.read(0.02);
         const double value = latency.update(&stream, s.framesWritten, s.framePosition,
                                             s.timestampNanos, s.nowNanos, sim.sampleRate);
-        EXPECT(value == 0.0, "t=%.1f: expected warm-up 0, got %f", sim.runningSec, value);
+        EXPECT(value == plainResult(s, sim.sampleRate) && value > 0.0,
+               "t=%.1f: expected the plain formula during warm-up, got %f",
+               sim.runningSec, value);
+    }
+
+    // A first call long after the stream started: the plain formula has
+    // drifted (~26 s here), so the warm-up returns 0.
+    SimStream late;
+    late.sampleRate = 44100.0;
+    late.positionRatio = 0.9117;
+    SoLoud::AAudioTimestampLatency lateLatency;
+    for (int i = 0; i < 9; ++i)
+    {
+        late.runningSec = 300.0 + 0.1 * i;
+        const Sample s = late.read(0.02);
+        const double value = lateLatency.update(&stream, s.framesWritten, s.framePosition,
+                                                s.timestampNanos, s.nowNanos, late.sampleRate);
+        EXPECT(value == 0.0, "late t=%.1f: expected warm-up 0, got %f", late.runningSec, value);
     }
 }
 
@@ -220,6 +278,73 @@ void testSlowPositionDevice()
     runAndCheck(latency, &stream, sim, 1.5, 120.0, "slow position");
     EXPECT(plainLatency(sim.read(0.03), sim.sampleRate) > 10.0,
            "the plain formula should have drifted by now");
+}
+
+void testSlightlySlowPositionDevice()
+{
+    // A ratio of 0.99 is within the unit tolerance while the measured span is
+    // short, so the plain formula is returned (drifting 10 ms/s). The
+    // tolerance shrinks as the span grows: from ~6 s on the value is
+    // corrected and stays right.
+    SimStream sim;
+    sim.positionRatio = 0.99;
+    SoLoud::AAudioTimestampLatency latency;
+    const int stream = 0;
+    for (int i = 0; i < 60; ++i)
+    {
+        sim.runningSec = 0.2 + 0.1 * i;
+        const Sample s = sim.read(ageAt(i));
+        const double value = latency.update(&stream, s.framesWritten, s.framePosition,
+                                            s.timestampNanos, s.nowNanos, sim.sampleRate);
+        EXPECT(value < sim.latencySec + 0.065, "t=%.1f: %f drifted too far", sim.runningSec, value);
+    }
+    runAndCheck(latency, &stream, sim, 6.2, 120.0, "ratio 0.99");
+    EXPECT(plainLatency(sim.read(0.03), sim.sampleRate) > 1.0,
+           "the plain formula should have drifted by now");
+}
+
+void testLateFirstCallStaysBounded()
+{
+    // The ratio error is multiplied by all the frames played so far. When the
+    // first call comes long after the stream started, the value is 0 until
+    // the measured span covers the frames played before it, and then right.
+    // It is never far off.
+    const double firstCalls[] = {30.0, 300.0, 3600.0};
+    for (double firstSec : firstCalls)
+    {
+        SimStream sim;
+        sim.sampleRate = 44100.0;
+        sim.positionRatio = 0.9117;
+        SoLoud::AAudioTimestampLatency latency;
+        const int stream = 0;
+        int zeros = 0, valid = 0;
+        double firstValidSec = -1.0;
+        const double stepSec = firstSec / 200.0;
+        for (int i = 0; i <= 600; ++i)
+        {
+            sim.runningSec = firstSec + stepSec * i;
+            const Sample s = sim.read(ageAt(i));
+            const double value = latency.update(&stream, s.framesWritten, s.framePosition,
+                                                s.timestampNanos, s.nowNanos, sim.sampleRate);
+            if (value == 0.0)
+            {
+                ++zeros;
+                EXPECT(valid == 0, "first call at %.0f s: 0 again at t=%.1f after valid values",
+                       firstSec, sim.runningSec);
+                continue;
+            }
+            if (firstValidSec < 0.0)
+                firstValidSec = sim.runningSec;
+            ++valid;
+            EXPECT(std::fabs(value - sim.latencySec) < 0.008,
+                   "first call at %.0f s, t=%.1f: got %f, want ~%f",
+                   firstSec, sim.runningSec, value, sim.latencySec);
+        }
+        EXPECT(firstValidSec > 0.0 && firstValidSec <= 2.0 * firstSec + 2.0 * stepSec,
+               "first call at %.0f s: first valid value at %.1f s", firstSec, firstValidSec);
+        EXPECT(valid > 350, "first call at %.0f s: only %d valid values (%d zeros)",
+               firstSec, valid, zeros);
+    }
 }
 
 void testStopAndRestartKeepsTheRatio()
@@ -262,7 +387,8 @@ void testNewStreamRestartsMeasurement()
     s = next.read(0.03);
     double value = latency.update(&streamB, s.framesWritten, s.framePosition, s.timestampNanos,
                                   s.nowNanos, next.sampleRate);
-    EXPECT(value == 0.0, "new stream must warm up again, got %f", value);
+    EXPECT(value == plainResult(s, next.sampleRate),
+           "new stream must warm up again (plain formula), got %f", value);
     runAndCheck(latency, &streamB, next, 1.5, 3.0, "stream B");
 
     // Same stream pointer, but the counters went back (a stream reopened at
@@ -272,8 +398,57 @@ void testNewStreamRestartsMeasurement()
     s = reopened.read(0.03);
     value = latency.update(&streamB, s.framesWritten, s.framePosition, s.timestampNanos,
                            s.nowNanos, reopened.sampleRate);
-    EXPECT(value == 0.0, "counters going back must restart warm-up, got %f", value);
+    EXPECT(value == plainResult(s, reopened.sampleRate),
+           "counters going back must restart warm-up (plain formula), got %f", value);
     runAndCheck(latency, &streamB, reopened, 1.5, 3.0, "reopened");
+}
+
+void testLastKnownAfterTimestampFails()
+{
+    // After a stop/start on the legacy (AudioTrack) path the stream keeps
+    // playing but AAudioStream_getTimestamp() fails (SM-N975F, Android 12).
+    // lastKnown() returns the last value of the same stream.
+    SimStream sim;
+    SoLoud::AAudioTimestampLatency latency;
+    const int stream = 0, other = 0;
+    sim.runningSec = 0.2;
+    Sample s = sim.read(0.03);
+    EXPECT(latency.lastKnown(&stream, s.framesWritten) == 0.0,
+           "no value before the first update");
+    const double last = runAndCheck(latency, &stream, sim, 0.2, 15.0, "before stop");
+    EXPECT(last > 0.0, "expected a value before the stop, got %f", last);
+
+    // Stopped for 3 s, then playing again with no timestamp.
+    sim.stoppedSec += 3.0;
+    for (double t = 15.1; t <= 25.0; t += 0.1)
+    {
+        sim.runningSec = t;
+        s = sim.read(0.03);
+        const double value = latency.lastKnown(&stream, s.framesWritten);
+        EXPECT(value == last, "t=%.1f: lastKnown %f, want %f", t, value, last);
+    }
+
+    // Another stream, or the same one reopened (framesWritten went back).
+    EXPECT(latency.lastKnown(&other, s.framesWritten) == 0.0, "other stream must have no value");
+    EXPECT(latency.lastKnown(&stream, 1000) == 0.0, "a reopened stream must have no value");
+
+    // Timestamps come back: update() takes over, and a new stream forgets
+    // the old value.
+    sim.runningSec = 25.1;
+    s = sim.read(0.03);
+    EXPECT(std::fabs(latency.update(&stream, s.framesWritten, s.framePosition, s.timestampNanos,
+                                    s.nowNanos, sim.sampleRate) - sim.latencySec) < 0.008,
+           "timestamps back: expected ~%f", sim.latencySec);
+    SimStream next;
+    next.sampleRate = 44100.0;
+    next.positionRatio = 0.9117;
+    next.runningSec = 300.0; // late first call: warm-up returns 0
+    s = next.read(0.03);
+    EXPECT(latency.update(&other, s.framesWritten, s.framePosition, s.timestampNanos, s.nowNanos,
+                          next.sampleRate) == 0.0,
+           "late first call on the new stream must warm up (0)");
+    EXPECT(latency.lastKnown(&other, s.framesWritten) == 0.0,
+           "the new stream must not inherit the old value");
 }
 
 void testImplausibleRatioReturnsZero()
@@ -286,6 +461,13 @@ void testImplausibleRatioReturnsZero()
     {
         sim.runningSec = 0.2 + 0.1 * i;
         const Sample s = sim.read(0.02);
+        if (i < 10)
+        {
+            // Warm-up: the ratio is not known yet.
+            latency.update(&stream, s.framesWritten, s.framePosition, s.timestampNanos,
+                           s.nowNanos, sim.sampleRate);
+            continue;
+        }
         const double value = latency.update(&stream, s.framesWritten, s.framePosition,
                                             s.timestampNanos, s.nowNanos, sim.sampleRate);
         EXPECT(value == 0.0, "t=%.1f: expected 0 for ratio 0.3, got %f", sim.runningSec, value);
@@ -298,11 +480,14 @@ int main()
 {
     testSmG991nLog();
     testConformingDeviceMatchesPlainFormula();
-    testWarmUpReturnsZero();
+    testWarmUp();
     testSlowPositionDevice();
+    testSlightlySlowPositionDevice();
+    testLateFirstCallStaysBounded();
     testStopAndRestartKeepsTheRatio();
     testNewStreamRestartsMeasurement();
     testImplausibleRatioReturnsZero();
+    testLastKnownAfterTimestampFails();
 
     if (gFailures > 0)
     {

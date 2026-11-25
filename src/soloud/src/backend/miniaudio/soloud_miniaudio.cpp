@@ -1840,12 +1840,16 @@ namespace SoLoud
 
             if (s_getTimestamp != nullptr && s_getFramesWritten != nullptr)
             {
+                // framePosition does not advance at the stream rate on every
+                // device, and the timestamp can stay unavailable after a
+                // stop/start; see aaudio_timestamp_latency.h.
+                static AAudioTimestampLatency s_timestampLatency;
                 int64_t framePosition = 0;
                 int64_t timeNanos = 0;
                 int32_t res = s_getTimestamp(gDevice.aaudio.pStreamPlayback, CLOCK_MONOTONIC, &framePosition, &timeNanos);
+                int64_t framesWritten = s_getFramesWritten(gDevice.aaudio.pStreamPlayback);
                 if (res == 0 && framePosition > 0 && timeNanos > 0)
                 {
-                    int64_t framesWritten = s_getFramesWritten(gDevice.aaudio.pStreamPlayback);
                     struct timespec nowTs;
                     if (clock_gettime(CLOCK_MONOTONIC, &nowTs) == 0)
                     {
@@ -1855,15 +1859,22 @@ namespace SoLoud
                         double streamSampleRate = (gDevice.playback.internalSampleRate > 0)
                             ? (double)gDevice.playback.internalSampleRate
                             : (double)gDevice.sampleRate;
-                        // framePosition does not advance at the stream rate on
-                        // every device; see aaudio_timestamp_latency.h.
-                        static AAudioTimestampLatency s_timestampLatency;
                         double latencySec = s_timestampLatency.update(
                             gDevice.aaudio.pStreamPlayback, framesWritten, framePosition,
                             timeNanos, nowNanos, streamSampleRate);
                         if (latencySec > 0.0)
                             return latencySec;
                     }
+                }
+                else
+                {
+                    // No timestamp (e.g. AAUDIO_ERROR_INVALID_STATE after a
+                    // stop/start on the legacy path): the stream and its
+                    // route are unchanged, so is the latency.
+                    double lastSec = s_timestampLatency.lastKnown(
+                        gDevice.aaudio.pStreamPlayback, framesWritten);
+                    if (lastSec > 0.0)
+                        return lastSec;
                 }
             }
         }
