@@ -1146,6 +1146,22 @@ public:
                               float attenuationRolloffFactor);
   void set3dSourceDopplerFactor(unsigned int handle, float dopplerFactor);
 
+  /// @brief Set the minimum and maximum distance every voice started later
+  /// from the sound [soundHash] begins with. Voices already playing keep
+  /// theirs.
+  void set3dDefaultMinMaxDistance(unsigned int soundHash, float minDistance,
+                                  float maxDistance);
+
+  /// @brief Set the attenuation model and rolloff factor every voice started
+  /// later from the sound [soundHash] begins with.
+  void set3dDefaultAttenuation(unsigned int soundHash,
+                               unsigned int attenuationModel,
+                               float attenuationRolloffFactor);
+
+  /// @brief Set the doppler factor every voice started later from the sound
+  /// [soundHash] begins with.
+  void set3dDefaultDopplerFactor(unsigned int soundHash, float dopplerFactor);
+
   /////////////////////////////////////////
   /// Mixing Bus
   /// https://solhsa.com/soloud/mixbus.html

@@ -5411,6 +5411,100 @@ interface class SoLoud {
     _controller.soLoudFFI.set3dSourceDopplerFactor(handle, dopplerFactor);
   }
 
+  /// Sets the minimum and maximum distance that every 3D voice started later
+  /// from [sound] begins with.
+  ///
+  /// The handle setters ([set3dSourceMinMaxDistance] and the others) act on
+  /// one voice that already exists, so they have to be repeated after every
+  /// `play3d` and the voice can be heard for a moment without them. The
+  /// `set3dDefault*` methods set the values once on the sound: every voice
+  /// created by `play3d`, `play3dClocked` or `play3dScheduled` copies them
+  /// when it is created, so they hold from its first sample (also while the
+  /// automatic 3D update is disabled, see [set3dAutoUpdate]).
+  ///
+  /// ```dart
+  /// final torch = await SoLoud.instance.loadAsset('assets/torch.ogg');
+  /// SoLoud.instance
+  ///   ..set3dDefaultAttenuation(torch, 2, 1) // linear
+  ///   ..set3dDefaultMinMaxDistance(torch, 1, 30);
+  /// // Every torch now gets quieter with distance, with no call on its handle.
+  /// SoLoud.instance.play3d(torch, x, y, z, looping: true);
+  /// ```
+  ///
+  /// Voices of [sound] that are already playing keep their values, and a
+  /// handle setter still changes a single voice afterwards. Nothing happens
+  /// if [sound] is not loaded.
+  ///
+  /// The defaults are `1` and `1000000`.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [minDistance] or [maxDistance] is NaN or
+  /// infinite.
+  void set3dDefaultMinMaxDistance(
+    AudioSource sound,
+    double minDistance,
+    double maxDistance,
+  ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    checkFinite(minDistance, 'minDistance');
+    checkFinite(maxDistance, 'maxDistance');
+    _controller.soLoudFFI.set3dDefaultMinMaxDistance(
+      sound.soundHash,
+      minDistance,
+      maxDistance,
+    );
+  }
+
+  /// Sets the attenuation model and rolloff factor that every 3D voice
+  /// started later from [sound] begins with.
+  ///
+  /// [attenuationModel] is the same as in [set3dSourceAttenuation]:
+  /// `0` no attenuation (the default), `1` inverse distance, `2` linear
+  /// distance, `3` exponential distance. The default rolloff factor is `1`.
+  ///
+  /// See [set3dDefaultMinMaxDistance] for how the defaults of a sound work.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [attenuationRolloffFactor] is NaN or infinite.
+  void set3dDefaultAttenuation(
+    AudioSource sound,
+    int attenuationModel,
+    double attenuationRolloffFactor,
+  ) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    checkFinite(attenuationRolloffFactor, 'attenuationRolloffFactor');
+    _controller.soLoudFFI.set3dDefaultAttenuation(
+      sound.soundHash,
+      attenuationModel,
+      attenuationRolloffFactor,
+    );
+  }
+
+  /// Sets the doppler factor that every 3D voice started later from [sound]
+  /// begins with. 0 = disable, 1 = normal (the default), >1 = exaggerated.
+  ///
+  /// See [set3dDefaultMinMaxDistance] for how the defaults of a sound work.
+  ///
+  /// Throws [SoLoudNotInitializedException] if the engine is not initialized.
+  ///
+  /// Throws [ArgumentError] if [dopplerFactor] is NaN or infinite.
+  void set3dDefaultDopplerFactor(AudioSource sound, double dopplerFactor) {
+    if (!isInitialized) {
+      throw const SoLoudNotInitializedException();
+    }
+    checkFinite(dopplerFactor, 'dopplerFactor');
+    _controller.soLoudFFI.set3dDefaultDopplerFactor(
+      sound.soundHash,
+      dopplerFactor,
+    );
+  }
+
   /// Sets whether every 3D setter applies its change at once.
   ///
   /// By default (`true`) each 3D setter (the `set3dListener*` and

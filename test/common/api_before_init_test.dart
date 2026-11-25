@@ -160,6 +160,10 @@ final Map<String, _Call> _calls = {
       s.set3dSourceMinMaxDistance(h, 1, 10),
   'set3dSourceAttenuation': (s, _, h) => s.set3dSourceAttenuation(h, 1, 1),
   'set3dSourceDopplerFactor': (s, _, h) => s.set3dSourceDopplerFactor(h, 1),
+  'set3dDefaultMinMaxDistance': (s, a, _) =>
+      s.set3dDefaultMinMaxDistance(a, 1, 10),
+  'set3dDefaultAttenuation': (s, a, _) => s.set3dDefaultAttenuation(a, 1, 1),
+  'set3dDefaultDopplerFactor': (s, a, _) => s.set3dDefaultDopplerFactor(a, 1),
   'set3dAutoUpdate': (s, _, _) => s.set3dAutoUpdate(true),
   'get3dAutoUpdate': (s, _, _) => s.get3dAutoUpdate(),
   'update3dAudio': (s, _, _) => s.update3dAudio(),

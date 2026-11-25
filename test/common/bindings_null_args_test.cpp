@@ -1084,6 +1084,23 @@ CASE("listener3d") {
   CALL((set3dListenerVelocity(kNaN, 0, 0), 0));
   set3dSoundSpeed(343.0f);
 }
+CASE("defaults3d") {
+  FOR_HASHES {
+    CALL((set3dDefaultMinMaxDistance(s, kNaN, kInf), 0));
+    CALL((set3dDefaultMinMaxDistance(s, -1, -2), 0));
+    CALL((set3dDefaultAttenuation(s, 0xFFFFFFFF, kNaN), 0));
+    CALL((set3dDefaultAttenuation(s, 2, 1), 0));
+    CALL((set3dDefaultDopplerFactor(s, kNaN), 0));
+    CALL((set3dDefaultDopplerFactor(s, 0), 0));
+  }
+  const unsigned int wav = validSound();
+  if (wav != 0) {
+    CALL((set3dDefaultMinMaxDistance(wav, 0, 0), 0));
+    CALL((set3dDefaultMinMaxDistance(wav, 10, 1), 0));
+    CALL((set3dDefaultAttenuation(wav, 0xFFFFFFFF, -1), 0));
+    CALL((set3dDefaultDopplerFactor(wav, -1), 0));
+  }
+}
 CASE("update3d") {
   // Deferred mode: the setters store, update3dAudio() applies.
   CALL((set3dAutoUpdate(false), 0));

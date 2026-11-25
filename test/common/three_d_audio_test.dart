@@ -403,6 +403,108 @@ void main() {
     );
   });
 
+  group('defaults of a sound (set3dDefault*)', () {
+    /// Level of a new voice of [sound] at [distance] in front of the
+    /// listener, with nothing set on its handle.
+    Future<double> levelAt(double distance, [AudioSource? sound]) async {
+      final h = soloud.play3d(sound ?? tone, 0, 0, -distance, looping: true);
+      final out = await captureOutput();
+      await soloud.stop(h);
+      return level(out);
+    }
+
+    test('a new voice starts with the attenuation and distances', () async {
+      soloud
+        ..set3dDefaultAttenuation(tone, _linearDistance, 1)
+        ..set3dDefaultMinMaxDistance(tone, 1, 11);
+      final near = await levelAt(1);
+      final mid = await levelAt(6);
+      expect(mid / near, closeTo(0.5, 0.03));
+    });
+
+    test('the rolloff factor is part of the defaults', () async {
+      soloud
+        ..set3dDefaultAttenuation(tone, _exponentialDistance, 2)
+        ..set3dDefaultMinMaxDistance(tone, 1, 100);
+      final near = await levelAt(1);
+      final far = await levelAt(2);
+      expect(far / near, closeTo(1 / 4, 0.03));
+    });
+
+    test('they belong to one sound', () async {
+      final other = await loadTestWaveform();
+      soloud
+        ..set3dDefaultAttenuation(tone, _linearDistance, 1)
+        ..set3dDefaultMinMaxDistance(tone, 1, 11);
+      final near = await levelAt(1, other);
+      final mid = await levelAt(6, other);
+      expect(mid / near, closeTo(1, 0.05));
+    });
+
+    test('a voice already playing keeps its values', () async {
+      final h = soloud.play3d(tone, 0, 0, -6, looping: true);
+      final before = level(await captureOutput());
+      soloud
+        ..set3dDefaultAttenuation(tone, _linearDistance, 1)
+        ..set3dDefaultMinMaxDistance(tone, 1, 11)
+        // Makes the engine compute the 3D state of the voice again.
+        ..set3dSourcePosition(h, 0, 0, -6);
+      final after = level(await captureOutput());
+      await soloud.stop(h);
+      expect(after / before, closeTo(1, 0.05));
+    });
+
+    test('a handle setter still changes one voice', () async {
+      soloud
+        ..set3dDefaultAttenuation(tone, _linearDistance, 1)
+        ..set3dDefaultMinMaxDistance(tone, 1, 11);
+      final near = await levelAt(1);
+      final out = await render(
+        0,
+        0,
+        -6,
+        configure: (h) => soloud.set3dSourceAttenuation(h, _noAttenuation, 1),
+      );
+      expect(level(out) / near, closeTo(1, 0.05));
+    });
+
+    test('they hold with the automatic update disabled', () async {
+      soloud
+        ..set3dAutoUpdate(false)
+        ..set3dDefaultAttenuation(tone, _linearDistance, 1)
+        ..set3dDefaultMinMaxDistance(tone, 1, 11);
+      final near = await levelAt(1);
+      final mid = await levelAt(6);
+      expect(mid / near, closeTo(0.5, 0.03));
+    });
+
+    test('the doppler factor is part of the defaults', () async {
+      // A WAV tone: a waveform shows no doppler shift (see the doppler group).
+      final sine = await loadSine();
+      Future<double> frequency() async {
+        final h = soloud.play3d(sine, 0, 0, -10, velZ: 100, looping: true);
+        final out = await captureOutput();
+        await soloud.stop(h);
+        return out.frequency(0);
+      }
+
+      expect(await frequency(), greaterThan(500));
+      soloud.set3dDefaultDopplerFactor(sine, 0);
+      expect(await frequency(), closeTo(440, 3));
+    });
+
+    test('a sound that is not loaded is ignored', () async {
+      await soloud.disposeSource(tone);
+      expect(
+        () => soloud
+          ..set3dDefaultAttenuation(tone, _linearDistance, 1)
+          ..set3dDefaultMinMaxDistance(tone, 1, 11)
+          ..set3dDefaultDopplerFactor(tone, 0),
+        returnsNormally,
+      );
+    });
+  });
+
   test('play3d honours its volume and position', () async {
     final h = soloud.play3d(tone, 5, 0, 0, volume: 0.5, looping: true);
     expect(soloud.getVolume(h), closeTo(0.5, 1e-6));

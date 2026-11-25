@@ -2367,6 +2367,34 @@ PlayerErrors seek(int handle, double time) {
 @ffi.Native<ffi.Void Function(ffi.Bool)>()
 external void set3dAutoUpdate(bool enabled);
 
+/// Set the attenuation model and rolloff factor that every voice started
+/// later from the sound [soundHash] begins with. Voices already playing
+/// keep theirs (see [set3dSourceAttenuation]).
+/// The default values are NO_ATTENUATION and 1.
+@ffi.Native<ffi.Void Function(ffi.UnsignedInt, ffi.UnsignedInt, ffi.Float)>()
+external void set3dDefaultAttenuation(
+  int soundHash,
+  int attenuationModel,
+  double attenuationRolloffFactor,
+);
+
+/// Set the doppler factor that every voice started later from the sound
+/// [soundHash] begins with. Voices already playing keep theirs (see
+/// [set3dSourceDopplerFactor]). The default value is 1.
+@ffi.Native<ffi.Void Function(ffi.UnsignedInt, ffi.Float)>()
+external void set3dDefaultDopplerFactor(int soundHash, double dopplerFactor);
+
+/// Set the minimum and maximum distance that every voice started later
+/// from the sound [soundHash] begins with. Voices already playing keep
+/// theirs (see [set3dSourceMinMaxDistance]).
+/// The default values are 1 and 1000000.
+@ffi.Native<ffi.Void Function(ffi.UnsignedInt, ffi.Float, ffi.Float)>()
+external void set3dDefaultMinMaxDistance(
+  int soundHash,
+  double minDistance,
+  double maxDistance,
+);
+
 /// You can set the "at" vector parameter of the 3d audio listener
 @ffi.Native<ffi.Void Function(ffi.Float, ffi.Float, ffi.Float)>()
 external void set3dListenerAt(double atX, double atY, double atZ);

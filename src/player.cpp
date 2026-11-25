@@ -4287,6 +4287,42 @@ void Player::set3dSourceDopplerFactor(
     soloud.set3dSourceDopplerFactor(aVoiceHandle, aDopplerFactor);
 }
 
+// The 3D defaults live in the SoLoud::AudioSource. A voice copies them when
+// it is created (AudioSourceInstance3dData::init, under the audio mutex), so
+// they are in place before its first 3D computation.
+
+void Player::set3dDefaultMinMaxDistance(
+    unsigned int soundHash,
+    float aMinDistance,
+    float aMaxDistance)
+{
+    auto const s = findByHash(soundHash);
+    if (s == nullptr || s->sound == nullptr)
+        return;
+    s->sound->set3dMinMaxDistance(aMinDistance, aMaxDistance);
+}
+
+void Player::set3dDefaultAttenuation(
+    unsigned int soundHash,
+    unsigned int aAttenuationModel,
+    float aAttenuationRolloffFactor)
+{
+    auto const s = findByHash(soundHash);
+    if (s == nullptr || s->sound == nullptr)
+        return;
+    s->sound->set3dAttenuation(aAttenuationModel, aAttenuationRolloffFactor);
+}
+
+void Player::set3dDefaultDopplerFactor(
+    unsigned int soundHash,
+    float aDopplerFactor)
+{
+    auto const s = findByHash(soundHash);
+    if (s == nullptr || s->sound == nullptr)
+        return;
+    s->sound->set3dDopplerFactor(aDopplerFactor);
+}
+
 /////////////////////////////////////////
 /// Mixing Bus
 /////////////////////////////////////////

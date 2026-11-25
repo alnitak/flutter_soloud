@@ -1555,6 +1555,26 @@ abstract class FlutterSoLoud {
   @mustBeOverridden
   void set3dSourceDopplerFactor(SoundHandle handle, double dopplerFactor);
 
+  /// Set the min and max distance the voices of a sound start with.
+  @mustBeOverridden
+  void set3dDefaultMinMaxDistance(
+    SoundHash soundHash,
+    double minDistance,
+    double maxDistance,
+  );
+
+  /// Set the attenuation model and rolloff the voices of a sound start with.
+  @mustBeOverridden
+  void set3dDefaultAttenuation(
+    SoundHash soundHash,
+    int attenuationModel,
+    double attenuationRolloffFactor,
+  );
+
+  /// Set the doppler factor the voices of a sound start with.
+  @mustBeOverridden
+  void set3dDefaultDopplerFactor(SoundHash soundHash, double dopplerFactor);
+
   /// Enable or disable the 3D update done by every 3D setter.
   @mustBeOverridden
   void set3dAutoUpdate(bool enabled);

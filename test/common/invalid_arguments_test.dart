@@ -426,6 +426,18 @@ void main() {
           'set3dSourceDopplerFactor($v)',
           () => soloud.set3dSourceDopplerFactor(h, v),
         );
+        await _rejectOrAccept(
+          'set3dDefaultMinMaxDistance($v)',
+          () => soloud.set3dDefaultMinMaxDistance(tone, v, v),
+        );
+        await _rejectOrAccept(
+          'set3dDefaultAttenuation(rolloff $v)',
+          () => soloud.set3dDefaultAttenuation(tone, 1, v),
+        );
+        await _rejectOrAccept(
+          'set3dDefaultDopplerFactor($v)',
+          () => soloud.set3dDefaultDopplerFactor(tone, v),
+        );
       }
       await expectSaneOutput();
     });

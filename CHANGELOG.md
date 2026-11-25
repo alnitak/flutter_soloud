@@ -3,6 +3,7 @@ A bug-fix release: a new, much larger test suite found many bugs, now fixed.
 
 ### Added
 - `set3dAutoUpdate`, `get3dAutoUpdate` and `update3dAudio`: with the automatic update disabled the 3D setters only store their values, and one `update3dAudio()` per frame applies them to all the 3D voices. By default every setter still recomputes all the 3D voices, which is one full pass per call with many moving sources.
+- `set3dDefaultAttenuation`, `set3dDefaultMinMaxDistance` and `set3dDefaultDopplerFactor`: 3D settings of a sound that every voice started later from it begins with, from its first sample. The `set3dSource*` setters act on one voice after it has been created, so they had to be repeated after every `play3d`.
 
 ### Behaviour changes
 - `Bus` equality is now identity (`==`/`hashCode` removed), and every bus becomes invalid after `deinit()`.

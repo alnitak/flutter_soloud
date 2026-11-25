@@ -2304,6 +2304,37 @@ class FlutterSoLoudWeb extends FlutterSoLoud {
   }
 
   @override
+  void set3dDefaultMinMaxDistance(
+    SoundHash soundHash,
+    double minDistance,
+    double maxDistance,
+  ) {
+    return wasmSet3dDefaultMinMaxDistance(
+      soundHash.hash,
+      minDistance,
+      maxDistance,
+    );
+  }
+
+  @override
+  void set3dDefaultAttenuation(
+    SoundHash soundHash,
+    int attenuationModel,
+    double attenuationRolloffFactor,
+  ) {
+    return wasmSet3dDefaultAttenuation(
+      soundHash.hash,
+      attenuationModel,
+      attenuationRolloffFactor,
+    );
+  }
+
+  @override
+  void set3dDefaultDopplerFactor(SoundHash soundHash, double dopplerFactor) {
+    return wasmSet3dDefaultDopplerFactor(soundHash.hash, dopplerFactor);
+  }
+
+  @override
   void set3dAutoUpdate(bool enabled) {
     return wasmSet3dAutoUpdate(enabled ? 1 : 0);
   }

@@ -5130,6 +5130,51 @@ extern "C"
     player.get()->autoUpdate3dAudio();
   }
 
+  /// Set the minimum and maximum distance that every voice started later
+  /// from the sound [soundHash] begins with. Voices already playing keep
+  /// theirs (see [set3dSourceMinMaxDistance]).
+  /// The default values are 1 and 1000000.
+  FFI_PLUGIN_EXPORT void set3dDefaultMinMaxDistance(unsigned int soundHash,
+                                                    float minDistance,
+                                                    float maxDistance)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(minDistance, maxDistance))
+      return;
+    player.get()->set3dDefaultMinMaxDistance(soundHash, minDistance,
+                                             maxDistance);
+  }
+
+  /// Set the attenuation model and rolloff factor that every voice started
+  /// later from the sound [soundHash] begins with. Voices already playing
+  /// keep theirs (see [set3dSourceAttenuation]).
+  /// The default values are NO_ATTENUATION and 1.
+  FFI_PLUGIN_EXPORT void set3dDefaultAttenuation(
+      unsigned int soundHash, unsigned int attenuationModel,
+      float attenuationRolloffFactor)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(attenuationRolloffFactor))
+      return;
+    player.get()->set3dDefaultAttenuation(soundHash, attenuationModel,
+                                          attenuationRolloffFactor);
+  }
+
+  /// Set the doppler factor that every voice started later from the sound
+  /// [soundHash] begins with. Voices already playing keep theirs (see
+  /// [set3dSourceDopplerFactor]). The default value is 1.
+  FFI_PLUGIN_EXPORT void set3dDefaultDopplerFactor(unsigned int soundHash,
+                                                   float dopplerFactor)
+  {
+    if (player.get() == nullptr || !player.get()->isInited())
+      return;
+    if (!allFinite(dopplerFactor))
+      return;
+    player.get()->set3dDefaultDopplerFactor(soundHash, dopplerFactor);
+  }
+
   /// Enable or disable the automatic 3D update. By default every 3D setter
   /// (listener, source, sound speed) recomputes the 3D state of all the 3D
   /// voices before it returns. With many moving sources that is one full
