@@ -70,6 +70,7 @@ namespace SoLoud
 #include "miniaudio.h"
 #ifdef __ANDROID__
 #include <android/api-level.h>
+#include "aaudio_timestamp_latency.h"
 #include <dlfcn.h>
 #include <time.h>
 #endif
@@ -1854,8 +1855,12 @@ namespace SoLoud
                         double streamSampleRate = (gDevice.playback.internalSampleRate > 0)
                             ? (double)gDevice.playback.internalSampleRate
                             : (double)gDevice.sampleRate;
-                        double latencySec = ((double)(framesWritten - framePosition) / streamSampleRate) -
-                                            ((double)(nowNanos - timeNanos) / 1000000000.0);
+                        // framePosition does not advance at the stream rate on
+                        // every device; see aaudio_timestamp_latency.h.
+                        static AAudioTimestampLatency s_timestampLatency;
+                        double latencySec = s_timestampLatency.update(
+                            gDevice.aaudio.pStreamPlayback, framesWritten, framePosition,
+                            timeNanos, nowNanos, streamSampleRate);
                         if (latencySec > 0.0)
                             return latencySec;
                     }
