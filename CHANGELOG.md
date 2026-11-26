@@ -1,4 +1,4 @@
-## 5.4.0 (XX Xxx 2026)
+## 5.4.0 (26 Nov 2026)
 A bug-fix release: a new, much larger test suite found many bugs, now fixed.
 
 ### Added
