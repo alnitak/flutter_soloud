@@ -235,14 +235,16 @@ class _IsolateDrumSequencerExampleState
       onFeed: _drumSynthGenerateChunk,
       onStateUpdate: _updateDrumSynthState,
       // Buffer sizing & refill interval:
-      // - Native: 128 frames (2.67 ms) chunk, 256 frames (5.33 ms) cushion,
-      //   2 ms tick in a background Isolate for ~5-10 ms latency.
+      // - Native: 256-frame (5.33 ms) chunks, 4 ms tick in a background
+      //   Isolate, and default `targetBufferedFrames` (`null` -> engine mix
+      //   quantum 1024 + 2 * 256 = 1536 frames) so the ring stays above one
+      //   mixer quantum and avoids underruns.
       // - Web: HTML5 timers on the main JS thread are clamped to >= 4 ms and
       //   jitter up to 10-16 ms with UI rendering. A 2048-frame (~42.6 ms)
       //   cushion, 512-frame chunk, and 15 ms ticks prevent buffer starvation
       //   and underruns.
       chunkFrames: kIsWeb ? 512 : 256,
-      targetBufferedFrames: kIsWeb ? 2048 : 512,
+      targetBufferedFrames: kIsWeb ? 2048 : null,
       tickInterval: const Duration(milliseconds: kIsWeb ? 15 : 4),
       onUiEvent: (Object? step) {
         if (step is int && mounted) {
