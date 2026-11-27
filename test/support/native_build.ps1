@@ -127,21 +127,24 @@ function Invoke-NativeBuild {
 # for tests that drive the Dart entry points (initEngine, loadFile, play, ...).
 # Pass to Invoke-NativeBuild with -Defines (Get-PluginDefines) and
 # -Libs (Get-PluginLibs). Mirrors test/docker/windows_native.sh's plugin_lib.
+# The plugin's sources: pffft.c, the shared list test/support/plugin_sources.txt
+# (also read by the bash test scripts) with its windows lines, and the
+# miniaudio backend.
 function Get-PluginSources {
-    return @(
-        'src\pffft\pffft.c',
-        'src\soloud_common.cpp', 'src\bindings.cpp', 'src\player.cpp', 'src\analyzer.cpp',
-        'src\synth\*.cpp', 'src\waveform\waveform.cpp', 'src\waveform\miniaudio_libvorbis.cpp',
-        'src\audiobuffer\*.cpp', 'src\native_stream\*.cpp',
-        'src\native_decoder\native_audio_decoder.cpp', 'src\native_decoder\os_decoder_windows.cpp',
-        'src\filters\*.cpp', 'src\mixeroutput\*.cpp',
-        'src\soloud\src\core\*.cpp', 'src\soloud\src\filter\*.cpp',
-        'src\soloud\src\audiosource\ay\*.cpp', 'src\soloud\src\audiosource\monotone\*.cpp',
-        'src\soloud\src\audiosource\noise\*.cpp', 'src\soloud\src\audiosource\sfxr\*.cpp',
-        'src\soloud\src\audiosource\speech\*.cpp', 'src\soloud\src\audiosource\tedsid\*.cpp',
-        'src\soloud\src\audiosource\vic\*.cpp', 'src\soloud\src\audiosource\vizsn\*.cpp',
-        'src\soloud\src\audiosource\wav\*.cpp',
-        'src\soloud\src\backend\miniaudio\soloud_miniaudio.cpp')
+    $sources = New-Object System.Collections.Generic.List[string]
+    $sources.Add('src\pffft\pffft.c')
+    $list = Join-Path $script:NativeBuildRepoRoot 'test\support\plugin_sources.txt'
+    foreach ($line in Get-Content -LiteralPath $list) {
+        $entry = ($line -replace '#.*$', '').Trim()
+        if ($entry -eq '') { continue }
+        if ($entry -match '^(apple|android|linux|windows):\s*(.+)$') {
+            if ($Matches[1] -ne 'windows') { continue }
+            $entry = $Matches[2]
+        }
+        $sources.Add($entry.Replace('/', '\'))
+    }
+    $sources.Add('src\soloud\src\backend\miniaudio\soloud_miniaudio.cpp')
+    return @($sources.ToArray())
 }
 function Get-PluginDefines { return @('WITH_MINIAUDIO', 'NO_XIPH_LIBS') }
 function Get-PluginIncludes {
