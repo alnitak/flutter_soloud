@@ -54,7 +54,8 @@ public:
   ///
   /// The parameter operations below return filterNotFound if the filter is
   /// not active, invalidParameter if [attributeId] is not one of its
-  /// parameters, and soundHandleNotFound for a bus that has no voice.
+  /// parameters, and soundHandleNotFound for a bus that has no voice. On a
+  /// bus they act on the bus's voice, whatever [handle] is.
   PlayerErrors setFilterParams(SoLoud::handle handle, FilterType filterType,
                                int attributeId, float value,
                                int customFilterId = 0);
@@ -82,7 +83,8 @@ public:
 private:
   /// The index of the active filter [filterType] whose parameter
   /// [attributeId] an operation addresses, or an error (see setFilterParams).
-  PlayerErrors findParam(SoLoud::handle handle, FilterType filterType,
+  /// On a bus, [handle] becomes the bus's voice.
+  PlayerErrors findParam(SoLoud::handle &handle, FilterType filterType,
                          int attributeId, int customFilterId, int &index);
 
   /// main SoLoud engine, the one used by player.cpp
