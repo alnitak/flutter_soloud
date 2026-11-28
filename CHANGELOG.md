@@ -1,7 +1,7 @@
 ## 5.4.1 (XX Xxx 2026)
 
 ### Fixes
-- **Filters**: a bus's filter parameter read, faded or oscillated with a `soundHandle` (for example of a sound playing on the bus) now acts on the bus, as setting it already did. It read a wrong value, and the fade or oscillation did nothing.
+- **Filters**: a bus's filter parameter read, faded or oscillated with a `soundHandle` (for example of a sound playing on the bus) now acts on the bus, as setting it already did. It read a wrong value, and the fade or oscillation did nothing. Thanks to @Kunstderfug #623
 
 ## 5.4.0 (26 Nov 2026)
 A bug-fix release: a new, much larger test suite found many bugs, now fixed.
