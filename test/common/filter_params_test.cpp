@@ -19,6 +19,11 @@
 //           soundHandleNotFound, and must not reach the global filter in
 //           the same slot. Once the bus plays they work.
 //
+//   voice   A bus's filter parameter is the bus voice's, whatever voice
+//           handle comes with the bus id, such as one of a sound playing on
+//           the bus: reading, fading and oscillating it must reach the bus's
+//           voice, as setting it does.
+//
 //   names   getFilterParamNamesBounded() writes no more names than the
 //           caller has room for (the parametric EQ has 195 parameters) and
 //           reports how many there are; getFilterParamNames() still writes
@@ -34,11 +39,13 @@
 
 #include "enums.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 
 extern "C"
 {
@@ -410,6 +417,61 @@ void testUnplayedBusFilters() {
     dispose();
 }
 
+// ---- voice ------------------------------------------------------------------
+
+// The bus's echo wet once [done] accepts it, or the last value read after 2 s.
+template <typename Done>
+float waitForBusEchoWet(unsigned int bus, Done done) {
+    float value = -1.0f;
+    for (int i = 0; i < 200; i++) {
+        if (getFilterParams(0, bus, EchoFilter, kEchoWet, &value) == noError &&
+            done(value))
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    return value;
+}
+
+void testBusParameterIsTheBusVoices() {
+    std::printf("voice: a bus's filter parameter is the bus voice's\n");
+    if (!initPluginEngine())
+        return;
+
+    const unsigned int bus = createBus();
+    EXPECT(addFilter(0, bus, EchoFilter) == noError, "addFilter on the bus");
+    playBus(bus);
+    // A voice playing on the bus, without filters of its own.
+    const unsigned int voice = playPaused(loadSound(), bus);
+
+    EXPECT(setFilterParams(voice, bus, EchoFilter, kEchoWet, 0.5f) == noError,
+           "set the bus's echo wet to 0.5 with the voice's handle");
+    float value = -1.0f;
+    PlayerErrors e = getFilterParams(voice, bus, EchoFilter, kEchoWet, &value);
+    EXPECT(e == noError && value == 0.5f,
+           "the bus's echo wet reads back with the voice's handle as error %d, "
+           "value %g",
+           e, value);
+
+    e = fadeFilterParameter(voice, bus, EchoFilter, kEchoWet, 1.0f, 0.01f);
+    EXPECT(e == noError, "fading the bus's echo wet gives error %d", e);
+    value = waitForBusEchoWet(bus, [](float v) { return v == 1.0f; });
+    EXPECT(value == 1.0f,
+           "the bus's echo wet fades to 1 with the voice's handle, it is %g",
+           value);
+
+    e = oscillateFilterParameter(voice, bus, EchoFilter, kEchoWet, 0.1f, 0.2f,
+                                 0.05f);
+    EXPECT(e == noError, "oscillating the bus's echo wet gives error %d", e);
+    value = waitForBusEchoWet(bus,
+                              [](float v) { return v >= 0.1f && v <= 0.2f; });
+    EXPECT(value >= 0.1f && value <= 0.2f,
+           "the bus's echo wet oscillates in [0.1, 0.2] with the voice's "
+           "handle, it is %g",
+           value);
+
+    dispose();
+}
+
 // ---- names ------------------------------------------------------------------
 
 // The parametric EQ's parameter count and names (parametric_eq_filter.h).
@@ -501,6 +563,8 @@ int main(int argc, char **argv) {
         testDisposeAllSoundForgetsGlobalFilters();
     if (wanted("bus"))
         testUnplayedBusFilters();
+    if (wanted("voice"))
+        testBusParameterIsTheBusVoices();
     if (wanted("names"))
         testParamNamesFitTheArray();
 
