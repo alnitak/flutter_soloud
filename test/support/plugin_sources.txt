@@ -1,0 +1,46 @@
+# The plugin's native sources (bindings.cpp down to the SoLoud engine), for
+# the test builds that link the whole plugin. One path or glob per line,
+# relative to the repository root, in link order. A line starting with
+# `apple:`, `android:`, `linux:` or `windows:` is only for that platform.
+#
+# Read by plugin_sources() in test/support/engine_sources.sh (the
+# test/common, test/linux, test/macos, test/ios and test/android scripts,
+# test/docker/windows_native.sh) and by Get-PluginSources in
+# test/support/native_build.ps1 (test/windows). Not listed here, because each
+# build picks them itself: src/pffft/pffft.c (compiled as C) and the audio
+# backend (miniaudio, the Objective-C++ shim on Apple, or the null backend).
+#
+# hook/build.dart decides what the real plugin compiles:
+# test/common/plugin_sources_test.dart fails when one of its sources is
+# missing here. Platform-specific .cpp files under a glob compile to nothing
+# on the other platforms.
+
+src/soloud_common.cpp
+src/device_lifecycle_test_hooks.cpp
+src/bindings.cpp
+src/player.cpp
+src/analyzer.cpp
+src/synth/*.cpp
+src/waveform/waveform.cpp
+src/waveform/miniaudio_libvorbis.cpp
+src/audiobuffer/*.cpp
+src/native_stream/*.cpp
+src/native_decoder/native_audio_decoder.cpp
+apple: src/native_decoder/os_decoder_apple.mm
+apple: src/audiobuffer/aac_stream_decoder_apple.mm
+android: src/native_decoder/os_decoder_android.cpp
+linux: src/native_decoder/os_decoder_linux.cpp
+windows: src/native_decoder/os_decoder_windows.cpp
+src/filters/*.cpp
+src/mixeroutput/*.cpp
+src/soloud/src/core/*.cpp
+src/soloud/src/filter/*.cpp
+src/soloud/src/audiosource/ay/*.cpp
+src/soloud/src/audiosource/monotone/*.cpp
+src/soloud/src/audiosource/noise/*.cpp
+src/soloud/src/audiosource/sfxr/*.cpp
+src/soloud/src/audiosource/speech/*.cpp
+src/soloud/src/audiosource/tedsid/*.cpp
+src/soloud/src/audiosource/vic/*.cpp
+src/soloud/src/audiosource/vizsn/*.cpp
+src/soloud/src/audiosource/wav/*.cpp

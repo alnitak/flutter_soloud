@@ -92,16 +92,12 @@ fi
 
 # The whole plugin (bindings.cpp down to miniaudio) as a static library, for
 # the tests that drive the Dart entry points. Built once, in parallel.
+. test/support/engine_sources.sh
 PLUGIN_LIB="$OUT/libplugin.a"
 plugin_lib() {
     [ -f "$PLUGIN_LIB" ] && return 0
-    local srcs=(src/soloud_common.cpp src/bindings.cpp src/player.cpp src/analyzer.cpp
-        src/synth/*.cpp src/waveform/waveform.cpp src/waveform/miniaudio_libvorbis.cpp
-        src/audiobuffer/*.cpp src/native_stream/*.cpp src/native_decoder/native_audio_decoder.cpp
-        src/native_decoder/os_decoder_windows.cpp src/filters/*.cpp src/mixeroutput/*.cpp
-        src/soloud/src/core/*.cpp src/soloud/src/filter/*.cpp
-        src/soloud/src/audiosource/{ay,monotone,noise,sfxr,speech,tedsid,vic,vizsn,wav}/*.cpp
-        src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp)
+    plugin_sources windows || return 1
+    local srcs=("${PLUGIN_SOURCES[@]}" src/soloud/src/backend/miniaudio/soloud_miniaudio.cpp)
     mkdir -p "$OUT/plugin_obj"
     printf '%s\n' "${srcs[@]}" | xargs -P "$(nproc)" -I{} sh -c \
         'o="$0/plugin_obj/$(echo {} | tr / _).o"; '"$CXX"' -std=c++17 -O2 -w -DNOMINMAX -D_CRT_SECURE_NO_WARNINGS -DWITH_MINIAUDIO -DNO_XIPH_LIBS -include "$0/vsprintf_p_compat.h" -I src/soloud/include -I src/soloud/src -I src/pffft -I src -I src/native_decoder -I src/audiobuffer -c {} -o "$o" || echo "FAILED {}"' "$OUT" \

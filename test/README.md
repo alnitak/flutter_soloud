@@ -137,6 +137,13 @@ The generator runs each script with fake compilers that only record their
 arguments. It then writes one target per test executable, replacing the
 Apple-only sources with the current platform's own sources.
 
+The scripts that link the whole plugin take its sources from
+`support/plugin_sources.txt` (`plugin_sources` in
+`support/engine_sources.sh`, `Get-PluginSources` in
+`support/native_build.ps1`). A new source file or directory in `src/` goes
+there, and `common/plugin_sources_test.dart` fails when one that the build
+hook compiles is missing.
+
 ### Docker (Linux, Windows under Wine, FFmpeg releases)
 
 ```bash
